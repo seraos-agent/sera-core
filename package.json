@@ -7,6 +7,12 @@
     "start": "ts-node src/index.ts",
     "start:phase2": "ts-node src/demo-phase2.ts",
     "start:phase2.2": "ts-node src/demo-phase2-2.ts",
+    "start:phase2.3": "ts-node src/demo-phase2-3.ts",
+    "start:phase2.4": "ts-node src/demo-phase2-4.ts",
+    "start:phase2.5": "ts-node src/demo-phase2-5.ts",
+    "start:phase2.6": "ts-node src/demo-phase2-6.ts",
+    "start:phase2.7": "ts-node src/demo-phase2-7.ts",
+    "start:phase2.8": "ts-node src/demo-phase2-8.ts",
     "build": "tsc"
   },
   "author": "",

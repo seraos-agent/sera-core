@@ -5,5 +5,7 @@ export interface Goal {
   description: string;
   targetState: Record<string, any>;
   status: GoalStatus;
+  priority: number;
+  stabilityIndex: number;
   createdAt: number;
 }
