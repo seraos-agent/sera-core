@@ -3,6 +3,8 @@ export type WorkItemStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 export interface WorkItem {
   id: string;
   goalId: string;
+  planId?: string;
+  planStepId?: string;
   action: string;
   payload: Record<string, any>;
   status: WorkItemStatus;

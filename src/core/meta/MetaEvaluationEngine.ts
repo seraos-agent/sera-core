@@ -24,6 +24,10 @@ export class MetaEvaluationEngine {
     private history?: MetaEvaluationHistory
   ) {}
 
+  getHistory(): MetaEvaluationHistory | undefined {
+    return this.history;
+  }
+
   recordCycleOutcome(success: boolean, cost: number, contradictions: number, conflicts: number): void {
     this.totalCycles++;
     if (success) this.windowSuccesses++;

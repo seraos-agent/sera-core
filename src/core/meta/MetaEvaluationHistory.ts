@@ -18,6 +18,10 @@ export class MetaEvaluationHistory {
     return [...this.history];
   }
 
+  getLatestReport(): MetaEvaluationReport | undefined {
+    return this.history[this.history.length - 1];
+  }
+
   analyzeTrend(metricKey: keyof MetaMetrics): TrendAnalysis {
     if (this.history.length < 2) {
       return { trend: 'STABLE', acceleration: 'NEUTRAL', volatility: 'LOW', confidence: 0.1 };

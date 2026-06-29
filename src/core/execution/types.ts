@@ -28,6 +28,9 @@ export interface DecisionSnapshot {
 export interface ExecutionTrace {
   id: string;
   goalId: string;
+  planId?: string;
+  planStepId?: string;
+  workerId?: string;
   intentSnapshot: any;
   plan: any; // Simplified for now
   workerAssignments: string[];

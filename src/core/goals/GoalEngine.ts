@@ -1,4 +1,4 @@
-import { Goal, GoalStatus } from './types';
+import { Goal, GoalStatus, GoalInvalidation } from './types';
 
 export class GoalEngine {
   private goals: Map<string, Goal> = new Map();
@@ -19,11 +19,20 @@ export class GoalEngine {
     return Array.from(this.goals.values());
   }
 
-  updateStatus(goalId: string, status: GoalStatus): void {
+  updateStatus(goalId: string, status: GoalStatus, reason?: string): void {
     const goal = this.goals.get(goalId);
     if (!goal) return;
     goal.status = status;
-    console.log(`[GoalEngine] Goal ${goalId} status updated to ${status}`);
+    const reasonStr = reason ? ` (Reason: ${reason})` : '';
+    console.log(`[GoalEngine] Goal ${goalId} status updated to ${status}${reasonStr}`);
+  }
+
+  invalidate(goalId: string, invalidation: GoalInvalidation): void {
+    const goal = this.goals.get(goalId);
+    if (!goal) return;
+    goal.status = 'INVALIDATED';
+    goal.invalidation = invalidation;
+    console.log(`[GoalEngine] Goal ${goalId} INVALIDATED. Expected ${invalidation.field} to be ${invalidation.expected}, but got ${invalidation.actual}.`);
   }
 
   recordOutcome(goalId: string, outcome: 'SUCCESS' | 'FAILED'): void {
@@ -69,5 +78,18 @@ export class GoalEngine {
     if (signal.type === 'increase_stability_weight') {
       console.log(`[GoalEngine] Applied MetaSignal: Increasing goal stability weight.`);
     }
+  }
+
+  isTerminal(status: GoalStatus): boolean {
+    return ['COMPLETED', 'FAILED', 'INVALIDATED', 'ABANDONED', 'CANCELLED'].includes(status);
+  }
+
+  getRepresentingGoals(intentId: string): Goal[] {
+    return Array.from(this.goals.values()).filter(g => g.intentId === intentId);
+  }
+
+  hasActiveRepresentation(intentId: string): boolean {
+    const goals = this.getRepresentingGoals(intentId);
+    return goals.some(g => !this.isTerminal(g.status));
   }
 }
