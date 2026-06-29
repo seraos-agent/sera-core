@@ -3,6 +3,7 @@ import { MemoryStore } from '../../memory/MemoryStore';
 import { GoalEngine } from '../goals/GoalEngine';
 import { SignalArbitrator } from '../feedback/SignalArbitrator';
 import { CoherenceMonitor } from '../cognition/CoherenceMonitor';
+import { MetaEvaluationHistory } from './MetaEvaluationHistory';
 
 export class MetaEvaluationEngine {
   private lastMetrics: MetaMetrics | null = null;
@@ -15,6 +16,14 @@ export class MetaEvaluationEngine {
   private windowConflicts = 0;
   private windowContradictions = 0;
 
+  constructor(
+    private memoryStore: MemoryStore,
+    private goalEngine: GoalEngine,
+    private arbitrator: SignalArbitrator,
+    private coherenceMonitor: CoherenceMonitor,
+    private history?: MetaEvaluationHistory
+  ) {}
+
   recordCycleOutcome(success: boolean, cost: number, contradictions: number, conflicts: number): void {
     this.totalCycles++;
     if (success) this.windowSuccesses++;
@@ -24,12 +33,7 @@ export class MetaEvaluationEngine {
     this.windowConflicts += conflicts;
   }
 
-  evaluate(
-    memoryStore: MemoryStore,
-    goalEngine: GoalEngine,
-    arbitrator: SignalArbitrator,
-    coherenceMonitor: CoherenceMonitor
-  ): MetaEvaluationReport {
+  evaluate(): MetaEvaluationReport {
     console.log(`\n[MetaEvaluationEngine] Starting longitudinal meta-evaluation at cycle ${this.totalCycles}...`);
     
     // Simulate complex longitudinal metrics
@@ -44,11 +48,10 @@ export class MetaEvaluationEngine {
     const GEI = successRate * costEfficiency;
 
     // AAS = correct_signal_resolution_rate - misclassification_rate
-    // Using conflicts resolved cleanly vs noise
     const AAS = Math.max(0, 1.0 - (this.windowConflicts * 0.1));
 
     // BSI = belief_confidence_consistency_over_time - contradiction_volatility
-    const beliefs = memoryStore.getAllBeliefs();
+    const beliefs = this.memoryStore.getAllBeliefs();
     const confirmedCount = beliefs.filter(b => b.epistemicStatus === 'CONFIRMED').length;
     const BSI = (confirmedCount / Math.max(1, beliefs.length)) - (this.windowContradictions * 0.1);
 
@@ -108,11 +111,24 @@ export class MetaEvaluationEngine {
 
     this.lastMetrics = metrics;
 
-    return {
+    const report: MetaEvaluationReport = {
       timestamp: Date.now(),
       metrics,
       trends: trend,
       recommendedMetaSignals
     };
+
+    if (this.history) {
+      this.history.record(report);
+    }
+
+    // Auto-apply signals
+    report.recommendedMetaSignals.forEach(sig => {
+      if (sig.type === 'reduce_exploration_bias') this.coherenceMonitor.applyMetaSignal(sig);
+      if (sig.type === 'adjust_arbitration_sensitivity') this.arbitrator.applyMetaSignal(sig);
+      if (sig.type === 'increase_stability_weight') this.goalEngine.applyMetaSignal(sig);
+    });
+
+    return report;
   }
 }

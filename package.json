@@ -13,6 +13,7 @@
     "start:phase2.6": "ts-node src/demo-phase2-6.ts",
     "start:phase2.7": "ts-node src/demo-phase2-7.ts",
     "start:phase2.8": "ts-node src/demo-phase2-8.ts",
+    "start:phase3.0": "ts-node src/demo-phase3-1.ts",
     "build": "tsc"
   },
   "author": "",

@@ -19,6 +19,8 @@ async function main() {
     description: 'Process various work items to test authority',
     targetState: { testComplete: true },
     status: 'PENDING',
+    priority: 1.0,
+    stabilityIndex: 1.0,
     createdAt: Date.now()
   };
 

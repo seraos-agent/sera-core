@@ -18,9 +18,11 @@ import { FeedbackPipeline } from './core/feedback/FeedbackPipeline';
 import { SignalArbitrator } from './core/feedback/SignalArbitrator';
 import { CoherenceMonitor } from './core/cognition/CoherenceMonitor';
 import { MetaEvaluationEngine } from './core/meta/MetaEvaluationEngine';
+import { MetaEvaluationHistory } from './core/meta/MetaEvaluationHistory';
+import { ExecutionTraceStore } from './core/execution/ExecutionTraceStore';
 
 async function main() {
-  console.log('=== SERA Core - Stage 2.8: Meta-Evaluation Layer Demo ===\n');
+  console.log('=== SERA Core - Stage 2.8.1: Historical Meta Trends Demo ===\n');
 
   // Setup Tools & Workers
   const registry = new ToolRegistry();
@@ -38,7 +40,19 @@ async function main() {
   const coherenceMonitor = new CoherenceMonitor();
   const arbitrator = new SignalArbitrator();
   const feedbackPipeline = new FeedbackPipeline(arbitrator, memoryPolicyEngine, goalEngine, coherenceMonitor);
-  const metaEvaluationEngine = new MetaEvaluationEngine();
+  
+  // New Phase 2.8.1 History Layer
+  const metaHistory = new MetaEvaluationHistory();
+  const metaEvaluationEngine = new MetaEvaluationEngine(
+    memoryStore,
+    goalEngine,
+    arbitrator,
+    coherenceMonitor,
+    metaHistory
+  );
+
+  // New Phase 2.8.3 Trace Store
+  const executionTraceStore = new ExecutionTraceStore();
 
   // Setup Runtime
   const runtime = new Runtime(
@@ -48,7 +62,8 @@ async function main() {
     new PaymentAuthorityService(),
     feedbackPipeline,
     coherenceMonitor,
-    metaEvaluationEngine
+    metaEvaluationEngine,
+    executionTraceStore
   );
 
   const allowedScope: DelegationScope = {
@@ -84,8 +99,7 @@ async function main() {
     goalEngine.registerGoal(goal);
     await runtime.processGoal(goal, allowedScope, 'execute_work_item');
   }
-  // Trigger Eval 1
-  runtime.triggerMetaEvaluation(memoryStore, goalEngine, arbitrator);
+  // Eval 1 is triggered automatically by runtime
 
   console.log('\n--- Phase B: Cognitive Drift (Cycles 4-6) ---');
   for (let i = 4; i <= 6; i++) {
@@ -93,12 +107,17 @@ async function main() {
     goalEngine.registerGoal(goal);
     await runtime.processGoal(goal, allowedScope, 'execute_work_item');
   }
-  // Trigger Eval 2
-  runtime.triggerMetaEvaluation(memoryStore, goalEngine, arbitrator);
+  // Eval 2 is triggered automatically by runtime
 
   console.log('\n--- Final System State ---');
   console.log(`System Coherence Score: ${coherenceMonitor.getState().score.toFixed(2)}`);
   console.log(`Is Exploration Restricted?: ${!coherenceMonitor.getState().explorationMode}`);
+  
+  console.log('\n--- Phase 2.8.1 Historical Trend Analysis ---');
+  const sdsTrend = metaHistory.analyzeTrend('SDS');
+  const lesTrend = metaHistory.analyzeTrend('LES');
+  console.log(`System Drift Score (SDS): Trend=${sdsTrend.trend} | Acceleration=${sdsTrend.acceleration} | Volatility=${sdsTrend.volatility} | Confidence=${sdsTrend.confidence.toFixed(2)}`);
+  console.log(`Learning Effectiveness Score (LES): Trend=${lesTrend.trend} | Acceleration=${lesTrend.acceleration} | Volatility=${lesTrend.volatility} | Confidence=${lesTrend.confidence.toFixed(2)}`);
   
   console.log('\n=== Demo Completed Successfully ===');
 }

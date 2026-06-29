@@ -42,6 +42,8 @@ async function main() {
     description: 'Execute a delegated task',
     targetState: { testCompleted: true },
     status: 'PENDING',
+    priority: 1.0,
+    stabilityIndex: 1.0,
     createdAt: Date.now()
   };
 

@@ -23,6 +23,8 @@ async function main() {
       coreConceptsUnderstood: 5
     },
     status: 'PENDING',
+    priority: 1.0,
+    stabilityIndex: 1.0,
     createdAt: Date.now()
   };
 

@@ -22,6 +22,8 @@ async function main() {
     description: 'Execute a delegated task via Worker Orchestration',
     targetState: { taskCompletedByWorker: true },
     status: 'PENDING',
+    priority: 1.0,
+    stabilityIndex: 1.0,
     createdAt: Date.now()
   };
 
