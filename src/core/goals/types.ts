@@ -20,6 +20,12 @@ export class IntentInvalidationError extends Error {
   }
 }
 
+export interface GoalPrediction {
+  expectedSuccessProbability: number;
+  expectedIntentProgress: number;
+  confidence: number;
+}
+
 export interface Goal {
   id: string;
   description: string;
@@ -29,6 +35,8 @@ export interface Goal {
   stabilityIndex: number;
   createdAt: number;
   intentId?: string;
+  originCandidateCategory?: string;
+  prediction?: GoalPrediction;
   intentContract?: IntentContract;
   invalidation?: GoalInvalidation;
 }

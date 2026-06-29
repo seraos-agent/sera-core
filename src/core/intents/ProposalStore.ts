@@ -21,6 +21,12 @@ export class ProposalStore {
     );
   }
 
+  getStaleProposals(currentPhysicalTime: number, maxAgeMs: number = 3600000): GoalProposal[] {
+    return Array.from(this.proposals.values()).filter(
+      p => p.status === 'PENDING_REVIEW' && (currentPhysicalTime - p.createdAt > maxAgeMs)
+    );
+  }
+
   updateStatus(proposalId: string, status: GoalProposalStatus, selectedCandidateId?: string): void {
     const proposal = this.proposals.get(proposalId);
     if (!proposal) return;

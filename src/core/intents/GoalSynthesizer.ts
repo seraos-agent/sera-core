@@ -7,18 +7,25 @@ export class GoalSynthesizer {
 
     const candidates: GoalCandidate[] = [
       {
-        id: `cand-${Date.now()}-wait`,
+        id: `cand-${Date.now()}-aligned`,
+        category: 'ALIGNED',
         title: 'Wait for market correction',
-        rationale: `Current maxBTCPrice is ${worldState.maxBTCPrice || 'high'}. Waiting is safer.`,
-        confidence: 0.72,
+        rationale: `Current maxBTCPrice is ${worldState.maxBTCPrice || 'high'}. Historical preference indicates waiting is preferred.`,
         strategyMetadata: { targetMaxPrice: 100000 }
       },
       {
-        id: `cand-${Date.now()}-dca`,
+        id: `cand-${Date.now()}-objective`,
+        category: 'OBJECTIVE',
         title: 'DCA Weekly',
-        rationale: 'Ignore short-term volatility and accumulate progressively.',
-        confidence: 0.65,
+        rationale: 'Mathematically optimal to ignore short-term volatility and accumulate progressively.',
         strategyMetadata: { weeklyAllocation: 1000 }
+      },
+      {
+        id: `cand-${Date.now()}-exploratory`,
+        category: 'EXPLORATORY',
+        title: 'Accumulate Alternative Asset (ETH)',
+        rationale: 'BTC is overvalued. Exploring ETH as a proxy for crypto exposure.',
+        strategyMetadata: { targetAsset: 'ETH' }
       }
     ];
 

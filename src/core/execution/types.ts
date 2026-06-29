@@ -46,3 +46,52 @@ export interface ExecutionTrace {
   createdAt: number;
   completedAt?: number;
 }
+
+export interface CategoryStats {
+  observations: number;
+  approvalRate: number;
+  confidence: number;
+  lastObservedAt: number;
+  sampleSize: number;
+  evidenceStrength: number;
+}
+
+export interface IntentRealizationPattern {
+  intentType: string;
+  worldContext: Record<string, any>;
+  categoryStats: Record<string, CategoryStats>; // E.g., { 'ALIGNED': {...} }
+}
+
+export type OutcomeEvaluationWindow = 'IMMEDIATE' | 'SHORT_TERM' | 'LONG_TERM';
+
+export type CalibrationState = 'OVERCONFIDENT' | 'UNDERCONFIDENT' | 'CALIBRATED' | 'UNCALIBRATED' | 'CALIBRATION_DRIFT';
+
+export interface OutcomeCategoryStats {
+  observations: number;
+  goalSuccessRate: number;
+  intentOutcomeScore: number;
+  avgSuccessPredictionError: number;
+  avgIntentPredictionError: number;
+  recentSuccessErrors: number[];
+  calibrationState: CalibrationState;
+  confidence: number;
+  lastObservedAt: number;
+  sampleSize: number;
+  evidenceStrength: number;
+}
+
+export interface OutcomeRealizationPattern {
+  intentType: string;
+  evaluationWindow: OutcomeEvaluationWindow;
+  worldContext: Record<string, any>;
+  categoryStats: Record<string, OutcomeCategoryStats>;
+}
+
+export interface ProposalTrace {
+  id: string;
+  proposalSnapshot: any; // Using any to avoid circular import with intents/types for now, or just import it. Let's use any for simplicity.
+  worldStateSnapshot: any;
+  outcome: 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
+  selectedCandidateId?: string;
+  timestamp: number;
+}

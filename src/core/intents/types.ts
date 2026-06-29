@@ -13,11 +13,22 @@ export interface Intent {
 
 export type GoalProposalStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
 
+export type CandidateCategory = 'ALIGNED' | 'OBJECTIVE' | 'EXPLORATORY';
+
+export interface CandidateEvaluationVector {
+  intentAlignment: number;
+  outcomeQuality: number;
+  acceptanceProbability: number;
+  historicalOutcomeEffectiveness: number;
+  diversityContribution: number;
+}
+
 export interface GoalCandidate {
   id: string;
+  category: CandidateCategory;
   title: string;
   rationale: string;
-  confidence: number;
+  evaluationVector?: CandidateEvaluationVector;
   strategyMetadata?: Record<string, any>;
 }
 

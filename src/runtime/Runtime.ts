@@ -14,7 +14,7 @@ import { ExecutionTrace } from '../core/execution/types';
 import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
-import { MetaEvaluationEngine } from '../core/meta/MetaEvaluationEngine';
+import { MetaEvaluationEngine } from '../core/cognition/MetaEvaluationEngine';
 import { ReflectionScheduler } from '../core/reflection/ReflectionScheduler';
 import { TemporalContext } from '../core/temporal/types';
 import { AttentionEngine } from '../core/attention/AttentionEngine';
@@ -27,6 +27,7 @@ import { IntentEngine } from '../core/intents/IntentEngine';
 import { ProposalStore } from '../core/intents/ProposalStore';
 import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
 import { IntentStore } from '../core/intents/IntentStore';
+import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 
 export class Runtime {
   private worldStateService: WorldStateService;
@@ -48,10 +49,13 @@ export class Runtime {
   private attentionEngine?: AttentionEngine;
   private goalEngine?: GoalEngine;
   private intentEngine?: IntentEngine;
-  private intentStore?: IntentStore;
-  private proposalStore?: ProposalStore;
-  private goalSynthesizer?: GoalSynthesizer;
-  
+  public intentStore?: IntentStore;
+  public proposalStore?: ProposalStore;
+  public goalSynthesizer?: GoalSynthesizer;
+  public proposalGovernance?: ProposalGovernance;
+  public proposalEvaluator?: any;
+
+  private EVICTION_THRESHOLD = 20;
   private cognitiveCycleCount = 0;
   private cycleCount = 0;
   private readonly EVALUATION_INTERVAL = 3;
@@ -74,7 +78,9 @@ export class Runtime {
     intentEngine?: IntentEngine,
     intentStore?: IntentStore,
     proposalStore?: ProposalStore,
-    goalSynthesizer?: GoalSynthesizer
+    goalSynthesizer?: GoalSynthesizer,
+    proposalGovernance?: ProposalGovernance,
+    proposalEvaluator?: any
   ) {
     this.worldStateService = new WorldStateService();
     this.memoryStore = new MemoryStore();
@@ -97,10 +103,32 @@ export class Runtime {
     this.intentStore = intentStore;
     this.proposalStore = proposalStore;
     this.goalSynthesizer = goalSynthesizer;
+    this.proposalGovernance = proposalGovernance;
+    this.proposalEvaluator = proposalEvaluator;
   }
   
   getWorldState() {
     return this.worldStateService.getState();
+  }
+
+  private governProposals(temporalContext: TemporalContext): void {
+    if (!this.proposalStore) return;
+    const staleProposals = this.proposalStore.getStaleProposals(temporalContext.physicalTime);
+    
+    for (const proposal of staleProposals) {
+      console.log(`[Runtime] Proposal ${proposal.id} for Intent ${proposal.parentIntentId} has EXPIRED due to age.`);
+      this.proposalStore.updateStatus(proposal.id, 'EXPIRED');
+      
+      if (this.feedbackPipeline) {
+        this.feedbackPipeline.processProposalTrace({
+          id: `ptrace-${Date.now()}`,
+          proposalSnapshot: proposal,
+          worldStateSnapshot: this.getWorldState(),
+          outcome: 'EXPIRED',
+          timestamp: temporalContext.physicalTime
+        });
+      }
+    }
   }
   
   getMemory() {
@@ -122,6 +150,8 @@ export class Runtime {
         physicalTime: Date.now(),
         cognitiveCycleId: this.cognitiveCycleCount
       };
+      
+      this.governProposals(temporalContext);
 
       const auditReport = this.intentEngine ? this.intentEngine.auditRepresentations(temporalContext) : null;
       
@@ -145,7 +175,20 @@ export class Runtime {
           }
 
           // Generate new proposal
-          const proposal = this.goalSynthesizer.generateProposal(intent, gap, this.getWorldState());
+          let proposal = this.goalSynthesizer.generateProposal(intent, gap, this.getWorldState());
+          
+          if (this.proposalEvaluator) {
+            proposal = this.proposalEvaluator.evaluate(proposal);
+          }
+
+          if (this.proposalGovernance) {
+            const govResult = this.proposalGovernance.evaluate(proposal);
+            if (!govResult.valid) {
+              console.log(`[ProposalPipeline] Proposal rejected by Governance:`, govResult.reasons);
+              continue; // Do not register
+            }
+          }
+
           this.proposalStore.register(proposal);
           
           // Apply cooldown (e.g. 1 hour = 3600000ms. For demo, we use a mock value like 5000ms)
@@ -157,7 +200,12 @@ export class Runtime {
           console.log(`Proposal ID: ${proposal.id}`);
           console.log(`Candidates:`);
           proposal.candidates.forEach((c: any, idx: number) => {
-            console.log(`  ${idx + 1}. [${c.id}] ${c.title} (Confidence: ${c.confidence})`);
+            console.log(`  ${idx + 1}. [${c.id}] ${c.title}`);
+            if (c.evaluationVector) {
+              console.log(`     Acceptance History: ${(c.evaluationVector.acceptanceProbability * 100).toFixed(0)}%`);
+              console.log(`     Outcome Effectiveness: ${(c.evaluationVector.historicalOutcomeEffectiveness * 100).toFixed(0)}%`);
+              console.log(`     [Align: ${c.evaluationVector.intentAlignment}, Quality: ${c.evaluationVector.outcomeQuality}, Div: ${c.evaluationVector.diversityContribution}]`);
+            }
             console.log(`     Rationale: ${c.rationale}`);
           });
           console.log(`Awaiting Human Review.\n`);
@@ -204,6 +252,10 @@ export class Runtime {
            this.goalEngine.updateStatus(goalToProcess.id, 'FAILED', err.message);
         }
       }
+    }
+    
+    if (this.metaEvaluationEngine) {
+      this.metaEvaluationEngine.evaluate();
     }
     
     console.log(`\n[Runtime] Autonomous Main Loop Terminated.`);
@@ -469,32 +521,7 @@ export class Runtime {
       this.feedbackPipeline.processTrace(trace);
     }
 
-    if (this.metaEvaluationEngine) {
-      const isConflict = trace.verificationResult === false;
-      this.metaEvaluationEngine.recordCycleOutcome(
-        trace.finalOutcome === 'SUCCESS' && trace.verificationResult,
-        trace.costTracking,
-        isConflict ? 1 : 0,
-        isConflict ? 1 : 0
-      );
-
-      this.cycleCount++;
-      if (this.cycleCount % this.EVALUATION_INTERVAL === 0) {
-        // Automatic Cognition Loop Closure
-        const report = this.metaEvaluationEngine.evaluate();
-        console.log('\n[Automatic MetaEvaluationReport] Generated:');
-        console.log(`  Trends: ${report.trends.toUpperCase()}`);
-        console.log(`  LES: ${report.metrics.LES.toFixed(2)} | GEI: ${report.metrics.GEI.toFixed(2)} | AAS: ${report.metrics.AAS.toFixed(2)} | BSI: ${report.metrics.BSI.toFixed(2)} | SDS: ${report.metrics.SDS.toFixed(2)}`);
-        
-        const history = this.metaEvaluationEngine.getHistory();
-        if (this.strategyEngine && history) {
-          // Passing temporalContext here would require passing it through finalizeCycle,
-          // Since finalizeCycle happens at the end, we can use a fresh one or pass it down.
-          // For simplicity, we just use the current time for evaluateEpoch.
-          this.strategyEngine.evaluateEpoch(history, { physicalTime: Date.now(), cognitiveCycleId: this.cognitiveCycleCount });
-        }
-      }
-    }
+    // Old meta evaluation logic was removed here. The new MetaEvaluationEngine is executed at the end of startAutonomousLoop.
     
     if (this.reflectionScheduler) {
       this.reflectionScheduler.tick();
@@ -522,21 +549,41 @@ export class Runtime {
       return;
     }
 
+    // Construct Prediction from Candidate Evaluation Vector
+    const prediction = candidate.evaluationVector ? {
+      expectedSuccessProbability: candidate.evaluationVector.historicalOutcomeEffectiveness,
+      expectedIntentProgress: candidate.evaluationVector.historicalOutcomeEffectiveness, // proxy for now
+      confidence: 0.8 // default confidence for now
+    } : undefined;
+
     // Convert candidate to Goal (GoalFactory logic)
     const newGoalId = `goal-${Date.now()}`;
     this.goalEngine.registerGoal({
       id: newGoalId,
       intentId: proposal.parentIntentId,
+      originCandidateCategory: candidate.category,
       description: candidate.title,
       targetState: candidate.strategyMetadata || {}, // Simplified mapping
       status: 'PENDING',
       priority: 0.8,
       stabilityIndex: 1.0,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      prediction
     });
 
     this.proposalStore.updateStatus(proposalId, 'APPROVED', candidateId);
     console.log(`\n[Human] Approved Proposal ${proposalId}, selected candidate ${candidateId}.`);
     console.log(`[Runtime] Registered new tactical Goal: ${newGoalId}\n`);
+    
+    if (this.feedbackPipeline) {
+      this.feedbackPipeline.processProposalTrace({
+        id: `ptrace-${Date.now()}`,
+        proposalSnapshot: proposal,
+        worldStateSnapshot: this.getWorldState(),
+        outcome: 'APPROVED',
+        selectedCandidateId: candidateId,
+        timestamp: Date.now()
+      });
+    }
   }
 }
