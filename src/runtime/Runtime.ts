@@ -15,11 +15,18 @@ import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
 import { MetaEvaluationEngine } from '../core/cognition/MetaEvaluationEngine';
+import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
+import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
+import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
 import { ReflectionScheduler } from '../core/reflection/ReflectionScheduler';
 import { TemporalContext } from '../core/temporal/types';
 import { AttentionEngine } from '../core/attention/AttentionEngine';
 import { GoalEngine } from '../core/goals/GoalEngine';
 import { Planner } from '../core/planner/Planner';
+import { AdaptationPlanner } from '../core/cognition/AdaptationPlanner';
+import { AdaptationExecutor } from '../core/cognition/AdaptationExecutor';
+import { StrategyProfile } from '../core/strategy/types';
+import { AdaptationProposal } from '../core/cognition/types';
 import { StrategyStore } from '../core/strategy/StrategyStore';
 import { StrategyEngine } from '../core/strategy/StrategyEngine';
 import { Plan, PlanStep } from '../core/planner/types';
@@ -54,6 +61,11 @@ export class Runtime {
   public goalSynthesizer?: GoalSynthesizer;
   public proposalGovernance?: ProposalGovernance;
   public proposalEvaluator?: any;
+  public governanceOutcomeTracker?: GovernanceOutcomeTracker;
+  public governanceReflectionEngine?: GovernanceReflectionEngine;
+  public governanceCalibrationEngine?: GovernanceCalibrationEngine;
+  public adaptationPlanner?: AdaptationPlanner;
+  public adaptationExecutor?: AdaptationExecutor;
 
   private EVICTION_THRESHOLD = 20;
   private cognitiveCycleCount = 0;
@@ -80,7 +92,12 @@ export class Runtime {
     proposalStore?: ProposalStore,
     goalSynthesizer?: GoalSynthesizer,
     proposalGovernance?: ProposalGovernance,
-    proposalEvaluator?: any
+    proposalEvaluator?: any,
+    governanceOutcomeTracker?: GovernanceOutcomeTracker,
+    governanceReflectionEngine?: GovernanceReflectionEngine,
+    governanceCalibrationEngine?: GovernanceCalibrationEngine,
+    adaptationPlanner?: AdaptationPlanner,
+    adaptationExecutor?: AdaptationExecutor
   ) {
     this.worldStateService = new WorldStateService();
     this.memoryStore = new MemoryStore();
@@ -105,6 +122,11 @@ export class Runtime {
     this.goalSynthesizer = goalSynthesizer;
     this.proposalGovernance = proposalGovernance;
     this.proposalEvaluator = proposalEvaluator;
+    this.governanceOutcomeTracker = governanceOutcomeTracker;
+    this.governanceReflectionEngine = governanceReflectionEngine;
+    this.governanceCalibrationEngine = governanceCalibrationEngine;
+    this.adaptationPlanner = adaptationPlanner;
+    this.adaptationExecutor = adaptationExecutor;
   }
   
   getWorldState() {
@@ -256,8 +278,33 @@ export class Runtime {
     
     if (this.metaEvaluationEngine) {
       this.metaEvaluationEngine.evaluate();
+      const recommendations = this.metaEvaluationEngine.getRecommendations();
+
+      if (recommendations.length > 0 && this.governanceCalibrationEngine) {
+        this.governanceCalibrationEngine.calibrate(recommendations);
+      }
+
+      for (const rec of recommendations) {
+        console.log(`[MetaCognition] Generated Recommendation: ${rec.proposedAction} (Confidence: ${rec.confidence})`);
+      }
     }
     
+    if (this.governanceOutcomeTracker) {
+      this.governanceOutcomeTracker.evaluate();
+    }
+
+    if (this.governanceReflectionEngine) {
+      this.governanceReflectionEngine.evaluate();
+    }
+    
+    if (this.adaptationPlanner) {
+      this.adaptationPlanner.removeExpiredProposals();
+      // AdaptationPlanner would normally scan anomalies here to generate proposals.
+      // Generation logic happens independently via evaluate loop.
+    }
+    
+    // AdaptationExecutor would read approved proposals and execute them here.
+
     console.log(`\n[Runtime] Autonomous Main Loop Terminated.`);
   }
 
@@ -585,5 +632,24 @@ export class Runtime {
         timestamp: Date.now()
       });
     }
+  }
+
+  public submitAdaptationProposal(proposal: AdaptationProposal): AdaptationProposal {
+    console.log(`\n[Runtime] Received AdaptationProposal: ${proposal.id}`);
+    console.log(`  -> Target Subsystem: ${proposal.target.subsystem}`);
+    console.log(`  -> Scope: ${proposal.target.scope}`);
+    
+    if (proposal.target.scope === 'PROTECTED') {
+      console.log(`[Runtime] FATAL: Adaptation targeting PROTECTED subsystem rejected by Runtime safeguard.`);
+      proposal.status = 'REJECTED';
+    } else if (proposal.target.scope === 'GOVERNANCE_ONLY') {
+      console.log(`[Runtime] INFO: Adaptation requires explicit GOVERNANCE authorization.`);
+      proposal.status = 'PENDING_REVIEW';
+    } else {
+      console.log(`[Runtime] INFO: Adaptation accepted for standard evaluation review.`);
+      proposal.status = 'PENDING_REVIEW';
+    }
+    
+    return proposal;
   }
 }

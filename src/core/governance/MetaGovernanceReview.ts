@@ -35,6 +35,8 @@ export class MetaGovernanceReview {
       decision,
       rationale,
       governanceContext: {
+        interventionType: rec.target,
+        interventionContext: rec.targetContext,
         evidenceCount: rec.evidenceCount,
         recommendationConfidence: rec.confidence,
         ...additionalContext
