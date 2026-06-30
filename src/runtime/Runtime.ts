@@ -7,9 +7,6 @@ import { AuthorityService } from '../delegation/AuthorityService';
 import { AuthorityContext, DelegationScope } from '../delegation/types';
 import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
 import { ConstitutionContext } from '../constitution/types';
-import { TreasuryService } from '../treasury/TreasuryService';
-import { PaymentAuthorityService } from '../treasury/PaymentAuthorityService';
-import { SpendingRequest } from '../treasury/types';
 import { ExecutionTrace } from '../core/execution/types';
 import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
@@ -42,8 +39,6 @@ export class Runtime {
   private authorityService: AuthorityService;
   private workerManager: WorkerManager;
   private constitutionEngine: ConstitutionEngine;
-  private treasuryService: TreasuryService;
-  private paymentAuthorityService: PaymentAuthorityService;
   private feedbackPipeline?: FeedbackPipeline;
   private coherenceMonitor?: CoherenceMonitor;
   private metaEvaluationEngine?: MetaEvaluationEngine;
@@ -75,8 +70,6 @@ export class Runtime {
   constructor(
     workerManager: WorkerManager,
     constitutionEngine: ConstitutionEngine = new ConstitutionEngine(),
-    treasuryService: TreasuryService = new TreasuryService(),
-    paymentAuthorityService: PaymentAuthorityService = new PaymentAuthorityService(),
     feedbackPipeline?: FeedbackPipeline,
     coherenceMonitor?: CoherenceMonitor,
     metaEvaluationEngine?: MetaEvaluationEngine,
@@ -104,8 +97,6 @@ export class Runtime {
     this.authorityService = new AuthorityService();
     this.workerManager = workerManager;
     this.constitutionEngine = constitutionEngine;
-    this.treasuryService = treasuryService;
-    this.paymentAuthorityService = paymentAuthorityService;
     this.feedbackPipeline = feedbackPipeline;
     this.coherenceMonitor = coherenceMonitor;
     this.metaEvaluationEngine = metaEvaluationEngine;
@@ -308,7 +299,7 @@ export class Runtime {
     console.log(`\n[Runtime] Autonomous Main Loop Terminated.`);
   }
 
-  async processGoal(goal: Goal, scope: DelegationScope, customAction?: string, customMetadata?: any, spendingRequest?: SpendingRequest, temporalContext?: TemporalContext): Promise<boolean> {
+  async processGoal(goal: Goal, scope: DelegationScope, customAction?: string, customMetadata?: any, spendingRequest?: any, temporalContext?: TemporalContext): Promise<boolean> {
     console.log(`\n[Runtime] Processing Goal: ${goal.id} - ${goal.description}`);
     
     if (this.coherenceMonitor) {
@@ -362,7 +353,7 @@ export class Runtime {
     scope: DelegationScope, 
     temporalContext?: TemporalContext,
     customMetadata?: any, 
-    spendingRequest?: SpendingRequest
+    spendingRequest?: any
   ): Promise<boolean> {
     const trace: ExecutionTrace = {
       id: `trace-${temporalContext?.physicalTime || Date.now()}`,
@@ -448,51 +439,6 @@ export class Runtime {
       return false;
     }
 
-    // 4. Treasury Check
-    let isPayment = false;
-    if (spendingRequest) {
-      isPayment = true;
-      const budgetValid = this.treasuryService.validateBudget(spendingRequest);
-      
-      trace.governanceContext!.treasury = {
-        allocationId: spendingRequest.allocationId,
-        amount: spendingRequest.amount,
-        decision: budgetValid ? 'APPROVED' : 'DENIED',
-        rationale: budgetValid ? 'Budget available' : 'INSUFFICIENT BUDGET'
-      };
-      trace.decisionSnapshots.push({
-        stage: 'TREASURY_CHECK',
-        decision: budgetValid ? 'BUDGET_VALID' : 'BUDGET_INVALID',
-        rationale: trace.governanceContext!.treasury.rationale,
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-
-      if (!budgetValid) {
-        trace.finalOutcome = 'FAILED';
-        this.finalizeCycle(trace, goal, workItem);
-        return false;
-      }
-
-      const paymentAuthDecision = this.paymentAuthorityService.evaluate(spendingRequest);
-      trace.governanceContext!.treasury.decision = paymentAuthDecision.status === 'DENIED' ? 'DENIED' : 'APPROVED';
-      trace.governanceContext!.treasury.rationale = paymentAuthDecision.reason || 'Payment authorized';
-      
-      trace.decisionSnapshots.push({
-        stage: 'TREASURY_CHECK',
-        decision: paymentAuthDecision.status,
-        rationale: trace.governanceContext!.treasury.rationale,
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-
-      if (paymentAuthDecision.status === 'DENIED') {
-        trace.finalOutcome = 'FAILED';
-        this.finalizeCycle(trace, goal, workItem);
-        return false;
-      }
-      this.treasuryService.reserve(spendingRequest);
-      trace.costTracking += spendingRequest.amount;
-    }
-    
     // 5. Worker Dispatch
     trace.workerAssignments.push('demo-worker'); 
     trace.toolCalls.push(workItem.payload?.toolId || 'mock-read-tool');
@@ -522,11 +468,6 @@ export class Runtime {
         rationale: 'Worker executed and verified tool successfully',
         timestamp: temporalContext?.physicalTime || Date.now()
       });
-
-      if (isPayment) {
-        this.treasuryService.settle(spendingRequest!);
-        trace.settlementStatus = 'SETTLED';
-      }
     } else {
       workItem.status = 'FAILED';
       trace.finalOutcome = 'SUCCESS'; // Worker executed...
@@ -537,11 +478,6 @@ export class Runtime {
         rationale: 'Verification rejected the tool output',
         timestamp: temporalContext?.physicalTime || Date.now()
       });
-
-      if (isPayment) {
-        this.treasuryService.release(spendingRequest!);
-        trace.settlementStatus = 'RELEASED';
-      }
     }
     
     this.finalizeCycle(trace, goal, workItem);

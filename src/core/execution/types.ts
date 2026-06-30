@@ -10,12 +10,6 @@ export interface GovernanceContext {
     decision: 'APPROVED' | 'DENIED' | 'BYPASSED';
     rationale: string;
   };
-  treasury?: {
-    allocationId: string;
-    amount: number;
-    decision: 'APPROVED' | 'DENIED';
-    rationale: string;
-  };
 }
 
 export interface DecisionSnapshot {
