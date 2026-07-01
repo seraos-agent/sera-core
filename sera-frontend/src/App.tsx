@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Menu, X, Plus, Moon, Sun, Copy, Check, Settings, Mic, ArrowUp, Wallet, MessageSquare, Globe, Activity, ShieldCheck, MoreVertical } from "lucide-react";
+import { Menu, X, Plus, Moon, Sun, Copy, Check, Settings, Mic, ArrowUp, Wallet, Globe, Activity, ShieldCheck, MoreVertical } from "lucide-react";
 
 const FONT_LINK_ID = "chatui-fonts";
 
@@ -61,10 +61,8 @@ const WALLET = {
 };
 
 const CONNECTORS = [
-  { id: "wallet", name: "Agentic Wallet", icon: Wallet, connected: true },
-  { id: "worldstate", name: "WorldState Sync", icon: Activity, connected: true },
-  { id: "slack", name: "Slack", icon: MessageSquare, connected: false },
-  { id: "x", name: "X", icon: Globe, connected: true },
+  { id: "wallet", name: "Agentic Wallet", icon: Wallet },
+  { id: "x", name: "X", icon: Globe },
 ];
 
 const SUGGESTIONS = [
@@ -107,13 +105,13 @@ function MessageBubble({ theme, msg, onCopy, copied, onApprove }: any) {
   // Custom renderer for SERA Activity Node
   if (msg.type === "activity") {
     return (
-      <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
         <div style={{ 
-          background: theme.surface2, border: `1px solid ${theme.border}`, 
-          borderRadius: 16, padding: "8px 16px", display: "flex", alignItems: "center", gap: 8,
-          fontSize: 12, color: theme.inkSoft, fontFamily: "Inter, sans-serif"
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 12, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
+          fontWeight: 500
         }}>
-          <Activity size={14} color={theme.accent} />
+          <Activity size={13} color={theme.inkFaint} />
           {msg.content}
         </div>
       </div>
@@ -268,6 +266,22 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
             </div>
 
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 4px",
+                cursor: "pointer",
+                marginBottom: 6
+              }}
+            >
+              <Plus size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500 }}>
+                Tambah Koneksi
+              </span>
+            </div>
+
             {CONNECTORS.map((c) => {
               const Icon = c.icon;
               return (
@@ -284,25 +298,17 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
                   <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.name}
                   </span>
-                  {c.connected ? (
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Terhubung" />
-                  ) : (
-                    <button
-                      style={{
-                        padding: 0, border: "none", background: "transparent", color: theme.inkFaint,
-                        fontFamily: "Inter, sans-serif", fontSize: 12, cursor: "pointer",
-                      }}
-                    >
-                      Hubungkan
-                    </button>
-                  )}
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Terhubung" />
                 </div>
               );
             })}
           </div>
 
           <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 12, marginTop: 8, display: "flex", alignItems: "center", gap: 8, padding: "12px 4px 2px" }}>
-            <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink }}>Pengaturan</span>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, fontWeight: 600 }}>Sera Admin</span>
+              <span style={{ fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, background: theme.accentSoft, color: theme.accent, padding: "2px 5px", borderRadius: 4, letterSpacing: 0.5 }}>PRO</span>
+            </div>
             <button
               onClick={() => setMode(mode === "light" ? "dark" : "light")}
               title={mode === "light" ? "Mode gelap" : "Mode terang"}
