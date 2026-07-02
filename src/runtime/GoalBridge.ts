@@ -93,6 +93,10 @@ export class GoalBridge {
           });
           break;
 
+        case 'TRANSFER_FUNDS':
+          await this.handleTransferFunds(requestId, parameters);
+          break;
+
         default:
           this.emitResult(requestId, false, {}, `Unknown intent: ${intent}`);
       }
@@ -125,5 +129,33 @@ export class GoalBridge {
       payload: { address: walletId.address, balance: balance.toString(), network: walletId.network, asset: 'USDC' },
       timestamp: Date.now()
     });
+  }
+
+  private async handleTransferFunds(requestId: string, parameters: Record<string, any>): Promise<void> {
+    if (!this.walletInitialized) {
+      this.emitResult(requestId, false, {}, 'Wallet not initialized.');
+      return;
+    }
+    
+    try {
+      const walletId = await this.walletAdapter.initialize();
+      const { recipient, amount, asset } = parameters;
+      
+      if (!recipient || !amount || !asset) {
+        this.emitResult(requestId, false, {}, 'Missing recipient, amount, or asset for transfer.');
+        return;
+      }
+      
+      const receipt = await this.walletAdapter.executeTransfer(walletId, {
+        idempotencyKey: `tx-${Date.now()}`,
+        recipientAddress: recipient,
+        amount: parseFloat(amount),
+        asset: asset
+      });
+      
+      this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
+    } catch (err: any) {
+      this.emitResult(requestId, false, {}, err.message);
+    }
   }
 }

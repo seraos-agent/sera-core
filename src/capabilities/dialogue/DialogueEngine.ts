@@ -24,6 +24,7 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
+- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), and "asset" (string, e.g. "eth" or "usdc").
 - NONE: anything else (conversation, questions, commands, UI changes)
 
 Response format:
