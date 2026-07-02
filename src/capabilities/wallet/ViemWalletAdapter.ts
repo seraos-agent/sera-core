@@ -140,18 +140,19 @@ export class ViemWalletAdapter implements IWalletCapability {
     if (!this.walletId) throw new Error('[ViemWalletAdapter] Not initialized. Call initialize() first.');
 
     const asset = _asset.toLowerCase();
+    const targetAddress = process.env.SERA_VAULT_ADDRESS ? (process.env.SERA_VAULT_ADDRESS as `0x${string}`) : (this.walletId.address as `0x${string}`);
     
     if (asset === 'usdc') {
       const balanceUnits = await this.publicClient.readContract({
         address: USDC_BASE_MAINNET,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
-        args: [this.walletId.address as `0x${string}`],
+        args: [targetAddress],
       });
       return parseFloat(formatUnits(balanceUnits as bigint, 6));
     } else {
       const balanceWei = await this.publicClient.getBalance({
-        address: this.walletId.address as `0x${string}`,
+        address: targetAddress,
       });
       return parseFloat(formatEther(balanceWei));
     }

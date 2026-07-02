@@ -59,7 +59,8 @@ const INITIAL_WALLET = {
   address: "Connecting...",
   fullAddress: "Connecting...",
   balance: "...",
-  chain: "Base Sepolia",
+  chain: "Base Mainnet",
+  vaultAddress: "",
 };
 
 const CONNECTORS = [
@@ -214,8 +215,148 @@ function MessageBubble({ theme, msg, onCopy, copied, onApprove }: any) {
   );
 }
 
+function WalletPanel({ theme, walletState, onCopyWallet, walletCopied, onClose }: any) {
+  const [swapAmount, setSwapAmount] = useState("");
+  const [swapDir, setSwapDir] = useState<"toVault" | "toAgent">("toVault");
+  const [swapStatus, setSwapStatus] = useState<"idle" | "pending" | "done">("idle");
+  const [notification, setNotification] = useState("");
+
+  const agentAddr = walletState.fullAddress || "";
+  const vaultAddr = walletState.vaultAddress || "";
+  const shortAgent = agentAddr ? agentAddr.slice(0, 6) + "..." + agentAddr.slice(-4) : "—";
+  const shortVault = vaultAddr ? vaultAddr.slice(0, 6) + "..." + vaultAddr.slice(-4) : "—";
+
+  const handleSwap = () => {
+    if (!swapAmount || isNaN(parseFloat(swapAmount))) return;
+    setSwapStatus("pending");
+    setTimeout(() => {
+      setSwapStatus("done");
+      setNotification("Transfer completed");
+      setTimeout(() => { setSwapStatus("idle"); setNotification(""); }, 3000);
+    }, 1400);
+  };
+
+  const handleFlip = () => setSwapDir(d => d === "toVault" ? "toAgent" : "toVault");
+
+  return (
+    <div style={{
+      position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+      background: theme.surface2, zIndex: 30,
+      display: "flex", flexDirection: "column",
+      animation: "walletPanelIn 200ms cubic-bezier(.4,0,.2,1) forwards",
+    }}>
+      <style>{`
+        @keyframes walletPanelIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes notifIn { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 16px" }}>
+        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 14, color: theme.ink }}>Wallets</span>
+        <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex" }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Balance */}
+      <div style={{ padding: "0 20px", marginBottom: 28 }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Total Balance</div>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 28, fontWeight: 500, color: theme.ink, letterSpacing: -0.5 }}>{walletState.balance}</div>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: theme.inkFaint, marginTop: 4 }}>Base Mainnet</div>
+      </div>
+
+      {/* Wallet List */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 20px", marginBottom: 32 }}>
+        {[
+          { label: "Main Wallet", addr: shortAgent, fullAddr: agentAddr, tag: "EOA" },
+          { label: "Agent Vault", addr: shortVault, fullAddr: vaultAddr, tag: "Vault" },
+        ].map(({ label, addr, fullAddr, tag }) => (
+          <div key={tag} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: theme.bg, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Wallet size={16} color={theme.inkSoft} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500, color: theme.ink }}>{label}</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint, marginTop: 2 }}>{addr || "—"}</div>
+            </div>
+            <button onClick={() => onCopyWallet(fullAddr)} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkFaint, padding: 6, display: "flex" }}>
+              {walletCopied ? <Check size={14} color={theme.status} /> : <Copy size={14} />}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ height: 1, background: theme.border, margin: "0 20px 24px" }} />
+
+      {/* Transfer */}
+      <div style={{ padding: "0 20px" }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Transfer</div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, background: theme.bg, borderRadius: 10, padding: "8px 12px", border: `1px solid ${theme.border}` }}>
+          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: swapDir === "toVault" ? theme.inkSoft : theme.accent }}>
+            {swapDir === "toVault" ? "Main" : "Vault"}
+          </span>
+          <button onClick={handleFlip} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", transition: "transform 300ms", transform: swapDir === "toAgent" ? "rotate(180deg)" : "rotate(0deg)" }}>
+            <Activity size={14} />
+          </button>
+          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: swapDir === "toVault" ? theme.accent : theme.inkSoft }}>
+            {swapDir === "toVault" ? "Vault" : "Main"}
+          </span>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 12px", borderRadius: 10, background: theme.surface, border: `1px solid ${theme.border}`, height: 42 }}>
+            <input
+              type="number"
+              placeholder="0.00"
+              value={swapAmount}
+              onChange={e => setSwapAmount(e.target.value)}
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, color: theme.ink, width: 0 }}
+            />
+            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkFaint }}>USDC</span>
+          </div>
+          <button
+            onClick={handleSwap}
+            disabled={!swapAmount || swapStatus === "pending"}
+            style={{
+              height: 42, padding: "0 16px", borderRadius: 10, border: "none",
+              background: swapAmount ? theme.accent : theme.bg,
+              color: swapAmount ? theme.accentInk : theme.inkFaint,
+              fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500,
+              cursor: swapAmount ? "pointer" : "default",
+              transition: "background 200ms, color 200ms",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            {swapStatus === "pending" ? (
+              <span style={{ display: "inline-block", width: 14, height: 14, border: `2px solid ${theme.accentInk}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 600ms linear infinite" }} />
+            ) : swapStatus === "done" ? (
+              <Check size={16} />
+            ) : "Send"}
+          </button>
+        </div>
+      </div>
+
+      {notification && (
+        <div style={{
+          position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: theme.ink, color: theme.surface, padding: "10px 20px", borderRadius: 24,
+          fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500,
+          whiteSpace: "nowrap", boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+          animation: "notifIn 250ms cubic-bezier(.4,0,.2,1) forwards", zIndex: 40,
+        }}>
+          {notification}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopied, mode, setMode, walletState }: any) {
   const isOverlay = isMobileView;
+  const [showWalletPanel, setShowWalletPanel] = useState(false);
+
   return (
     <>
       {isOverlay && open && (
@@ -228,21 +369,27 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
         style={{
           position: isOverlay ? "absolute" : "relative",
           zIndex: 21,
-          top: 0,
-          left: 0,
-          bottom: 0,
+          top: 0, left: 0, bottom: 0,
           width: isOverlay ? 260 : open ? 252 : 0,
           background: theme.surface2,
           borderRight: `1px solid ${theme.border}`,
           overflow: "hidden",
           transition: "width 240ms cubic-bezier(.4,0,.2,1), transform 240ms cubic-bezier(.4,0,.2,1)",
           transform: isOverlay ? (open ? "translateX(0)" : "translateX(-100%)") : "none",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          height: "100%",
+          display: "flex", flexDirection: "column", flexShrink: 0, height: "100%",
         }}
       >
+        {/* Wallet panel overlay */}
+        {showWalletPanel && (
+          <WalletPanel
+            theme={theme}
+            walletState={walletState}
+            onCopyWallet={onCopyWallet}
+            walletCopied={walletCopied}
+            onClose={() => setShowWalletPanel(false)}
+          />
+        )}
+
         <div style={{ width: isOverlay ? 260 : 252, padding: "16px 14px", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -255,27 +402,25 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
             )}
           </div>
 
+          {/* Balance summary — always visible */}
           <div style={{ display: "flex", flexDirection: "column", padding: "2px 4px", marginBottom: 22 }}>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, color: theme.ink }}>{walletState.balance}</div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Saldo</div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 20, fontWeight: 600, color: theme.ink }}>{walletState.balance}</div>
             <div
               onClick={() => onCopyWallet(walletState.fullAddress)}
-              style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginTop: 4 }}
-              title="Salin alamat"
+              style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginTop: 4, width: "fit-content" }}
+              title="Salin alamat agen"
             >
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint }}>{walletState.address}</span>
-                {walletCopied ? <Check size={10} color={theme.inkFaint} /> : <Copy size={10} color={theme.inkFaint} />}
-              </div>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint }}>{walletState.address}</span>
+              {walletCopied ? <Check size={10} color={theme.status} /> : <Copy size={10} color={theme.inkFaint} />}
             </div>
+          </div>
 
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 4px",
-                cursor: "pointer",
-                marginBottom: 6
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 4px", cursor: "pointer", marginBottom: 6,
               }}
             >
               <Plus size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
@@ -286,15 +431,19 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
 
             {CONNECTORS.map((c) => {
               const Icon = c.icon;
+              const isWallet = c.id === "wallet";
               return (
                 <div
                   key={c.id}
+                  onClick={() => isWallet && setShowWalletPanel(true)}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 4px",
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "8px 6px", borderRadius: 8,
+                    cursor: isWallet ? "pointer" : "default",
+                    transition: "background 150ms",
                   }}
+                  onMouseEnter={e => { if (isWallet) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   <Icon size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
                   <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -325,6 +474,7 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
     </>
   );
 }
+
 
 function EmptyState({ theme }: any) {
   return (
@@ -438,12 +588,15 @@ export default function App() {
     });
 
     newSocket.on("wallet:update", (data: any) => {
-      setWalletState({
+      setWalletState(prev => ({
+        ...prev,
         address: data.address.slice(0, 6) + "..." + data.address.slice(-4),
         fullAddress: data.address,
         balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
-        chain: data.network
-      });
+        chain: data.network,
+        // If backend sends a separate vault address, store it; otherwise keep previous
+        vaultAddress: data.vaultAddress || prev.vaultAddress,
+      }));
     });
 
     return () => { newSocket.close(); };

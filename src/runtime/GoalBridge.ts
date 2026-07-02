@@ -47,10 +47,17 @@ export class GoalBridge {
       this.walletInitialized = true;
       const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
       
+      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
       this.eventBus.emit(EventTypes.WALLET_STATE, {
         id: `evt-wallet-${Date.now()}`,
         type: EventTypes.WALLET_STATE,
-        payload: { address: walletId.address, balance: balance.toString(), network: walletId.network, asset: 'USDC' },
+        payload: {
+          address: walletId.address,
+          vaultAddress,
+          balance: balance.toString(),
+          network: walletId.network,
+          asset: 'USDC'
+        },
         timestamp: Date.now()
       });
     } catch (err: any) {
@@ -116,17 +123,26 @@ export class GoalBridge {
     const walletId = await this.walletAdapter.initialize(); // idempotent: returns existing walletId
     const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
 
+    const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+
     this.emitResult(requestId, true, {
       asset: 'USDC',
       balance: balance.toString(),
       network: 'Base Mainnet',
       address: walletId.address,
+      vaultAddress,
     });
 
     this.eventBus.emit(EventTypes.WALLET_STATE, {
       id: `evt-wallet-${Date.now()}`,
       type: EventTypes.WALLET_STATE,
-      payload: { address: walletId.address, balance: balance.toString(), network: walletId.network, asset: 'USDC' },
+      payload: {
+        address: walletId.address,
+        vaultAddress,
+        balance: balance.toString(),
+        network: walletId.network,
+        asset: 'USDC'
+      },
       timestamp: Date.now()
     });
   }
