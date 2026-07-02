@@ -53,6 +53,20 @@ const REGISTRY_ABI = [
   }
 ];
 
+const VAULT_ABI = [
+  {
+    name: 'executeTransfer',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    outputs: []
+  }
+];
+
 /**
  * ViemWalletAdapter — Provider-agnostic Agentic Wallet implementation.
  *
@@ -174,33 +188,52 @@ export class ViemWalletAdapter implements IWalletCapability {
 
       let txHash: `0x${string}`;
       const asset = request.asset.toLowerCase();
+      const vaultAddress = process.env.SERA_VAULT_ADDRESS as `0x${string}`;
 
-      if (asset === 'usdc') {
+      if (vaultAddress) {
+        console.log(`[ViemWalletAdapter] Routing transfer through SeraVault: ${vaultAddress}`);
+        const tokenAddress = asset === 'usdc' ? USDC_BASE_MAINNET : '0x0000000000000000000000000000000000000000';
+        const amountWei = asset === 'usdc' ? parseUnits(request.amount.toString(), 6) : parseEther(request.amount.toString());
+        
         const data = encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: 'transfer',
-          args: [request.recipientAddress as `0x${string}`, parseUnits(request.amount.toString(), 6)],
+          abi: VAULT_ABI,
+          functionName: 'executeTransfer',
+          args: [tokenAddress, request.recipientAddress as `0x${string}`, amountWei],
         });
         
-        // ── JIT Auto-Fund (Gas Station) ─────────────────────────────────────
-        await this.ensureGas(account.address, USDC_BASE_MAINNET as `0x${string}`, data);
+        // Auto-fund gas for the Vault call
+        await this.ensureGas(account.address, vaultAddress, data);
         
         txHash = await walletClient.sendTransaction({
           account,
-          to: USDC_BASE_MAINNET,
+          to: vaultAddress,
           data,
         });
       } else {
-        const value = parseEther(request.amount.toString());
-        
-        // ── JIT Auto-Fund (Gas Station) ─────────────────────────────────────
-        await this.ensureGas(account.address, request.recipientAddress as `0x${string}`, undefined, value);
-        
-        txHash = await walletClient.sendTransaction({
-          account,
-          to: request.recipientAddress as `0x${string}`,
-          value,
-        });
+        if (asset === 'usdc') {
+          const data = encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: 'transfer',
+            args: [request.recipientAddress as `0x${string}`, parseUnits(request.amount.toString(), 6)],
+          });
+          
+          await this.ensureGas(account.address, USDC_BASE_MAINNET as `0x${string}`, data);
+          
+          txHash = await walletClient.sendTransaction({
+            account,
+            to: USDC_BASE_MAINNET,
+            data,
+          });
+        } else {
+          const value = parseEther(request.amount.toString());
+          await this.ensureGas(account.address, request.recipientAddress as `0x${string}`, undefined, value);
+          
+          txHash = await walletClient.sendTransaction({
+            account,
+            to: request.recipientAddress as `0x${string}`,
+            value,
+          });
+        }
       }
 
       console.log(`[ViemWalletAdapter] ⏳ Waiting for transaction confirmation...`);
