@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "ts-node src/index.ts",
+    "start:server": "ts-node src/server/index.ts",
     "start:phase2": "ts-node src/demo-phase2.ts",
     "start:phase2.2": "ts-node src/demo-phase2-2.ts",
     "start:phase2.3": "ts-node src/demo-phase2-3.ts",
@@ -19,13 +20,19 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.51.2",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "solc": "^0.8.24",
     "viem": "^2.54.1"
   }
 }

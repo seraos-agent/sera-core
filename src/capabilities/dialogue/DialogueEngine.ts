@@ -1,0 +1,194 @@
+import { EventEmitter } from 'events';
+import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
+import { Event, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../../core/events/types';
+
+// Re-export for server bootstrap convenience
+export { EventTypes as SERA_EVENTS };
+
+// ── System Prompt ──────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are SERA (Synthesizing & Evolving Rational Agent), an advanced Agentic OS AI assistant.
+You operate as an intelligent interface between the human owner and the SERA Core cognitive system.
+You MUST communicate naturally in the exact same language as the user's LATEST message.
+If the user's LATEST message is in English, you MUST reply in English. If it is in Indonesian, you MUST reply in Indonesian.
+Do not limit yourself to any specific language, and do not get stuck in a previous language if the user switches languages.
+Keep responses concise and helpful.
+
+CRITICAL — UI CONTROL PROTOCOL:
+If the user explicitly asks to switch to dark mode (mode gelap/dark), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_DARK>
+If the user explicitly asks to switch to light mode (mode terang/light), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_LIGHT>
+These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.`;
+
+// ── Intent Extraction Prompt ───────────────────────────────────────────────
+const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
+
+Supported intents:
+- CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
+- CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
+- NONE: anything else (conversation, questions, commands, UI changes)
+
+Response format:
+{"intent": "CHECK_WALLET_BALANCE", "parameters": {"asset": "eth"}}
+{"intent": "CHECK_NETWORK", "parameters": {}}
+{"intent": "NONE", "parameters": {}}
+
+User message: `;
+
+/**
+ * DialogueEngine — A Capability that handles human↔SERA conversation.
+ *
+ * Architecture role: Capability Layer (src/capabilities/dialogue/)
+ * - Listens for USER_OBSERVATION events on the shared EventBus
+ * - Classifies intent: delegates to GoalBridge for actionable intents, LLM for conversation
+ * - Emits SPAWN_GOAL for actionable intents (picked up by GoalBridge)
+ * - Listens for GOAL_RESULT events and narrates results back via AGENT_SPEAK
+ * - Emits UI_COMMAND for theme changes
+ * - Has zero knowledge of HTTP, Socket.io, or transport layers
+ */
+export class DialogueEngine {
+  private llm: QwenAdapter;
+  private eventBus: EventEmitter;
+  private conversationHistory: QwenMessage[] = [];
+  // Map from requestId → resolve function, for awaiting goal results
+  private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
+
+  constructor(eventBus: EventEmitter) {
+    this.eventBus = eventBus;
+    this.llm = new QwenAdapter('qwen-plus');
+
+    this.eventBus.on(EventTypes.USER_OBSERVATION, this.handleUserObservation.bind(this));
+    this.eventBus.on(EventTypes.GOAL_RESULT, this.handleGoalResult.bind(this));
+    console.log('[DialogueEngine] Initialized and listening for USER_OBSERVATION and GOAL_RESULT events.');
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+
+  private emitEvent(type: string, payload: Record<string, any>): void {
+    const event: Event = {
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type,
+      payload,
+      timestamp: Date.now(),
+    };
+    this.eventBus.emit(type, event);
+  }
+
+  private async classifyIntent(userMessage: string): Promise<{ intent: string; parameters: Record<string, any> }> {
+    try {
+      const response = await this.llm.generate([
+        { role: 'user', content: INTENT_EXTRACTION_PROMPT + userMessage },
+      ]);
+      const parsed = JSON.parse(response.text.trim());
+      return parsed;
+    } catch {
+      return { intent: 'NONE', parameters: {} };
+    }
+  }
+
+  private spawnGoalAndAwaitResult(intent: string, parameters: Record<string, any>): Promise<GoalResultPayload> {
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    return new Promise((resolve) => {
+      // Register handler before emitting to avoid race conditions
+      this.pendingGoals.set(requestId, resolve);
+
+      const spawnPayload: SpawnGoalPayload = { requestId, intent, parameters };
+      this.emitEvent(EventTypes.SPAWN_GOAL, spawnPayload);
+
+      // Timeout safety: resolve with error after 15s if no result
+      setTimeout(() => {
+        if (this.pendingGoals.has(requestId)) {
+          this.pendingGoals.delete(requestId);
+          resolve({ requestId, success: false, data: {}, errorMessage: 'Goal execution timed out.' });
+        }
+      }, 15000);
+    });
+  }
+
+  // ── Event Handlers ────────────────────────────────────────────────────────
+
+  private handleGoalResult(event: Event): void {
+    const result = event.payload as GoalResultPayload;
+    const resolver = this.pendingGoals.get(result.requestId);
+    if (resolver) {
+      this.pendingGoals.delete(result.requestId);
+      resolver(result);
+    }
+  }
+
+  private async handleUserObservation(event: Event): Promise<void> {
+    const userMessage: string = event.payload.message;
+    console.log(`[DialogueEngine] Processing USER_OBSERVATION: "${userMessage}"`);
+
+    this.emitEvent(EventTypes.ACTIVITY, { content: 'Analyzing message intent...' });
+
+    try {
+      // ── Step 1: Classify intent ──────────────────────────────────────────
+      const { intent, parameters } = await this.classifyIntent(userMessage);
+      console.log(`[DialogueEngine] Classified intent: ${intent}`);
+
+      // ── Step 2: Route actionable intents to GoalBridge ───────────────────
+      if (intent !== 'NONE') {
+        this.emitEvent(EventTypes.ACTIVITY, {
+          content: `Executing goal: ${intent.replace(/_/g, ' ').toLowerCase()}...`,
+        });
+
+        const result = await this.spawnGoalAndAwaitResult(intent, parameters);
+
+        // Ask LLM to narrate the result naturally in the user's language
+        const narratePrompt = result.success
+          ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used.`
+          : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
+
+        const narrateResponse = await this.llm.generate([
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...this.conversationHistory,
+          { role: 'user', content: narratePrompt },
+        ]);
+
+        const narratedText = narrateResponse.text.trim();
+        this.conversationHistory.push({ role: 'user', content: userMessage });
+        this.conversationHistory.push({ role: 'assistant', content: narratedText });
+        this.emitEvent(EventTypes.AGENT_SPEAK, { text: narratedText });
+        return;
+      }
+
+      // ── Step 3: Regular conversation (no actionable intent) ───────────────
+      this.conversationHistory.push({ role: 'user', content: userMessage });
+
+      const messages: QwenMessage[] = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...this.conversationHistory,
+      ];
+
+      const response = await this.llm.generate(messages);
+      let rawText = response.text;
+
+      console.log(`[DialogueEngine] Qwen responded (${response.usage.total_tokens} tokens).`);
+
+      // Parse and strip embedded UI commands before sending text to UI
+      if (rawText.includes('<UI_COMMAND:SET_THEME_DARK>')) {
+        rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
+        this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+      }
+      if (rawText.includes('<UI_COMMAND:SET_THEME_LIGHT>')) {
+        rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
+        this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+      }
+
+      this.conversationHistory.push({ role: 'assistant', content: rawText });
+
+      // Keep history bounded to last 20 turns
+      if (this.conversationHistory.length > 20) {
+        this.conversationHistory = this.conversationHistory.slice(-20);
+      }
+
+      this.emitEvent(EventTypes.AGENT_SPEAK, { text: rawText });
+
+    } catch (error: any) {
+      console.error('[DialogueEngine] Error:', error.message);
+      this.emitEvent(EventTypes.AGENT_SPEAK, {
+        text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
+      });
+    }
+  }
+}

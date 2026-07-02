@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Menu, X, Plus, Moon, Sun, Copy, Check, Settings, Mic, ArrowUp, Wallet, Globe, Activity, ShieldCheck, MoreVertical } from "lucide-react";
+import { io, Socket } from "socket.io-client";
 
 const FONT_LINK_ID = "chatui-fonts";
 
@@ -53,10 +54,11 @@ const THEME = {
   },
 };
 
-const WALLET = {
-  address: "0x71C7...976F",
-  fullAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-  balance: "2,438.20 USDC",
+// Fallback initial state before backend connects
+const INITIAL_WALLET = {
+  address: "Connecting...",
+  fullAddress: "Connecting...",
+  balance: "...",
   chain: "Base Sepolia",
 };
 
@@ -212,7 +214,7 @@ function MessageBubble({ theme, msg, onCopy, copied, onApprove }: any) {
   );
 }
 
-function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopied, mode, setMode }: any) {
+function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopied, mode, setMode, walletState }: any) {
   const isOverlay = isMobileView;
   return (
     <>
@@ -254,13 +256,13 @@ function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopie
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", padding: "2px 4px", marginBottom: 22 }}>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, color: theme.ink }}>{WALLET.balance}</div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, color: theme.ink }}>{walletState.balance}</div>
             <div
-              onClick={onCopyWallet}
+              onClick={() => onCopyWallet(walletState.fullAddress)}
               style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginTop: 4 }}
               title="Salin alamat"
             >
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint }}>{WALLET.address}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint }}>{walletState.address}</span>
                 {walletCopied ? <Check size={10} color={theme.inkFaint} /> : <Copy size={10} color={theme.inkFaint} />}
               </div>
             </div>
@@ -361,14 +363,11 @@ export default function App() {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<any[]>([
-    { id: 1, role: "user", content: "Tolong jadwalkan pembayaran bulanan untuk langganan layanan cloud kita sebesar 50 USDC." },
-    { id: 2, role: "agent", content: "Baik. Saya sedang menyusun rencana eksekusi dan mengecek wewenang Spend Permission on-chain Anda di Base Sepolia." },
-    { id: 3, type: "activity", content: "Memverifikasi batas Spend Permission (sisa: 100 USDC)" },
-    { id: 4, type: "approval", content: "SERA membutuhkan persetujuan Anda untuk mengeksekusi transfer 50 USDC ke 0xCloudServices.", status: "pending" }
-  ]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [walletState, setWalletState] = useState(INITIAL_WALLET);
   const [copied, setCopied] = useState<number | null>(null);
   const [walletCopied, setWalletCopied] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -395,7 +394,8 @@ export default function App() {
     setTimeout(() => setCopied(null), 1500);
   }, []);
 
-  const handleCopyWallet = useCallback(() => {
+  const handleCopyWallet = useCallback((fullAddress: string) => {
+    navigator.clipboard.writeText(fullAddress);
     setWalletCopied(true);
     setTimeout(() => setWalletCopied(false), 1500);
   }, []);
@@ -405,13 +405,49 @@ export default function App() {
     const step = () => {
       i += Math.max(1, Math.round(fullText.length / 90));
       const chunk = fullText.slice(0, i);
-      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: chunk, streaming: i < fullText.length } : m)));
+      setMessages((prev) => {
+        const exists = prev.find(m => m.id === id);
+        if (!exists) {
+          return [...prev, { id, role: "agent", content: chunk, streaming: i < fullText.length }];
+        }
+        return prev.map((m) => (m.id === id ? { ...m, content: chunk, streaming: i < fullText.length } : m));
+      });
       if (i < fullText.length) {
         setTimeout(step, 16);
       }
     };
     step();
   }, []);
+
+  useEffect(() => {
+    const newSocket = io("ws://localhost:3001");
+    setSocket(newSocket);
+
+    newSocket.on("chat:reply", (data: any) => {
+      streamReply(data.content, data.id || Date.now());
+    });
+
+    newSocket.on("chat:activity", (data: any) => {
+      setMessages(prev => [...prev, { id: data.id || Date.now(), type: "activity", content: data.content }]);
+    });
+
+    newSocket.on("ui:command", (cmd: any) => {
+      if (cmd.type === "SET_THEME") {
+        setMode(cmd.payload);
+      }
+    });
+
+    newSocket.on("wallet:update", (data: any) => {
+      setWalletState({
+        address: data.address.slice(0, 6) + "..." + data.address.slice(-4),
+        fullAddress: data.address,
+        balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
+        chain: data.network
+      });
+    });
+
+    return () => { newSocket.close(); };
+  }, [streamReply]);
 
   const handleApprove = (id: number, approved: boolean) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, status: approved ? 'approved' : 'rejected' } : m));
@@ -433,12 +469,16 @@ export default function App() {
     const text = input.trim();
     if (!text) return;
     const userMsg = { id: nextMsgId++, role: "user", content: text };
-    const agentId = nextMsgId++;
-    setMessages((prev) => [...prev, userMsg, { id: agentId, role: "agent", content: "", streaming: true }]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-    setTimeout(() => streamReply("Pesan Anda telah diterima. (Mock response)", agentId), 380);
-  }, [input, streamReply]);
+    
+    if (socket) {
+      socket.emit("chat:message", text);
+    } else {
+      setMessages(prev => [...prev, { id: nextMsgId++, type: "activity", content: "Koneksi ke Core terputus." }]);
+    }
+  }, [input, socket]);
 
   const handleKeyDown = (e: any) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -482,7 +522,7 @@ export default function App() {
           boxShadow: isMobileView ? theme.shellShadow : "none",
         }}
       >
-        <Sidebar theme={theme} open={sidebarOpen} onClose={() => setSidebarOpen(false)} isMobileView={isMobileView} onCopyWallet={handleCopyWallet} walletCopied={walletCopied} mode={mode} setMode={setMode} />
+        <Sidebar theme={theme} open={sidebarOpen} onClose={() => setSidebarOpen(false)} isMobileView={isMobileView} onCopyWallet={handleCopyWallet} walletCopied={walletCopied} mode={mode} setMode={setMode} walletState={walletState} />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
           <div
