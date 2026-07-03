@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Check, Copy, Activity } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check, Copy, Activity } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -100,7 +100,7 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6 }}>
-          <X size={20} />
+          <CloseIcon size={20} />
         </button>
         <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Wallet</span>
       </div>

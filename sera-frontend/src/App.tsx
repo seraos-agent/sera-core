@@ -5,6 +5,7 @@ import { useSocket } from "./hooks/useSocket";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { WalletPage } from "./components/wallet/WalletPage";
 import { ChatView } from "./components/chat/ChatView";
+import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 
 function useFonts() {
   useEffect(() => {
@@ -22,8 +23,8 @@ export default function App() {
   
   const [mode, setMode] = useState<"light" | "dark">("light");
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentView, setCurrentView] = useState<"chat" | "wallet">("chat");
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections">("chat");
 
   const { walletState, setWalletState } = useWallet();
   const { socket, messages, setMessages, streamReply } = useSocket(setWalletState, setMode);
@@ -85,6 +86,7 @@ export default function App() {
           theme={theme} 
           open={sidebarOpen} 
           onClose={() => setSidebarOpen(false)} 
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
           isMobileView={isMobileView} 
           mode={mode} 
           setMode={setMode} 
@@ -96,7 +98,12 @@ export default function App() {
             theme={theme}
             walletState={walletState}
             socket={socket}
-            onBack={() => setCurrentView("chat")}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
+        ) : currentView === "connections" ? (
+          <ConnectionsPage 
+            theme={theme}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : (
           <ChatView
