@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
-import { Event, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../../core/events/types';
+import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -21,8 +21,11 @@ These tags are invisible to the user — they are intercepted by the system. Alw
 CRITICAL — SECURITY AND WALLET POLICY:
 - You have READ access to: Personal Wallet and Sera Vault.
 - You have WRITE access to: ONLY the Sera Vault.
-- You CANNOT and MUST NOT initiate any transfer FROM the Personal Wallet.
-- When told to "transfer" or "send", always use funds from the Sera Vault balance.`;
+- When told to "transfer" or "send", always use funds from the Sera Vault balance.
+
+CRITICAL — TIMEZONE CONTEXT:
+- The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
+- You must always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).`;
 
 // ── Intent Extraction Prompt ───────────────────────────────────────────────
 const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
@@ -30,14 +33,20 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
-- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), "asset" (string, e.g. "eth" or "usdc"), and "fromWallet" (string, MUST ALWAYS BE "sera_vault" due to security policy).
+- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), "asset" (string, e.g. "eth" or "usdc"), and "fromWallet" (string, MUST ALWAYS BE "sera_vault").
+- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent", "cronExpression" (if recurring, in UTC), "executeAfterUtc" (if exact timestamp in UTC), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
 - NONE: anything else (conversation, questions, commands, UI changes)
 
 Response format:
 {"intent": "CHECK_WALLET_BALANCE", "parameters": {"asset": "eth"}}
 {"intent": "CHECK_NETWORK", "parameters": {}}
 {"intent": "TRANSFER_FUNDS", "parameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
+{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_WALLET_BALANCE", "actionParameters": {}}}
 {"intent": "NONE", "parameters": {}}
+
+User Context:
+Current Time (UTC): \${new Date().toISOString()}
+Timezone: UTC+7 (WIB)
 
 User message: `;
 
@@ -61,29 +70,34 @@ export class DialogueEngine {
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
-    this.llm = new QwenAdapter('qwen-plus');
+    this.llm = new QwenAdapter();
 
-    this.eventBus.on(EventTypes.USER_OBSERVATION, this.handleUserObservation.bind(this));
-    this.eventBus.on(EventTypes.GOAL_RESULT, this.handleGoalResult.bind(this));
-    console.log('[DialogueEngine] Initialized and listening for USER_OBSERVATION and GOAL_RESULT events.');
+    this.conversationHistory.push({ role: 'system', content: SYSTEM_PROMPT });
+
+    this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
+    this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
+    
+    console.log('[DialogueEngine] Initialized and listening for dialogue events.');
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
 
   private emitEvent(type: string, payload: Record<string, any>): void {
-    const event: Event = {
+    const event: StandardEvent<any> = {
       id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       type,
       payload,
       timestamp: Date.now(),
+      source: 'DialogueEngine'
     };
     this.eventBus.emit(type, event);
   }
 
   private async classifyIntent(userMessage: string): Promise<{ intent: string; parameters: Record<string, any> }> {
     try {
+      const prompt = INTENT_EXTRACTION_PROMPT.replace('${new Date().toISOString()}', new Date().toISOString()) + userMessage;
       const response = await this.llm.generate([
-        { role: 'user', content: INTENT_EXTRACTION_PROMPT + userMessage },
+        { role: 'user', content: prompt },
       ]);
       const parsed = JSON.parse(response.text.trim());
       return parsed;
@@ -100,7 +114,7 @@ export class DialogueEngine {
       this.pendingGoals.set(requestId, resolve);
 
       const spawnPayload: SpawnGoalPayload = { requestId, intent, parameters };
-      this.emitEvent(EventTypes.SPAWN_GOAL, spawnPayload);
+      this.emitEvent(EventTypes.DOMAIN_GOAL_SPAWNED, spawnPayload);
 
       // Timeout safety: resolve with error after 15s if no result
       setTimeout(() => {
@@ -114,8 +128,8 @@ export class DialogueEngine {
 
   // ── Event Handlers ────────────────────────────────────────────────────────
 
-  private handleGoalResult(event: Event): void {
-    const result = event.payload as GoalResultPayload;
+  private onGoalResult(event: StandardEvent<GoalResultPayload>): void {
+    const result = event.payload;
     const resolver = this.pendingGoals.get(result.requestId);
     if (resolver) {
       this.pendingGoals.delete(result.requestId);
@@ -123,11 +137,11 @@ export class DialogueEngine {
     }
   }
 
-  private async handleUserObservation(event: Event): Promise<void> {
+  private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
     const userMessage: string = event.payload.message;
-    console.log(`[DialogueEngine] Processing USER_OBSERVATION: "${userMessage}"`);
+    console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"`);
 
-    this.emitEvent(EventTypes.ACTIVITY, { content: 'Analyzing message intent...' });
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Analyzing message intent...' });
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
@@ -136,7 +150,7 @@ export class DialogueEngine {
 
       // ── Step 2: Route actionable intents to GoalBridge ───────────────────
       if (intent !== 'NONE') {
-        this.emitEvent(EventTypes.ACTIVITY, {
+        this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
           content: `Executing goal: ${intent.replace(/_/g, ' ').toLowerCase()}...`,
         });
 
@@ -153,10 +167,11 @@ export class DialogueEngine {
           { role: 'user', content: narratePrompt },
         ]);
 
-        const narratedText = narrateResponse.text.trim();
+        const generatedText = narrateResponse.text.trim();
         this.conversationHistory.push({ role: 'user', content: userMessage });
-        this.conversationHistory.push({ role: 'assistant', content: narratedText });
-        this.emitEvent(EventTypes.AGENT_SPEAK, { text: narratedText });
+        this.conversationHistory.push({ role: 'assistant', content: generatedText });
+
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText });
         return;
       }
 
@@ -190,11 +205,11 @@ export class DialogueEngine {
         this.conversationHistory = this.conversationHistory.slice(-20);
       }
 
-      this.emitEvent(EventTypes.AGENT_SPEAK, { text: rawText });
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
 
     } catch (error: any) {
       console.error('[DialogueEngine] Error:', error.message);
-      this.emitEvent(EventTypes.AGENT_SPEAK, {
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
         text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
       });
     }

@@ -9,7 +9,6 @@ import {
   Megaphone, 
   BookOpen, 
   Home,
-  Code,
   Cloud,
   Database,
   Server,
@@ -39,7 +38,7 @@ const CATEGORIES = [
 
 const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
   software: [
-    { name: "GitHub", icon: Code },
+    { name: "GitHub", icon: "github-icon" },
     { name: "Cloudflare", icon: Cloud },
     { name: "Supabase", icon: Database },
     { name: "Railway", icon: Server },
@@ -56,10 +55,10 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
     { name: "Bank Accounts", icon: BookOpen },
   ],
   communication: [
-    { name: "Discord", icon: MessageCircle },
-    { name: "Telegram", icon: MessageCircle },
+    { name: "Discord", icon: "discord-icon" },
+    { name: "Telegram", icon: "telegram-icon" },
     { name: "Slack", icon: MessageCircle },
-    { name: "Gmail", icon: MessageCircle },
+    { name: "Gmail", icon: "gmail-icon" },
   ],
   productivity: [
     { name: "Notion", icon: BookOpen },
@@ -72,10 +71,11 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
     { name: "Gumroad", icon: Store },
   ],
   social: [
-    { name: "X (Twitter)", icon: Megaphone },
+    { name: "X", icon: "x-icon" },
     { name: "Instagram", icon: Megaphone },
     { name: "YouTube", icon: MonitorPlay },
     { name: "LinkedIn", icon: Megaphone },
+    { name: "Bluesky", icon: "bluesky-icon" },
   ],
   knowledge: [
     { name: "Wikipedia", icon: BookOpen },
@@ -149,8 +149,14 @@ export function ConnectionsPage({ theme, onBack }: WorkspacePageProps) {
                 onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
                 onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
               >
-                <div style={{ width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", color: theme.ink }}>
-                  <Icon size={32} strokeWidth={1} />
+                <div style={{ width: 72, height: 72, borderRadius: "50%", background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: theme.ink }}>
+                  {typeof Icon === "string" ? (
+                    <svg width={36} height={36} style={{ fill: theme.ink }}>
+                      <use href={`/icons.svg#${Icon}`} />
+                    </svg>
+                  ) : (
+                    <Icon size={36} strokeWidth={1.2} />
+                  )}
                 </div>
                 <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500, color: theme.inkSoft, textAlign: "center", letterSpacing: 0.2 }}>
                   {cap.name}

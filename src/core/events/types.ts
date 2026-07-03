@@ -1,32 +1,57 @@
-export interface Event {
-  id: string;
-  type: string;
-  payload: Record<string, any>;
-  timestamp: number;
+/**
+ * The standard envelope for all events in SERA's Event-Driven Architecture.
+ */
+export interface StandardEvent<T = any> {
+  id: string;                    // UUID of the event
+  type: string;                  // Ontology string (e.g., 'dialogue.user.observed')
+  source: string;                // Who emitted this event (e.g., 'TriggerEngine', 'DialogueEngine')
+  correlationId?: string;        // Optional trace ID that follows asynchronous flows
+  timestamp: number;             // Unix timestamp
+  payload: T;                    // Strongly typed payload
 }
 
-// ── Canonical SERA Event Types ─────────────────────────────────────────────
+// For backward compatibility during migration, alias Event to StandardEvent
+export type Event = StandardEvent;
+
+// ── SERA Unified Event Ontology ──────────────────────────────────────────────
+
 export const EventTypes = {
-  // Dialogue Layer
-  USER_OBSERVATION: 'USER_OBSERVATION',
-  AGENT_SPEAK: 'AGENT_SPEAK',
-  ACTIVITY: 'ACTIVITY',
+  // System Domain
+  SYSTEM_TRIGGER_FIRED: 'system.trigger.fired',
+  SYSTEM_CYCLE_COMPLETED: 'system.cycle.completed',
 
-  // UI Control
-  UI_COMMAND: 'UI_COMMAND',
+  // Dialogue Domain
+  DIALOGUE_USER_OBSERVED: 'dialogue.user.observed',
+  DIALOGUE_AGENT_SPEAK: 'dialogue.agent.speak',
+  DIALOGUE_ACTIVITY: 'dialogue.activity',
 
-  // Agentic Goal Bridge
-  SPAWN_GOAL: 'SPAWN_GOAL',
-  GOAL_RESULT: 'GOAL_RESULT',
-  WALLET_STATE: 'WALLET_STATE',
+  // Domain / Execution Layer
+  DOMAIN_GOAL_SPAWNED: 'domain.goal.spawned',
+  DOMAIN_GOAL_RESULT: 'domain.goal.result',
+  DOMAIN_WALLET_STATE: 'domain.wallet.state',
+  
+  // Temporal Layer
+  TEMPORAL_TICK: 'temporal.tick',
+  
+  // UI Layer
+  UI_COMMAND: 'ui.command',
 } as const;
 
 export type EventType = typeof EventTypes[keyof typeof EventTypes];
 
 // ── Typed Payload Interfaces ───────────────────────────────────────────────
+
+export interface DialogueUserObservedPayload {
+  message: string;
+}
+
+export interface DialogueAgentSpeakPayload {
+  message: string;
+}
+
 export interface SpawnGoalPayload {
-  requestId: string;       // ties result back to the originating dialogue turn
-  intent: string;          // e.g. 'CHECK_WALLET_BALANCE', 'TRANSFER_FUNDS'
+  requestId: string;
+  intent: string;
   parameters: Record<string, any>;
 }
 
@@ -35,4 +60,15 @@ export interface GoalResultPayload {
   success: boolean;
   data: Record<string, any>;
   errorMessage?: string;
+}
+
+export interface TriggerFiredPayload {
+  triggerId: string;
+  action: string;
+  targetId?: string;
+  context: Record<string, any>;
+}
+
+export interface TemporalTickPayload {
+  timestampUtc: number;
 }

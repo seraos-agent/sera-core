@@ -2,11 +2,12 @@ import 'dotenv/config';
 import { EventEmitter } from 'events';
 import { formatEther } from 'viem';
 import { base } from 'viem/chains';
-import { Event, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
+import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { ViemWalletAdapter } from '../capabilities/wallet/ViemWalletAdapter';
 import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
+import { TriggerEngine } from '../core/triggers/TriggerEngine';
 
 /**
  * GoalBridge — Connects the SERA EventBus to real Capabilities.
@@ -28,7 +29,7 @@ export class GoalBridge {
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
-    this.eventBus.on(EventTypes.SPAWN_GOAL, this.handleSpawnGoal.bind(this));
+    this.eventBus.on(EventTypes.DOMAIN_GOAL_SPAWNED, this.handleSpawnGoal.bind(this));
 
     // Build the wallet stack
     const secretStore = new EncryptedDatabaseSecretStore();
@@ -53,15 +54,15 @@ export class GoalBridge {
       const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
       
       const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-      this.eventBus.emit(EventTypes.WALLET_STATE, {
-        id: `evt-wallet-${Date.now()}`,
-        type: EventTypes.WALLET_STATE,
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-ws-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
         payload: {
           address: walletId.address,
           vaultAddress,
-          balance: balance.toString(),
+          balances: { USDC: balance.toString() },
           network: walletId.network,
-          asset: 'USDC'
         },
         timestamp: Date.now()
       });
@@ -72,16 +73,18 @@ export class GoalBridge {
 
   private emitResult(requestId: string, success: boolean, data: Record<string, any>, errorMessage?: string): void {
     const resultPayload: GoalResultPayload = { requestId, success, data, errorMessage };
-    const event: Event = {
+    const event: StandardEvent = {
       id: `evt-result-${Date.now()}`,
-      type: EventTypes.GOAL_RESULT,
+      type: EventTypes.DOMAIN_GOAL_RESULT,
+      source: 'GoalBridge',
+      correlationId: requestId,
       payload: resultPayload,
       timestamp: Date.now(),
     };
-    this.eventBus.emit(EventTypes.GOAL_RESULT, event);
+    this.eventBus.emit(EventTypes.DOMAIN_GOAL_RESULT, event);
   }
 
-  private async handleSpawnGoal(event: Event): Promise<void> {
+  private async handleSpawnGoal(event: StandardEvent): Promise<void> {
     const { requestId, intent, parameters } = event.payload as SpawnGoalPayload;
     console.log(`[GoalBridge] Handling intent: ${intent} (requestId: ${requestId})`);
 
@@ -109,6 +112,10 @@ export class GoalBridge {
           await this.handleTransferFunds(requestId, parameters);
           break;
 
+        case 'SCHEDULE_GOAL':
+          await this.handleScheduleGoal(requestId, parameters);
+          break;
+
         default:
           this.emitResult(requestId, false, {}, `Unknown intent: ${intent}`);
       }
@@ -118,7 +125,38 @@ export class GoalBridge {
     }
   }
 
-  private async handleCheckBalance(requestId: string): Promise<void> {
+  private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const triggerEngineInstance = (globalThis as any).__triggerEngine as TriggerEngine | undefined;
+    if (!triggerEngineInstance) {
+      this.emitResult(requestId, false, {}, 'TriggerEngine is not initialized');
+      return;
+    }
+
+    const { scheduleType, humanIntent, cronExpression, executeAfterUtc, actionIntent, actionParameters } = parameters;
+    
+    triggerEngineInstance.register({
+      id: `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'TIME',
+      state: 'ACTIVE',
+      firePolicy: scheduleType === 'exact' ? 'ONCE' : 'REPEAT',
+      condition: {
+        type: scheduleType === 'exact' ? 'EXACT' : 'RECURRING',
+        humanIntent: humanIntent || 'Unknown schedule',
+        timezoneContext: 'UTC+7 (WIB)', // Hardcoded for prototype, normally from Dialogue
+        internalCompiled: cronExpression,
+        executeAfterUtc: executeAfterUtc
+      },
+      action: {
+        type: actionIntent,
+        payload: actionParameters || {}
+      },
+      createdAt: Date.now()
+    });
+
+    this.emitResult(requestId, true, { scheduled: true, humanIntent, actionIntent });
+  }
+
+  public async handleCheckBalance(requestId: string): Promise<void> {
     if (!this.walletInitialized) {
       this.emitResult(requestId, false, {}, 'Wallet not initialized. Check server logs for details.');
       return;
@@ -149,9 +187,10 @@ export class GoalBridge {
       vaultAddress,
     });
 
-    this.eventBus.emit(EventTypes.WALLET_STATE, {
+    this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
       id: `evt-wallet-${Date.now()}`,
-      type: EventTypes.WALLET_STATE,
+      type: EventTypes.DOMAIN_WALLET_STATE,
+      source: 'GoalBridge',
       payload: {
         address: walletId.address,
         vaultAddress,
@@ -163,7 +202,7 @@ export class GoalBridge {
     });
   }
 
-  private async handleTransferFunds(requestId: string, parameters: Record<string, any>): Promise<void> {
+  public async handleTransferFunds(requestId: string, parameters: Record<string, any>): Promise<void> {
     if (!this.walletInitialized) {
       this.emitResult(requestId, false, {}, 'Wallet not initialized.');
       return;
@@ -250,9 +289,10 @@ export class GoalBridge {
         network: this.currentWalletId.network,
         asset: 'USDC',
       };
-      this.eventBus.emit(EventTypes.WALLET_STATE, {
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
         id: `evt-wallet-${Date.now()}`,
-        type: EventTypes.WALLET_STATE,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
         payload,
         timestamp: Date.now(),
       });

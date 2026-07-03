@@ -7,6 +7,8 @@ import { AuthorityService } from '../delegation/AuthorityService';
 import { AuthorityContext, DelegationScope } from '../delegation/types';
 import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
 import { ConstitutionContext } from '../constitution/types';
+import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
+import { StandardEvent, EventTypes, TriggerFiredPayload } from '../core/events/types';
 import { ExecutionTrace } from '../core/execution/types';
 import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
@@ -15,7 +17,6 @@ import { MetaEvaluationEngine } from '../core/cognition/MetaEvaluationEngine';
 import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
 import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
 import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
-import { ReflectionScheduler } from '../core/reflection/ReflectionScheduler';
 import { TemporalContext } from '../core/temporal/types';
 import { AttentionEngine } from '../core/attention/AttentionEngine';
 import { GoalEngine } from '../core/goals/GoalEngine';
@@ -32,6 +33,7 @@ import { ProposalStore } from '../core/intents/ProposalStore';
 import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
 import { IntentStore } from '../core/intents/IntentStore';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
+import { ExecutionDispatcher } from './ExecutionDispatcher';
 
 export class Runtime {
   private worldStateService: WorldStateService;
@@ -43,7 +45,8 @@ export class Runtime {
   private coherenceMonitor?: CoherenceMonitor;
   private metaEvaluationEngine?: MetaEvaluationEngine;
   private executionTraceStore?: ExecutionTraceStore;
-  private reflectionScheduler?: ReflectionScheduler;
+  private eventBus?: ExecutionEventBus;
+  private executionDispatcher?: ExecutionDispatcher;
   
   private planner?: Planner;
   private strategyStore?: StrategyStore;
@@ -74,7 +77,6 @@ export class Runtime {
     coherenceMonitor?: CoherenceMonitor,
     metaEvaluationEngine?: MetaEvaluationEngine,
     executionTraceStore?: ExecutionTraceStore,
-    reflectionScheduler?: ReflectionScheduler,
     planner?: Planner,
     strategyStore?: StrategyStore,
     strategyEngine?: StrategyEngine,
@@ -90,7 +92,9 @@ export class Runtime {
     governanceReflectionEngine?: GovernanceReflectionEngine,
     governanceCalibrationEngine?: GovernanceCalibrationEngine,
     adaptationPlanner?: AdaptationPlanner,
-    adaptationExecutor?: AdaptationExecutor
+    adaptationExecutor?: AdaptationExecutor,
+    eventBus?: ExecutionEventBus,
+    dispatcher?: ExecutionDispatcher
   ) {
     this.worldStateService = new WorldStateService();
     this.memoryStore = new MemoryStore();
@@ -101,7 +105,8 @@ export class Runtime {
     this.coherenceMonitor = coherenceMonitor;
     this.metaEvaluationEngine = metaEvaluationEngine;
     this.executionTraceStore = executionTraceStore;
-    this.reflectionScheduler = reflectionScheduler;
+    this.eventBus = eventBus;
+    this.executionDispatcher = dispatcher;
     this.planner = planner;
     this.strategyStore = strategyStore;
     this.strategyEngine = strategyEngine;
@@ -118,6 +123,25 @@ export class Runtime {
     this.governanceCalibrationEngine = governanceCalibrationEngine;
     this.adaptationPlanner = adaptationPlanner;
     this.adaptationExecutor = adaptationExecutor;
+
+    if (this.eventBus) {
+      this.eventBus.subscribe(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
+      console.log('[Runtime] Subscribed to ExecutionEventBus (Event-Driven Mode ACTIVE)');
+    }
+  }
+
+  public setAdaptationExecutor(adaptationExecutor: AdaptationExecutor): void {
+    this.adaptationExecutor = adaptationExecutor;
+  }
+
+  public setEventBus(eventBus: ExecutionEventBus): void {
+    this.eventBus = eventBus;
+    this.eventBus.subscribe(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
+    console.log('[Runtime] Subscribed to ExecutionEventBus (Event-Driven Mode ACTIVE)');
+  }
+
+  public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {
+    this.executionDispatcher = dispatcher;
   }
   
   getWorldState() {
@@ -148,23 +172,31 @@ export class Runtime {
     return this.memoryStore.getHistory();
   }
 
-  async startAutonomousLoop(maxCycles: number = 10, scope?: DelegationScope): Promise<void> {
+  private async handleTriggerFired(event: StandardEvent): Promise<void> {
+    const payload = event.payload as TriggerFiredPayload;
+    console.log(`\n[Runtime] Woken by TriggerEngine (Action: ${payload.action})`);
+    
+    // Delegate to ExecutionDispatcher
+    if (this.executionDispatcher) {
+       await this.executionDispatcher.dispatch(payload.action, payload.context?.actionPayload || {}, payload.context);
+    } else {
+       console.warn('[Runtime] No ExecutionDispatcher injected. Action ignored.');
+    }
+  }
+
+  async executeCycle(cycleId: number, targetGoalId?: string, scope?: DelegationScope): Promise<void> {
     if (!this.attentionEngine || !this.goalEngine) {
-      throw new Error("AttentionEngine and GoalEngine are required for autonomous mode.");
+      console.error("[Runtime] AttentionEngine and GoalEngine are required for execution.");
+      return;
     }
 
-    console.log(`\n[Runtime] Starting Autonomous Main Loop (Max Cycles: ${maxCycles})`);
+    console.log(`\n--- Execution Cycle ${cycleId} ---`);
+    const temporalContext: TemporalContext = {
+      physicalTime: Date.now(),
+      cognitiveCycleId: cycleId
+    };
     
-    for (let i = 0; i < maxCycles; i++) {
-      console.log(`\n--- Autonomous Cycle ${i + 1}/${maxCycles} ---`);
-      
-      this.cognitiveCycleCount++;
-      const temporalContext: TemporalContext = {
-        physicalTime: Date.now(),
-        cognitiveCycleId: this.cognitiveCycleCount
-      };
-      
-      this.governProposals(temporalContext);
+    this.governProposals(temporalContext);
 
       const auditReport = this.intentEngine ? this.intentEngine.auditRepresentations(temporalContext) : null;
       
@@ -227,18 +259,20 @@ export class Runtime {
 
       const allocation = this.attentionEngine.allocate(temporalContext);
       
-      if (!allocation.focusedGoalId) {
+      let focusedId = targetGoalId || allocation.focusedGoalId;
+      
+      if (!focusedId) {
         console.log(`[Runtime] No focused goal. System sleeping...`);
-        continue;
+        return;
       }
       
-      const goalToProcess = this.goalEngine.getGoal(allocation.focusedGoalId);
+      const goalToProcess = this.goalEngine.getGoal(focusedId);
       if (!goalToProcess) {
-        console.error(`[Runtime] Focused goal ${allocation.focusedGoalId} not found in GoalEngine!`);
-        continue;
+        console.error(`[Runtime] Focused goal ${focusedId} not found in GoalEngine!`);
+        return;
       }
 
-      console.log(`[Runtime] Autonomous Loop executing Goal: ${goalToProcess.id}`);
+      console.log(`[Runtime] Execution Cycle targeting Goal: ${goalToProcess.id}`);
       this.goalEngine.updateStatus(goalToProcess.id, 'IN_PROGRESS');
       
       try {
@@ -265,38 +299,11 @@ export class Runtime {
            this.goalEngine.updateStatus(goalToProcess.id, 'FAILED', err.message);
         }
       }
-    }
-    
-    if (this.metaEvaluationEngine) {
-      this.metaEvaluationEngine.evaluate();
-      const recommendations = this.metaEvaluationEngine.getRecommendations();
-
-      if (recommendations.length > 0 && this.governanceCalibrationEngine) {
-        this.governanceCalibrationEngine.calibrate(recommendations);
-      }
-
-      for (const rec of recommendations) {
-        console.log(`[MetaCognition] Generated Recommendation: ${rec.proposedAction} (Confidence: ${rec.confidence})`);
-      }
-    }
-    
-    if (this.governanceOutcomeTracker) {
-      this.governanceOutcomeTracker.evaluate();
-    }
-
-    if (this.governanceReflectionEngine) {
-      this.governanceReflectionEngine.evaluate();
-    }
-    
     if (this.adaptationPlanner) {
       this.adaptationPlanner.removeExpiredProposals();
-      // AdaptationPlanner would normally scan anomalies here to generate proposals.
-      // Generation logic happens independently via evaluate loop.
     }
     
-    // AdaptationExecutor would read approved proposals and execute them here.
-
-    console.log(`\n[Runtime] Autonomous Main Loop Terminated.`);
+    console.log(`\n[Runtime] Execution Cycle Terminated. Yielding back to TriggerEngine.`);
   }
 
   async processGoal(goal: Goal, scope: DelegationScope, customAction?: string, customMetadata?: any, spendingRequest?: any, temporalContext?: TemporalContext): Promise<boolean> {
@@ -505,10 +512,6 @@ export class Runtime {
     }
 
     // Old meta evaluation logic was removed here. The new MetaEvaluationEngine is executed at the end of startAutonomousLoop.
-    
-    if (this.reflectionScheduler) {
-      this.reflectionScheduler.tick();
-    }
   }
 
   // Phase 4.1: Human Approval Pipeline

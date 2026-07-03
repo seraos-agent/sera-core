@@ -18,6 +18,7 @@ export class MockWorker implements Worker {
     const event: Event = {
       id: `evt-${Date.now()}`,
       type: `${workItem.action}_COMPLETED`,
+      source: 'Worker',
       payload: workItem.payload,
       timestamp: Date.now()
     };

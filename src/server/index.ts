@@ -7,7 +7,14 @@ import cors from 'cors';
 
 import { DialogueEngine, SERA_EVENTS } from '../capabilities/dialogue/DialogueEngine';
 import { GoalBridge } from '../runtime/GoalBridge';
-import { Event, EventTypes } from '../core/events/types';
+import { StandardEvent, EventTypes } from '../core/events/types';
+import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
+import { TemporalClockService } from '../core/temporal/TemporalClockService';
+import { TriggerEngine } from '../core/triggers/TriggerEngine';
+import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
+import { Runtime } from '../runtime/Runtime';
+import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
+import { WorkerManager } from '../workers/WorkerManager';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -21,15 +28,33 @@ const io = new Server(httpServer, {
 
 // The shared Event Bus — the nervous system of SERA
 const eventBus = new EventEmitter();
+const executionEventBus = new ExecutionEventBus();
 
-// Boot Capabilities & Runtime Bridge (all share the same EventBus)
+// Core Services
+const workerManager = new WorkerManager();
+const triggerStore = new InMemoryTriggerStore();
+const triggerEngine = new TriggerEngine(triggerStore, executionEventBus);
+const goalBridge = new GoalBridge(eventBus);
+const executionDispatcher = new ExecutionDispatcher(executionEventBus, goalBridge);
+const runtime = new Runtime(workerManager);
+runtime.setEventBus(executionEventBus);
+runtime.setExecutionDispatcher(executionDispatcher);
+const temporalClockService = new TemporalClockService(executionEventBus);
+
+// Expose TriggerEngine to global for GoalBridge to register
+(globalThis as any).__triggerEngine = triggerEngine;
+
+// Start Engines
+triggerEngine.start();
+temporalClockService.start();
+
+// Boot Capabilities
 new DialogueEngine(eventBus);
-new GoalBridge(eventBus);
 
 let msgIdCounter = Date.now();
 let lastWalletState: any = null;
 
-eventBus.on(EventTypes.WALLET_STATE, (event: Event) => {
+eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
   lastWalletState = event.payload;
   io.emit('wallet:update', event.payload);
 });
@@ -52,33 +77,34 @@ io.on('connection', (socket: Socket) => {
   socket.on('chat:message', (message: string) => {
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION`);
 
-    const event: Event = {
+    const event: StandardEvent = {
       id: `evt-${Date.now()}`,
-      type: SERA_EVENTS.USER_OBSERVATION,
+      type: EventTypes.DIALOGUE_USER_OBSERVED,
+      source: 'SocketServer',
       payload: { message },
       timestamp: Date.now(),
     };
 
-    eventBus.emit(SERA_EVENTS.USER_OBSERVATION, event);
+    eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
   });
 
   // ── MOUTH: SERA events → socket messages ─────────────────────────────────
 
-  const onAgentSpeak = (event: Event) => {
+  const onAgentSpeak = (event: StandardEvent) => {
     socket.emit('chat:reply', {
       id: ++msgIdCounter,
       content: event.payload.text,
     });
   };
 
-  const onActivity = (event: Event) => {
+  const onActivity = (event: StandardEvent) => {
     socket.emit('chat:activity', {
       id: ++msgIdCounter,
       content: event.payload.content,
     });
   };
 
-  const onUiCommand = (event: Event) => {
+  const onUiCommand = (event: StandardEvent) => {
     // Translate SERA Event → UI command format the React app understands
     socket.emit('ui:command', {
       type: 'SET_THEME',
@@ -86,9 +112,9 @@ io.on('connection', (socket: Socket) => {
     });
   };
 
-  eventBus.on(SERA_EVENTS.AGENT_SPEAK, onAgentSpeak);
-  eventBus.on(SERA_EVENTS.ACTIVITY, onActivity);
-  eventBus.on(SERA_EVENTS.UI_COMMAND, onUiCommand);
+  eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
+  eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
+  eventBus.on(EventTypes.UI_COMMAND, onUiCommand);
 
   // ── EARS: wallet transfer request from UI ────────────────────────────────
   socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {
@@ -123,9 +149,9 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('disconnect', () => {
     // Clean up listeners when client disconnects to prevent memory leaks
-    eventBus.off(SERA_EVENTS.AGENT_SPEAK, onAgentSpeak);
-    eventBus.off(SERA_EVENTS.ACTIVITY, onActivity);
-    eventBus.off(SERA_EVENTS.UI_COMMAND, onUiCommand);
+    eventBus.off(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
+    eventBus.off(EventTypes.DIALOGUE_ACTIVITY, onActivity);
+    eventBus.off(EventTypes.UI_COMMAND, onUiCommand);
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
   });
 });

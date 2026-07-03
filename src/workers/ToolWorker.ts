@@ -33,6 +33,7 @@ export class ToolWorker implements Worker {
       const event: Event = {
         id: `evt-${Date.now()}`,
         type: `${workItem.action}_COMPLETED`,
+        source: 'ToolWorker',
         payload: {
           output: toolResult.output,
           evidence: verificationResult.evidence
