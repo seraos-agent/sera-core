@@ -67,6 +67,9 @@ export class DialogueEngine {
   private conversationHistory: QwenMessage[] = [];
   // Map from requestId → resolve function, for awaiting goal results
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
+  
+  // Map from proposalId → proposal data (awaiting user approval)
+  private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage: string }>();
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -76,8 +79,40 @@ export class DialogueEngine {
 
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, this.onProposalApproved.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_REJECTED, this.onProposalRejected.bind(this));
     
     console.log('[DialogueEngine] Initialized and listening for dialogue events.');
+  }
+
+  // ── Proposal Listeners ────────────────────────────────────────────────────
+  
+  private async onProposalApproved(event: StandardEvent): Promise<void> {
+    const proposalId = event.payload.proposalId;
+    const proposal = this.pendingProposals.get(proposalId);
+    if (!proposal) return;
+    
+    this.pendingProposals.delete(proposalId);
+    
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+      content: `User approved. Executing goal: ${proposal.intent.replace(/_/g, ' ').toLowerCase()}...`,
+    });
+    
+    // Execute after approval
+    const result = await this.spawnGoalAndAwaitResult(proposal.intent, proposal.parameters);
+    this.narrateResult(proposal.userMessage, result);
+  }
+
+  private onProposalRejected(event: StandardEvent): Promise<void> {
+    const proposalId = event.payload.proposalId;
+    if (this.pendingProposals.has(proposalId)) {
+       this.pendingProposals.delete(proposalId);
+       
+       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+         text: "Proposal has been cancelled. Let me know if you'd like to do something else." 
+       });
+    }
+    return Promise.resolve();
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
@@ -141,71 +176,107 @@ export class DialogueEngine {
     const userMessage: string = event.payload.message;
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"`);
 
-    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Analyzing message intent...' });
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'SERA is preparing your request...' });
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
       const { intent, parameters } = await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
 
-      // ── Step 2: Route actionable intents to GoalBridge ───────────────────
-      if (intent !== 'NONE') {
-        this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-          content: `Executing goal: ${intent.replace(/_/g, ' ').toLowerCase()}...`,
-        });
+      // ── Step 2: Clarification Validation ───────────────────────────────────────
+      let missingParams: string[] = [];
+      if (intent === 'TRANSFER_FUNDS') {
+        if (!parameters.recipient) missingParams.push('recipient address');
+        if (!parameters.amount) missingParams.push('amount to send');
+      } else if (intent === 'SCHEDULE_GOAL' && parameters.actionIntent === 'TRANSFER_FUNDS') {
+        if (!parameters.actionParameters?.recipient) missingParams.push('recipient address');
+        if (!parameters.actionParameters?.amount) missingParams.push('amount to send');
+      }
 
-        const result = await this.spawnGoalAndAwaitResult(intent, parameters);
-
-        // Ask LLM to narrate the result naturally in the user's language
-        const narratePrompt = result.success
-          ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used.`
-          : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
-
-        const narrateResponse = await this.llm.generate([
+      if (missingParams.length > 0) {
+        console.log(`[DialogueEngine] Missing parameters for ${intent}: ${missingParams.join(', ')}. Triggering Clarification Mode.`);
+        
+        // Push user message to history so LLM has context
+        this.conversationHistory.push({ role: 'user', content: userMessage });
+        
+        const clarificationPrompt = `The user wants to transfer funds, but their request is missing the following required information: ${missingParams.join(', ')}. 
+Please ask the user naturally (in the same language they used) to provide this missing information. Keep it brief. Do not mention JSON or parameters.`;
+        
+        const response = await this.llm.generate([
           { role: 'system', content: SYSTEM_PROMPT },
           ...this.conversationHistory,
-          { role: 'user', content: narratePrompt },
+          { role: 'system', content: clarificationPrompt }
+        ]);
+        
+        const responseText = response.text.trim();
+        this.conversationHistory.push({ role: 'assistant', content: responseText });
+        
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: responseText });
+        return; // Abort execution/proposal and wait for user's next message
+      }
+
+      // ── Step 3: Route actionable intents via Risk Policy ───────────────────
+      if (intent !== 'NONE') {
+        // AUTO-EXECUTE path: Read-only operations and authorized vault operations (e.g. transfers)
+        const AUTO_EXECUTE_INTENTS = ['CHECK_WALLET_BALANCE', 'CHECK_NETWORK', 'TRANSFER_FUNDS'];
+        const shouldAutoExecute = AUTO_EXECUTE_INTENTS.includes(intent);
+
+        if (shouldAutoExecute) {
+          // AUTO-EXECUTE path
+          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+            content: `Executing goal: ${intent.replace(/_/g, ' ').toLowerCase()}...`,
+          });
+          const result = await this.spawnGoalAndAwaitResult(intent, parameters);
+          await this.narrateResult(userMessage, result);
+        } else {
+          // PROPOSAL path (Risk-Tiered: WRITE/FINANCE/SCHEDULE)
+          const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+          this.pendingProposals.set(proposalId, { intent, parameters, userMessage });
+          
+          this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
+            proposalId,
+            intent,
+            parameters
+          });
+          
+          // Reply conversationally that we are proposing it
+          const summaryText = intent === 'SCHEDULE_GOAL' 
+             ? `I can set up that schedule for you. Please review the proposal.`
+             : `I have prepared the transaction. Please review the details before I proceed.`;
+             
+          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+        }
+      } else {
+        // ── Step 4: Pure conversational response ─────────────────────────────
+        this.conversationHistory.push({ role: 'user', content: userMessage });
+
+        const response = await this.llm.generate([
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...this.conversationHistory,
         ]);
 
-        const generatedText = narrateResponse.text.trim();
-        this.conversationHistory.push({ role: 'user', content: userMessage });
-        this.conversationHistory.push({ role: 'assistant', content: generatedText });
+        let rawText = response.text.trim();
+        console.log(`[DialogueEngine] Qwen responded (${response.usage?.total_tokens || 0} tokens).`);
 
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText });
-        return;
+        // Parse and strip embedded UI commands before sending text to UI
+        if (rawText.includes('<UI_COMMAND:SET_THEME_DARK>')) {
+          rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
+          this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+        }
+        if (rawText.includes('<UI_COMMAND:SET_THEME_LIGHT>')) {
+          rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
+          this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+        }
+
+        this.conversationHistory.push({ role: 'assistant', content: rawText });
+
+        // Keep history bounded to last 20 turns
+        if (this.conversationHistory.length > 20) {
+          this.conversationHistory = this.conversationHistory.slice(-20);
+        }
+
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
       }
-
-      // ── Step 3: Regular conversation (no actionable intent) ───────────────
-      this.conversationHistory.push({ role: 'user', content: userMessage });
-
-      const messages: QwenMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...this.conversationHistory,
-      ];
-
-      const response = await this.llm.generate(messages);
-      let rawText = response.text;
-
-      console.log(`[DialogueEngine] Qwen responded (${response.usage.total_tokens} tokens).`);
-
-      // Parse and strip embedded UI commands before sending text to UI
-      if (rawText.includes('<UI_COMMAND:SET_THEME_DARK>')) {
-        rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
-        this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
-      }
-      if (rawText.includes('<UI_COMMAND:SET_THEME_LIGHT>')) {
-        rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
-        this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-      }
-
-      this.conversationHistory.push({ role: 'assistant', content: rawText });
-
-      // Keep history bounded to last 20 turns
-      if (this.conversationHistory.length > 20) {
-        this.conversationHistory = this.conversationHistory.slice(-20);
-      }
-
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
 
     } catch (error: any) {
       console.error('[DialogueEngine] Error:', error.message);
@@ -213,5 +284,28 @@ export class DialogueEngine {
         text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
       });
     }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
+    const narratePrompt = result.success
+      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used.`
+      : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
+
+    const narrateResponse = await this.llm.generate([
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...this.conversationHistory,
+      { role: 'user', content: narratePrompt },
+    ]);
+
+    const generatedText = narrateResponse.text.trim();
+
+    this.conversationHistory.push({ role: 'assistant', content: generatedText });
+    if (this.conversationHistory.length > 20) {
+      this.conversationHistory = this.conversationHistory.slice(-20);
+    }
+
+    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText });
   }
 }

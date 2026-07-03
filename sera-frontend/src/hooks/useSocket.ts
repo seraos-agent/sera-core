@@ -40,6 +40,10 @@ export function useSocket(
       setMessages(prev => [...prev, { id: data.id || Date.now(), type: "activity", content: data.content }]);
     });
 
+    newSocket.on("chat:proposal", (data: any) => {
+      setMessages(prev => [...prev, { id: data.id || Date.now(), role: "agent", proposal: data }]);
+    });
+
     newSocket.on("ui:command", (cmd: any) => {
       if (cmd.type === "SET_THEME") {
         setMode(cmd.payload);

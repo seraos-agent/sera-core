@@ -10,7 +10,7 @@ interface SidebarProps {
   isMobileView: boolean;
   mode: "light" | "dark";
   setMode: (mode: "light" | "dark") => void;
-  onNavigate: (view: "chat" | "wallet" | "connections") => void;
+  onNavigate: (view: "chat" | "wallet" | "connections" | "automations") => void;
 }
 
 export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, setMode, onNavigate }: SidebarProps) {
@@ -82,13 +82,13 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, se
 
             {CONNECTORS.map((c) => {
               const Icon = c.icon;
-              const isWallet = c.id === "wallet";
+              const isClickable = c.id === "wallet" || c.id === "automations";
               return (
                 <div
                   key={c.id}
                   onClick={() => {
-                    if (isWallet) {
-                      onNavigate("wallet");
+                    if (isClickable) {
+                      onNavigate(c.id as any);
                       if (isMobileView) onClose();
                     }
                   }}
@@ -96,12 +96,12 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, se
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: isWallet ? "pointer" : "default",
+                    cursor: isClickable ? "pointer" : "default",
                     transition: "background 150ms",
                     justifyContent: open ? "flex-start" : "center",
                     position: "relative"
                   }}
-                  onMouseEnter={e => { if (isWallet) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   <Icon size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
@@ -113,7 +113,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, se
                   {open && (
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Connected" />
                   )}
-                  {!open && isWallet && (
+                  {!open && isClickable && (
                     <span style={{ position: "absolute", top: 8, right: 8, width: 6, height: 6, borderRadius: "50%", background: theme.status }} title="Connected" />
                   )}
                 </div>

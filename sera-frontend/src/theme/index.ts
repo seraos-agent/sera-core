@@ -1,7 +1,8 @@
-import { Wallet, Globe } from "lucide-react";
+import { Wallet, Globe, Clock } from "lucide-react";
 
 export const THEME = {
   light: {
+    isDark: false,
     bg: "#F3F4F6",
     surface: "#FFFFFF",
     surface2: "#F8F9FA",
@@ -20,6 +21,7 @@ export const THEME = {
     shellShadow: "0 1px 2px rgba(16,24,32,0.04), 0 16px 40px rgba(16,24,32,0.10)",
   },
   dark: {
+    isDark: true,
     bg: "#121417",
     surface: "#1A1D21",
     surface2: "#1F2226",
@@ -42,6 +44,7 @@ export const THEME = {
 export type ThemeType = typeof THEME.light;
 
 export const CONNECTORS = [
+  { id: "automations", name: "Active Intents", icon: Clock },
   { id: "wallet", name: "Agentic Wallet", icon: Wallet },
   { id: "x", name: "X", icon: Globe },
 ];

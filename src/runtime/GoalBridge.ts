@@ -54,6 +54,16 @@ export class GoalBridge {
       const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
       
       const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      let vaultBalance = '0';
+      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        try {
+          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+          vaultBalance = vb.toString();
+        } catch (e) {
+          console.error('Failed to get vault balance:', e);
+        }
+      }
+
       this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
         id: `evt-ws-${Date.now()}`,
         type: EventTypes.DOMAIN_WALLET_STATE,
@@ -61,8 +71,10 @@ export class GoalBridge {
         payload: {
           address: walletId.address,
           vaultAddress,
-          balances: { USDC: balance.toString() },
+          balance: balance.toString(),
+          vaultBalance,
           network: walletId.network,
+          asset: 'USDC'
         },
         timestamp: Date.now()
       });
@@ -195,6 +207,7 @@ export class GoalBridge {
         address: walletId.address,
         vaultAddress,
         balance: balance.toString(),
+        vaultBalance,
         network: walletId.network,
         asset: 'USDC'
       },

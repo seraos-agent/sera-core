@@ -6,6 +6,7 @@ import { Sidebar } from "./components/sidebar/Sidebar";
 import { WalletPage } from "./components/wallet/WalletPage";
 import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
+import { AutomationsPage } from "./components/automations/AutomationsPage";
 
 function useFonts() {
   useEffect(() => {
@@ -24,10 +25,10 @@ export default function App() {
   const [mode, setMode] = useState<"light" | "dark">("light");
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
-  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections">("chat");
+  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">("chat");
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages, streamReply } = useSocket(setWalletState, setMode);
+  const { socket, messages, setMessages } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
 
@@ -105,17 +106,21 @@ export default function App() {
             theme={theme}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
+        ) : currentView === "automations" ? (
+          <AutomationsPage
+            theme={theme}
+            socket={socket}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
         ) : (
           <ChatView
             theme={theme}
             messages={messages}
-            setMessages={setMessages}
             isMobileView={isMobileView}
             sidebarOpen={sidebarOpen}
             onOpenSidebar={() => setSidebarOpen(true)}
             onSend={handleSend}
             socket={socket}
-            streamReply={streamReply}
           />
         )}
       </div>

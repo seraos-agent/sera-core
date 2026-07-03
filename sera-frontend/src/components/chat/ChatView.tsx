@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Menu, MoreVertical } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { MessageBubble } from "./MessageBubble";
@@ -9,25 +9,21 @@ import { Socket } from "socket.io-client";
 interface ChatViewProps {
   theme: ThemeType;
   messages: any[];
-  setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   isMobileView: boolean;
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onSend: (text: string) => void;
   socket: Socket | null;
-  streamReply: (fullText: string, id: number) => void;
 }
 
 export function ChatView({
   theme,
   messages,
-  setMessages,
   isMobileView,
   sidebarOpen,
   onOpenSidebar,
   onSend,
-  socket,
-  streamReply
+  socket
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -44,22 +40,11 @@ export function ChatView({
     setTimeout(() => setCopied(null), 1500);
   }, []);
 
-  const handleApprove = useCallback((id: number, approved: boolean) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, status: approved ? 'approved' : 'rejected' } : m));
-    
-    if (approved) {
-      setTimeout(() => {
-        const nextMsgId1 = Date.now();
-        setMessages(prev => [...prev, { id: nextMsgId1, type: "activity", content: "Menandatangani transaksi dan menyiarkan ke Base Sepolia..." }]);
-        
-        const nextMsgId2 = Date.now() + 1;
-        setTimeout(() => {
-          setMessages(prev => [...prev, { id: nextMsgId2, role: "agent", content: "", streaming: true }]);
-          streamReply("Transaksi telah dieksekusi. Saya telah melaporkan state mutation kembali ke WorldState untuk memastikan sistem kita tersinkronisasi. Ada tugas operasional lain yang bisa saya bantu hari ini?", nextMsgId2);
-        }, 1000);
-      }, 500);
+  const handleApprove = useCallback((proposalId: string, action: 'APPROVE' | 'REJECT') => {
+    if (socket) {
+      socket.emit('chat:proposal_response', { proposalId, action });
     }
-  }, [setMessages, streamReply]);
+  }, [socket]);
 
   const paddingVal = isMobileView ? "18px 14px" : "24px 26px";
   const paddingBottomVal = isMobileView ? "10px 14px 16px" : "10px 26px 20px";

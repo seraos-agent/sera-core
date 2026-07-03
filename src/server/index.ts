@@ -112,9 +112,48 @@ io.on('connection', (socket: Socket) => {
     });
   };
 
+  const onProposalGenerated = (event: StandardEvent) => {
+    socket.emit('chat:proposal', {
+      id: ++msgIdCounter,
+      proposalId: event.payload.proposalId,
+      intent: event.payload.intent,
+      parameters: event.payload.parameters
+    });
+  };
+
   eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
   eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
   eventBus.on(EventTypes.UI_COMMAND, onUiCommand);
+  eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
+
+  // ── EARS: Proposal Responses ──────────────────────────────────────────────
+  socket.on('chat:proposal_response', (payload: { proposalId: string; action: 'APPROVE' | 'REJECT' }) => {
+    console.log(`[Server] Received proposal response for ${payload.proposalId}: ${payload.action}`);
+    
+    if (payload.action === 'APPROVE') {
+      eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
+        id: `evt-${Date.now()}`,
+        type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
+        source: 'SocketServer',
+        timestamp: Date.now(),
+        payload: { proposalId: payload.proposalId }
+      } as StandardEvent);
+    } else {
+      eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_REJECTED, {
+        id: `evt-${Date.now()}`,
+        type: EventTypes.DIALOGUE_PROPOSAL_REJECTED,
+        source: 'SocketServer',
+        timestamp: Date.now(),
+        payload: { proposalId: payload.proposalId }
+      } as StandardEvent);
+    }
+  });
+
+  // ── EARS: Fetch Automations ──────────────────────────────────────────────
+  socket.on('automations:fetch', () => {
+    const allTriggers = triggerStore.getAll();
+    socket.emit('automations:update', allTriggers);
+  });
 
   // ── EARS: wallet transfer request from UI ────────────────────────────────
   socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {
@@ -152,6 +191,7 @@ io.on('connection', (socket: Socket) => {
     eventBus.off(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
     eventBus.off(EventTypes.DIALOGUE_ACTIVITY, onActivity);
     eventBus.off(EventTypes.UI_COMMAND, onUiCommand);
+    eventBus.off(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
   });
 });
