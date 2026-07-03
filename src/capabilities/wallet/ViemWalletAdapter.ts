@@ -138,21 +138,24 @@ export class ViemWalletAdapter implements IWalletCapability {
 
   async getBalance(_walletId: WalletId, _asset: string): Promise<number> {
     if (!this.walletId) throw new Error('[ViemWalletAdapter] Not initialized. Call initialize() first.');
+    const address = (_walletId.address || this.walletId.address) as `0x${string}`;
+    return this.getAddressBalance(address, _asset);
+  }
 
+  async getAddressBalance(address: `0x${string}`, _asset: string): Promise<number> {
     const asset = _asset.toLowerCase();
-    const targetAddress = process.env.SERA_VAULT_ADDRESS ? (process.env.SERA_VAULT_ADDRESS as `0x${string}`) : (this.walletId.address as `0x${string}`);
     
     if (asset === 'usdc') {
       const balanceUnits = await this.publicClient.readContract({
         address: USDC_BASE_MAINNET,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
-        args: [targetAddress],
+        args: [address],
       });
       return parseFloat(formatUnits(balanceUnits as bigint, 6));
     } else {
       const balanceWei = await this.publicClient.getBalance({
-        address: targetAddress,
+        address: address,
       });
       return parseFloat(formatEther(balanceWei));
     }
@@ -191,7 +194,9 @@ export class ViemWalletAdapter implements IWalletCapability {
       const asset = request.asset.toLowerCase();
       const vaultAddress = process.env.SERA_VAULT_ADDRESS as `0x${string}`;
 
-      if (vaultAddress) {
+      const isFundingVault = vaultAddress && request.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
+
+      if (vaultAddress && !isFundingVault) {
         console.log(`[ViemWalletAdapter] Routing transfer through SeraVault: ${vaultAddress}`);
         const tokenAddress = asset === 'usdc' ? USDC_BASE_MAINNET : '0x0000000000000000000000000000000000000000';
         const amountWei = asset === 'usdc' ? parseUnits(request.amount.toString(), 6) : parseEther(request.amount.toString());

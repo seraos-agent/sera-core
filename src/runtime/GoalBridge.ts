@@ -24,6 +24,7 @@ export class GoalBridge {
   private walletAdapter: ViemWalletAdapter;
   private walletInitialized = false;
   private walletInitializing: Promise<void> | null = null;
+  private currentWalletId: { address: string; network: string } | null = null;
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -38,6 +39,9 @@ export class GoalBridge {
     // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
     this.walletInitializing = this.initWallet();
 
+    // Expose this instance globally for direct server access
+    (globalThis as any).__goalBridge = this;
+
     console.log('[GoalBridge] Initialized. Listening for SPAWN_GOAL events.');
   }
 
@@ -45,6 +49,7 @@ export class GoalBridge {
     try {
       const walletId = await this.walletAdapter.initialize();
       this.walletInitialized = true;
+      this.currentWalletId = walletId;
       const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
       
       const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
@@ -124,6 +129,15 @@ export class GoalBridge {
     const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
 
     const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+    let vaultBalance = '0';
+    if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+      try {
+        const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+        vaultBalance = vb.toString();
+      } catch (e) {
+        console.error('Failed to get vault balance:', e);
+      }
+    }
 
     this.emitResult(requestId, true, {
       asset: 'USDC',
@@ -131,6 +145,7 @@ export class GoalBridge {
       network: 'Base Mainnet',
       address: walletId.address,
       vaultAddress,
+      vaultBalance,
     });
 
     this.eventBus.emit(EventTypes.WALLET_STATE, {
@@ -172,6 +187,59 @@ export class GoalBridge {
       this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
     } catch (err: any) {
       this.emitResult(requestId, false, {}, err.message);
+    }
+  }
+
+  /** Direct transfer — called by the UI via socket (bypasses DialogueEngine) */
+  async directTransfer(params: { recipientAddress: string; amount: number; asset: string }): Promise<any> {
+    if (this.walletInitializing) await this.walletInitializing;
+    if (!this.walletInitialized || !this.currentWalletId) {
+      return { status: 'FAILED', error: 'Wallet not initialized' };
+    }
+
+    const receipt = await this.walletAdapter.executeTransfer(this.currentWalletId as any, {
+      idempotencyKey: `ui-tx-${Date.now()}`,
+      recipientAddress: params.recipientAddress,
+      amount: params.amount,
+      asset: params.asset,
+    });
+
+    return receipt;
+  }
+
+  /** Refresh on-chain balance and return the latest wallet state payload */
+  async refreshBalance(): Promise<any | null> {
+    if (!this.walletInitialized || !this.currentWalletId) return null;
+    try {
+      const balance = await this.walletAdapter.getBalance(this.currentWalletId as any, 'usdc');
+      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      let vaultBalance = '0';
+      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        try {
+          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+          vaultBalance = vb.toString();
+        } catch (e) {
+          console.error('Failed to get vault balance:', e);
+        }
+      }
+      
+      const payload = {
+        address: this.currentWalletId.address,
+        vaultAddress,
+        vaultBalance,
+        balance: balance.toString(),
+        network: this.currentWalletId.network,
+        asset: 'USDC',
+      };
+      this.eventBus.emit(EventTypes.WALLET_STATE, {
+        id: `evt-wallet-${Date.now()}`,
+        type: EventTypes.WALLET_STATE,
+        payload,
+        timestamp: Date.now(),
+      });
+      return payload;
+    } catch {
+      return null;
     }
   }
 }

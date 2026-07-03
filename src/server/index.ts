@@ -90,6 +90,37 @@ io.on('connection', (socket: Socket) => {
   eventBus.on(SERA_EVENTS.ACTIVITY, onActivity);
   eventBus.on(SERA_EVENTS.UI_COMMAND, onUiCommand);
 
+  // ── EARS: wallet transfer request from UI ────────────────────────────────
+  socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {
+    console.log(`[Server] wallet:transfer requested → ${payload.amount} ${payload.asset} to ${payload.to}`);
+    socket.emit('wallet:transfer:pending', { message: 'Broadcasting transaction...' });
+
+    try {
+      const goalBridgeInstance = (globalThis as any).__goalBridge as import('../runtime/GoalBridge').GoalBridge | undefined;
+      if (!goalBridgeInstance) {
+        socket.emit('wallet:transfer:result', { status: 'FAILED', error: 'Wallet not initialized' });
+        return;
+      }
+
+      const result = await goalBridgeInstance.directTransfer({
+        recipientAddress: payload.to,
+        amount: parseFloat(payload.amount),
+        asset: payload.asset,
+      });
+
+      socket.emit('wallet:transfer:result', result);
+
+      // Refresh wallet balance after transfer
+      const updatedBalance = await goalBridgeInstance.refreshBalance();
+      if (updatedBalance) {
+        io.emit('wallet:update', updatedBalance);
+      }
+    } catch (err: any) {
+      console.error('[Server] wallet:transfer error:', err);
+      socket.emit('wallet:transfer:result', { status: 'FAILED', error: err.message || 'Unknown error' });
+    }
+  });
+
   socket.on('disconnect', () => {
     // Clean up listeners when client disconnects to prevent memory leaks
     eventBus.off(SERA_EVENTS.AGENT_SPEAK, onAgentSpeak);

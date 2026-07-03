@@ -1,0 +1,70 @@
+import { useEffect, useState, useCallback } from "react";
+import { io, Socket } from "socket.io-client";
+import type { WalletState } from "./useWallet";
+
+export function useSocket(
+  setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
+  setMode: (mode: "light" | "dark") => void
+) {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+
+  const streamReply = useCallback((fullText: string, id: number) => {
+    let i = 0;
+    const step = () => {
+      i += Math.max(1, Math.round(fullText.length / 90));
+      const chunk = fullText.slice(0, i);
+      setMessages((prev) => {
+        const exists = prev.find(m => m.id === id);
+        if (!exists) {
+          return [...prev, { id, role: "agent", content: chunk, streaming: i < fullText.length }];
+        }
+        return prev.map((m) => (m.id === id ? { ...m, content: chunk, streaming: i < fullText.length } : m));
+      });
+      if (i < fullText.length) {
+        setTimeout(step, 16);
+      }
+    };
+    step();
+  }, []);
+
+  useEffect(() => {
+    const newSocket = io("ws://localhost:3001");
+    setSocket(newSocket);
+
+    newSocket.on("chat:reply", (data: any) => {
+      streamReply(data.content, data.id || Date.now());
+    });
+
+    newSocket.on("chat:activity", (data: any) => {
+      setMessages(prev => [...prev, { id: data.id || Date.now(), type: "activity", content: data.content }]);
+    });
+
+    newSocket.on("ui:command", (cmd: any) => {
+      if (cmd.type === "SET_THEME") {
+        setMode(cmd.payload);
+      }
+    });
+
+    newSocket.on("wallet:update", (data: any) => {
+      setWalletState(prev => ({
+        ...prev,
+        address: data.address.slice(0, 6) + "..." + data.address.slice(-4),
+        fullAddress: data.address,
+        balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
+        vaultBalance: data.vaultBalance ? `${Number(data.vaultBalance).toFixed(2)} ${data.asset || 'USDC'}` : prev.vaultBalance,
+        chain: data.network,
+        vaultAddress: data.vaultAddress || prev.vaultAddress,
+      }));
+    });
+
+    return () => { newSocket.close(); };
+  }, [streamReply, setWalletState, setMode]);
+
+  return {
+    socket,
+    messages,
+    setMessages,
+    streamReply
+  };
+}
