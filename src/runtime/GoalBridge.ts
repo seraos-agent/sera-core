@@ -141,11 +141,12 @@ export class GoalBridge {
 
     this.emitResult(requestId, true, {
       asset: 'USDC',
-      balance: balance.toString(),
-      network: 'Base Mainnet',
-      address: walletId.address,
-      vaultAddress,
+      personalBalance: balance.toString(),
       vaultBalance,
+      totalBalance: (balance + parseFloat(vaultBalance)).toString(),
+      network: 'Base Mainnet',
+      personalAddress: walletId.address,
+      vaultAddress,
     });
 
     this.eventBus.emit(EventTypes.WALLET_STATE, {
@@ -176,12 +177,29 @@ export class GoalBridge {
         this.emitResult(requestId, false, {}, 'Missing recipient, amount, or asset for transfer.');
         return;
       }
+
+      // ── Pre-flight Check: AI can only spend from the Vault ────────────────
+      const vaultAddress = process.env.SERA_VAULT_ADDRESS;
+      if (!vaultAddress) {
+        this.emitResult(requestId, false, {}, 'No Vault configured. AI cannot send funds.');
+        return;
+      }
+
+      if (typeof this.walletAdapter.getAddressBalance === 'function') {
+        const vaultBalance = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
+        if (parseFloat(amount) > vaultBalance) {
+          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${vaultBalance} ${asset.toUpperCase()}, Requested: ${amount} ${asset.toUpperCase()}`);
+          return;
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
       
       const receipt = await this.walletAdapter.executeTransfer(walletId, {
         idempotencyKey: `tx-${Date.now()}`,
         recipientAddress: recipient,
         amount: parseFloat(amount),
-        asset: asset
+        asset: asset,
+        initiator: 'AI',
       });
       
       this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
@@ -202,6 +220,7 @@ export class GoalBridge {
       recipientAddress: params.recipientAddress,
       amount: params.amount,
       asset: params.asset,
+      initiator: 'UI',
     });
 
     return receipt;

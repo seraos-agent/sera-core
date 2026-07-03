@@ -27,16 +27,17 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
   };
 
   return (
-    <div style={{ padding: "10px 0 20px", flexShrink: 0 }}>
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+    <div style={{ padding: "0 0 30px", flexShrink: 0 }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 24px" }}>
+        
         <div
           style={{
             display: "flex",
             flexDirection: "column",
             background: theme.surface,
             border: `1px solid ${theme.border}`,
-            borderRadius: 22,
-            padding: "12px 12px 8px",
+            borderRadius: 24,
+            padding: "12px 14px 10px",
           }}
         >
           <textarea
@@ -45,7 +46,7 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
             value={input}
             onChange={autoGrow}
             onKeyDown={handleKeyDown}
-            placeholder="Tulis pesan ke SERA..."
+            placeholder="Ask anything..."
             rows={1}
             disabled={disabled}
             style={{
@@ -56,65 +57,69 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
               background: "transparent",
               color: theme.ink,
               fontFamily: "Inter, sans-serif",
-              fontSize: 14.5,
+              fontSize: 15,
               lineHeight: 1.5,
-              padding: "2px 4px 10px",
+              padding: "2px 8px 10px",
               maxHeight: 160,
-              boxSizing: "border-box",
+              minHeight: 24,
+              boxSizing: "border-box"
             }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button
-              title="Lampirkan file"
-              disabled={disabled}
-              style={{
-                width: 30, height: 30, borderRadius: "50%", border: `1px solid ${theme.border}`,
-                background: "transparent", color: theme.inkSoft, display: "flex", alignItems: "center",
-                justifyContent: "center", cursor: disabled ? "default" : "pointer", flexShrink: 0, transition: "background 150ms, border-color 150ms",
-              }}
-            >
-              <Plus size={15} />
-            </button>
 
-            <div style={{ flex: 1 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+            <div style={{ display: "flex", gap: 8, paddingLeft: 6 }}>
+              <button
+                title="Attach file"
+                disabled={disabled}
+                style={{
+                  background: "transparent", border: "none", color: theme.inkSoft, 
+                  cursor: disabled ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center"
+                }}
+              >
+                <Plus size={20} />
+              </button>
+            </div>
+            
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <button
+                title="Voice input"
+                disabled={disabled}
+                style={{
+                  background: "transparent", border: "none", color: theme.inkSoft, 
+                  cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center"
+                }}
+              >
+                <Mic size={20} />
+              </button>
 
-            <button
-              title="Masukan suara"
-              disabled={disabled}
-              style={{
-                width: 30, height: 30, borderRadius: "50%", border: `1px solid ${theme.border}`,
-                background: "transparent", color: theme.inkSoft, display: "flex", alignItems: "center",
-                justifyContent: "center", cursor: disabled ? "default" : "pointer", flexShrink: 0, transition: "background 150ms, border-color 150ms",
-              }}
-            >
-              <Mic size={14} />
-            </button>
-
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || disabled}
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: "50%",
-                border: "none",
-                background: input.trim() && !disabled ? theme.accent : theme.surface2,
-                color: input.trim() && !disabled ? theme.accentInk : theme.inkFaint,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: input.trim() && !disabled ? "pointer" : "default",
-                flexShrink: 0,
-                transform: input.trim() && !disabled ? "scale(1)" : "scale(0.94)",
-                transition: "background 180ms ease, transform 180ms cubic-bezier(.4,0,.2,1), color 180ms ease",
-              }}
-            >
-              <ArrowUp size={16} />
-            </button>
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || disabled}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "none",
+                  background: input.trim() && !disabled ? theme.accent : theme.surface2,
+                  color: input.trim() && !disabled ? theme.accentInk : theme.inkSoft,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: input.trim() && !disabled ? "pointer" : "default",
+                  flexShrink: 0,
+                  transform: input.trim() && !disabled ? "scale(1)" : "scale(0.95)",
+                  transition: "all 180ms ease",
+                }}
+              >
+                <ArrowUp size={18} />
+              </button>
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: "center", fontSize: 11, color: theme.inkFaint, marginTop: 8 }}>
-          SERA is an Operational Partner. AI can make mistakes. Check important information.
+
+        <div style={{ textAlign: "center", fontSize: 11, color: theme.inkSoft, fontFamily: "Inter, sans-serif", marginTop: 14 }}>
+          SERA can make mistakes. Verify important information.
         </div>
       </div>
     </div>

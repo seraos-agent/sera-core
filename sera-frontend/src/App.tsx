@@ -25,7 +25,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentView, setCurrentView] = useState<"chat" | "wallet">("chat");
 
-  const { walletState, setWalletState, walletCopied, handleCopyWallet } = useWallet();
+  const { walletState, setWalletState } = useWallet();
   const { socket, messages, setMessages, streamReply } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
@@ -86,11 +86,8 @@ export default function App() {
           open={sidebarOpen} 
           onClose={() => setSidebarOpen(false)} 
           isMobileView={isMobileView} 
-          onCopyWallet={handleCopyWallet} 
-          walletCopied={walletCopied} 
           mode={mode} 
           setMode={setMode} 
-          walletState={walletState} 
           onNavigate={setCurrentView} 
         />
 

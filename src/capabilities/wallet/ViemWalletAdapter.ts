@@ -196,6 +196,18 @@ export class ViemWalletAdapter implements IWalletCapability {
 
       const isFundingVault = vaultAddress && request.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
 
+      // ── Agent (AI) Restrictions ──────────────────────────────────────────
+      if (request.initiator === 'AI') {
+        if (!vaultAddress) {
+          throw new Error("SERA_VAULT_ADDRESS is not configured. AI has no wallet access.");
+        }
+        if (isFundingVault) {
+          throw new Error("Security Policy: AI cannot spend from the Personal wallet to fund the Vault. Only the UI can perform this action.");
+        }
+        // Implicitly, if vaultAddress is set and it's not funding the vault, 
+        // the AI will use the Vault's executeTransfer (which is safe).
+      }
+      
       if (vaultAddress && !isFundingVault) {
         console.log(`[ViemWalletAdapter] Routing transfer through SeraVault: ${vaultAddress}`);
         const tokenAddress = asset === 'usdc' ? USDC_BASE_MAINNET : '0x0000000000000000000000000000000000000000';

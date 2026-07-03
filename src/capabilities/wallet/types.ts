@@ -15,6 +15,7 @@ export interface TransferRequest {
   recipientAddress: string;
   amount: number;
   asset: string;
+  initiator?: 'AI' | 'UI';
   urgency?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 

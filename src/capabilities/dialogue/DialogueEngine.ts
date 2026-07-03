@@ -16,7 +16,13 @@ Keep responses concise and helpful.
 CRITICAL — UI CONTROL PROTOCOL:
 If the user explicitly asks to switch to dark mode (mode gelap/dark), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_DARK>
 If the user explicitly asks to switch to light mode (mode terang/light), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_LIGHT>
-These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.`;
+These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.
+
+CRITICAL — SECURITY AND WALLET POLICY:
+- You have READ access to: Personal Wallet and Sera Vault.
+- You have WRITE access to: ONLY the Sera Vault.
+- You CANNOT and MUST NOT initiate any transfer FROM the Personal Wallet.
+- When told to "transfer" or "send", always use funds from the Sera Vault balance.`;
 
 // ── Intent Extraction Prompt ───────────────────────────────────────────────
 const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
@@ -24,12 +30,13 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
-- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), and "asset" (string, e.g. "eth" or "usdc").
+- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), "asset" (string, e.g. "eth" or "usdc"), and "fromWallet" (string, MUST ALWAYS BE "sera_vault" due to security policy).
 - NONE: anything else (conversation, questions, commands, UI changes)
 
 Response format:
 {"intent": "CHECK_WALLET_BALANCE", "parameters": {"asset": "eth"}}
 {"intent": "CHECK_NETWORK", "parameters": {}}
+{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
 {"intent": "NONE", "parameters": {}}
 
 User message: `;

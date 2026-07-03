@@ -1,22 +1,18 @@
-import { X, Copy, Check, Plus, Moon, Sun, Settings } from "lucide-react";
+import { X, Plus, Moon, Sun, Settings } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
-import type { WalletState } from "../../hooks/useWallet";
 
 interface SidebarProps {
   theme: ThemeType;
   open: boolean;
   onClose: () => void;
   isMobileView: boolean;
-  onCopyWallet: (addr: string) => void;
-  walletCopied: boolean;
   mode: "light" | "dark";
   setMode: (mode: "light" | "dark") => void;
-  walletState: WalletState;
   onNavigate: (view: "chat" | "wallet") => void;
 }
 
-export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, walletCopied, mode, setMode, walletState, onNavigate }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, isMobileView, mode, setMode, onNavigate }: SidebarProps) {
   const isOverlay = isMobileView;
 
   return (
@@ -44,6 +40,7 @@ export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, wall
         <div style={{ width: isOverlay ? 260 : 252, padding: "16px 14px", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" }}>
           <div style={{ display: "flex", alignItems: "center", justifyItems: "space-between", padding: "2px 4px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+              <img src="/sera-logo.png" alt="Sera" style={{ width: 22, height: 22, objectFit: "contain" }} />
               <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 14, color: theme.ink }}>SERA</span>
             </div>
             {isOverlay && (
@@ -53,19 +50,6 @@ export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, wall
             )}
           </div>
 
-          {/* Balance summary — always visible */}
-          <div style={{ display: "flex", flexDirection: "column", padding: "2px 4px", marginBottom: 22 }}>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Saldo</div>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 20, fontWeight: 600, color: theme.ink }}>{walletState.balance}</div>
-            <div
-              onClick={() => onCopyWallet(walletState.fullAddress)}
-              style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginTop: 4, width: "fit-content" }}
-              title="Salin alamat agen"
-            >
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint }}>{walletState.address}</span>
-              {walletCopied ? <Check size={10} color={theme.status} /> : <Copy size={10} color={theme.inkFaint} />}
-            </div>
-          </div>
 
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
             <div
@@ -76,7 +60,7 @@ export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, wall
             >
               <Plus size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
               <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500 }}>
-                Tambah Koneksi
+                Add Connection
               </span>
             </div>
 
@@ -105,7 +89,7 @@ export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, wall
                   <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.name}
                   </span>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Terhubung" />
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Connected" />
                 </div>
               );
             })}
@@ -118,7 +102,7 @@ export function Sidebar({ theme, open, onClose, isMobileView, onCopyWallet, wall
             </div>
             <button
               onClick={() => setMode(mode === "light" ? "dark" : "light")}
-              title={mode === "light" ? "Mode gelap" : "Mode terang"}
+              title={mode === "light" ? "Dark mode" : "Light mode"}
               style={{ display: "flex", alignItems: "center", padding: "4px", borderRadius: 6, border: "none", background: "transparent", color: theme.inkSoft, cursor: "pointer" }}
             >
               {mode === "light" ? <Moon size={15} /> : <Sun size={15} />}
