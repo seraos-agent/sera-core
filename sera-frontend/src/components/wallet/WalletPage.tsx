@@ -118,6 +118,12 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
                 <UsdcLogo size={20} />
                 <span style={{ fontSize: 13, fontWeight: 600, color: theme.ink }}>USDC</span>
               </div>
+              {walletState.syncing && (
+                <div title="Syncing with blockchain..." style={{ display: "flex", alignItems: "center", gap: 5, background: theme.accentSoft, padding: "4px 10px", borderRadius: 20, border: `1px solid ${theme.accent}` }}>
+                  <span style={{ display: "inline-block", width: 10, height: 10, border: `2px solid ${theme.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 700ms linear infinite", flexShrink: 0 }} />
+                  <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.accent, letterSpacing: 0.3 }}>Syncing</span>
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: theme.status }} />

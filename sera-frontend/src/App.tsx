@@ -63,7 +63,7 @@ export default function App() {
         body { margin: 0; padding: 0; }
         @keyframes chatui-blink { 50% { opacity: 0; } }
         @keyframes chatui-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
-        .chatui-shell, .chatui-shell * { transition: background-color 260ms ease, border-color 260ms ease, color 260ms ease; }
+        .chatui-shell, .chatui-shell * { transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease; }
         .chatui-textarea::placeholder { color: ${theme.inkFaint}; }
         .chatui-textarea { scrollbar-width: thin; }
       `}</style>

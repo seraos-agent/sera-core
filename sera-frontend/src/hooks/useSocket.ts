@@ -55,15 +55,22 @@ export function useSocket(
     });
 
     newSocket.on("wallet:update", (data: any) => {
-      setWalletState(prev => ({
-        ...prev,
-        address: data.address.slice(0, 6) + "..." + data.address.slice(-4),
-        fullAddress: data.address,
-        balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
-        vaultBalance: data.vaultBalance ? `${Number(data.vaultBalance).toFixed(2)} ${data.asset || 'USDC'}` : prev.vaultBalance,
-        chain: data.network,
-        vaultAddress: data.vaultAddress || prev.vaultAddress,
-      }));
+      if (data.syncing) {
+        // TX in flight — keep current numbers, just show the spinner
+        setWalletState(prev => ({ ...prev, syncing: true }));
+      } else {
+        // TX confirmed (or initial load) — update with real values
+        setWalletState(prev => ({
+          ...prev,
+          address: data.address.slice(0, 6) + "..." + data.address.slice(-4),
+          fullAddress: data.address,
+          balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
+          vaultBalance: data.vaultBalance ? `${Number(data.vaultBalance).toFixed(2)} ${data.asset || 'USDC'}` : prev.vaultBalance,
+          chain: data.network,
+          vaultAddress: data.vaultAddress || prev.vaultAddress,
+          syncing: false,
+        }));
+      }
     });
 
     return () => { newSocket.close(); };
