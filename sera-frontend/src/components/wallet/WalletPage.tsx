@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft as CloseIcon, X, Check, Copy, Activity } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check, Activity } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -25,7 +25,6 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
   const [step, setStep] = useState<"input" | "confirm" | "pending" | "success" | "failed">("input");
   const [txHash, setTxHash] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const agentAddr = walletState.fullAddress || "";
   const vaultAddr = walletState.vaultAddress || "";
@@ -93,14 +92,10 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
     setStep("input");
   };
 
-  const copyTx = () => {
-    navigator.clipboard.writeText(txHash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, overflowY: "auto", position: "relative" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative" }}>
       <style>{`
         @keyframes walletPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -115,17 +110,26 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
         <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Manage Money</span>
       </div>
 
-      <div style={{ maxWidth: 520, margin: "0 auto", width: "100%", padding: "48px 24px", animation: "walletPageIn 220ms ease forwards" }}>
-
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
-            Assets and transactions SERA is currently managing for you.
-          </p>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        {/* ── Main Container ── */}
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", animation: "walletPageIn 220ms ease forwards" }}>
+        
+        {/* Title Area */}
+        <div style={{ padding: "32px 32px 8px", flexShrink: 0 }}>
+          <div style={{ marginBottom: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
+            <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
+              Assets and transactions SERA is currently managing for you.
+            </p>
+          </div>
         </div>
 
-        {/* ── Services Tabs ── */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 4 }}>
+        {/* ── Sticky Services Tabs ── */}
+        <div style={{ 
+          display: 'flex', gap: 12, overflowX: "auto", flexWrap: "nowrap", 
+          position: 'sticky', top: -1, zIndex: 10,
+          background: theme.bg, padding: "16px 32px 16px"
+        }}>
           <button style={{
             padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
             fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
@@ -151,7 +155,8 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
           </button>
         </div>
 
-
+        {/* ── Scrollable Content ── */}
+        <div style={{ padding: "0 32px 32px", display: "flex", flexDirection: "column" }}>
         {/* ── Balance Card ── */}
         <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, marginBottom: 32, overflow: "hidden" }}>
           {/* Total Balance */}
@@ -339,15 +344,9 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
                 <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>{parsedAmount.toFixed(2)} USDC sent to {toLabel}</div>
                 {txHash && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: theme.surface2, borderRadius: 8, padding: "10px 14px", width: "100%", boxSizing: "border-box" }}>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: theme.inkFaint, flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{txHash}</span>
-                      <button onClick={copyTx} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 2, display: "flex", flexShrink: 0 }}>
-                        {copied ? <Check size={14} color={theme.status} /> : <Copy size={14} />}
-                      </button>
-                    </div>
                     <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
                       style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.accent, textDecoration: "none", fontWeight: 500 }}>
-                      View on Basescan ↗
+                      View on Basescan
                     </a>
                   </div>
                 )}
@@ -365,7 +364,9 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
               </div>
             )}
           </div>
+          </div>
         </div>
+      </div>
       </div>
     </div>
   );

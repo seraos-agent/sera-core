@@ -94,7 +94,7 @@ export function ChatView({
         {messages.length === 0 ? (
           <EmptyState theme={theme} />
         ) : (
-          <div style={{ maxWidth: 640, margin: "0 auto" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
             {messages.map((m) => (
               <MessageBubble key={m.id} theme={theme} msg={m} onCopy={handleCopy} copied={copied} onApprove={handleApprove} />
             ))}

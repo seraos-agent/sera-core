@@ -29,7 +29,7 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
   }, [socket]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, overflowY: "auto", position: "relative" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative" }}>
       {/* Clean Top Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
         <button 
@@ -43,17 +43,23 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
         <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Automations</span>
       </div>
 
-      <div style={{ flex: 1, padding: "32px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "32px 32px 8px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Active Intent Stream</h1>
             <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
               Ongoing automations and decisions SERA is currently managing for you.
             </p>
           </div>
+          </div>
         </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+        <div style={{ 
+          display: 'flex', gap: 12, 
+          position: 'sticky', top: -1, zIndex: 10, 
+          background: theme.bg, padding: "16px 32px 16px",
+        }}>
         <button 
           onClick={() => setActiveTab('ACTIVE')}
           style={{
@@ -78,7 +84,7 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
         </button>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "0 32px 32px" }}>
         {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE')).length === 0 ? (
           <div style={{ 
             padding: "48px 40px", textAlign: "center", border: `1px dashed ${theme.border}`, 

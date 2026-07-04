@@ -28,7 +28,7 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
 
   return (
     <div style={{ padding: "0 0 30px", flexShrink: 0 }}>
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 24px" }}>
+      <div style={{ maxWidth: 760, margin: "0 auto" }}>
         
         <div
           style={{
