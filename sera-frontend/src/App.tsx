@@ -26,6 +26,7 @@ export default function App() {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">("chat");
+  const [lastViewedCount, setLastViewedCount] = useState(0);
 
   const { walletState, setWalletState } = useWallet();
   const { socket, messages, setMessages, observations } = useSocket(setWalletState, setMode);
@@ -119,12 +120,15 @@ export default function App() {
           <ChatView
             theme={theme}
             messages={messages}
+            setMessages={setMessages}
             isMobileView={isMobileView}
             sidebarOpen={sidebarOpen}
             onOpenSidebar={() => setSidebarOpen(true)}
             onSend={handleSend}
             socket={socket}
             observations={observations}
+            lastViewedCount={lastViewedCount}
+            setLastViewedCount={setLastViewedCount}
           />
         )}
       </div>

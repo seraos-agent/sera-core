@@ -54,17 +54,19 @@ export class ObservationClassifier {
 
     if (payload.success) {
       score = 0.9;
+      const asset = payload.data?.asset?.toUpperCase() || 'assets';
+      const network = payload.data?.network || 'blockchain';
       observation = {
-        title: "Action Executed Successfully",
-        desc: `Goal execution completed: ${payload.requestId}`,
-        signal: "Execution result",
+        title: "Transfer Confirmed",
+        desc: `Successfully executed movement of ${asset} on ${network}.`,
+        signal: "On-chain execution",
         color: "#10b981" // Green
       };
     } else {
       score = 0.8;
       observation = {
-        title: "Action Failed",
-        desc: payload.errorMessage || "An error occurred during execution.",
+        title: "Execution Reverted",
+        desc: payload.errorMessage || "Network rejected the scheduled action.",
         signal: "Execution failure",
         color: "#ef4444" // Red
       };

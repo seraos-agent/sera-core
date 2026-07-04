@@ -39,8 +39,11 @@ export function useSocket(
     });
 
     newSocket.on("observations:history", (history: any[]) => {
-      // Map history to raw payloads since history comes as ObservationRecord[] { id, timestamp, payload }
-      const payloads = history.map((record: any) => record.payload);
+      // Map history to raw payloads and inject timestamp from the record
+      const payloads = history.map((record: any) => ({ 
+        ...record.payload, 
+        timestamp: record.timestamp 
+      }));
       setObservations(payloads);
     });
 

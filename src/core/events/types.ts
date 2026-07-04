@@ -84,4 +84,5 @@ export interface CognitiveObservationPayload {
   desc: string;
   signal: string;
   color: string; // e.g., "#ef4444", "#f59e0b", "#10b981"
+  timestamp?: number;
 }

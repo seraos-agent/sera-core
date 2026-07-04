@@ -206,7 +206,7 @@ io.on('connection', (socket: Socket) => {
 
   const onCognitiveObservation = (event: StandardEvent) => {
     observationStore.append(event);
-    socket.emit('observations:new', event.payload);
+    socket.emit('observations:new', { ...event.payload, timestamp: event.timestamp });
   };
   eventBus.on(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
 

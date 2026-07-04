@@ -10,28 +10,40 @@ import { CognitiveStreamPanel } from "./CognitiveStreamPanel";
 interface ChatViewProps {
   theme: ThemeType;
   messages: any[];
+  setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   isMobileView: boolean;
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onSend: (text: string) => void;
   socket: Socket | null;
   observations: any[];
+  lastViewedCount: number;
+  setLastViewedCount: (n: number) => void;
 }
 
 export function ChatView({
   theme,
   messages,
+  setMessages,
   isMobileView,
   sidebarOpen,
   onOpenSidebar,
   onSend,
   socket,
-  observations
+  observations,
+  lastViewedCount,
+  setLastViewedCount
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showObservations, setShowObservations] = useState(false);
+
+  useEffect(() => {
+    if (showObservations) {
+      setLastViewedCount(observations.length);
+    }
+  }, [observations.length, showObservations]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -48,8 +60,14 @@ export function ChatView({
   const handleApprove = useCallback((proposalId: string, action: 'APPROVE' | 'REJECT') => {
     if (socket) {
       socket.emit('chat:proposal_response', { proposalId, action });
+      setMessages(prev => prev.map(m => {
+        if (m.proposal && m.proposal.proposalId === proposalId) {
+          return { ...m, proposal: { ...m.proposal, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' } };
+        }
+        return m;
+      }));
     }
-  }, [socket]);
+  }, [socket, setMessages]);
 
   const handleClearChat = useCallback(() => {
     if (socket) {
@@ -147,8 +165,14 @@ export function ChatView({
           onSend={onSend} 
           disabled={!socket}
           showObservations={showObservations}
-          onToggleObservations={() => setShowObservations(!showObservations)}
-          unreadCount={observations.length}
+          onToggleObservations={() => {
+            const nextState = !showObservations;
+            setShowObservations(nextState);
+            if (nextState) {
+              setLastViewedCount(observations.length);
+            }
+          }}
+          unreadCount={Math.max(0, observations.length - lastViewedCount)}
         />
       </div>
     </div>

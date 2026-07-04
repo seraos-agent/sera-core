@@ -50,7 +50,12 @@ export function CognitiveStreamPanel({ theme, observations, onClose }: Cognitive
                     {notif.desc}
                   </div>
                   <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: theme.inkFaint }}>
-                    Just now &middot; {notif.signal}
+                    {notif.timestamp 
+                      ? new Intl.DateTimeFormat('id-ID', { 
+                          day: 'numeric', month: 'short', year: 'numeric', 
+                          hour: '2-digit', minute: '2-digit' 
+                        }).format(new Date(notif.timestamp))
+                      : "Just now"} &middot; {notif.signal}
                   </div>
                 </div>
               </div>
