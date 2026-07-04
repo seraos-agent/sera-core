@@ -6,6 +6,7 @@ import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 
 import { DialogueEngine, SERA_EVENTS } from '../capabilities/dialogue/DialogueEngine';
+import { chatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { GoalBridge } from '../runtime/GoalBridge';
 import { StandardEvent, EventTypes } from '../core/events/types';
 import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
@@ -39,7 +40,7 @@ const executionDispatcher = new ExecutionDispatcher(executionEventBus, goalBridg
 const runtime = new Runtime(workerManager);
 runtime.setEventBus(executionEventBus);
 runtime.setExecutionDispatcher(executionDispatcher);
-const temporalClockService = new TemporalClockService(executionEventBus);
+const temporalClockService = new TemporalClockService(executionEventBus, 10000);
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;
@@ -49,7 +50,7 @@ triggerEngine.start();
 temporalClockService.start();
 
 // Boot Capabilities
-new DialogueEngine(eventBus);
+const dialogueEngine = new DialogueEngine(eventBus);
 
 let msgIdCounter = Date.now();
 let lastWalletState: any = null;
@@ -73,6 +74,9 @@ io.on('connection', (socket: Socket) => {
     socket.emit('wallet:update', lastWalletState);
   }
 
+  // Send the persisted chat history
+  socket.emit('chat:history', chatHistoryStore.getUiMessages());
+
   // ── EARS: user message → USER_OBSERVATION event ───────────────────────────
   socket.on('chat:message', (message: string) => {
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION`);
@@ -86,20 +90,46 @@ io.on('connection', (socket: Socket) => {
     };
 
     eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
+
+    chatHistoryStore.appendUiMessage({
+      id: event.timestamp,
+      role: 'user',
+      content: message,
+    });
+  });
+
+  socket.on('chat:clear', () => {
+    console.log(`[Server] Clearing chat history`);
+    chatHistoryStore.clear();
+    dialogueEngine.clearHistory();
+    // Broadcast clear event to all clients
+    io.emit('chat:history', []);
   });
 
   // ── MOUTH: SERA events → socket messages ─────────────────────────────────
 
   const onAgentSpeak = (event: StandardEvent) => {
+    const msgId = ++msgIdCounter;
     socket.emit('chat:reply', {
-      id: ++msgIdCounter,
+      id: msgId,
+      content: event.payload.text,
+    });
+    chatHistoryStore.appendUiMessage({
+      id: msgId,
+      role: 'agent',
       content: event.payload.text,
     });
   };
 
   const onActivity = (event: StandardEvent) => {
+    const msgId = ++msgIdCounter;
     socket.emit('chat:activity', {
-      id: ++msgIdCounter,
+      id: msgId,
+      content: event.payload.content,
+    });
+    chatHistoryStore.appendUiMessage({
+      id: msgId,
+      type: 'activity',
       content: event.payload.content,
     });
   };
@@ -113,11 +143,18 @@ io.on('connection', (socket: Socket) => {
   };
 
   const onProposalGenerated = (event: StandardEvent) => {
-    socket.emit('chat:proposal', {
-      id: ++msgIdCounter,
+    const msgId = ++msgIdCounter;
+    const proposalData = {
+      id: msgId,
       proposalId: event.payload.proposalId,
       intent: event.payload.intent,
       parameters: event.payload.parameters
+    };
+    socket.emit('chat:proposal', proposalData);
+    chatHistoryStore.appendUiMessage({
+      id: msgId,
+      role: 'agent',
+      proposal: proposalData
     });
   };
 
@@ -127,16 +164,20 @@ io.on('connection', (socket: Socket) => {
   eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
 
   // ── EARS: Proposal Responses ──────────────────────────────────────────────
-  socket.on('chat:proposal_response', (payload: { proposalId: string; action: 'APPROVE' | 'REJECT' }) => {
-    console.log(`[Server] Received proposal response for ${payload.proposalId}: ${payload.action}`);
+  socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT' }) => {
+    const { proposalId, action } = data;
+    console.log(`[Server] Received proposal response for ${proposalId}: ${action}`);
     
-    if (payload.action === 'APPROVE') {
+    const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    chatHistoryStore.updateProposalStatus(proposalId, status);
+    
+    if (action === 'APPROVE') {
       eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
         id: `evt-${Date.now()}`,
         type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
         source: 'SocketServer',
         timestamp: Date.now(),
-        payload: { proposalId: payload.proposalId }
+        payload: { proposalId: proposalId }
       } as StandardEvent);
     } else {
       eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_REJECTED, {
@@ -144,7 +185,7 @@ io.on('connection', (socket: Socket) => {
         type: EventTypes.DIALOGUE_PROPOSAL_REJECTED,
         source: 'SocketServer',
         timestamp: Date.now(),
-        payload: { proposalId: payload.proposalId }
+        payload: { proposalId: proposalId }
       } as StandardEvent);
     }
   });
@@ -153,6 +194,11 @@ io.on('connection', (socket: Socket) => {
   socket.on('automations:fetch', () => {
     const allTriggers = triggerStore.getAll();
     socket.emit('automations:update', allTriggers);
+  });
+
+  socket.on('automations:delete', (id: string) => {
+    triggerStore.delete(id);
+    io.emit('automations:update', triggerStore.getAll());
   });
 
   // ── EARS: wallet transfer request from UI ────────────────────────────────

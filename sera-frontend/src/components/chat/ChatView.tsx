@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Menu, MoreVertical } from "lucide-react";
+import { Menu, MoreVertical, Trash } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { MessageBubble } from "./MessageBubble";
 import { EmptyState } from "./EmptyState";
@@ -46,6 +46,12 @@ export function ChatView({
     }
   }, [socket]);
 
+  const handleClearChat = useCallback(() => {
+    if (socket) {
+      socket.emit('chat:clear');
+    }
+  }, [socket]);
+
   const paddingVal = isMobileView ? "18px 14px" : "24px 26px";
   const paddingBottomVal = isMobileView ? "10px 14px 16px" : "10px 26px 20px";
 
@@ -67,7 +73,16 @@ export function ChatView({
             <Menu size={18} />
           </button>
         )}
-        <div style={{ marginLeft: "auto" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button 
+            onClick={handleClearChat}
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", transition: "color 0.2s" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = theme.status}
+            onMouseLeave={(e) => e.currentTarget.style.color = theme.inkSoft}
+            title="Clear Chat History"
+          >
+            <Trash size={18} />
+          </button>
           <button style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex" }}>
             <MoreVertical size={18} />
           </button>

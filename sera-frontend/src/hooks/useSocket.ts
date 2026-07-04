@@ -32,6 +32,10 @@ export function useSocket(
     const newSocket = io("ws://localhost:3001");
     setSocket(newSocket);
 
+    newSocket.on("chat:history", (history: any[]) => {
+      setMessages(history);
+    });
+
     newSocket.on("chat:reply", (data: any) => {
       streamReply(data.content, data.id || Date.now());
     });

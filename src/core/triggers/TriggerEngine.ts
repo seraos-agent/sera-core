@@ -67,8 +67,16 @@ export class TriggerEngine {
       const cond = trigger.condition as TemporalCondition;
       
       if (cond.type === 'EXACT') {
-        if (cond.executeAfterUtc && nowUtc >= cond.executeAfterUtc) {
-          return true;
+        if (cond.executeAfterUtc !== undefined) {
+          const targetTime = typeof cond.executeAfterUtc === 'number'
+            ? cond.executeAfterUtc
+            : !isNaN(Number(cond.executeAfterUtc))
+              ? Number(cond.executeAfterUtc)
+              : new Date(cond.executeAfterUtc).getTime();
+              
+          if (!isNaN(targetTime) && nowUtc >= targetTime) {
+            return true;
+          }
         }
       } else if (cond.type === 'RECURRING' && cond.internalCompiled) {
         // Evaluate cron expression

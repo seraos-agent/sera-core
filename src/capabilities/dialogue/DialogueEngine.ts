@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
+import { chatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 
 // Re-export for server bootstrap convenience
@@ -34,7 +35,7 @@ Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
 - TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), "asset" (string, e.g. "eth" or "usdc"), and "fromWallet" (string, MUST ALWAYS BE "sera_vault").
-- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent", "cronExpression" (if recurring, in UTC), "executeAfterUtc" (if exact timestamp in UTC), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
+- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
 - NONE: anything else (conversation, questions, commands, UI changes)
 
 Response format:
@@ -42,6 +43,7 @@ Response format:
 {"intent": "CHECK_NETWORK", "parameters": {}}
 {"intent": "TRANSFER_FUNDS", "parameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
 {"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_WALLET_BALANCE", "actionParameters": {}}}
+{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "exact", "humanIntent": "in 30 seconds", "delaySeconds": 30, "actionIntent": "TRANSFER_FUNDS", "actionParameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}}
 {"intent": "NONE", "parameters": {}}
 
 User Context:
@@ -64,7 +66,7 @@ User message: `;
 export class DialogueEngine {
   private llm: QwenAdapter;
   private eventBus: EventEmitter;
-  private conversationHistory: QwenMessage[] = [];
+  private conversationHistory: QwenMessage[];
   // Map from requestId → resolve function, for awaiting goal results
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
   
@@ -75,7 +77,12 @@ export class DialogueEngine {
     this.eventBus = eventBus;
     this.llm = new QwenAdapter();
 
-    this.conversationHistory.push({ role: 'system', content: SYSTEM_PROMPT });
+    this.conversationHistory = chatHistoryStore.getLlmMessages();
+    if (this.conversationHistory.length === 0) {
+      const sysMsg: QwenMessage = { role: 'system', content: SYSTEM_PROMPT };
+      this.conversationHistory.push(sysMsg);
+      chatHistoryStore.appendLlmMessage(sysMsg);
+    }
 
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
@@ -113,6 +120,10 @@ export class DialogueEngine {
        });
     }
     return Promise.resolve();
+  }
+
+  public clearHistory(): void {
+    this.conversationHistory = [];
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
@@ -197,7 +208,9 @@ export class DialogueEngine {
         console.log(`[DialogueEngine] Missing parameters for ${intent}: ${missingParams.join(', ')}. Triggering Clarification Mode.`);
         
         // Push user message to history so LLM has context
-        this.conversationHistory.push({ role: 'user', content: userMessage });
+        const userMsg: QwenMessage = { role: 'user', content: userMessage };
+        this.conversationHistory.push(userMsg);
+        chatHistoryStore.appendLlmMessage(userMsg);
         
         const clarificationPrompt = `The user wants to transfer funds, but their request is missing the following required information: ${missingParams.join(', ')}. 
 Please ask the user naturally (in the same language they used) to provide this missing information. Keep it brief. Do not mention JSON or parameters.`;
@@ -209,7 +222,9 @@ Please ask the user naturally (in the same language they used) to provide this m
         ]);
         
         const responseText = response.text.trim();
-        this.conversationHistory.push({ role: 'assistant', content: responseText });
+        const asstMsg: QwenMessage = { role: 'assistant', content: responseText };
+        this.conversationHistory.push(asstMsg);
+        chatHistoryStore.appendLlmMessage(asstMsg);
         
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: responseText });
         return; // Abort execution/proposal and wait for user's next message
@@ -248,7 +263,9 @@ Please ask the user naturally (in the same language they used) to provide this m
         }
       } else {
         // ── Step 4: Pure conversational response ─────────────────────────────
-        this.conversationHistory.push({ role: 'user', content: userMessage });
+        const userMsg2: QwenMessage = { role: 'user', content: userMessage };
+        this.conversationHistory.push(userMsg2);
+        chatHistoryStore.appendLlmMessage(userMsg2);
 
         const response = await this.llm.generate([
           { role: 'system', content: SYSTEM_PROMPT },
@@ -260,15 +277,17 @@ Please ask the user naturally (in the same language they used) to provide this m
 
         // Parse and strip embedded UI commands before sending text to UI
         if (rawText.includes('<UI_COMMAND:SET_THEME_DARK>')) {
-          rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
           this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+          rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
         }
         if (rawText.includes('<UI_COMMAND:SET_THEME_LIGHT>')) {
-          rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
           this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+          rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
         }
 
-        this.conversationHistory.push({ role: 'assistant', content: rawText });
+        const asstMsg2: QwenMessage = { role: 'assistant', content: rawText };
+        this.conversationHistory.push(asstMsg2);
+        chatHistoryStore.appendLlmMessage(asstMsg2);
 
         // Keep history bounded to last 20 turns
         if (this.conversationHistory.length > 20) {

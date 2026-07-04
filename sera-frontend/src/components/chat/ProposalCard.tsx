@@ -6,6 +6,7 @@ export interface ProposalPayload {
   proposalId: string;
   intent: string;
   parameters: Record<string, any>;
+  status?: 'APPROVED' | 'REJECTED';
 }
 
 export function ProposalCard({ 
@@ -17,11 +18,13 @@ export function ProposalCard({
   proposal: ProposalPayload;
   onRespond: (proposalId: string, action: 'APPROVE' | 'REJECT') => void;
 }) {
-  const [status, setStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [localStatus, setLocalStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  
+  const status = proposal.status || localStatus;
 
   const handleRespond = (action: 'APPROVE' | 'REJECT') => {
     if (status !== 'PENDING') return;
-    setStatus(action === 'APPROVE' ? 'APPROVED' : 'REJECTED');
+    setLocalStatus(action === 'APPROVE' ? 'APPROVED' : 'REJECTED');
     onRespond(proposal.proposalId, action);
   };
 

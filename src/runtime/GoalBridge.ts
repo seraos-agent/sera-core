@@ -144,19 +144,24 @@ export class GoalBridge {
       return;
     }
 
-    const { scheduleType, humanIntent, cronExpression, executeAfterUtc, actionIntent, actionParameters } = parameters;
+    const { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
     
+    let computedExecuteAfterUtc = executeAfterUtc;
+    if (scheduleType === 'exact' && delaySeconds !== undefined) {
+      computedExecuteAfterUtc = new Date(Date.now() + Number(delaySeconds) * 1000).toISOString();
+    }
+
     triggerEngineInstance.register({
       id: `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       type: 'TIME',
       state: 'ACTIVE',
-      firePolicy: scheduleType === 'exact' ? 'ONCE' : 'REPEAT',
+      firePolicy: scheduleType === 'cron' ? 'REPEAT' : 'ONCE',
       condition: {
-        type: scheduleType === 'exact' ? 'EXACT' : 'RECURRING',
+        type: scheduleType === 'cron' ? 'RECURRING' : 'EXACT',
         humanIntent: humanIntent || 'Unknown schedule',
-        timezoneContext: 'UTC+7 (WIB)', // Hardcoded for prototype, normally from Dialogue
-        internalCompiled: cronExpression,
-        executeAfterUtc: executeAfterUtc
+        timezoneContext: 'UTC+7 (WIB)',
+        internalCompiled: scheduleType === 'cron' ? cronExpression : undefined,
+        executeAfterUtc: scheduleType === 'exact' ? computedExecuteAfterUtc : undefined,
       },
       action: {
         type: actionIntent,
@@ -174,20 +179,20 @@ export class GoalBridge {
       return;
     }
 
-    // walletAdapter.getBalance needs a WalletId — fetch from SecretManager via adapter
-    const walletId = await this.walletAdapter.initialize(); // idempotent: returns existing walletId
-    const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
+    try {
+      const walletId = await this.walletAdapter.initialize();
+      const balance = await this.walletAdapter.getBalance(walletId, 'usdc'); // Fixed to check USDC
 
-    const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-    let vaultBalance = '0';
-    if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-      try {
-        const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-        vaultBalance = vb.toString();
-      } catch (e) {
-        console.error('Failed to get vault balance:', e);
+      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      let vaultBalance = '0';
+      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        try {
+          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+          vaultBalance = vb.toString();
+        } catch (e) {
+          console.error('Failed to get vault balance:', e);
+        }
       }
-    }
 
     this.emitResult(requestId, true, {
       asset: 'USDC',
@@ -213,6 +218,10 @@ export class GoalBridge {
       },
       timestamp: Date.now()
     });
+    } catch (e: any) {
+      console.error('[GoalBridge] Error checking balance:', e.message);
+      this.emitResult(requestId, false, {}, e.message);
+    }
   }
 
   public async handleTransferFunds(requestId: string, parameters: Record<string, any>): Promise<void> {
@@ -230,6 +239,14 @@ export class GoalBridge {
         return;
       }
 
+      let finalRecipient = recipient;
+      if (typeof recipient === 'string') {
+        const lowerRecip = recipient.toLowerCase();
+        if (lowerRecip.includes('dompet utama') || lowerRecip.includes('wallet utama') || lowerRecip.includes('dompet_utama') || lowerRecip.includes('wallet_utama') || lowerRecip.includes('main wallet') || lowerRecip.includes('my wallet')) {
+          finalRecipient = walletId.address;
+        }
+      }
+
       // ── Pre-flight Check: AI can only spend from the Vault ────────────────
       const vaultAddress = process.env.SERA_VAULT_ADDRESS;
       if (!vaultAddress) {
@@ -237,10 +254,17 @@ export class GoalBridge {
         return;
       }
 
+      let transferAmount = amount;
+
       if (typeof this.walletAdapter.getAddressBalance === 'function') {
         const vaultBalance = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
-        if (parseFloat(amount) > vaultBalance) {
-          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${vaultBalance} ${asset.toUpperCase()}, Requested: ${amount} ${asset.toUpperCase()}`);
+        
+        if (typeof amount === 'string' && amount.toLowerCase() === 'all') {
+          transferAmount = vaultBalance.toString();
+        }
+
+        if (parseFloat(transferAmount) > vaultBalance) {
+          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${vaultBalance} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
           return;
         }
       }
@@ -248,13 +272,18 @@ export class GoalBridge {
       
       const receipt = await this.walletAdapter.executeTransfer(walletId, {
         idempotencyKey: `tx-${Date.now()}`,
-        recipientAddress: recipient,
-        amount: parseFloat(amount),
-        asset: asset,
+        recipientAddress: finalRecipient,
+        amount: parseFloat(transferAmount),
+        asset,
         initiator: 'AI',
       });
       
       this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
+
+      // Real-time balance refresh after automated transfer
+      if (receipt.status === 'SUCCESS') {
+        await this.handleCheckBalance(requestId);
+      }
     } catch (err: any) {
       this.emitResult(requestId, false, {}, err.message);
     }
