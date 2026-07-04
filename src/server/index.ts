@@ -220,12 +220,7 @@ io.on('connection', (socket: Socket) => {
       });
 
       socket.emit('wallet:transfer:result', result);
-
-      // Refresh wallet balance after transfer
-      const updatedBalance = await goalBridgeInstance.refreshBalance();
-      if (updatedBalance) {
-        io.emit('wallet:update', updatedBalance);
-      }
+      // Note: wallet state is already emitted by GoalBridge.directTransfer after TX confirmation
     } catch (err: any) {
       console.error('[Server] wallet:transfer error:', err);
       socket.emit('wallet:transfer:result', { status: 'FAILED', error: err.message || 'Unknown error' });

@@ -186,13 +186,13 @@ export class GoalBridge {
       const balance = await this.walletAdapter.getBalance(walletId, 'usdc'); // Fixed to check USDC
 
       const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-      let vaultBalance = '0';
+      let vaultBalance = this.cachedVault || '0';
       if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
         try {
           const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
           vaultBalance = vb.toString();
         } catch (e) {
-          console.error('Failed to get vault balance:', e);
+          console.warn('[GoalBridge] Failed to get vault balance, keeping cached:', e);
         }
       }
 
@@ -461,32 +461,27 @@ export class GoalBridge {
     try {
       const balance = await this.walletAdapter.getBalance(this.currentWalletId as any, 'usdc');
       const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-      let vaultBalance = '0';
+      let vaultBalance = this.cachedVault || '0';
       if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
         try {
           const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
           vaultBalance = vb.toString();
         } catch (e) {
-          console.error('Failed to get vault balance:', e);
+          console.warn('[GoalBridge] Failed to get vault balance during refresh, keeping cached:', e);
         }
       }
       
-      const payload = {
+      this.emitWalletState(this.currentWalletId.address, vaultAddress, balance.toString(), vaultBalance, this.currentWalletId.network);
+      
+      return {
         address: this.currentWalletId.address,
         vaultAddress,
         vaultBalance,
         balance: balance.toString(),
         network: this.currentWalletId.network,
         asset: 'USDC',
+        syncing: false
       };
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-wallet-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload,
-        timestamp: Date.now(),
-      });
-      return payload;
     } catch {
       return null;
     }

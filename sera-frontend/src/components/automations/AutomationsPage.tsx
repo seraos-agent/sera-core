@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, Play, Pause, Activity, Zap, ArrowLeft, Trash2 } from "lucide-react";
+import { Clock, Activity, Zap, ArrowLeft, Trash2, Wallet, Terminal, Check } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 
@@ -160,16 +160,17 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
           <div style={{
             background: t.state === 'ACTIVE' ? theme.statusSoft : theme.surface2,
             color: t.state === 'ACTIVE' ? theme.status : theme.inkSoft,
-            padding: "4px 10px",
-            borderRadius: 20,
-            fontSize: 12,
-            fontWeight: 600,
+            padding: t.state === 'ACTIVE' ? "6px" : "6px 10px",
+            borderRadius: t.state === 'ACTIVE' ? "50%" : 20,
             display: "flex",
             alignItems: "center",
-            gap: 4
-          }}>
-            {t.state === 'ACTIVE' ? <Play size={12} /> : <Pause size={12} />}
-            {t.state}
+            gap: 6,
+            justifyContent: "center"
+          }} title={t.state === 'ACTIVE' ? 'Active' : 'Finished'}>
+            {isTransfer ? <Wallet size={16} /> : 
+             rawIntent.toLowerCase().includes('github') ? <Terminal size={16} /> : 
+             <Activity size={16} />}
+            {t.state !== 'ACTIVE' && <Check size={16} />}
           </div>
           <button 
             onClick={() => {

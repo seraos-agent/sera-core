@@ -62,7 +62,17 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
         setTxHash(result.transactionHash || "");
         setStep("success");
       } else {
-        setErrorMsg(result.error || result.reason || "Transfer failed.");
+        let cleanError = result.error || result.reason || "Transfer failed.";
+        if (typeof cleanError === "string") {
+          if (cleanError.includes("transfer amount exceeds balance") || cleanError.includes("insufficient funds")) {
+            cleanError = "Insufficient balance for this transfer.";
+          } else if (cleanError.includes("Details:")) {
+            const match = cleanError.match(/Details:\s*([^\n]+)/);
+            if (match) cleanError = match[1];
+          }
+          cleanError = cleanError.split('\n')[0].split('Request Arguments:')[0].trim();
+        }
+        setErrorMsg(cleanError);
         setStep("failed");
       }
     };
