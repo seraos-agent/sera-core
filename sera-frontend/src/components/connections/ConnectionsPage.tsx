@@ -174,11 +174,11 @@ export function ConnectionsPage({ theme, onBack }: WorkspacePageProps) {
       {/* Header */}
       <div style={{ 
         display: "flex", alignItems: "center", justifyContent: "space-between", 
-        padding: "16px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface 
+        padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface 
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={activeCategory === null ? onBack : () => setActiveCategory(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 4 }}>
-            <CloseIcon size={20} />
+            <CloseIcon size={18} />
           </button>
         </div>
       </div>

@@ -45,7 +45,7 @@ export type ThemeType = typeof THEME.light;
 
 export const CONNECTORS = [
   { id: "automations", name: "Active Intents", icon: Clock },
-  { id: "wallet", name: "Agentic Wallet", icon: Wallet },
+  { id: "wallet", name: "Manage Money", icon: Wallet },
   { id: "x", name: "X", icon: Globe },
 ];
 

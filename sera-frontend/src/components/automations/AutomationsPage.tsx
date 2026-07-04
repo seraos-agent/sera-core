@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, Activity, Zap, ArrowLeft, Trash2, Wallet, Terminal, Check } from "lucide-react";
+import { Activity, ChevronLeft, Trash2, Wallet, Terminal, Check, RefreshCw } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 
@@ -29,21 +29,22 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
   }, [socket]);
 
   return (
-    <div style={{ flex: 1, padding: "32px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button 
-            onClick={onBack}
-            style={{
-              background: "transparent", border: "none", cursor: "pointer", 
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: theme.inkSoft, padding: 8, borderRadius: 8, transition: "background 0.2s"
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = theme.surface2}
-            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-          >
-            <ArrowLeft size={20} />
-          </button>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, overflowY: "auto", position: "relative" }}>
+      {/* Clean Top Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
+        <button 
+          onClick={onBack} 
+          style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6, transition: "background 0.2s" }}
+          onMouseEnter={(e) => e.currentTarget.style.background = theme.surface2}
+          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Automations</span>
+      </div>
+
+      <div style={{ flex: 1, padding: "32px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Active Intent Stream</h1>
             <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
@@ -51,15 +52,6 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
             </p>
           </div>
         </div>
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: theme.surface2, color: theme.ink,
-          border: `1px solid ${theme.border}`, padding: "0 10px", height: 26, borderRadius: 13,
-          fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif"
-        }}>
-          {triggers.length}
-        </div>
-      </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
         <button 
@@ -112,10 +104,13 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: activeTab === 'COMPLETED' ? 0.7 : 1 }}>
-            {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE')).map(t => renderTriggerCard(t, theme, socket))}
+            {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE'))
+              .sort((a, b) => (b.lastFiredAt || b.createdAt || 0) - (a.lastFiredAt || a.createdAt || 0))
+              .map(t => renderTriggerCard(t, theme, socket))}
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }
@@ -128,6 +123,11 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
   if (isTransfer) title = "Scheduled Transfer";
 
   const scheduleStr = t.condition?.humanIntent || t.condition?.internalCompiled || "Event-based";
+  
+  const timeStr = t.lastFiredAt 
+    ? `Last run: ${new Date(t.lastFiredAt).toLocaleString([], {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}`
+    : `Created: ${new Date(t.createdAt || Date.now()).toLocaleString([], {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}`;
+
   const p = t.action?.payload || {};
 
   return (
@@ -144,15 +144,10 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 8, background: theme.accentSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {t.type === 'TIME' ? <Clock size={20} color={theme.accent} /> : <Zap size={20} color={theme.accent} />}
-          </div>
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 2 }}>{title}</div>
             <div style={{ fontSize: 13, color: theme.inkSoft, display: "flex", alignItems: "center", gap: 6 }}>
-              <span>{t.id}</span>
-              <span style={{ color: theme.border }}>•</span>
-              <span>{scheduleStr}</span>
+              <span>{timeStr}</span>
             </div>
           </div>
         </div>
@@ -160,17 +155,32 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
           <div style={{
             background: t.state === 'ACTIVE' ? theme.statusSoft : theme.surface2,
             color: t.state === 'ACTIVE' ? theme.status : theme.inkSoft,
-            padding: t.state === 'ACTIVE' ? "6px" : "6px 10px",
-            borderRadius: t.state === 'ACTIVE' ? "50%" : 20,
+            padding: "6px 10px",
+            borderRadius: 20,
             display: "flex",
             alignItems: "center",
             gap: 6,
             justifyContent: "center"
           }} title={t.state === 'ACTIVE' ? 'Active' : 'Finished'}>
-            {isTransfer ? <Wallet size={16} /> : 
-             rawIntent.toLowerCase().includes('github') ? <Terminal size={16} /> : 
-             <Activity size={16} />}
-            {t.state !== 'ACTIVE' && <Check size={16} />}
+            {t.firePolicy === 'REPEAT' ? (
+              <RefreshCw size={14} />
+            ) : (
+              <div style={{
+                padding: "0 3px",
+                height: 14,
+                borderRadius: 4,
+                border: "1.5px solid currentColor",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 9,
+                fontWeight: 700
+              }}>1x</div>
+            )}
+            {isTransfer ? <Wallet size={14} /> : 
+             rawIntent.toLowerCase().includes('github') ? <Terminal size={14} /> : 
+             <Activity size={14} />}
+            {t.state !== 'ACTIVE' && <Check size={14} />}
           </div>
           <button 
             onClick={() => {
@@ -206,6 +216,13 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Schedule</span>
+          <span style={{ fontSize: 14, color: theme.ink }}>
+            {scheduleStr}
+          </span>
+        </div>
+        
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
