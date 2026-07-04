@@ -26,6 +26,8 @@ export class GoalBridge {
   private walletInitialized = false;
   private walletInitializing: Promise<void> | null = null;
   private currentWalletId: { address: string; network: string } | null = null;
+  private cachedPersonal: string = '0';
+  private cachedVault: string = '0';
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -194,6 +196,9 @@ export class GoalBridge {
         }
       }
 
+      this.cachedPersonal = balance.toString();
+      this.cachedVault = vaultBalance.toString();
+
     this.emitResult(requestId, true, {
       asset: 'USDC',
       personalBalance: balance.toString(),
@@ -220,7 +225,22 @@ export class GoalBridge {
     });
     } catch (e: any) {
       console.error('[GoalBridge] Error checking balance:', e.message);
-      this.emitResult(requestId, false, {}, e.message);
+      
+      // Fallback to cache if RPC rate limits are hit
+      if (this.currentWalletId) {
+        console.log('[GoalBridge] Falling back to cached balance due to RPC error');
+        this.emitResult(requestId, true, {
+          asset: 'USDC',
+          personalBalance: this.cachedPersonal,
+          vaultBalance: this.cachedVault,
+          totalBalance: (parseFloat(this.cachedPersonal) + parseFloat(this.cachedVault)).toString(),
+          network: 'Base Mainnet',
+          personalAddress: this.currentWalletId.address,
+          vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
+        });
+      } else {
+        this.emitResult(requestId, false, {}, e.message);
+      }
     }
   }
 
@@ -255,16 +275,19 @@ export class GoalBridge {
       }
 
       let transferAmount = amount;
+      let preVault = 0;
+      let prePersonal = 0;
 
       if (typeof this.walletAdapter.getAddressBalance === 'function') {
-        const vaultBalance = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
-        
+        preVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
+        prePersonal = await this.walletAdapter.getBalance(walletId, asset);
+
         if (typeof amount === 'string' && amount.toLowerCase() === 'all') {
-          transferAmount = vaultBalance.toString();
+          transferAmount = preVault.toString();
         }
 
-        if (parseFloat(transferAmount) > vaultBalance) {
-          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${vaultBalance} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
+        if (parseFloat(transferAmount) > preVault) {
+          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${preVault} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
           return;
         }
       }
@@ -280,13 +303,54 @@ export class GoalBridge {
       
       this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
 
-      // Real-time balance refresh after automated transfer
       if (receipt.status === 'SUCCESS') {
-        await this.handleCheckBalance(requestId);
+        const sent = parseFloat(transferAmount);
+        const isToPersonal = finalRecipient.toLowerCase() === walletId.address.toLowerCase();
+
+        // STEP 1: Optimistic — math-derived, instant, no RPC guessing
+        const optVault = Math.max(0, preVault - sent);
+        const optPersonal = isToPersonal ? prePersonal + sent : prePersonal;
+        this.emitWalletState(walletId.address, vaultAddress, optPersonal.toString(), optVault.toString(), walletId.network);
+        console.log(`[GoalBridge] ⚡ Optimistic balance — Vault: ${optVault}, Personal: ${optPersonal}`);
+
+        // STEP 2: Poll RPC until on-chain state is confirmed, then emit final truth
+        this.pollUntilConfirmed(walletId, vaultAddress, optVault, optPersonal, asset, 4);
       }
     } catch (err: any) {
       this.emitResult(requestId, false, {}, err.message);
     }
+  }
+
+  private emitWalletState(address: string, vaultAddress: string, balance: string, vaultBalance: string, network: string): void {
+    this.cachedPersonal = balance;
+    this.cachedVault = vaultBalance;
+
+    this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+      id: `evt-wallet-${Date.now()}`,
+      type: EventTypes.DOMAIN_WALLET_STATE,
+      source: 'GoalBridge',
+      payload: { address, vaultAddress, balance, vaultBalance, network, asset: 'USDC' },
+      timestamp: Date.now()
+    });
+  }
+
+  private async pollUntilConfirmed(walletId: any, vaultAddress: string, expectedVault: number, expectedPersonal: number, asset: string, maxRetries: number): Promise<void> {
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise(r => setTimeout(r, 6000));
+      try {
+        const actualVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
+        const actualPersonal = await this.walletAdapter.getBalance(walletId, asset);
+        console.log(`[GoalBridge] 🔍 Poll ${i+1}/${maxRetries} — Vault: ${actualVault} (exp ${expectedVault}), Personal: ${actualPersonal} (exp ${expectedPersonal})`);
+        this.emitWalletState(walletId.address, vaultAddress, actualPersonal.toString(), actualVault.toString(), walletId.network);
+        if (Math.abs(actualVault - expectedVault) < 0.001 && Math.abs(actualPersonal - expectedPersonal) < 0.001) {
+          console.log(`[GoalBridge] ✅ On-chain confirmed after ${i+1} poll(s).`);
+          return;
+        }
+      } catch (e) {
+        console.warn(`[GoalBridge] Poll ${i+1} failed:`, e);
+      }
+    }
+    console.log(`[GoalBridge] ⚠️ Max polls reached.`);
   }
 
   /** Direct transfer — called by the UI via socket (bypasses DialogueEngine) */
@@ -296,13 +360,42 @@ export class GoalBridge {
       return { status: 'FAILED', error: 'Wallet not initialized' };
     }
 
-    const receipt = await this.walletAdapter.executeTransfer(this.currentWalletId as any, {
+    const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+    const walletId = this.currentWalletId as any;
+
+    // Snapshot balances BEFORE transfer
+    let prePersonal = 0;
+    let preVault = 0;
+    try {
+      prePersonal = await this.walletAdapter.getBalance(walletId, params.asset);
+      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        preVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, params.asset);
+      }
+    } catch (e) {
+      console.warn('[GoalBridge] Pre-transfer snapshot failed:', e);
+    }
+
+    const receipt = await this.walletAdapter.executeTransfer(walletId, {
       idempotencyKey: `ui-tx-${Date.now()}`,
       recipientAddress: params.recipientAddress,
       amount: params.amount,
       asset: params.asset,
       initiator: 'UI',
     });
+
+    if (receipt.status === 'SUCCESS') {
+      const sent = params.amount;
+      const isToVault = vaultAddress && params.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
+
+      // OPTIMISTIC: compute derived balance from snapshot
+      const optPersonal = Math.max(0, prePersonal - sent);
+      const optVault = isToVault ? preVault + sent : Math.max(0, preVault - sent);
+      this.emitWalletState(walletId.address, vaultAddress, optPersonal.toString(), optVault.toString(), walletId.network);
+      console.log(`[GoalBridge] ⚡ Optimistic (UI) — Personal: ${optPersonal}, Vault: ${optVault}`);
+
+      // POLL: confirm on-chain
+      this.pollUntilConfirmed(walletId, vaultAddress, optVault, optPersonal, params.asset, 4);
+    }
 
     return receipt;
   }
