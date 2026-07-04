@@ -28,7 +28,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">("chat");
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages } = useSocket(setWalletState, setMode);
+  const { socket, messages, setMessages, observations } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
 
@@ -54,13 +54,13 @@ export default function App() {
     }
   };
 
-  const shellWidth = isMobileView ? 390 : "100%";
-  const shellHeight = isMobileView ? 720 : "100vh";
+  const shellWidth = "100%";
+  const shellHeight = isMobileView ? "100dvh" : "100vh";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: "#000", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
       <style>{`
-        body { margin: 0; padding: 0; }
+        body { margin: 0; padding: 0; overflow: hidden; }
         @keyframes chatui-blink { 50% { opacity: 0; } }
         @keyframes chatui-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
         .chatui-shell, .chatui-shell * { transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease; }
@@ -99,17 +99,20 @@ export default function App() {
             theme={theme}
             walletState={walletState}
             socket={socket}
+            isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : currentView === "connections" ? (
           <ConnectionsPage 
             theme={theme}
+            isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : currentView === "automations" ? (
           <AutomationsPage
             theme={theme}
             socket={socket}
+            isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : (
@@ -121,6 +124,7 @@ export default function App() {
             onOpenSidebar={() => setSidebarOpen(true)}
             onSend={handleSend}
             socket={socket}
+            observations={observations}
           />
         )}
       </div>

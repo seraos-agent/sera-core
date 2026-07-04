@@ -21,6 +21,10 @@ export interface Trigger {
   action: TriggerAction;
   createdAt: number;
   lastFiredAt?: number;
+  lastExecutionResult?: {
+    success: boolean;
+    errorMessage?: string;
+  };
 }
 
 export interface TriggerStore {
@@ -28,4 +32,5 @@ export interface TriggerStore {
   get(id: string): Trigger | undefined;
   delete(id: string): void;
   getActiveTriggers(): Trigger[];
+  getAll(): Trigger[];
 }

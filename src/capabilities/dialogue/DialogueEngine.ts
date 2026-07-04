@@ -34,16 +34,17 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
-- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (string address), "amount" (number), "asset" (string, e.g. "eth" or "usdc"), and "fromWallet" (string, MUST ALWAYS BE "sera_vault").
+- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (object), "amount" (number or "all"), "asset" (string, MUST DEFAULT TO "usdc" unless explicitly specified as another asset), and "fromWallet" (string, MUST ALWAYS BE "sera_vault"). The "recipient" MUST be an object: {"type": "USER_MAIN_WALLET" | "SERA_VAULT" | "EXTERNAL_ADDRESS", "address": "0x..." (only if EXTERNAL_ADDRESS)}. Use "USER_MAIN_WALLET" if they refer to their own main/primary wallet (dompet utama, my wallet, saldo utama). Use "SERA_VAULT" if they refer to the vault/sera/brankas.
 - SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
 - NONE: anything else (conversation, questions, commands, UI changes)
 
 Response format:
 {"intent": "CHECK_WALLET_BALANCE", "parameters": {"asset": "eth"}}
 {"intent": "CHECK_NETWORK", "parameters": {}}
-{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
+{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": {"type": "EXTERNAL_ADDRESS", "address": "0x..."}, "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
+{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": {"type": "USER_MAIN_WALLET"}, "amount": "all", "asset": "usdc", "fromWallet": "sera_vault"}}
 {"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_WALLET_BALANCE", "actionParameters": {}}}
-{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "exact", "humanIntent": "in 30 seconds", "delaySeconds": 30, "actionIntent": "TRANSFER_FUNDS", "actionParameters": {"recipient": "0x...", "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}}
+{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "exact", "humanIntent": "in 30 seconds", "delaySeconds": 30, "actionIntent": "TRANSFER_FUNDS", "actionParameters": {"recipient": {"type": "SERA_VAULT"}, "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}}
 {"intent": "NONE", "parameters": {}}
 
 User Context:
@@ -197,11 +198,16 @@ export class DialogueEngine {
       // ── Step 2: Clarification Validation ───────────────────────────────────────
       let missingParams: string[] = [];
       if (intent === 'TRANSFER_FUNDS') {
-        if (!parameters.recipient) missingParams.push('recipient address');
-        if (!parameters.amount) missingParams.push('amount to send');
+        if (!parameters.recipient || !parameters.recipient.type) missingParams.push('recipient address');
+        if (parameters.recipient?.type === 'EXTERNAL_ADDRESS' && !parameters.recipient.address) missingParams.push('recipient address');
+        if (!parameters.amount && parameters.amount !== 0) missingParams.push('amount to send');
+        if (!parameters.asset) parameters.asset = 'usdc';
       } else if (intent === 'SCHEDULE_GOAL' && parameters.actionIntent === 'TRANSFER_FUNDS') {
-        if (!parameters.actionParameters?.recipient) missingParams.push('recipient address');
-        if (!parameters.actionParameters?.amount) missingParams.push('amount to send');
+        if (!parameters.actionParameters) parameters.actionParameters = {};
+        if (!parameters.actionParameters.recipient || !parameters.actionParameters.recipient.type) missingParams.push('recipient address');
+        if (parameters.actionParameters.recipient?.type === 'EXTERNAL_ADDRESS' && !parameters.actionParameters.recipient.address) missingParams.push('recipient address');
+        if (!parameters.actionParameters.amount && parameters.actionParameters.amount !== 0) missingParams.push('amount to send');
+        if (!parameters.actionParameters.asset) parameters.actionParameters.asset = 'usdc';
       }
 
       if (missingParams.length > 0) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft as CloseIcon, X, Check, Activity } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -17,9 +17,12 @@ interface WalletPageProps {
   walletState: WalletState;
   onBack: () => void;
   socket: Socket | null;
+  isMobileView?: boolean;
 }
 
-export function WalletPage({ theme, walletState, onBack, socket }: WalletPageProps) {
+export function WalletPage({ theme, walletState, onBack, socket, isMobileView }: WalletPageProps) {
+  const sidePad = isMobileView ? 16 : 32;
+  const titleSize = isMobileView ? 20 : 24;
   const [amount, setAmount] = useState("");
   const [direction, setDirection] = useState<"toSera" | "toPersonal">("toSera");
   const [step, setStep] = useState<"input" | "confirm" | "pending" | "success" | "failed">("input");
@@ -95,7 +98,7 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
 
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative", minWidth: 0, minHeight: 0 }}>
       <style>{`
         @keyframes walletPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -103,7 +106,7 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
       `}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6 }}>
           <CloseIcon size={18} />
         </button>
@@ -113,260 +116,239 @@ export function WalletPage({ theme, walletState, onBack, socket }: WalletPagePro
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
         {/* ── Main Container ── */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", animation: "walletPageIn 220ms ease forwards" }}>
-        
-        {/* Title Area */}
-        <div style={{ padding: "32px 32px 8px", flexShrink: 0 }}>
-          <div style={{ marginBottom: 0 }}>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
-              Assets and transactions SERA is currently managing for you.
-            </p>
-          </div>
-        </div>
 
-        {/* ── Sticky Services Tabs ── */}
-        <div style={{ 
-          display: 'flex', gap: 12, overflowX: "auto", flexWrap: "nowrap", 
-          position: 'sticky', top: -1, zIndex: 10,
-          background: theme.bg, padding: "16px 32px 16px"
-        }}>
-          <button style={{
-            padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
-            fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
-            background: theme.ink, color: theme.surface, transition: 'all 0.2s'
+          {/* Title Area */}
+          <div style={{ padding: `${isMobileView ? 24 : 32}px ${sidePad}px 8px`, flexShrink: 0 }}>
+            <div style={{ marginBottom: 0 }}>
+              <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
+              <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
+                Assets and transactions SERA is currently managing for you.
+              </p>
+            </div>
+          </div>
+
+          {/* ── Sticky Services Tabs ── */}
+          <div style={{
+            display: 'flex', gap: 12, overflowX: "auto", flexWrap: "nowrap",
+            position: 'sticky', top: -1, zIndex: 10,
+            background: theme.bg, padding: `16px ${sidePad}px 16px`
           }}>
-            Base Network
-          </button>
-          <button style={{
-            padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-            fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-            background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-          }} title="Coming Soon">
-            Stripe
-            <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-          </button>
-          <button style={{
-            padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-            fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-            background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-          }} title="Coming Soon">
-            Bank Account
-            <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-          </button>
-        </div>
-
-        {/* ── Scrollable Content ── */}
-        <div style={{ padding: "0 32px 32px", display: "flex", flexDirection: "column" }}>
-        {/* ── Balance Card ── */}
-        <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, marginBottom: 32, overflow: "hidden" }}>
-          {/* Total Balance */}
-          <div style={{ padding: "24px 28px 20px" }}>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Total Balance</div>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 38, fontWeight: 500, color: theme.ink, letterSpacing: -0.5, lineHeight: 1, display: "flex", alignItems: "center", gap: 10 }}>
-              {(parsedAgentBalance + parsedVaultBalance).toFixed(2)}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, background: theme.surface2, padding: "4px 8px 4px 6px", borderRadius: 20, border: `1px solid ${theme.border}` }}>
-                <UsdcLogo size={20} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: theme.ink }}>USDC</span>
-              </div>
-              {walletState.syncing && (
-                <div title="Syncing with blockchain..." style={{ display: "flex", alignItems: "center", gap: 5, background: theme.accentSoft, padding: "4px 10px", borderRadius: 20, border: `1px solid ${theme.accent}` }}>
-                  <span style={{ display: "inline-block", width: 10, height: 10, border: `2px solid ${theme.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 700ms linear infinite", flexShrink: 0 }} />
-                  <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.accent, letterSpacing: 0.3 }}>Syncing</span>
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: theme.status }} />
-              <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: theme.inkFaint }}>Base Mainnet</span>
-            </div>
-          </div>
-
-          {/* Breakdown */}
-          <div style={{ display: "flex", borderTop: `1px solid ${theme.border}` }}>
-            <div style={{
-              flex: 1, padding: "16px 28px",
-              borderRight: `1px solid ${theme.border}`,
-              background: direction === "toSera" ? theme.accentSoft : "transparent",
-              transition: "background 200ms",
+            <button style={{
+              padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
+              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
+              background: theme.border, color: theme.ink, transition: 'all 0.2s'
             }}>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Personal</div>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: direction === "toSera" ? theme.accent : theme.ink }}>
-                {parsedAgentBalance.toFixed(2)}
-              </div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortAgent}</div>
-            </div>
+              Base Network
+            </button>
+            <button style={{
+              padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
+              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+              background: theme.surface2, color: theme.inkSoft, opacity: 0.7
+            }} title="Coming Soon">
+              Stripe
+              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
+            </button>
+            <button style={{
+              padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
+              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+              background: theme.surface2, color: theme.inkSoft, opacity: 0.7
+            }} title="Coming Soon">
+              Bank Account
+              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
+            </button>
+          </div>
+
+          {/* ── Scrollable Content ── */}
+          <div style={{ padding: `0 ${sidePad}px ${sidePad}px`, display: "flex", flexDirection: "column" }}>
+            {/* ── Flat Theme-Aware Card ── */}
             <div style={{
-              flex: 1, padding: "16px 28px",
-              background: direction === "toPersonal" ? theme.accentSoft : "transparent",
-              transition: "background 200ms",
+              background: theme.surface,
+              borderRadius: 24, padding: "28px 24px 24px", position: "relative", overflow: "hidden", marginBottom: 32,
+              border: `1px solid ${theme.border}`
             }}>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Sera</div>
-              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: direction === "toPersonal" ? theme.accent : theme.ink }}>
-                {parsedVaultBalance.toFixed(2)}
-              </div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortVault || "—"}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Transfer Panel ── */}
-        <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, overflow: "hidden" }}>
-
-          {/* Section label */}
-          <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1.2 }}>Internal Transfer</span>
-            {step !== "input" && step !== "confirm" && (
-              <button onClick={handleReset} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.accent, fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, padding: 0 }}>New Transfer</button>
-            )}
-          </div>
-
-          <div style={{ padding: "16px 24px 24px" }}>
-
-            {/* ─ STEP: input ─ */}
-            {(step === "input" || step === "confirm") && (
-              <>
-                {/* Direction selector */}
-                <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", border: `1px solid ${theme.border}`, marginBottom: 20 }}>
-                  {(["toSera", "toPersonal"] as const).map(dir => (
-                    <button key={dir} onClick={() => { setDirection(dir); setStep("input"); }}
-                      style={{
-                        flex: 1, padding: "10px 0", border: "none", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, transition: "background 180ms, color 180ms",
-                        background: direction === dir ? theme.accent : "transparent",
-                        color: direction === dir ? theme.accentInk : theme.inkSoft,
-                      }}>
-                      {dir === "toSera" ? "Personal → Sera" : "Sera → Personal"}
-                    </button>
-                  ))}
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500, color: theme.inkFaint, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Total Balance</span>
+                  <span style={{ background: theme.surface2, color: theme.inkSoft, padding: "4px 10px", borderRadius: 12, fontSize: 10, letterSpacing: 0.5, fontWeight: 700 }}>BASE MAINNET</span>
+                </div>
+                
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
+                  ${(parsedAgentBalance + parsedVaultBalance).toFixed(2)}
+                  <span style={{ fontSize: 16, fontWeight: 600, color: theme.inkSoft }}>USDC</span>
                 </div>
 
-                {/* Route visualization */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, padding: "14px 16px", background: theme.surface2, borderRadius: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>From</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, color: theme.ink }}>{fromLabel}</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 2 }}>{direction === "toSera" ? shortAgent : shortVault}</div>
+                {walletState.syncing && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+                    <span style={{ display: "inline-block", width: 10, height: 10, border: `2px solid ${theme.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 700ms linear infinite", flexShrink: 0 }} />
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: theme.accent }}>Syncing balance...</span>
                   </div>
-                  <Activity size={16} color={theme.inkFaint} style={{ flexShrink: 0 }} />
-                  <div style={{ flex: 1, textAlign: "right" }}>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>To</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, color: theme.accent }}>{toLabel}</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 2 }}>{direction === "toSera" ? shortVault : shortAgent}</div>
-                  </div>
-                </div>
-
-                {/* Amount input */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 10, background: theme.surface2, border: `1.5px solid ${parsedAmount > activeBalance ? "#ef4444" : (parsedAmount > 0 ? theme.accent : theme.border)}`, height: 56, transition: "border-color 200ms" }}>
-                    <input
-                      type="number" placeholder="0.00" value={amount}
-                      onChange={e => { setAmount(e.target.value); setStep("input"); }}
-                      style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: 22, fontWeight: 500, color: theme.ink, width: 0 }}
-                    />
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <button onClick={() => setAmount(activeBalance.toString())}
-                        style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 700, color: theme.accent, background: theme.accentSoft, border: "none", cursor: "pointer", padding: "3px 8px", borderRadius: 6, letterSpacing: 0.5 }}>
-                        MAX
-                      </button>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, background: theme.surface, padding: "4px 8px 4px 6px", borderRadius: 20, border: `1px solid ${theme.border}` }}>
-                        <UsdcLogo size={18} />
-                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, color: theme.ink }}>USDC</span>
-                      </div>
-                    </div>
-                  </div>
-                  {parsedAmount > activeBalance && (
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "#ef4444", marginTop: 6, paddingLeft: 4 }}>
-                      Insufficient balance — max {activeBalance.toFixed(2)} USDC
-                    </div>
-                  )}
-                </div>
-
-                {/* CTA */}
-                {step === "input" && (
-                  <button onClick={handleConfirm} disabled={!isValid}
-                    style={{
-                      width: "100%", height: 48, borderRadius: 10, border: "none", fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600,
-                      background: isValid ? theme.accent : theme.surface2,
-                      color: isValid ? theme.accentInk : theme.inkFaint,
-                      cursor: isValid ? "pointer" : "default", transition: "background 200ms, color 200ms",
-                    }}>
-                    Review Transfer
-                  </button>
                 )}
 
-                {/* Confirmation step */}
-                {step === "confirm" && (
-                  <div style={{ marginTop: 4 }}>
-                    <div style={{ background: theme.surface2, borderRadius: 10, padding: "16px", marginBottom: 16 }}>
-                      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Confirm Transfer</div>
-                      {[
-                        ["Amount", `${parsedAmount.toFixed(2)} USDC`],
-                        ["From", fromLabel],
-                        ["To", toLabel],
-                        ["Network", "Base Mainnet"],
-                      ].map(([label, value]) => (
-                        <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft }}>{label}</span>
-                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: theme.ink }}>{value}</span>
-                        </div>
+                {/* Nested Bento for accounts */}
+                <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
+                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: "14px 16px", border: `1px solid ${theme.border}` }}>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortAgent}</div>
+                  </div>
+                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: "14px 16px", border: `1px solid ${theme.border}` }}>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Sera</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: theme.ink }}>{parsedVaultBalance.toFixed(2)}</div>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortVault || "—"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Transfer Panel ── */}
+            <div>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: theme.ink, marginBottom: 12 }}>Internal Transfer</div>
+
+              <div style={{ background: theme.surface, borderRadius: 20, border: `1px solid ${theme.border}`, padding: "20px" }}>
+
+                {/* ─ STEP: input ─ */}
+                {(step === "input" || step === "confirm") && (
+                  <>
+                    {/* Direction selector */}
+                    <div style={{ display: "flex", borderRadius: 12, background: theme.surface2, padding: 4, gap: 4, marginBottom: 24 }}>
+                      {(["toSera", "toPersonal"] as const).map(dir => (
+                        <button key={dir} onClick={() => { setDirection(dir); setStep("input"); }}
+                          style={{
+                            flex: 1, padding: "8px 0", border: "none", borderRadius: 8, cursor: "pointer",
+                            fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, transition: "all 200ms ease",
+                            background: direction === dir ? theme.bg : "transparent",
+                            color: direction === dir ? theme.ink : theme.inkSoft,
+                            boxShadow: direction === dir ? "0 2px 8px rgba(0,0,0,0.04)" : "none"
+                          }}>
+                          {dir === "toSera" ? "Deposit to Sera" : "Withdraw to Personal"}
+                        </button>
                       ))}
                     </div>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <button onClick={() => setStep("input")}
-                        style={{ flex: 1, height: 46, borderRadius: 10, border: `1px solid ${theme.border}`, background: "transparent", color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
-                        Back
-                      </button>
-                      <button onClick={handleSend}
-                        style={{ flex: 2, height: 46, borderRadius: 10, border: "none", background: theme.accent, color: theme.accentInk, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                        Confirm & Send
-                      </button>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft }}>Amount</span>
+                      <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>Available: {activeBalance.toFixed(2)} USDC</span>
                     </div>
+
+                    {/* Amount input */}
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ display: "flex", alignItems: "center", paddingBottom: 8, borderBottom: `2px solid ${parsedAmount > activeBalance ? "#ef4444" : theme.inkSoft}`, transition: "border-color 200ms" }}>
+                        <input
+                          type="number" placeholder="0.00" value={amount}
+                          onChange={e => { setAmount(e.target.value); setStep("input"); }}
+                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: 36, fontWeight: 600, color: theme.ink, width: 0 }}
+                        />
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <button onClick={() => setAmount(activeBalance.toString())}
+                            style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 700, color: theme.inkSoft, background: theme.surface2, border: "none", cursor: "pointer", padding: "6px 12px", borderRadius: 20 }}>
+                            MAX
+                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, background: theme.surface2, padding: "4px 10px 4px 6px", borderRadius: 20 }}>
+                            <UsdcLogo size={20} />
+                            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink }}>USDC</span>
+                          </div>
+                        </div>
+                      </div>
+                      {parsedAmount > activeBalance && (
+                        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "#ef4444", marginTop: 8 }}>
+                          Insufficient balance
+                        </div>
+                      )}
+                    </div>
+
+                    {/* CTA */}
+                    {step === "input" && (
+                      <button onClick={handleConfirm} disabled={!isValid}
+                        style={{
+                          width: "100%", height: 52, borderRadius: 16, border: "none", fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600,
+                          background: isValid ? theme.accent : theme.surface2,
+                          color: isValid ? theme.accentInk : theme.inkFaint,
+                          cursor: isValid ? "pointer" : "default", transition: "all 200ms ease",
+                        }}>
+                        Review Transfer
+                      </button>
+                    )}
+
+                    {/* Confirmation step */}
+                    {step === "confirm" && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ background: theme.surface2, borderRadius: 10, padding: "16px", marginBottom: 16 }}>
+                          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color: theme.inkFaint, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Confirm Transfer</div>
+                          {[
+                            ["Amount", `${parsedAmount.toFixed(2)} USDC`],
+                            ["From", fromLabel],
+                            ["To", toLabel],
+                            ["Network", "Base Mainnet"],
+                          ].map(([label, value]) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                              <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft }}>{label}</span>
+                              <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: theme.ink }}>{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <button onClick={() => setStep("input")}
+                            style={{ flex: 1, height: 46, borderRadius: 10, border: `1px solid ${theme.border}`, background: "transparent", color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+                            Back
+                          </button>
+                          <button onClick={handleSend}
+                            style={{ flex: 2, height: 46, borderRadius: 10, border: "none", background: theme.accent, color: theme.accentInk, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                            Confirm & Send
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* ─ STEP: pending ─ */}
+                {step === "pending" && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "32px 0", gap: 16 }}>
+                    <span style={{ display: "inline-block", width: 32, height: 32, border: `3px solid ${theme.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 700ms linear infinite" }} />
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink }}>Broadcasting...</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>Waiting for on-chain confirmation</div>
                   </div>
                 )}
-              </>
-            )}
 
-            {/* ─ STEP: pending ─ */}
-            {step === "pending" && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "32px 0", gap: 16 }}>
-                <span style={{ display: "inline-block", width: 32, height: 32, border: `3px solid ${theme.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 700ms linear infinite" }} />
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink }}>Broadcasting...</div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>Waiting for on-chain confirmation</div>
-              </div>
-            )}
+                {/* ─ STEP: success ─ */}
+                {step === "success" && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 12 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#16a34a22", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Check size={22} color="#16a34a" />
+                    </div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 700, color: theme.ink }}>Transfer Complete</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>{parsedAmount.toFixed(2)} USDC sent to {toLabel}</div>
+                    {txHash && (
+                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%" }}>
+                        <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+                          style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.accent, textDecoration: "none", fontWeight: 500 }}>
+                          View on Basescan
+                        </a>
+                      </div>
+                    )}
+                    <button onClick={handleReset} style={{ marginTop: 16, padding: "10px 24px", borderRadius: 12, border: `1px solid ${theme.border}`, background: "transparent", color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "background 200ms" }}>
+                      Done
+                    </button>
+                  </div>
+                )}
 
-            {/* ─ STEP: success ─ */}
-            {step === "success" && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 12 }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#16a34a22", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Check size={22} color="#16a34a" />
-                </div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 700, color: theme.ink }}>Transfer Complete</div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkFaint }}>{parsedAmount.toFixed(2)} USDC sent to {toLabel}</div>
-                {txHash && (
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%" }}>
-                    <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
-                      style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.accent, textDecoration: "none", fontWeight: 500 }}>
-                      View on Basescan
-                    </a>
+                {/* ─ STEP: failed ─ */}
+                {step === "failed" && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 12 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#ef444422", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <X size={22} color="#ef4444" />
+                    </div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 700, color: theme.ink }}>Transfer Failed</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: "#ef4444", textAlign: "center" }}>{errorMsg}</div>
+                    <button onClick={handleReset} style={{ marginTop: 16, padding: "10px 24px", borderRadius: 12, border: `1px solid ${theme.border}`, background: "transparent", color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "background 200ms" }}>
+                      Done
+                    </button>
                   </div>
                 )}
               </div>
-            )}
-
-            {/* ─ STEP: failed ─ */}
-            {step === "failed" && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 12 }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#ef444422", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <X size={22} color="#ef4444" />
-                </div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 700, color: theme.ink }}>Transfer Failed</div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: "#ef4444", textAlign: "center" }}>{errorMsg}</div>
-              </div>
-            )}
-          </div>
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );

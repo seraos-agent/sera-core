@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
-import { Activity, ChevronLeft, Trash2, Wallet, Terminal, Check, RefreshCw } from "lucide-react";
+import { Activity, ChevronLeft, Trash2, Wallet, Terminal, Check, RefreshCw, X } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
+import { getWalletLabel } from "../../utils/walletLabels";
 
 interface AutomationsPageProps {
   theme: ThemeType;
   socket: Socket | null;
   onBack: () => void;
+  isMobileView?: boolean;
 }
 
-export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps) {
+export function AutomationsPage({ theme, socket, onBack, isMobileView }: AutomationsPageProps) {
   const [triggers, setTriggers] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'COMPLETED'>('ACTIVE');
+  
+  const sidePad = isMobileView ? 16 : 32;
+  const titleSize = isMobileView ? 20 : 24;
 
   useEffect(() => {
     if (!socket) return;
@@ -29,9 +34,9 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
   }, [socket]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative", minWidth: 0, minHeight: 0 }}>
       {/* Clean Top Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
         <button 
           onClick={onBack} 
           style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6, transition: "background 0.2s" }}
@@ -44,10 +49,10 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "32px 32px 8px", flexShrink: 0 }}>
+        <div style={{ padding: `${isMobileView ? 24 : 32}px ${sidePad}px 8px`, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Active Intent Stream</h1>
+            <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Active Intent Stream</h1>
             <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
               Ongoing automations and decisions SERA is currently managing for you.
             </p>
@@ -58,15 +63,15 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
         <div style={{ 
           display: 'flex', gap: 12, 
           position: 'sticky', top: -1, zIndex: 10, 
-          background: theme.bg, padding: "16px 32px 16px",
+          background: theme.bg, padding: `16px ${sidePad}px 16px`,
         }}>
         <button 
           onClick={() => setActiveTab('ACTIVE')}
           style={{
             padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
             fontWeight: 600, fontSize: 13,
-            background: activeTab === 'ACTIVE' ? theme.ink : theme.surface2,
-            color: activeTab === 'ACTIVE' ? theme.surface : theme.inkSoft,
+            background: activeTab === 'ACTIVE' ? theme.border : theme.surface2,
+            color: activeTab === 'ACTIVE' ? theme.ink : theme.inkSoft,
             transition: 'all 0.2s'
           }}>
           Active ({triggers.filter(t => t.state === 'ACTIVE').length})
@@ -76,15 +81,15 @@ export function AutomationsPage({ theme, socket, onBack }: AutomationsPageProps)
           style={{
             padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
             fontWeight: 600, fontSize: 13,
-            background: activeTab === 'COMPLETED' ? theme.ink : theme.surface2,
-            color: activeTab === 'COMPLETED' ? theme.surface : theme.inkSoft,
+            background: activeTab === 'COMPLETED' ? theme.border : theme.surface2,
+            color: activeTab === 'COMPLETED' ? theme.ink : theme.inkSoft,
             transition: 'all 0.2s'
           }}>
           Completed ({triggers.filter(t => t.state !== 'ACTIVE').length})
         </button>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "0 32px 32px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: `0 ${sidePad}px ${sidePad}px` }}>
         {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE')).length === 0 ? (
           <div style={{ 
             padding: "48px 40px", textAlign: "center", border: `1px dashed ${theme.border}`, 
@@ -186,7 +191,13 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
             {isTransfer ? <Wallet size={14} /> : 
              rawIntent.toLowerCase().includes('github') ? <Terminal size={14} /> : 
              <Activity size={14} />}
-            {t.state !== 'ACTIVE' && <Check size={14} />}
+            {t.state !== 'ACTIVE' && (
+              t.lastExecutionResult?.success === false ? (
+                <X size={14} color="#ef4444" />
+              ) : (
+                <Check size={14} />
+              )
+            )}
           </div>
           <button 
             onClick={() => {
@@ -241,7 +252,7 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
               <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 400 : 500 }}>
-                {p.recipient || 'Not set yet ⚠️'}
+                {getWalletLabel(p.recipient)}
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

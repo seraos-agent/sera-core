@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShieldAlert, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { ThemeType } from '../../theme';
+import { getWalletLabel } from '../../utils/walletLabels';
 
 export interface ProposalPayload {
   proposalId: string;
@@ -82,7 +83,7 @@ export function ProposalCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
-            {isTransfer ? 'Transfer USDC from SERA Vault' : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
+            {isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from SERA Vault` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
           </span>
         </div>
 
@@ -91,13 +92,13 @@ export function ProposalCard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
               <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 400 : 500 }}>
-                {p.recipient || 'Not set yet ⚠️'}
+                {getWalletLabel(p.recipient)}
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount</span>
               <span style={{ fontSize: 14, color: p.amount ? theme.ink : theme.status, fontWeight: p.amount ? 400 : 500 }}>
-                {p.amount ? `${p.amount} USDC` : 'Not set yet ⚠️'}
+                {p.amount ? `${p.amount} ${p.asset?.toUpperCase() || 'USDC'}` : 'Not set yet ⚠️'}
               </span>
             </div>
           </>

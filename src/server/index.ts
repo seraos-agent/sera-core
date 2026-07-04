@@ -16,6 +16,8 @@ import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
 import { Runtime } from '../runtime/Runtime';
 import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
 import { WorkerManager } from '../workers/WorkerManager';
+import { observationStore } from '../core/perception/ObservationStore';
+import { ObservationClassifier } from '../core/perception/ObservationClassifier';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ const runtime = new Runtime(workerManager);
 runtime.setEventBus(executionEventBus);
 runtime.setExecutionDispatcher(executionDispatcher);
 const temporalClockService = new TemporalClockService(executionEventBus, 10000);
+const observationClassifier = new ObservationClassifier(eventBus, 0.6);
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;
@@ -77,8 +80,32 @@ io.on('connection', (socket: Socket) => {
   // Send the persisted chat history
   socket.emit('chat:history', chatHistoryStore.getUiMessages());
 
+  // Send the initial observations history
+  socket.emit('observations:history', observationStore.getAll());
+
   // ── EARS: user message → USER_OBSERVATION event ───────────────────────────
   socket.on('chat:message', (message: string) => {
+    // Intercept manual observation simulations
+    if (message.startsWith('/simulate-observation')) {
+      const type = message.split(' ')[1] || 'opportunity';
+      if (type === 'opportunity') {
+        observationClassifier.injectManualObservation({
+          title: "Simulated Yield Opportunity",
+          desc: "USDC lending APY on Aave increased to 5.4%.",
+          signal: "Test financial opportunity",
+          color: "#f59e0b"
+        });
+      } else if (type === 'anomaly') {
+         observationClassifier.injectManualObservation({
+          title: "Simulated Spending Pattern",
+          desc: "Gas fees are 40% higher than your weekly average.",
+          signal: "Test cost anomaly",
+          color: "#ef4444"
+        });
+      }
+      return;
+    }
+
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION`);
 
     const event: StandardEvent = {
@@ -163,6 +190,26 @@ io.on('connection', (socket: Socket) => {
   eventBus.on(EventTypes.UI_COMMAND, onUiCommand);
   eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
 
+  const onGoalResult = (event: StandardEvent) => {
+    const result = event.payload;
+    const trigger = triggerStore.get(result.requestId);
+    if (trigger) {
+      trigger.lastExecutionResult = {
+        success: result.success,
+        errorMessage: result.errorMessage
+      };
+      triggerStore.save(trigger);
+      io.emit('automations:update', triggerStore.getAll());
+    }
+  };
+  eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+
+  const onCognitiveObservation = (event: StandardEvent) => {
+    observationStore.append(event);
+    socket.emit('observations:new', event.payload);
+  };
+  eventBus.on(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
+
   // ── EARS: Proposal Responses ──────────────────────────────────────────────
   socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT' }) => {
     const { proposalId, action } = data;
@@ -233,6 +280,7 @@ io.on('connection', (socket: Socket) => {
     eventBus.off(EventTypes.DIALOGUE_ACTIVITY, onActivity);
     eventBus.off(EventTypes.UI_COMMAND, onUiCommand);
     eventBus.off(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
+    eventBus.off(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
   });
 });

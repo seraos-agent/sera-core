@@ -21,9 +21,9 @@ import type { ThemeType } from "../../theme";
 interface WorkspacePageProps {
   theme: ThemeType;
   onBack: () => void;
+  isMobileView?: boolean;
 }
 
-// ─ Data Structure ─
 
 const CATEGORIES = [
   { id: "software", name: "Build Software", icon: MonitorPlay },
@@ -89,7 +89,9 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
   ],
 };
 
-export function ConnectionsPage({ theme, onBack }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePageProps) {
+  const sidePad = isMobileView ? 16 : 32;
+  const titleSize = isMobileView ? 28 : 36;
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const renderCategories = () => (
@@ -170,11 +172,11 @@ export function ConnectionsPage({ theme, onBack }: WorkspacePageProps) {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, animation: "walletPageIn 400ms cubic-bezier(.4,0,.2,1) forwards" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, animation: "walletPageIn 400ms cubic-bezier(.4,0,.2,1) forwards", minWidth: 0, minHeight: 0 }}>
       {/* Header */}
       <div style={{ 
         display: "flex", alignItems: "center", justifyContent: "space-between", 
-        padding: "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface 
+        padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface 
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={activeCategory === null ? onBack : () => setActiveCategory(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 4 }}>
@@ -184,12 +186,12 @@ export function ConnectionsPage({ theme, onBack }: WorkspacePageProps) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "48px 32px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: `${isMobileView ? 24 : 48}px ${sidePad}px` }}>
         <div style={{ maxWidth: 860, margin: "0 auto" }}>
           
           {activeCategory === null ? (
             <>
-              <div style={{ fontFamily: "Fraunces, serif", fontSize: 36, fontWeight: 400, color: theme.ink, marginBottom: 12, letterSpacing: -0.5, textAlign: "center" }}>
+              <div style={{ fontFamily: "Fraunces, serif", fontSize: titleSize, fontWeight: 400, color: theme.ink, marginBottom: 12, letterSpacing: -0.5, textAlign: "center" }}>
                 The world SERA can operate in.
               </div>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, color: theme.inkSoft, marginBottom: 48, textAlign: "center", maxWidth: 480, margin: "0 auto 48px" }}>

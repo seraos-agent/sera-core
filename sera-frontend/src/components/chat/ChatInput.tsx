@@ -1,8 +1,22 @@
 import React, { useRef, useState } from "react";
-import { Plus, Mic, ArrowUp } from "lucide-react";
+import { Plus, Mic, ArrowUp, Bell } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
-export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSend: (text: string) => void, disabled?: boolean }) {
+export function ChatInput({ 
+  theme, 
+  onSend, 
+  disabled,
+  onToggleObservations,
+  showObservations,
+  unreadCount = 0
+}: { 
+  theme: ThemeType, 
+  onSend: (text: string) => void, 
+  disabled?: boolean,
+  onToggleObservations?: () => void,
+  showObservations?: boolean,
+  unreadCount?: number
+}) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -27,9 +41,8 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
   };
 
   return (
-    <div style={{ padding: "0 0 30px", flexShrink: 0 }}>
-      <div style={{ maxWidth: 760, margin: "0 auto" }}>
-        
+    <div style={{ padding: "0", flexShrink: 0 }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", position: "relative" }}>
         <div
           style={{
             display: "flex",
@@ -67,7 +80,7 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
           />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-            <div style={{ display: "flex", gap: 8, paddingLeft: 6 }}>
+            <div style={{ display: "flex", gap: 8, paddingLeft: 6, position: "relative" }}>
               <button
                 title="Attach file"
                 disabled={disabled}
@@ -78,6 +91,30 @@ export function ChatInput({ theme, onSend, disabled }: { theme: ThemeType, onSen
                 }}
               >
                 <Plus size={20} />
+              </button>
+              
+              <button
+                title="Observations"
+                onClick={onToggleObservations}
+                disabled={disabled}
+                style={{
+                  background: showObservations ? theme.surface2 : "transparent", border: "none", 
+                  color: showObservations ? theme.ink : theme.inkSoft, 
+                  cursor: disabled ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRadius: 8, padding: 4, marginLeft: -4, transition: "all 0.2s",
+                  position: "relative"
+                }}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <div style={{
+                    position: "absolute", top: 3, right: 3,
+                    background: "#ef4444",
+                    width: 8, height: 8, borderRadius: "50%",
+                    border: `1.5px solid ${theme.surface}`
+                  }} />
+                )}
               </button>
             </div>
             

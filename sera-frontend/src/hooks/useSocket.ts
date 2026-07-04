@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import type { WalletState } from "./useWallet";
+import type { CognitiveObservationPayload } from "../../../src/core/events/types";
 
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
@@ -8,6 +9,7 @@ export function useSocket(
 ) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [observations, setObservations] = useState<CognitiveObservationPayload[]>([]);
 
   const streamReply = useCallback((fullText: string, id: number) => {
     let i = 0;
@@ -34,6 +36,16 @@ export function useSocket(
 
     newSocket.on("chat:history", (history: any[]) => {
       setMessages(history);
+    });
+
+    newSocket.on("observations:history", (history: any[]) => {
+      // Map history to raw payloads since history comes as ObservationRecord[] { id, timestamp, payload }
+      const payloads = history.map((record: any) => record.payload);
+      setObservations(payloads);
+    });
+
+    newSocket.on("observations:new", (obs: CognitiveObservationPayload) => {
+      setObservations(prev => [...prev, obs]);
     });
 
     newSocket.on("chat:reply", (data: any) => {
@@ -80,6 +92,7 @@ export function useSocket(
     socket,
     messages,
     setMessages,
+    observations,
     streamReply
   };
 }

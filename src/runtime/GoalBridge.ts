@@ -259,25 +259,24 @@ export class GoalBridge {
         return;
       }
 
-      let finalRecipient = recipient;
+      let finalRecipient = '';
       if (typeof recipient === 'string') {
-        const lowerRecip = recipient.toLowerCase().trim();
-        const vaultAddr = process.env.SERA_VAULT_ADDRESS || '';
-
-        const isMainWallet =
-          lowerRecip.includes('dompet utama') || lowerRecip.includes('wallet utama') ||
-          lowerRecip.includes('dompet_utama') || lowerRecip.includes('wallet_utama') ||
-          lowerRecip.includes('main_wallet') || lowerRecip.includes('main wallet') ||
-          lowerRecip.includes('my wallet') || lowerRecip.includes('personal');
-
-        const isVault =
-          lowerRecip.includes('sera') || lowerRecip.includes('vault') ||
-          lowerRecip.includes('sera_vault') || lowerRecip.includes('sera vault');
-
-        if (isMainWallet) {
+        // Fallback for backwards compatibility with old triggers
+        finalRecipient = recipient;
+      } else if (recipient && typeof recipient === 'object') {
+        if (recipient.type === 'USER_MAIN_WALLET') {
           finalRecipient = walletId.address;
-        } else if (isVault && vaultAddr) {
-          finalRecipient = vaultAddr;
+        } else if (recipient.type === 'SERA_VAULT') {
+          finalRecipient = process.env.SERA_VAULT_ADDRESS || '';
+        } else if (recipient.type === 'EXTERNAL_ADDRESS') {
+          if (!recipient.address || !recipient.address.startsWith('0x')) {
+            this.emitResult(requestId, false, {}, `Invalid recipient address format: ${recipient.address}`);
+            return;
+          }
+          finalRecipient = recipient.address;
+        } else {
+          this.emitResult(requestId, false, {}, `Invalid recipient type: ${recipient.type}`);
+          return;
         }
       }
 
@@ -342,6 +341,16 @@ export class GoalBridge {
         this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
       }
     } catch (err: any) {
+      console.log(`[GoalBridge] ❌ Transfer threw error. Restoring original balance.`);
+      if (this.currentWalletId) {
+        this.emitWalletState(
+          this.currentWalletId.address,
+          process.env.SERA_VAULT_ADDRESS || '',
+          this.cachedPersonal,
+          this.cachedVault,
+          this.currentWalletId.network
+        );
+      }
       this.emitResult(requestId, false, {}, err.message);
     }
   }

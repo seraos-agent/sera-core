@@ -36,6 +36,9 @@ export const EventTypes = {
   // Temporal Layer
   TEMPORAL_TICK: 'temporal.tick',
   
+  // Perception Domain
+  COGNITIVE_OBSERVATION: 'perception.cognitive.observation',
+
   // UI Layer
   UI_COMMAND: 'ui.command',
 } as const;
@@ -74,4 +77,11 @@ export interface TriggerFiredPayload {
 
 export interface TemporalTickPayload {
   timestampUtc: number;
+}
+
+export interface CognitiveObservationPayload {
+  title: string;
+  desc: string;
+  signal: string;
+  color: string; // e.g., "#ef4444", "#f59e0b", "#10b981"
 }
