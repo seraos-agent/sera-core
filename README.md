@@ -1,165 +1,154 @@
-# SERA — Synthesizing & Evolving Rational Agent
+# SERA
 
-> *"Relationships must become structure before they become meaning."*
+> “Relationships must become structure before they become meaning.”
 
-SERA is not an AI chatbot. SERA is an **Operating System for an AI** — a self-governing cognitive runtime that reasons, remembers, plans, and acts with architectural discipline.
+SERA is an operating system for an autonomous AI agent.
+It is a self-governing cognitive runtime designed to reason, remember, plan, and act with architectural discipline.
 
----
+## What is SERA
 
-## What is SERA?
+Most AI agents today operate as simple loops:
 
-Most AI agents today are just LLMs wrapped in a loop:
+`Read prompt → Call tools → Repeat`
 
-```
-Read Prompt → Call Tool → Repeat
-```
+SERA takes a fundamentally different approach.
 
-SERA is fundamentally different. Before taking any action in the world, SERA processes its reality through a structured **Cognitive Kernel** — a layered mind that manages memory, detects goal conflicts, enforces governance, and separates verified facts from unverified claims.
+Before interacting with the external world, it constructs an internal representation of reality through a structured cognitive system. This system separates memory, reasoning, governance, and execution into distinct layers connected through an event-driven architecture.
 
-Think of it as the difference between a **reflex** and **deliberate thought**.
-
----
+The result is not reactive behavior, but structured cognition.
 
 ## Core Philosophy
 
-SERA's architecture is governed by four unyielding principles:
+SERA is built on four foundational principles.
 
-**1. Separation of Mind and Body**
-The Cognitive Kernel evaluates state, tension, and goals in complete isolation from execution. The mind never assumes the world is perfect — it anticipates noise, failures, and asynchrony.
+### Separation of Mind and Execution
+Reasoning is fully isolated from execution. The system evaluates state, uncertainty, and goals without assuming the world is stable or correct. Noise, delay, and failure are treated as inherent conditions.
 
-**2. Motivation Physics**
-Goals do not conflict because of labels. They conflict because of pressure on shared resources, attention, and execution pathways. SERA models motivation as a physical topology (Graph, Tension, Drift) — not abstract logic.
+### Motivation as System Physics
+Goals are not independent units. They exist in a shared system where constraints create tension. Motivation emerges from relationships between goals, resources, and execution pathways. This is modeled as structure rather than logic.
 
-**3. Epistemic Boundaries**
-An unverified claim (e.g., a Telegram message saying "I sent you money") is not a fact. SERA strictly separates `Factual Observations` from `Social Signals`, preventing epistemic contamination of its decision-making.
+### Epistemic Boundaries
+Information is not inherently truth. Observations such as messages, events, or external signals are classified and validated before becoming part of the system’s decision-making process.
 
-**4. Interpretation Is Not Prescription**
-The system may describe systemic patterns (e.g., "Tension is concentrated at this goal cluster"), but the interpretive layer is constitutionally forbidden from prescribing causal actions.
-
----
+### Interpretation Without Prescription
+The system may analyze and describe structural patterns within its state, but interpretation is never directly converted into action. Reasoning and execution remain explicitly separated.
 
 ## Architecture
 
-SERA is built in distinct, decoupled layers that communicate via a typed Event Bus.
+SERA is composed of decoupled layers connected through a typed event system.
 
-### Layer 1 — Memory System
-Multi-modal storage (`EPISODIC`, `SEMANTIC`, `PROCEDURAL`, `RELATIONAL`) bounded by epistemic statuses (`HYPOTHESIS` → `CONFIRMED`). Memory is the agent's absolute source of historical truth.
+### Memory System
+SERA maintains multiple forms of memory:
+- **Episodic memory** for experiences
+- **Semantic memory** for learned knowledge
+- **Procedural memory** for behaviors
+- **Relational memory** for entity relationships
 
-### Layer 2 — Cognitive Kernel (Motivation Physics)
-The reasoning heart of SERA, comprising five foundational engines:
+Each memory entry is bound to epistemic states such as hypothesis or confirmed truth, ensuring traceable evolution of knowledge.
 
-| Engine | Phase | Role |
-|--------|-------|------|
-| **Awareness** | 7.0 | Individual goal profiles and lifecycle tracking |
-| **Structure** | 7.1 | Goal Relationship Graphs — topology of intent |
-| **Tension** | 7.2 | Measuring operational friction between goals |
-| **Drift** | 7.3 | Detecting temporal shifts in systemic focus |
-| **Interpretation** | 7.4 | Extracting semantic meaning from physical structures |
-| **Self-Model** | 7.5 | Unified temporal snapshot of cognitive state ("The Mirror") |
+### Cognitive Kernel
+The Cognitive Kernel is the reasoning core of SERA. It models system behavior through Motivation Physics.
+- **Awareness** manages goal lifecycle and visibility.
+- **Structure** defines relationships between goals.
+- **Tension** measures friction across competing objectives.
+- **Drift** detects shifts in system focus over time.
+- **Interpretation** extracts meaning from structural state.
+- **Self Model** maintains a unified temporal representation of the system.
 
-### Layer 3 — Reflection & Governance
-A higher-order thinking system that observes the agent's actions, identifies systemic patterns, proposes adaptations, and enforces governance — without directly mutating runtime state.
+### Reflection and Governance
+Reflection operates as a meta-layer that observes system behavior over time. It identifies patterns, evaluates coherence, and proposes structural improvements. It does not directly modify runtime state.
 
-### Layer 4 — Capabilities (The Senses & Hands)
-Modular connectors that give SERA the ability to perceive and act in the real world:
+### Capabilities Layer
+Capabilities act as interfaces between the cognitive system and the external world.
+- The **Dialogue Engine** translates natural language into structured system events.
+- The **LLM Adapter** provides a modular interface to language models.
+- The **Agentic Wallet** enables controlled on-chain execution under explicit permission boundaries.
 
-| Capability | Role |
-|------------|------|
-| `dialogue/DialogueEngine` | Natural language interface — processes user intent, emits SERA Events |
-| `llm/QwenAdapter` | LLM Connector — isolated API bridge to Qwen (swappable) |
-| `wallet/AgenticWallet` | On-chain execution with Spend Permission guardrails |
+### Sensory Server
+The Sensory Server is a lightweight communication bridge between the user interface and the cognitive system. It contains no reasoning logic.
 
-### Layer 5 — Sensory Server (The Skin)
-A lightweight Socket.io server that acts purely as a **translation bridge** between external UIs and the internal SERA Event Bus. No cognitive logic lives here.
-
-```
-UI (React) ←— WebSocket —→ Server (Sensory) ←— Event Bus —→ Capabilities ←→ Cognitive Kernel
-```
-
----
+`UI (React) → WebSocket → Sensory Layer → Event Bus → Capabilities → Cognitive Kernel`
 
 ## Development Status
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 1–6 | Memory, Planner, Reflection, Governance, Adaptation | ✅ Frozen |
-| Phase 7.0–7.5 | Cognitive Kernel — Motivation Physics & Meaning Layer | ✅ Frozen |
-| Phase 8.0 | WorldState Synchronization & Atomic Persistence | ✅ Done |
-| Phase 8.1 | Real Agentic Wallet (CDP v2 Integration) | ✅ Done |
-| Phase 8.2 | Owner Identity & On-Chain Spend Permission Guard | ✅ Done |
-| Phase 9.0 | Frontend UI — Chat-first Agentic Interface | 🚧 Active |
-| Phase 9.1 | Modular Capability Layer — LLM & Dialogue Engine | 🚧 Active |
-| Phase 10+ | Full Runtime Integration & Real-world Connectors | ⏳ Queued |
-
----
+| Phase 1–6 | Memory, Planner, Reflection, Governance, Adaptation | Completed |
+| Phase 7.0–7.5 | Cognitive Kernel and Motivation Physics | Completed |
+| Phase 8.0 | World State Synchronization | Completed |
+| Phase 8.1 | Agentic Wallet Integration | Completed |
+| Phase 8.2 | Identity and Spend Permission System | Completed |
+| Phase 9.0 | Frontend Agent Interface | In Progress |
+| Phase 9.1 | Capability Layer Expansion | In Progress |
+| Phase 10+ | External System Integration | Planned |
 
 ## Technology Stack
 
-| Layer | Technology | Reason |
-|-------|-----------|--------|
-| **Core Runtime** | TypeScript / Node.js | Type safety, async-native, unified codebase |
-| **Frontend** | React + Vite (TypeScript) | Fast, component-based, connects via Socket.io |
-| **Real-time Transport** | Socket.io (WebSocket) | Bidirectional streaming between UI and Core |
-| **LLM** | Qwen Plus (DashScope) | Swappable via `QwenAdapter` — not hardwired |
-| **Blockchain** | Base Sepolia / Base Mainnet via Viem + CDP SDK | Production-grade on-chain execution |
-
----
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Core Runtime | Node.js with TypeScript | Deterministic asynchronous execution |
+| Frontend | React with Vite | Agent-facing interface |
+| Communication | Socket.io | Real-time event streaming |
+| Language Model | Qwen via adapter layer | Swappable reasoning engine |
+| Blockchain | Base (Sepolia / Mainnet) via Viem and CDP SDK | On-chain execution layer |
 
 ## Project Structure
 
-```
+```text
 sera-core/
 ├── src/
-│   ├── capabilities/          # External connectors (LLM, Wallet, Dialogue)
-│   │   ├── dialogue/          # DialogueEngine — user intent processing
-│   │   ├── llm/               # QwenAdapter — LLM API connector
-│   │   └── wallet/            # Agentic Wallet & Spend Permission
-│   ├── core/                  # The Cognitive Kernel
-│   │   ├── cognition/         # Meta-evaluation, Coherence, Adaptation
-│   │   ├── goals/             # Goal Engine & lifecycle
-│   │   ├── intents/           # Intent Engine & Proposal Pipeline
-│   │   ├── events/            # Shared Event Bus types
-│   │   └── ...                # Memory, Planner, Reflection, Governance
-│   ├── runtime/               # Runtime orchestration (Runtime.ts)
-│   ├── server/                # Sensory Layer — Socket.io bridge (no logic)
-│   └── demos/                 # Phase demonstration scripts
-├── sera-frontend/             # React UI — chat-first interface
-└── .env                       # API keys & environment config
+│   ├── capabilities/
+│   │   ├── dialogue/
+│   │   ├── llm/
+│   │   └── wallet/
+│   ├── core/
+│   │   ├── cognition/
+│   │   ├── goals/
+│   │   ├── intents/
+│   │   ├── events/
+│   │   └── memory, governance, and planning modules
+│   ├── runtime/
+│   ├── server/
+│   └── demos/
+├── sera-frontend/
+└── .env
 ```
 
----
+## Architectural Constraints
 
-## Strict Architectural Constraints
+The core system must remain domain-agnostic.
 
-The following **must never** be introduced into `src/core/` or `src/runtime/`:
+The following are **not allowed** inside core or runtime:
+- Domain-specific entities such as products, tokens, or users
+- Business or financial logic
+- Direct external API integrations
 
-- Domain-specific entities (`Product`, `Order`, `Token`, `Blockchain`, `User`)
-- Business logic or financial abstractions
-- Direct LLM calls or external API dependencies
+The core system only operates on universal primitives such as:
+`belief`, `goal`, `observation`, `intent`, `plan`, and `event`.
 
-`src/core/` contains only universal agent primitives: `Belief`, `Goal`, `Observation`, `Tension`, `Intent`, `Plan`. All domain-specific functionality belongs in `src/capabilities/` as isolated connectors.
-
----
+All domain-specific logic must exist inside isolated capability modules.
 
 ## Running Locally
 
-**Prerequisites:** Node.js 18+, a `.env` file with your keys.
+Requirements: Node.js 18 or higher
 
 ```bash
-# 1. Install backend dependencies
 npm install
-
-# 2. Start the SERA Core Server (port 3001)
 npm run start:server
+```
 
-# 3. In a separate terminal — start the Frontend (port 5173)
+Frontend:
+
+```bash
 cd sera-frontend
 npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and start talking to SERA.
+Open:
+http://localhost:5173
 
 ---
 
-*Built with discipline. Designed to think before it acts.*
+### Closing Statement
+*SERA is designed to think before it acts, not react after it receives input.*
