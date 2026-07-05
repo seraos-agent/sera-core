@@ -31,7 +31,12 @@ export function useSocket(
   }, []);
 
   useEffect(() => {
-    const newSocket = io("ws://localhost:3001");
+    const wsUrl = import.meta.env.VITE_WS_URL || 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+        ? "ws://localhost:3001" 
+        : window.location.origin.replace(/^http/, 'ws'));
+    
+    const newSocket = io(wsUrl);
     setSocket(newSocket);
 
     newSocket.on("chat:history", (history: any[]) => {
