@@ -29,7 +29,7 @@ export default function App() {
   const [lastViewedCount, setLastViewedCount] = useState(0);
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages, observations } = useSocket(setWalletState, setMode);
+  const { socket, messages, setMessages, observations, currentActivity } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
 
@@ -127,6 +127,7 @@ export default function App() {
             observations={observations}
             lastViewedCount={lastViewedCount}
             setLastViewedCount={setLastViewedCount}
+            currentActivity={currentActivity}
           />
         )}
       </div>

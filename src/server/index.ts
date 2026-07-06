@@ -9,7 +9,6 @@ import { DialogueEngine, SERA_EVENTS } from '../capabilities/dialogue/DialogueEn
 import { chatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { GoalBridge } from '../runtime/GoalBridge';
 import { StandardEvent, EventTypes } from '../core/events/types';
-import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
 import { TemporalClockService } from '../core/temporal/TemporalClockService';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
@@ -29,20 +28,18 @@ const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
-// The shared Event Bus — the nervous system of SERA
 const eventBus = new EventEmitter();
-const executionEventBus = new ExecutionEventBus();
 
 // Core Services
 const workerManager = new WorkerManager();
 const triggerStore = new InMemoryTriggerStore();
-const triggerEngine = new TriggerEngine(triggerStore, executionEventBus);
+const triggerEngine = new TriggerEngine(triggerStore, eventBus);
 const goalBridge = new GoalBridge(eventBus);
-const executionDispatcher = new ExecutionDispatcher(executionEventBus, goalBridge);
+const executionDispatcher = new ExecutionDispatcher(eventBus);
 const runtime = new Runtime(workerManager);
-runtime.setEventBus(executionEventBus);
+runtime.setGlobalEventBus(eventBus);
 runtime.setExecutionDispatcher(executionDispatcher);
-const temporalClockService = new TemporalClockService(executionEventBus, 10000);
+const temporalClockService = new TemporalClockService(eventBus, 10000);
 const cognitiveCompressor = new CognitiveCompressor(eventBus);
 
 // Expose TriggerEngine to global for GoalBridge to register
@@ -52,14 +49,9 @@ const cognitiveCompressor = new CognitiveCompressor(eventBus);
 triggerEngine.start();
 temporalClockService.start();
 
-// Boot Capabilities
-const dialogueEngine = new DialogueEngine(eventBus);
-
 let msgIdCounter = Date.now();
-let lastWalletState: any = null;
 
 eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
-  lastWalletState = event.payload;
   io.emit('wallet:update', event.payload);
 });
 
@@ -72,9 +64,9 @@ eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
 io.on('connection', (socket: Socket) => {
   console.log(`[Server] UI Client connected: ${socket.id}`);
 
-  // Send the latest wallet state immediately upon connection
-  if (lastWalletState) {
-    socket.emit('wallet:update', lastWalletState);
+  const walletState = runtime.worldStateService.getWalletState();
+  if (walletState && walletState.address) {
+    socket.emit('wallet:update', walletState);
   }
 
   // Send the persisted chat history
@@ -108,7 +100,7 @@ io.on('connection', (socket: Socket) => {
   socket.on('chat:clear', () => {
     console.log(`[Server] Clearing chat history`);
     chatHistoryStore.clear();
-    dialogueEngine.clearHistory();
+    runtime.dialogueEngine.clearHistory();
     // Broadcast clear event to all clients
     io.emit('chat:history', []);
   });
@@ -134,11 +126,6 @@ io.on('connection', (socket: Socket) => {
     const msgId = ++msgIdCounter;
     socket.emit('chat:activity', {
       id: msgId,
-      content: event.payload.content,
-    });
-    chatHistoryStore.appendUiMessage({
-      id: msgId,
-      type: 'activity',
       content: event.payload.content,
     });
   };

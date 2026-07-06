@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import { chatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
+import { WorldStateService } from '../../core/world-state/WorldStateService';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -19,10 +20,10 @@ If the user explicitly asks to switch to dark mode (mode gelap/dark), embed exac
 If the user explicitly asks to switch to light mode (mode terang/light), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_LIGHT>
 These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.
 
-CRITICAL — SECURITY AND WALLET POLICY:
-- You have READ access to: Personal Wallet and Sera Vault.
-- You have WRITE access to: ONLY the Sera Vault.
-- When told to "transfer" or "send", always use funds from the Sera Vault balance.
+CRITICAL — SECURITY AND WALLET POLICY & PERSONA:
+- You have your own operational wallet (internally called 'SERA_VAULT'). To the user, refer to this simply as "my balance" or "my funds". Do NOT use the term "Sera Vault" or "Brankas" with the user.
+- The user has their own personal wallet (internally called 'USER_MAIN_WALLET'). You have strictly READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
+- Therefore, when the user asks you to "transfer", "send", or "return" funds, ALWAYS use funds from your own balance (SERA_VAULT). You can only send TO the user's wallet, not FROM it.
 
 CRITICAL — TIMEZONE CONTEXT:
 - The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
@@ -34,7 +35,7 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 Supported intents:
 - CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
 - CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
-- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (object), "amount" (number or "all"), "asset" (string, MUST DEFAULT TO "usdc" unless explicitly specified as another asset), and "fromWallet" (string, MUST ALWAYS BE "sera_vault"). The "recipient" MUST be an object: {"type": "USER_MAIN_WALLET" | "SERA_VAULT" | "EXTERNAL_ADDRESS", "address": "0x..." (only if EXTERNAL_ADDRESS)}. Use "USER_MAIN_WALLET" if they refer to their own main/primary wallet (dompet utama, my wallet, saldo utama). Use "SERA_VAULT" if they refer to the vault/sera/brankas.
+- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (object), "amount" (number or "all"), "asset" (string, MUST DEFAULT TO "usdc" unless explicitly specified as another asset), and "fromWallet" (string, MUST ALWAYS BE "sera_vault"). The "recipient" MUST be an object: {"type": "USER_MAIN_WALLET" | "SERA_VAULT" | "EXTERNAL_ADDRESS", "address": "0x..." (only if EXTERNAL_ADDRESS)}. Use "USER_MAIN_WALLET" if they refer to their own wallet (dompet saya, kembalikan uang saya, dompet utama). Use "SERA_VAULT" if they refer to your balance (saldo kamu, saldo agen).
 - SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
 - NONE: anything else (conversation, questions, commands, UI changes)
 
@@ -70,12 +71,14 @@ export class DialogueEngine {
   private conversationHistory: QwenMessage[];
   // Map from requestId → resolve function, for awaiting goal results
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
-  
+
   // Map from proposalId → proposal data (awaiting user approval)
   private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage: string }>();
+  private worldStateService: WorldStateService;
 
-  constructor(eventBus: EventEmitter) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService) {
     this.eventBus = eventBus;
+    this.worldStateService = worldStateService;
     this.llm = new QwenAdapter();
 
     this.conversationHistory = chatHistoryStore.getLlmMessages();
@@ -89,23 +92,23 @@ export class DialogueEngine {
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, this.onProposalApproved.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_REJECTED, this.onProposalRejected.bind(this));
-    
+
     console.log('[DialogueEngine] Initialized and listening for dialogue events.');
   }
 
   // ── Proposal Listeners ────────────────────────────────────────────────────
-  
+
   private async onProposalApproved(event: StandardEvent): Promise<void> {
     const proposalId = event.payload.proposalId;
     const proposal = this.pendingProposals.get(proposalId);
     if (!proposal) return;
-    
+
     this.pendingProposals.delete(proposalId);
-    
+
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-      content: `User approved. Executing goal: ${proposal.intent.replace(/_/g, ' ').toLowerCase()}...`,
+      content: `${proposal.intent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
     });
-    
+
     // Execute after approval
     const result = await this.spawnGoalAndAwaitResult(proposal.intent, proposal.parameters);
     this.narrateResult(proposal.userMessage, result);
@@ -114,11 +117,11 @@ export class DialogueEngine {
   private onProposalRejected(event: StandardEvent): Promise<void> {
     const proposalId = event.payload.proposalId;
     if (this.pendingProposals.has(proposalId)) {
-       this.pendingProposals.delete(proposalId);
-       
-       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
-         text: "Proposal has been cancelled. Let me know if you'd like to do something else." 
-       });
+      this.pendingProposals.delete(proposalId);
+
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: "Proposal has been cancelled. Let me know if you'd like to do something else."
+      });
     }
     return Promise.resolve();
   }
@@ -173,6 +176,40 @@ export class DialogueEngine {
     });
   }
 
+  /**
+   * ARCHITECTURAL BOUNDARY:
+   * This method currently performs lightweight deterministic validation for simple intents (e.g. Transfers).
+   * If feasibility checks expand across multiple complex domains (staking, swapping, calendar, mapping),
+   * this logic MUST be extracted into a dedicated shared FeasibilityService in the execution pipeline.
+   * 
+   * Remember: DialogueEngine interprets intent; it performs *pre-proposal validation* here only because
+   * proposal generation currently originates from DialogueEngine. As additional execution entry points emerge 
+   * (Triggers, Planner, Reflection, APIs), feasibility validation should be promoted into a shared execution-stage service.
+   */
+  private evaluateFeasibility(intent: string, parameters: any): { feasible: boolean, reason?: string } {
+    if (intent === 'TRANSFER_FUNDS') {
+      const walletState = this.worldStateService.getWalletState();
+      if (!walletState) return { feasible: false, reason: "Wallet state is completely unknown or disconnected." };
+
+      const requestedAmount = parameters.amount;
+      const currentBalance = walletState.balance; // Using Main Wallet (or Vault depending on logic. Wait, SERA vault balance?)
+
+      // Based on rules, SERA writes to Sera Vault balance
+      const vaultBalance = walletState.vaultBalance;
+      const effectiveBalance = parameters.fromWallet === 'sera_vault' ? vaultBalance : currentBalance;
+
+      if (requestedAmount === 'all') {
+        if (effectiveBalance <= 0) return { feasible: false, reason: `Insufficient funds. Available balance is 0 USDC.` };
+      } else {
+        const amount = parseFloat(requestedAmount);
+        if (isNaN(amount) || amount <= 0) return { feasible: false, reason: "Invalid amount specified." };
+        if (amount > effectiveBalance) return { feasible: false, reason: `Insufficient funds. Requested: ${amount}, Available: ${effectiveBalance} USDC.` };
+      }
+    }
+
+    return { feasible: true };
+  }
+
   // ── Event Handlers ────────────────────────────────────────────────────────
 
   private onGoalResult(event: StandardEvent<GoalResultPayload>): void {
@@ -188,12 +225,37 @@ export class DialogueEngine {
     const userMessage: string = event.payload.message;
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"`);
 
-    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'SERA is preparing your request...' });
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
       const { intent, parameters } = await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
+
+      // ── Step 1.5: Pre-Clarification Fast Fail ──────────────────────────────
+      if (intent === 'TRANSFER_FUNDS' || (intent === 'SCHEDULE_GOAL' && parameters.actionIntent === 'TRANSFER_FUNDS')) {
+        const walletState = this.worldStateService.getWalletState();
+        if (!walletState || walletState.vaultBalance <= 0) {
+          const userMsg: QwenMessage = { role: 'user', content: userMessage };
+          this.conversationHistory.push(userMsg);
+          chatHistoryStore.appendLlmMessage(userMsg);
+
+          const systemRejectionMsg = `The user wants to transfer funds, but you currently hold 0 USDC in your balance. Respond naturally and concisely that the transfer cannot be performed because you don't have any funds. Do not use the term "Sera Vault". Do not ask for missing parameters.`;
+          const response = await this.llm.generate([
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...this.conversationHistory,
+            { role: 'system', content: systemRejectionMsg }
+          ]);
+
+          const rawText = response.text.trim();
+          const asstMsg: QwenMessage = { role: 'assistant', content: rawText };
+          this.conversationHistory.push(asstMsg);
+          chatHistoryStore.appendLlmMessage(asstMsg);
+
+          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
+          return;
+        }
+      }
 
       // ── Step 2: Clarification Validation ───────────────────────────────────────
       let missingParams: string[] = [];
@@ -212,26 +274,26 @@ export class DialogueEngine {
 
       if (missingParams.length > 0) {
         console.log(`[DialogueEngine] Missing parameters for ${intent}: ${missingParams.join(', ')}. Triggering Clarification Mode.`);
-        
+
         // Push user message to history so LLM has context
         const userMsg: QwenMessage = { role: 'user', content: userMessage };
         this.conversationHistory.push(userMsg);
         chatHistoryStore.appendLlmMessage(userMsg);
-        
+
         const clarificationPrompt = `The user wants to transfer funds, but their request is missing the following required information: ${missingParams.join(', ')}. 
 Please ask the user naturally (in the same language they used) to provide this missing information. Keep it brief. Do not mention JSON or parameters.`;
-        
+
         const response = await this.llm.generate([
           { role: 'system', content: SYSTEM_PROMPT },
           ...this.conversationHistory,
           { role: 'system', content: clarificationPrompt }
         ]);
-        
+
         const responseText = response.text.trim();
         const asstMsg: QwenMessage = { role: 'assistant', content: responseText };
         this.conversationHistory.push(asstMsg);
         chatHistoryStore.appendLlmMessage(asstMsg);
-        
+
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: responseText });
         return; // Abort execution/proposal and wait for user's next message
       }
@@ -245,26 +307,49 @@ Please ask the user naturally (in the same language they used) to provide this m
         if (shouldAutoExecute) {
           // AUTO-EXECUTE path
           this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-            content: `Executing goal: ${intent.replace(/_/g, ' ').toLowerCase()}...`,
+            content: `${intent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
           });
           const result = await this.spawnGoalAndAwaitResult(intent, parameters);
           await this.narrateResult(userMessage, result);
         } else {
+          // Pre-Proposal Validation
+          const feasibility = this.evaluateFeasibility(intent, parameters);
+          if (!feasibility.feasible) {
+            const userMsg3: QwenMessage = { role: 'user', content: userMessage };
+            this.conversationHistory.push(userMsg3);
+            chatHistoryStore.appendLlmMessage(userMsg3);
+
+            const systemRejectionMsg = `The user's requested operation failed the pre-flight feasibility check. Reason: ${feasibility.reason}. Respond strictly as an objective operational system agent. Explain that the request was evaluated against current world state and cannot be prepared. Do NOT apologize. Maintain an operational, matter-of-fact tone.`;
+            const response = await this.llm.generate([
+              { role: 'system', content: SYSTEM_PROMPT },
+              ...this.conversationHistory,
+              { role: 'system', content: systemRejectionMsg }
+            ]);
+
+            const rawText = response.text.trim();
+            const asstMsg3: QwenMessage = { role: 'assistant', content: rawText };
+            this.conversationHistory.push(asstMsg3);
+            chatHistoryStore.appendLlmMessage(asstMsg3);
+
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
+            return;
+          }
+
           // PROPOSAL path (Risk-Tiered: WRITE/FINANCE/SCHEDULE)
-          const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+          const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
           this.pendingProposals.set(proposalId, { intent, parameters, userMessage });
-          
+
           this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
             proposalId,
             intent,
             parameters
           });
-          
+
           // Reply conversationally that we are proposing it
-          const summaryText = intent === 'SCHEDULE_GOAL' 
-             ? `I can set up that schedule for you. Please review the proposal.`
-             : `I have prepared the transaction. Please review the details before I proceed.`;
-             
+          const summaryText = intent === 'SCHEDULE_GOAL'
+            ? `I can set up that schedule for you. Please review the proposal.`
+            : `I have prepared the transaction. Please review the details before I proceed.`;
+
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
       } else {
@@ -300,7 +385,19 @@ Please ask the user naturally (in the same language they used) to provide this m
           this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
+        // Parse any markdown links out of the text to render them as UI buttons instead
+        const actionLinks = [];
+        const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+        let match;
+        while ((match = markdownLinkRegex.exec(rawText)) !== null) {
+          // If the LLM generates a link, we move it to the actionLinks array
+          actionLinks.push({ label: match[1].includes('http') ? 'View on BaseScan' : match[1], url: match[2] });
+        }
+
+        // Strip the markdown links and any trailing link emojis from the text
+        rawText = rawText.replace(markdownLinkRegex, '').replace(/🔗\s*/g, '').trim();
+
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
       }
 
     } catch (error: any) {
@@ -314,8 +411,15 @@ Please ask the user naturally (in the same language they used) to provide this m
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
+    let sanitizedDataStr = JSON.stringify(result.data || {});
+    sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
+    sanitizedDataStr = sanitizedDataStr.replace(/"vaultAddress"/g, '"agentAddress"');
+    sanitizedDataStr = sanitizedDataStr.replace(/"personalBalance"/g, '"userBalance"');
+    sanitizedDataStr = sanitizedDataStr.replace(/"personalAddress"/g, '"userAddress"');
+    sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
+
     const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
+      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
       : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
     const narrateResponse = await this.llm.generate([

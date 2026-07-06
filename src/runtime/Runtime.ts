@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { WorkerManager } from '../workers/WorkerManager';
 import { WorkItem } from '../core/work-items/types';
 import { WorldStateService } from '../core/world-state/WorldStateService';
@@ -7,7 +8,7 @@ import { AuthorityService } from '../delegation/AuthorityService';
 import { AuthorityContext, DelegationScope } from '../delegation/types';
 import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
 import { ConstitutionContext } from '../constitution/types';
-import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
+
 import { StandardEvent, EventTypes, TriggerFiredPayload } from '../core/events/types';
 import { ExecutionTrace } from '../core/execution/types';
 import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
@@ -34,9 +35,11 @@ import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
 import { IntentStore } from '../core/intents/IntentStore';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 import { ExecutionDispatcher } from './ExecutionDispatcher';
+import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
 
 export class Runtime {
-  private worldStateService: WorldStateService;
+  public worldStateService!: WorldStateService;
+  public dialogueEngine!: DialogueEngine;
   private memoryStore: MemoryStore;
   private authorityService: AuthorityService;
   private workerManager: WorkerManager;
@@ -45,7 +48,7 @@ export class Runtime {
   private coherenceMonitor?: CoherenceMonitor;
   private metaEvaluationEngine?: MetaEvaluationEngine;
   private executionTraceStore?: ExecutionTraceStore;
-  private eventBus?: ExecutionEventBus;
+  private eventBus?: EventEmitter;
   private executionDispatcher?: ExecutionDispatcher;
   
   private planner?: Planner;
@@ -93,10 +96,9 @@ export class Runtime {
     governanceCalibrationEngine?: GovernanceCalibrationEngine,
     adaptationPlanner?: AdaptationPlanner,
     adaptationExecutor?: AdaptationExecutor,
-    eventBus?: ExecutionEventBus,
+    eventBus?: EventEmitter,
     dispatcher?: ExecutionDispatcher
   ) {
-    this.worldStateService = new WorldStateService();
     this.memoryStore = new MemoryStore();
     this.authorityService = new AuthorityService();
     this.workerManager = workerManager;
@@ -124,20 +126,18 @@ export class Runtime {
     this.adaptationPlanner = adaptationPlanner;
     this.adaptationExecutor = adaptationExecutor;
 
-    if (this.eventBus) {
-      this.eventBus.subscribe(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
-      console.log('[Runtime] Subscribed to ExecutionEventBus (Event-Driven Mode ACTIVE)');
-    }
   }
 
   public setAdaptationExecutor(adaptationExecutor: AdaptationExecutor): void {
     this.adaptationExecutor = adaptationExecutor;
   }
 
-  public setEventBus(eventBus: ExecutionEventBus): void {
-    this.eventBus = eventBus;
-    this.eventBus.subscribe(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
-    console.log('[Runtime] Subscribed to ExecutionEventBus (Event-Driven Mode ACTIVE)');
+  // Replaced by ExecutionDispatcher's direct listening
+
+  public setGlobalEventBus(globalEventBus: any): void {
+    this.worldStateService = new WorldStateService(globalEventBus);
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService);
+    console.log('[Runtime] Global EventBus and Cognitive Engines Initialized');
   }
 
   public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {
@@ -145,7 +145,10 @@ export class Runtime {
   }
   
   getWorldState() {
-    return this.worldStateService.getState();
+    return {
+      wallet: this.worldStateService.getWalletState(),
+      temporal: this.worldStateService.getTemporalState()
+    };
   }
 
   private governProposals(temporalContext: TemporalContext): void {
@@ -172,17 +175,7 @@ export class Runtime {
     return this.memoryStore.getHistory();
   }
 
-  private async handleTriggerFired(event: StandardEvent): Promise<void> {
-    const payload = event.payload as TriggerFiredPayload;
-    console.log(`\n[Runtime] Woken by TriggerEngine (Action: ${payload.action})`);
-    
-    // Delegate to ExecutionDispatcher
-    if (this.executionDispatcher) {
-       await this.executionDispatcher.dispatch(payload.action, payload.context?.actionPayload || {}, payload.context);
-    } else {
-       console.warn('[Runtime] No ExecutionDispatcher injected. Action ignored.');
-    }
-  }
+  // TriggerFired is now handled directly by ExecutionDispatcher
 
   async executeCycle(cycleId: number, targetGoalId?: string, scope?: DelegationScope): Promise<void> {
     if (!this.attentionEngine || !this.goalEngine) {
@@ -322,7 +315,7 @@ export class Runtime {
     }
 
     const activeProfile = this.strategyStore.getActiveProfile();
-    const plan = this.planner.generatePlan(goal, this.worldStateService.getState(), this.memoryStore.getAllBeliefs(), activeProfile, temporalContext);
+    const plan = this.planner.generatePlan(goal, this.getWorldState(), this.memoryStore.getAllBeliefs(), activeProfile, temporalContext);
     
     let allSuccess = true;
     for (const step of plan.steps) {

@@ -1,5 +1,5 @@
 import { TriggerStore, Trigger, TemporalCondition } from './types';
-import { ExecutionEventBus } from '../events/ExecutionEventBus';
+import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, TemporalTickPayload } from '../events/types';
 import cronParser from 'cron-parser';
 
@@ -8,7 +8,7 @@ export class TriggerEngine {
 
   constructor(
     private store: TriggerStore,
-    private eventBus: ExecutionEventBus
+    private eventBus: EventEmitter
   ) {}
 
   /**
@@ -16,7 +16,7 @@ export class TriggerEngine {
    */
   start(): void {
     console.log(`[TriggerEngine] Brain of "WHEN" started. Subscribing to temporal.tick...`);
-    this.eventBus.subscribe(EventTypes.TEMPORAL_TICK, this.handleTemporalTick.bind(this));
+    this.eventBus.on(EventTypes.TEMPORAL_TICK, this.handleTemporalTick.bind(this));
   }
 
   stop(): void {
@@ -114,7 +114,7 @@ export class TriggerEngine {
     console.log(`[TriggerEngine] ⚡ TRIGGER FIRED: ${trigger.id} -> ${trigger.action.type}`);
 
     // 2. Publish Execution Event
-    this.eventBus.publish({
+    this.eventBus.emit(EventTypes.SYSTEM_TRIGGER_FIRED, {
       id: `evt-trg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       type: EventTypes.SYSTEM_TRIGGER_FIRED,
       source: 'TriggerEngine',

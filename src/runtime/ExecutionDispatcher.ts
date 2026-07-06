@@ -1,6 +1,5 @@
 import { EventTypes, StandardEvent } from '../core/events/types';
-import { ExecutionEventBus } from '../core/events/ExecutionEventBus';
-import { GoalBridge } from './GoalBridge';
+import { EventEmitter } from 'events';
 
 /**
  * ExecutionDispatcher — The hands of SERA's intent execution.
@@ -13,31 +12,43 @@ import { GoalBridge } from './GoalBridge';
  */
 export class ExecutionDispatcher {
   constructor(
-    private eventBus: ExecutionEventBus,
-    private goalBridge: GoalBridge
-  ) {}
+    private eventBus: EventEmitter
+  ) {
+    // Listen to all intent sources
+    this.eventBus.on(EventTypes.DOMAIN_GOAL_SPAWNED, this.handleGoalSpawned.bind(this));
+    this.eventBus.on(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
+  }
+
+  private handleGoalSpawned(event: StandardEvent): void {
+    const { intent, parameters, requestId } = event.payload;
+    // Normalize intent from DialogueEngine
+    this.dispatch(intent, parameters, { triggerId: requestId });
+  }
+
+  private handleTriggerFired(event: StandardEvent): void {
+    const { action, actionPayload, triggerId } = event.payload;
+    // Normalize intent from TriggerEngine
+    this.dispatch(action, actionPayload, { triggerId });
+  }
 
   /**
    * Dispatches the action to the appropriate domain capability.
    */
-  public async dispatch(actionType: string, payload: Record<string, any>, context: Record<string, any>): Promise<void> {
+  public dispatch(actionType: string, payload: Record<string, any>, context: Record<string, any>): void {
     console.log(`[ExecutionDispatcher] Routing action: ${actionType}`);
 
     try {
-      switch (actionType) {
-        case 'CHECK_WALLET_BALANCE':
-          await this.goalBridge.handleCheckBalance(context.triggerId || `req-${Date.now()}`);
-          break;
-
-        case 'TRANSFER_FUNDS':
-          await this.goalBridge.handleTransferFunds(context.triggerId || `req-${Date.now()}`, payload);
-          break;
-
-        // Future domains can be added here (e.g. GITHUB_PR_MERGE)
-
-        default:
-          console.warn(`[ExecutionDispatcher] Unknown action type: ${actionType}`);
-      }
+      this.eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+        id: `dispatch-${Date.now()}`,
+        type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          actionType,
+          actionPayload: payload,
+          context
+        },
+        timestamp: Date.now()
+      } as StandardEvent);
     } catch (err: any) {
       console.error(`[ExecutionDispatcher] Error during dispatch of ${actionType}:`, err.message);
     }

@@ -19,6 +19,7 @@ interface ChatViewProps {
   observations: any[];
   lastViewedCount: number;
   setLastViewedCount: (n: number) => void;
+  currentActivity: string | null;
 }
 
 export function ChatView({
@@ -32,7 +33,8 @@ export function ChatView({
   socket,
   observations,
   lastViewedCount,
-  setLastViewedCount
+  setLastViewedCount,
+  currentActivity
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -49,7 +51,7 @@ export function ChatView({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, currentActivity]);
 
   const handleCopy = useCallback((id: number, content: string) => {
     navigator.clipboard.writeText(content);
@@ -145,10 +147,36 @@ export function ChatView({
           <EmptyState theme={theme} />
         ) : (
           <div style={{ maxWidth: 760, margin: "0 auto" }}>
-            {messages.map((m) => (
-              <MessageBubble key={m.id} theme={theme} msg={m} onCopy={handleCopy} copied={copied} onApprove={handleApprove} />
-            ))}
-          </div>
+            {messages.map((msg, idx) => (
+            <MessageBubble 
+              key={msg.id || idx} 
+              theme={theme} 
+              msg={msg} 
+              onCopy={handleCopy} 
+              copied={copied} 
+              onApprove={handleApprove}
+            />
+          ))}
+
+          {currentActivity && (
+            <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
+              <div style={{ 
+                display: "flex", alignItems: "center", gap: 6,
+                fontSize: 12, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
+                fontWeight: 500
+              }}>
+                <div className="activity-spinner" style={{
+                  width: 12, height: 12, border: `2px solid ${theme.inkFaint}40`, borderTopColor: theme.inkFaint, borderRadius: "50%", animation: "spin 1s linear infinite"
+                }} />
+                {currentActivity}
+                <style>{`
+                  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                `}</style>
+              </div>
+            </div>
+          )}
+          
+        </div>
         )}
       </div>
 

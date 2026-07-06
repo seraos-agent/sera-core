@@ -31,7 +31,7 @@ export class GoalBridge {
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
-    this.eventBus.on(EventTypes.DOMAIN_GOAL_SPAWNED, this.handleSpawnGoal.bind(this));
+    this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
     // Build the wallet stack
     const secretStore = new EncryptedDatabaseSecretStore();
@@ -98,19 +98,20 @@ export class GoalBridge {
     this.eventBus.emit(EventTypes.DOMAIN_GOAL_RESULT, event);
   }
 
-  private async handleSpawnGoal(event: StandardEvent): Promise<void> {
-    const { requestId, intent, parameters } = event.payload as SpawnGoalPayload;
-    console.log(`[GoalBridge] Handling intent: ${intent} (requestId: ${requestId})`);
-
-    // Ensure wallet is ready before executing any wallet-related goal
-    if (this.walletInitializing) {
-      await this.walletInitializing;
-    }
+  private async handleDispatchedAction(event: StandardEvent): Promise<void> {
+    const { actionType, actionPayload, context } = event.payload;
+    const requestId = context?.triggerId || `req-${Date.now()}`;
+    
+    console.log(`\n[GoalBridge] Handling action: ${actionType} (requestId: ${requestId})`);
 
     try {
-      switch (intent) {
+      switch (actionType) {
         case 'CHECK_WALLET_BALANCE':
           await this.handleCheckBalance(requestId);
+          break;
+
+        case 'TRANSFER_FUNDS':
+          await this.handleTransferFunds(requestId, actionPayload);
           break;
 
         case 'CHECK_NETWORK':
@@ -122,19 +123,15 @@ export class GoalBridge {
           });
           break;
 
-        case 'TRANSFER_FUNDS':
-          await this.handleTransferFunds(requestId, parameters);
-          break;
-
         case 'SCHEDULE_GOAL':
-          await this.handleScheduleGoal(requestId, parameters);
+          await this.handleScheduleGoal(requestId, actionPayload);
           break;
 
         default:
-          this.emitResult(requestId, false, {}, `Unknown intent: ${intent}`);
+          this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
       }
     } catch (error: any) {
-      console.error(`[GoalBridge] Error handling intent ${intent}:`, error.message);
+      console.error(`[GoalBridge] Error handling action ${actionType}:`, error.message);
       this.emitResult(requestId, false, {}, error.message);
     }
   }

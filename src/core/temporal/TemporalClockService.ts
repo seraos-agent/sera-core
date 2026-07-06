@@ -1,4 +1,4 @@
-import { ExecutionEventBus } from '../events/ExecutionEventBus';
+import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, TemporalTickPayload } from '../events/types';
 
 /**
@@ -13,7 +13,7 @@ export class TemporalClockService {
   private tickInterval: NodeJS.Timeout | null = null;
 
   constructor(
-    private eventBus: ExecutionEventBus,
+    private eventBus: EventEmitter,
     private tickRateMs: number = 60000 // default to 1 minute to avoid noisy O(n) evals, but can be configured
   ) {}
 
@@ -51,6 +51,6 @@ export class TemporalClockService {
     };
 
     // Note: We use fire-and-forget publish to the event bus
-    this.eventBus.publish(event);
+    this.eventBus.emit(EventTypes.TEMPORAL_TICK, event);
   }
 }

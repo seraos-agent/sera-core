@@ -29,7 +29,14 @@ export class ChatHistoryStore {
     try {
       if (fs.existsSync(this.filePath)) {
         const data = fs.readFileSync(this.filePath, 'utf-8');
-        return JSON.parse(data);
+        const parsed = JSON.parse(data) as ChatHistoryState;
+        
+        // Filter out ephemeral activity messages from older history saves
+        if (parsed.uiMessages) {
+          parsed.uiMessages = parsed.uiMessages.filter(msg => msg.type !== 'activity');
+        }
+        
+        return parsed;
       }
     } catch (e) {
       console.error('[ChatHistoryStore] Failed to load chat history:', e);

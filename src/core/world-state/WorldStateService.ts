@@ -1,17 +1,21 @@
-/// <reference types="node" />
 import * as fs from 'fs';
 import * as path from 'path';
-import { Observation, WorldStateSnapshot } from './types';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent } from '../events/types';
+import { Observation, WorldStateSnapshot, WalletState, TemporalState } from './types';
 
 export class WorldStateService {
   private state: WorldStateSnapshot;
   private processedObservationIds: Set<string>;
   private persistPath: string;
+  private eventBus: EventEmitter;
 
-  constructor(initialData: Record<string, any> = {}) {
+  constructor(eventBus: EventEmitter) {
+    this.eventBus = eventBus;
     this.state = {
-      state: initialData,
       lastUpdatedAt: Date.now(),
+      wallet: null,
+      temporal: null,
     };
     
     const projectRoot = process.cwd();
@@ -19,6 +23,31 @@ export class WorldStateService {
     this.processedObservationIds = new Set<string>();
     
     this.loadPersistedData();
+    this.subscribeToReality();
+  }
+
+  private subscribeToReality() {
+    this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
+      const p = event.payload as any;
+      this.state.wallet = {
+        address: p.address,
+        vaultAddress: p.vaultAddress,
+        balance: parseFloat(p.balance) || 0,
+        vaultBalance: parseFloat(p.vaultBalance) || 0,
+        network: p.network || 'unknown',
+        asset: p.asset || 'USDC',
+        quality: {
+          updatedAt: Date.now(),
+          source: 'EventBus/DOMAIN_WALLET_STATE',
+          freshness: 'FRESH',
+          confidence: 1.0
+        }
+      };
+      this.state.lastUpdatedAt = Date.now();
+      this.savePersistedData();
+    });
+
+    // In the future, listen to DOMAIN_TEMPORAL_STATE, DOMAIN_LOCATION_STATE, etc.
   }
 
   private loadPersistedData() {
@@ -30,7 +59,11 @@ export class WorldStateService {
           this.processedObservationIds = new Set(parsed.ids);
         }
         if (parsed.state && typeof parsed.state === 'object') {
-          this.state = parsed.state;
+          // Do a defensive merge to preserve types
+          this.state = {
+            ...this.state,
+            ...parsed.state
+          };
         }
       }
     } catch (e) {
@@ -51,8 +84,6 @@ export class WorldStateService {
       };
       
       const data = JSON.stringify(payload);
-      
-      // Atomic Write Pattern: Write to temp file first, then rename
       const tempPath = this.persistPath + '.tmp';
       fs.writeFileSync(tempPath, data, 'utf8');
       fs.renameSync(tempPath, this.persistPath);
@@ -62,33 +93,27 @@ export class WorldStateService {
     }
   }
 
-  getState(): WorldStateSnapshot {
-    return this.state;
+  // --- Explicit Reality Getters ---
+  
+  public getWalletState(): WalletState | null {
+    return this.state.wallet;
+  }
+
+  public getTemporalState(): TemporalState | null {
+    return this.state.temporal;
   }
 
   /**
-   * Ingests an observation. Returns true if processed, false if dropped (idempotency).
+   * @deprecated Legacy ingestion method. Reality should enter through EventBus now.
    */
-  ingest(observation: Observation<any, any>): boolean {
+  public ingest(observation: Observation<any, any>): boolean {
     const idempotencyKey = observation.source.externalReferenceId;
 
     if (this.processedObservationIds.has(idempotencyKey)) {
-      console.log(`[WorldStateService] ⚠️ Observation dropped. Idempotency key already processed: ${idempotencyKey}`);
       return false; // No-op, already processed
     }
 
-    console.log(`[WorldStateService] ✅ Ingesting new observation: ${observation.type} - ${idempotencyKey}`);
-    
-    // In Phase 8.0, we just merge payload into generic state (Walking Skeleton)
-    if (observation.epistemicWeight === 'FACTUAL' && observation.type === 'STATE_MUTATION') {
-      this.state.state = {
-        ...this.state.state,
-        ...observation.payload
-      };
-      this.state.lastUpdatedAt = Date.now();
-    }
-
-    // Persist state and idempotency key
+    // Mark as processed
     this.processedObservationIds.add(idempotencyKey);
     this.savePersistedData();
 

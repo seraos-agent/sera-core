@@ -34,6 +34,7 @@ export const EventTypes = {
   DOMAIN_GOAL_SPAWNED: 'domain.goal.spawned',
   DOMAIN_GOAL_RESULT: 'domain.goal.result',
   DOMAIN_WALLET_STATE: 'domain.wallet.state',
+  DOMAIN_ACTION_DISPATCHED: 'domain.action.dispatched',
   
   // Temporal Layer
   TEMPORAL_TICK: 'temporal.tick',

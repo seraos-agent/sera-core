@@ -10,8 +10,10 @@ export function useSocket(
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [observations, setObservations] = useState<CognitiveObservationPayload[]>([]);
+  const [currentActivity, setCurrentActivity] = useState<string | null>(null);
 
   const streamReply = useCallback((fullText: string, id: number) => {
+    setCurrentActivity(null); // Clear activity when starting to stream reply
     let i = 0;
     const step = () => {
       i += Math.max(1, Math.round(fullText.length / 90));
@@ -57,14 +59,17 @@ export function useSocket(
     });
 
     newSocket.on("chat:reply", (data: any) => {
+      setCurrentActivity(null);
       streamReply(data.content, data.id || Date.now());
     });
 
     newSocket.on("chat:activity", (data: any) => {
-      setMessages(prev => [...prev, { id: data.id || Date.now(), type: "activity", content: data.content }]);
+      // Set ephemeral activity instead of pushing to permanent messages
+      setCurrentActivity(data.content);
     });
 
     newSocket.on("chat:proposal", (data: any) => {
+      setCurrentActivity(null);
       setMessages(prev => [...prev, { id: data.id || Date.now(), role: "agent", proposal: data }]);
     });
 
@@ -101,6 +106,7 @@ export function useSocket(
     messages,
     setMessages,
     observations,
-    streamReply
+    streamReply,
+    currentActivity
   };
 }

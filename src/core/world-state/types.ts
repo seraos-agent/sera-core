@@ -22,9 +22,31 @@ export interface Observation<TPayload = unknown, TMeta = Record<string, unknown>
   observedAt: number;
 }
 
+export interface ObservationQuality {
+  updatedAt: number;
+  source: string;
+  freshness: 'STALE' | 'FRESH' | 'SYNCING';
+  confidence: number; // 0 to 1
+}
+
+export interface WalletState {
+  address: string;
+  vaultAddress: string;
+  balance: number;
+  vaultBalance: number;
+  network: string;
+  asset: string;
+  quality: ObservationQuality;
+}
+
+export interface TemporalState {
+  currentTime: number;
+  timezone: string;
+  quality: ObservationQuality;
+}
+
 export interface WorldStateSnapshot {
   lastUpdatedAt: number;
-  // Core does not parse the internal domain state. 
-  // For Phase 8.0 Walking Skeleton, we just hold a generic state block.
-  state: Record<string, any>;
+  wallet: WalletState | null;
+  temporal: TemporalState | null;
 }

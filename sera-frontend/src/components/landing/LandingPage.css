@@ -144,7 +144,7 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-lg);
   padding: 0;
-  box-shadow: 0 30px 60px rgba(0,0,0,0.45);
+  box-shadow: none;
   overflow: hidden;
 }
 .landing-page .console-head {
