@@ -1,6 +1,6 @@
 export const WALLET_LABELS: Record<string, string> = {
-  USER_MAIN_WALLET: "Your Main Wallet",
-  SERA_VAULT: "SERA Vault"
+  USER_MAIN_WALLET: "Your Wallet",
+  SERA_VAULT: "My Balance"
 };
 
 export function getWalletLabel(recipient: any): string {

@@ -12,24 +12,15 @@ export function useSocket(
   const [observations, setObservations] = useState<CognitiveObservationPayload[]>([]);
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
 
-  const streamReply = useCallback((fullText: string, id: number) => {
+  const streamReply = useCallback((fullText: string, id: number, actionLinks?: any[]) => {
     setCurrentActivity(null); // Clear activity when starting to stream reply
-    let i = 0;
-    const step = () => {
-      i += Math.max(1, Math.round(fullText.length / 90));
-      const chunk = fullText.slice(0, i);
-      setMessages((prev) => {
-        const exists = prev.find(m => m.id === id);
-        if (!exists) {
-          return [...prev, { id, role: "agent", content: chunk, streaming: i < fullText.length }];
-        }
-        return prev.map((m) => (m.id === id ? { ...m, content: chunk, streaming: i < fullText.length } : m));
-      });
-      if (i < fullText.length) {
-        setTimeout(step, 16);
+    setMessages((prev) => {
+      const exists = prev.find(m => m.id === id);
+      if (!exists) {
+        return [...prev, { id, role: "agent", content: fullText, streaming: false, actionLinks }];
       }
-    };
-    step();
+      return prev.map((m) => (m.id === id ? { ...m, content: fullText, streaming: false, actionLinks } : m));
+    });
   }, []);
 
   useEffect(() => {
@@ -60,7 +51,7 @@ export function useSocket(
 
     newSocket.on("chat:reply", (data: any) => {
       setCurrentActivity(null);
-      streamReply(data.content, data.id || Date.now());
+      streamReply(data.content, data.id || Date.now(), data.actionLinks);
     });
 
     newSocket.on("chat:activity", (data: any) => {

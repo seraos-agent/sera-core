@@ -15,15 +15,18 @@ If the user's LATEST message is in English, you MUST reply in English. If it is 
 Do not limit yourself to any specific language, and do not get stuck in a previous language if the user switches languages.
 Keep responses concise and helpful.
 
+CRITICAL — FORMATTING POLICY:
+- Write in complete, fluid sentences. Do NOT use long em-dashes (—) in your text. Short hyphens (-) are allowed.
+
 CRITICAL — UI CONTROL PROTOCOL:
 If the user explicitly asks to switch to dark mode (mode gelap/dark), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_DARK>
 If the user explicitly asks to switch to light mode (mode terang/light), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_LIGHT>
 These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.
 
 CRITICAL — SECURITY AND WALLET POLICY & PERSONA:
-- You have your own operational wallet (internally called 'SERA_VAULT'). To the user, refer to this simply as "my balance" or "my funds". Do NOT use the term "Sera Vault" or "Brankas" with the user.
-- The user has their own personal wallet (internally called 'USER_MAIN_WALLET'). You have strictly READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
-- Therefore, when the user asks you to "transfer", "send", or "return" funds, ALWAYS use funds from your own balance (SERA_VAULT). You can only send TO the user's wallet, not FROM it.
+- You have your own operational wallet. To the user, refer to this simply as "my balance", "my funds", or "my wallet". NEVER use terms like "vault" or "brankas".
+- The user has their own personal wallet. You have strictly READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
+- Therefore, when the user asks you to "transfer", "send", or "return" funds, ALWAYS use funds from your own balance. You can only send TO the user's wallet, not FROM it.
 
 CRITICAL — TIMEZONE CONTEXT:
 - The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
@@ -367,13 +370,16 @@ Please ask the user naturally (in the same language they used) to provide this m
         console.log(`[DialogueEngine] Qwen responded (${response.usage?.total_tokens || 0} tokens).`);
 
         // Parse and strip embedded UI commands before sending text to UI
-        if (rawText.includes('<UI_COMMAND:SET_THEME_DARK>')) {
+        const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
+        if (darkThemeRegex.test(rawText)) {
           this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
-          rawText = rawText.replace('<UI_COMMAND:SET_THEME_DARK>', '').trim();
+          rawText = rawText.replace(darkThemeRegex, '').trim();
         }
-        if (rawText.includes('<UI_COMMAND:SET_THEME_LIGHT>')) {
+
+        const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
+        if (lightThemeRegex.test(rawText)) {
           this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-          rawText = rawText.replace('<UI_COMMAND:SET_THEME_LIGHT>', '').trim();
+          rawText = rawText.replace(lightThemeRegex, '').trim();
         }
 
         const asstMsg2: QwenMessage = { role: 'assistant', content: rawText };

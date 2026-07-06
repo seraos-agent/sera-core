@@ -88,7 +88,7 @@ export function ProposalCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
-            {isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from SERA Vault` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
+            {isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
           </span>
         </div>
 

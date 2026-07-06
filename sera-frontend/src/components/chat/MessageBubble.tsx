@@ -1,6 +1,8 @@
 import { Activity, Copy, Check, ExternalLink } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
   theme: ThemeType;
@@ -52,8 +54,35 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
             wordBreak: "break-word",
           }}
         >
-          {msg.content}
-          {msg.streaming && <span style={{ display: "inline-block", width: 6, height: 14, background: theme.accent, marginLeft: 3, verticalAlign: "-2px", animation: "chatui-blink 1s step-end infinite" }} />}
+          <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
+            {isUser ? (
+              <span>{msg.content}</span>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({node, ...props}) => <p style={{ margin: "0 0 10px 0" }} {...props} />,
+                  a: ({node, ...props}) => <a style={{ color: theme.accent, textDecoration: "none" }} target="_blank" rel="noopener noreferrer" {...props} />,
+                  ul: ({node, ...props}) => <ul style={{ paddingLeft: 20, margin: "0 0 10px 0" }} {...props} />,
+                  ol: ({node, ...props}) => <ol style={{ paddingLeft: 20, margin: "0 0 10px 0" }} {...props} />,
+                  li: ({node, ...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+                  strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: theme.ink }} {...props} />,
+                  pre: ({node, ...props}) => <pre style={{ background: theme.surface2, padding: 12, borderRadius: 8, overflowX: "auto", margin: "10px 0" }} {...props} />,
+                  code: ({node, className, ...props}: any) => {
+                    const hasNewline = String(props.children).includes('\n');
+                    const match = /language-(\w+)/.exec(className || '');
+                    if (match || hasNewline) {
+                      return <code style={{ fontFamily: "monospace", fontSize: "0.9em" }} className={className} {...props} />;
+                    }
+                    return <code style={{ background: theme.surface2, padding: "2px 4px", borderRadius: 4, fontFamily: "monospace", fontSize: "0.9em" }} className={className} {...props} />;
+                  }
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
+            )}
+            {msg.streaming && <span style={{ display: "inline-block", width: 6, height: 14, background: theme.accent, marginLeft: 3, verticalAlign: "-2px", animation: "chatui-blink 1s step-end infinite" }} />}
+          </div>
         </div>
         
         {msg.actionLinks && msg.actionLinks.length > 0 && (
