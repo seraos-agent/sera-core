@@ -3,6 +3,11 @@ import { ShieldAlert, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import { getWalletLabel } from '../../utils/walletLabels';
 
+function shortenAddress(address?: string) {
+  if (!address || typeof address !== 'string' || !address.startsWith('0x')) return '';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export interface ProposalPayload {
   proposalId: string;
   intent: string;
@@ -90,14 +95,27 @@ export function ProposalCard({
         {isTransfer && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
-              <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 400 : 500 }}>
-                {getWalletLabel(p.recipient)}
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Network</span>
+              <span style={{ fontSize: 14, color: theme.ink, fontWeight: 500 }}>
+                Base Mainnet
               </span>
             </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
+              <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 500 : 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {getWalletLabel(p.recipient)}
+                {p.recipient?.address && (
+                  <span style={{ fontSize: 13, color: theme.inkFaint, fontWeight: 400, fontFamily: 'monospace' }}>
+                    ({shortenAddress(p.recipient.address)})
+                  </span>
+                )}
+              </span>
+            </div>
+            
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount</span>
-              <span style={{ fontSize: 14, color: p.amount ? theme.ink : theme.status, fontWeight: p.amount ? 400 : 500 }}>
+              <span style={{ fontSize: 14, color: p.amount ? theme.ink : theme.status, fontWeight: p.amount ? 500 : 500 }}>
                 {p.amount ? `${p.amount} ${p.asset?.toUpperCase() || 'USDC'}` : 'Not set yet ⚠️'}
               </span>
             </div>

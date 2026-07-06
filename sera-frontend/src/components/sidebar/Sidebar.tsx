@@ -1,4 +1,4 @@
-import { X, Plus, Moon, Sun, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { X, Plus, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
 
@@ -8,12 +8,10 @@ interface SidebarProps {
   onClose: () => void;
   onToggle?: () => void;
   isMobileView: boolean;
-  mode: "light" | "dark";
-  setMode: (mode: "light" | "dark") => void;
   onNavigate: (view: "chat" | "wallet" | "connections" | "automations") => void;
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, setMode, onNavigate }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
 
@@ -128,13 +126,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, mode, se
                 <span style={{ fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, background: theme.accentSoft, color: theme.accent, padding: "2px 5px", borderRadius: 4, letterSpacing: 0.5, flexShrink: 0 }}>PRO</span>
               </div>
             )}
-            <button
-              onClick={() => setMode(mode === "light" ? "dark" : "light")}
-              title={mode === "light" ? "Dark mode" : "Light mode"}
-              style={{ display: "flex", alignItems: "center", padding: "4px", borderRadius: 6, border: "none", background: "transparent", color: theme.inkSoft, cursor: "pointer", flexShrink: 0 }}
-            >
-              {mode === "light" ? <Moon size={15} /> : <Sun size={15} />}
-            </button>
+
             <button
               title={!open ? "Settings" : undefined}
               style={{ display: "flex", alignItems: "center", padding: "4px", borderRadius: 6, border: "none", background: "transparent", color: theme.inkFaint, cursor: "pointer", flexShrink: 0 }}

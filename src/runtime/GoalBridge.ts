@@ -5,7 +5,7 @@ import { base } from 'viem/chains';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { SecretManager } from '../core/secrets/SecretManager';
-import { ViemWalletAdapter } from '../capabilities/wallet/ViemWalletAdapter';
+import { UniversalAgenticWallet } from '../capabilities/wallet/UniversalAgenticWallet';
 import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 
@@ -22,7 +22,7 @@ import { TriggerEngine } from '../core/triggers/TriggerEngine';
  */
 export class GoalBridge {
   private eventBus: EventEmitter;
-  private walletAdapter: ViemWalletAdapter;
+  private walletAdapter: UniversalAgenticWallet;
   private walletInitialized = false;
   private walletInitializing: Promise<void> | null = null;
   private currentWalletId: { address: string; network: string } | null = null;
@@ -37,7 +37,7 @@ export class GoalBridge {
     const secretStore = new EncryptedDatabaseSecretStore();
     const secretManager = new SecretManager(secretStore);
     const spendPermissionAdapter = new SpendPermissionAdapter();
-    this.walletAdapter = new ViemWalletAdapter(secretManager, spendPermissionAdapter);
+    this.walletAdapter = new UniversalAgenticWallet(secretManager, spendPermissionAdapter);
 
     // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
     this.walletInitializing = this.initWallet();
@@ -316,17 +316,29 @@ export class GoalBridge {
       this.emitSyncing(walletId.address, vaultAddress, walletId.network);
       console.log(`[GoalBridge] ⏳ Syncing... sending ${transferAmount} ${asset} → ${finalRecipient}`);
 
-      const receipt = await this.walletAdapter.executeTransfer(walletId, {
-        idempotencyKey: `tx-${Date.now()}`,
-        recipientAddress: finalRecipient,
-        amount: parseFloat(transferAmount),
-        asset,
-        initiator: 'AI',
-      });
+      // ── Dispatch via ExecutionContext ────────────────────────────────────
+      const context = {
+        network: 'auto',
+        asset: {
+          id: asset,
+          classification: 'token'
+        },
+        intent: {
+          recipient,
+          amount: transferAmount,
+          asset,
+          fromWallet: parameters.fromWallet
+        }
+      };
 
-      this.emitResult(requestId, receipt.status === 'SUCCESS', receipt);
+      const result = await this.walletAdapter.execute(walletId, context as any);
 
-      if (receipt.status === 'SUCCESS') {
+      if (result.status === 'SUCCESS') {
+        this.emitResult(requestId, true, {
+          transactionHash: result.executionId,
+          amount: result.amountExecuted,
+          asset: result.asset,
+        });
         // TX is confirmed on-chain (waitForTransactionReceipt already called inside executeTransfer)
         // Math is now 100% accurate — no guessing
         const sent = parseFloat(transferAmount);
@@ -339,6 +351,12 @@ export class GoalBridge {
         // TX failed — restore original balance (syncing=false, no changes)
         console.log(`[GoalBridge] ❌ Transfer failed. Restoring original balance.`);
         this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
+        this.emitResult(requestId, false, {
+           executionId: result.executionId,
+           amount: result.amountExecuted,
+           asset: result.asset,
+           reason: result.reason
+        });
       }
     } catch (err: any) {
       console.log(`[GoalBridge] ❌ Transfer threw error. Restoring original balance.`);
@@ -439,15 +457,26 @@ export class GoalBridge {
     this.emitSyncing(walletId.address, vaultAddress, walletId.network);
     console.log(`[GoalBridge] ⏳ Syncing (UI)... sending ${params.amount} ${params.asset} → ${params.recipientAddress}`);
 
-    const receipt = await this.walletAdapter.executeTransfer(walletId, {
-      idempotencyKey: `ui-tx-${Date.now()}`,
-      recipientAddress: params.recipientAddress,
-      amount: params.amount,
-      asset: params.asset,
-      initiator: 'UI',
-    });
+    const context = {
+      network: 'auto',
+      asset: {
+        id: params.asset,
+        classification: 'token'
+      },
+      intent: {
+        recipient: {
+           type: params.recipientAddress === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
+           address: params.recipientAddress
+        },
+        amount: params.amount,
+        asset: params.asset,
+        fromWallet: 'user_main_wallet'
+      }
+    };
 
-    if (receipt.status === 'SUCCESS') {
+    const result = await this.walletAdapter.execute(walletId, context as any);
+
+    if (result.status === 'SUCCESS') {
       // TX confirmed on-chain — compute real final balance
       const sent = params.amount;
       const isToVault = vaultAddress && params.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
@@ -461,7 +490,7 @@ export class GoalBridge {
       this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
     }
 
-    return receipt;
+    return result;
   }
 
   /** Refresh on-chain balance and return the latest wallet state payload */

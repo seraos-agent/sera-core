@@ -9,6 +9,7 @@ pragma solidity ^0.8.20;
 contract SeraRegistry {
     // ─── Immutable Project Identity ───
     string public constant PROJECT_BASENAME = "seraos.base.eth";
+    string public constant BUILDER_TAG = "bc_5ks53hsb";
     
     // ─── State Variables ──────────────
     mapping(address => address) public agentToOwner;

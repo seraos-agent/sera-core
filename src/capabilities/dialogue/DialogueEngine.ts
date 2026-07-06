@@ -239,7 +239,7 @@ Please ask the user naturally (in the same language they used) to provide this m
       // ── Step 3: Route actionable intents via Risk Policy ───────────────────
       if (intent !== 'NONE') {
         // AUTO-EXECUTE path: Read-only operations and authorized vault operations (e.g. transfers)
-        const AUTO_EXECUTE_INTENTS = ['CHECK_WALLET_BALANCE', 'CHECK_NETWORK', 'TRANSFER_FUNDS'];
+        const AUTO_EXECUTE_INTENTS = ['CHECK_WALLET_BALANCE', 'CHECK_NETWORK'];
         const shouldAutoExecute = AUTO_EXECUTE_INTENTS.includes(intent);
 
         if (shouldAutoExecute) {
@@ -315,7 +315,7 @@ Please ask the user naturally (in the same language they used) to provide this m
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
     const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used.`
+      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${JSON.stringify(result.data)}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
       : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
     const narrateResponse = await this.llm.generate([
@@ -331,6 +331,12 @@ Please ask the user naturally (in the same language they used) to provide this m
       this.conversationHistory = this.conversationHistory.slice(-20);
     }
 
-    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText });
+    const actionLinks = [];
+    if (result.success && result.data?.executionId && typeof result.data.executionId === 'string' && result.data.executionId.startsWith('0x')) {
+      const txHash = result.data.executionId;
+      actionLinks.push({ label: 'View on Basescan', url: `https://basescan.org/tx/${txHash}` });
+    }
+
+    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText, actionLinks });
   }
 }

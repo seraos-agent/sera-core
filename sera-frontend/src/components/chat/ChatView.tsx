@@ -87,6 +87,7 @@ export function ChatView({
           alignItems: "center",
           gap: 10,
           padding: isMobileView ? "12px 14px" : "12px 20px",
+          background: theme.surface,
           borderBottom: `1px solid ${theme.border}`,
           flexShrink: 0,
         }}
@@ -153,27 +154,29 @@ export function ChatView({
 
       {/* Input area */}
       <div style={{ padding: paddingBottomVal, flexShrink: 0, position: "relative" }}>
-        {showObservations && (
-          <CognitiveStreamPanel 
+        <div style={{ maxWidth: 760, margin: "0 auto", position: "relative" }}>
+          {showObservations && (
+            <CognitiveStreamPanel 
+              theme={theme} 
+              observations={observations} 
+              onClose={() => setShowObservations(false)} 
+            />
+          )}
+          <ChatInput 
             theme={theme} 
-            observations={observations} 
-            onClose={() => setShowObservations(false)} 
+            onSend={onSend} 
+            disabled={!socket}
+            showObservations={showObservations}
+            onToggleObservations={() => {
+              const nextState = !showObservations;
+              setShowObservations(nextState);
+              if (nextState) {
+                setLastViewedCount(observations.length);
+              }
+            }}
+            unreadCount={Math.max(0, observations.length - lastViewedCount)}
           />
-        )}
-        <ChatInput 
-          theme={theme} 
-          onSend={onSend} 
-          disabled={!socket}
-          showObservations={showObservations}
-          onToggleObservations={() => {
-            const nextState = !showObservations;
-            setShowObservations(nextState);
-            if (nextState) {
-              setLastViewedCount(observations.length);
-            }
-          }}
-          unreadCount={Math.max(0, observations.length - lastViewedCount)}
-        />
+        </div>
       </div>
     </div>
   );

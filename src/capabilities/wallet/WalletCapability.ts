@@ -1,14 +1,16 @@
-import { WalletId, TransferRequest, TransferReceipt } from './types';
+import { WalletId, ExecutionReceipt } from './types';
+import { ExecutionContext } from '../../core/execution/ExecutionContext';
 
-export interface IWalletCapability {
+export interface IExecutionCapability {
   /**
-   * Retrieves the current balance for a specific asset in the wallet.
+   * Retrieves the current balance for a specific asset in the execution environment.
    */
   getBalance(walletId: WalletId, asset: string): Promise<number>;
   getAddressBalance?(address: string, asset: string): Promise<number>;
 
   /**
-   * Executes a transfer if the request complies with all spend permissions.
+   * Universal execution interface.
+   * Delegates the intent based on the ExecutionContext to the appropriate reality adapter.
    */
-  executeTransfer(walletId: WalletId, request: TransferRequest): Promise<TransferReceipt>;
+  execute(walletId: WalletId, context: ExecutionContext<any>): Promise<ExecutionReceipt>;
 }

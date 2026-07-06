@@ -90,8 +90,6 @@ export default function App() {
           onClose={() => setSidebarOpen(false)} 
           onToggle={() => setSidebarOpen(!sidebarOpen)}
           isMobileView={isMobileView} 
-          mode={mode} 
-          setMode={setMode} 
           onNavigate={setCurrentView} 
         />
 

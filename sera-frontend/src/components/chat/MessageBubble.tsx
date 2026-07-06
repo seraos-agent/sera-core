@@ -1,4 +1,4 @@
-import { Activity, Copy, Check } from "lucide-react";
+import { Activity, Copy, Check, ExternalLink } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 
@@ -49,11 +49,35 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
             fontSize: 14.5,
             lineHeight: 1.65,
             whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
           }}
         >
           {msg.content}
           {msg.streaming && <span style={{ display: "inline-block", width: 6, height: 14, background: theme.accent, marginLeft: 3, verticalAlign: "-2px", animation: "chatui-blink 1s step-end infinite" }} />}
         </div>
+        
+        {msg.actionLinks && msg.actionLinks.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {msg.actionLinks.map((link: any, idx: number) => (
+              <a
+                key={idx}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: theme.surface2, border: `1px solid ${theme.border}`,
+                  padding: "6px 12px", borderRadius: 8, textDecoration: "none",
+                  color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 13,
+                  fontWeight: 500, transition: "background 0.2s"
+                }}
+              >
+                {link.label}
+                <ExternalLink size={13} color={theme.inkSoft} />
+              </a>
+            ))}
+          </div>
+        )}
         
         {msg.proposal && (
           <ProposalCard 

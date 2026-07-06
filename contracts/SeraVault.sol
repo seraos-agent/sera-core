@@ -14,6 +14,7 @@ interface IERC20 {
 contract SeraVault {
     // ─── Immutable Project Identity ───
     string public constant PROJECT_BASENAME = "seraos.base.eth";
+    string public constant BUILDER_TAG = "bc_5ks53hsb";
     
     // ─── State ────────────────────────
     address public owner;

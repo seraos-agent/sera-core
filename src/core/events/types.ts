@@ -17,8 +17,10 @@ export type Event = StandardEvent;
 
 export const EventTypes = {
   // System Domain
+  SYSTEM_BOOT: 'system.boot',
   SYSTEM_TRIGGER_FIRED: 'system.trigger.fired',
   SYSTEM_CYCLE_COMPLETED: 'system.cycle.completed',
+  TRIGGER_SEMANTIC_REFLECTION: 'system.trigger.semantic_reflection',
 
   // Dialogue Domain
   DIALOGUE_USER_OBSERVED: 'dialogue.user.observed',
@@ -79,10 +81,20 @@ export interface TemporalTickPayload {
   timestampUtc: number;
 }
 
+export enum SignalLevel {
+  TRACE = 'TRACE',   // System noise, usually hidden
+  INFO = 'INFO',     // Context parsing, standard operations
+  ACTION = 'ACTION', // Real-world execution (blockchain/API)
+  ALERT = 'ALERT',   // Critical failure, anomaly, or high-value insights
+  SYSTEM = 'SYSTEM'  // Engine boots, core state changes
+}
+
 export interface CognitiveObservationPayload {
   title: string;
   desc: string;
-  signal: string;
+  signal: SignalLevel | string;
   color: string; // e.g., "#ef4444", "#f59e0b", "#10b981"
   timestamp?: number;
+  // Optional metadata for semantic reflection or clustering
+  metadata?: Record<string, any>;
 }

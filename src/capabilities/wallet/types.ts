@@ -19,11 +19,11 @@ export interface TransferRequest {
   urgency?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
-export interface TransferReceipt {
+export interface ExecutionReceipt {
   status: 'SUCCESS' | 'FAILED' | 'REJECTED';
-  transactionHash?: string;
-  amountTransferred: number;
-  asset: string;
+  executionId?: string; // e.g. transactionHash or API response ID
+  amountExecuted?: number;
+  asset?: string;
   reason?: string; // If failed or rejected
   timestamp: number;
 }

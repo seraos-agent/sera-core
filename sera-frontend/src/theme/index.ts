@@ -37,7 +37,7 @@ export const THEME = {
     statusSoft: "#132C29",
     bubbleUser: "#2A302F",
     bubbleUserInk: "#ECEFF1",
-    shellShadow: "0 1px 2px rgba(0,0,0,0.3), 0 20px 48px rgba(0,0,0,0.45)",
+    shellShadow: "none",
   },
 };
 

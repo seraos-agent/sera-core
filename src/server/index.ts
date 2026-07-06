@@ -17,7 +17,7 @@ import { Runtime } from '../runtime/Runtime';
 import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
 import { WorkerManager } from '../workers/WorkerManager';
 import { observationStore } from '../core/perception/ObservationStore';
-import { ObservationClassifier } from '../core/perception/ObservationClassifier';
+import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ const runtime = new Runtime(workerManager);
 runtime.setEventBus(executionEventBus);
 runtime.setExecutionDispatcher(executionDispatcher);
 const temporalClockService = new TemporalClockService(executionEventBus, 10000);
-const observationClassifier = new ObservationClassifier(eventBus, 0.6);
+const cognitiveCompressor = new CognitiveCompressor(eventBus);
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;
@@ -85,27 +85,7 @@ io.on('connection', (socket: Socket) => {
 
   // ── EARS: user message → USER_OBSERVATION event ───────────────────────────
   socket.on('chat:message', (message: string) => {
-    // Intercept manual observation simulations
-    if (message.startsWith('/simulate-observation')) {
-      const type = message.split(' ')[1] || 'opportunity';
-      if (type === 'opportunity') {
-        observationClassifier.injectManualObservation({
-          title: "Simulated Yield Opportunity",
-          desc: "USDC lending APY on Aave increased to 5.4%.",
-          signal: "Test financial opportunity",
-          color: "#f59e0b"
-        });
-      } else if (type === 'anomaly') {
-         observationClassifier.injectManualObservation({
-          title: "Simulated Spending Pattern",
-          desc: "Gas fees are 40% higher than your weekly average.",
-          signal: "Test cost anomaly",
-          color: "#ef4444"
-        });
-      }
-      return;
-    }
-
+    // Legacy manual observation simulations removed
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION`);
 
     const event: StandardEvent = {
@@ -140,11 +120,13 @@ io.on('connection', (socket: Socket) => {
     socket.emit('chat:reply', {
       id: msgId,
       content: event.payload.text,
+      actionLinks: event.payload.actionLinks,
     });
     chatHistoryStore.appendUiMessage({
       id: msgId,
       role: 'agent',
       content: event.payload.text,
+      actionLinks: event.payload.actionLinks,
     });
   };
 
