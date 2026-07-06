@@ -1,15 +1,19 @@
 import 'dotenv/config';
+import { SeraTool, SeraToolCall } from '../../core/cognitive/Tool';
 
 const DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
 
 export interface QwenMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  name?: string; // used for tool role
+  tool_calls?: any[]; // used when assistant calls a tool
 }
 
 export interface QwenResponse {
   text: string;
   usage: { input_tokens: number; output_tokens: number; total_tokens: number };
+  toolCalls?: SeraToolCall[];
 }
 
 /**
@@ -28,18 +32,35 @@ export class QwenAdapter {
     this.model = model;
   }
 
-  async generate(messages: QwenMessage[]): Promise<QwenResponse> {
+  async generate(messages: QwenMessage[], tools?: SeraTool[]): Promise<QwenResponse> {
+    const dashScopeTools = tools?.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters
+      }
+    }));
+
+    const body: any = {
+      model: this.model,
+      input: { messages },
+      parameters: { result_format: 'message' },
+    };
+
+    if (dashScopeTools && dashScopeTools.length > 0) {
+      // Pass tools directly in parameters or top-level depending on Qwen API
+      // For dashscope it's typically in tools field alongside model
+      body.tools = dashScopeTools;
+    }
+
     const response = await fetch(DASHSCOPE_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: this.model,
-        input: { messages },
-        parameters: { result_format: 'message' },
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -49,10 +70,28 @@ export class QwenAdapter {
 
     const data = await response.json();
     const choice = data.output.choices[0].message;
+    console.log('[QwenAdapter] raw response message:', JSON.stringify(choice, null, 2));
+
+    let toolCalls: SeraToolCall[] | undefined;
+    if (choice.tool_calls && choice.tool_calls.length > 0) {
+      toolCalls = choice.tool_calls.map((tc: any) => {
+        let args = {};
+        try {
+          args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+        } catch (e) {
+          console.error('[QwenAdapter] Failed to parse tool arguments:', tc.function.arguments);
+        }
+        return {
+          name: tc.function.name,
+          arguments: args
+        };
+      });
+    }
 
     return {
-      text: choice.content,
+      text: choice.content || '',
       usage: data.usage,
+      toolCalls,
     };
   }
 }

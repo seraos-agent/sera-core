@@ -13,15 +13,10 @@ You operate as an intelligent interface between the human owner and the SERA Cor
 You MUST communicate naturally in the exact same language as the user's LATEST message.
 If the user's LATEST message is in English, you MUST reply in English. If it is in Indonesian, you MUST reply in Indonesian.
 Do not limit yourself to any specific language, and do not get stuck in a previous language if the user switches languages.
-Keep responses concise and helpful.
+Keep responses concise, fluid, and natural. Do not sound like a rigid, robotic chatbot (e.g. avoid stiff phrases like "Switching to dark mode now"). Speak like a highly capable, modern OS assistant.
 
 CRITICAL — FORMATTING POLICY:
 - Write in complete, fluid sentences. Do NOT use long em-dashes (—) in your text. Short hyphens (-) are allowed.
-
-CRITICAL — UI CONTROL PROTOCOL:
-If the user explicitly asks to switch to dark mode (mode gelap/dark), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_DARK>
-If the user explicitly asks to switch to light mode (mode terang/light), embed exactly this tag in your response: <UI_COMMAND:SET_THEME_LIGHT>
-These tags are invisible to the user — they are intercepted by the system. Always include a natural language confirmation alongside them.
 
 CRITICAL — SECURITY AND WALLET POLICY & PERSONA:
 - You have your own operational wallet. To the user, refer to this simply as "my balance", "my funds", or "my wallet". NEVER use terms like "vault" or "brankas".
@@ -36,19 +31,15 @@ CRITICAL — TIMEZONE CONTEXT:
 const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
 
 Supported intents:
-- CHECK_WALLET_BALANCE: user asks about wallet balance, saldo, dompet, ETH, crypto balance
-- CHECK_NETWORK: user asks about the current network, chain, blockchain SERA is connected to
-- TRANSFER_FUNDS: user wants to send, transfer, or kirim crypto to an address. parameters must include "recipient" (object), "amount" (number or "all"), "asset" (string, MUST DEFAULT TO "usdc" unless explicitly specified as another asset), and "fromWallet" (string, MUST ALWAYS BE "sera_vault"). The "recipient" MUST be an object: {"type": "USER_MAIN_WALLET" | "SERA_VAULT" | "EXTERNAL_ADDRESS", "address": "0x..." (only if EXTERNAL_ADDRESS)}. Use "USER_MAIN_WALLET" if they refer to their own wallet (dompet saya, kembalikan uang saya, dompet utama). Use "SERA_VAULT" if they refer to your balance (saldo kamu, saldo agen).
-- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_WALLET_BALANCE" or "TRANSFER_FUNDS"), and "actionParameters".
-- NONE: anything else (conversation, questions, commands, UI changes)
+- CHECK_NETWORK: user asks about the current network, chain, or blockchain SERA is connected to.
+- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_NETWORK"), and "actionParameters".
+- EXECUTE_UI_COMMAND: user wants to change a UI state, such as dark/light mode or clearing the chat. parameters must include "uiCommand" ("SET_THEME_DARK", "SET_THEME_LIGHT", or "CLEAR_CHAT").
+- NONE: anything else (conversation, questions, checking balances, transferring funds)
 
 Response format:
-{"intent": "CHECK_WALLET_BALANCE", "parameters": {"asset": "eth"}}
 {"intent": "CHECK_NETWORK", "parameters": {}}
-{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": {"type": "EXTERNAL_ADDRESS", "address": "0x..."}, "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}
-{"intent": "TRANSFER_FUNDS", "parameters": {"recipient": {"type": "USER_MAIN_WALLET"}, "amount": "all", "asset": "usdc", "fromWallet": "sera_vault"}}
-{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_WALLET_BALANCE", "actionParameters": {}}}
-{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "exact", "humanIntent": "in 30 seconds", "delaySeconds": 30, "actionIntent": "TRANSFER_FUNDS", "actionParameters": {"recipient": {"type": "SERA_VAULT"}, "amount": 10, "asset": "usdc", "fromWallet": "sera_vault"}}}
+{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_NETWORK", "actionParameters": {}}}
+{"intent": "EXECUTE_UI_COMMAND", "parameters": {"uiCommand": "SET_THEME_DARK"}}
 {"intent": "NONE", "parameters": {}}
 
 User Context:
@@ -78,10 +69,12 @@ export class DialogueEngine {
   // Map from proposalId → proposal data (awaiting user approval)
   private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage: string }>();
   private worldStateService: WorldStateService;
+  private capabilityCatalog: any;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
+    this.capabilityCatalog = capabilityCatalog;
     this.llm = new QwenAdapter();
 
     this.conversationHistory = chatHistoryStore.getLlmMessages();
@@ -232,79 +225,30 @@ export class DialogueEngine {
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
-      const { intent, parameters } = await this.classifyIntent(userMessage);
+      let { intent, parameters } = await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
 
-      // ── Step 1.5: Pre-Clarification Fast Fail ──────────────────────────────
-      if (intent === 'TRANSFER_FUNDS' || (intent === 'SCHEDULE_GOAL' && parameters.actionIntent === 'TRANSFER_FUNDS')) {
-        const walletState = this.worldStateService.getWalletState();
-        if (!walletState || walletState.vaultBalance <= 0) {
-          const userMsg: QwenMessage = { role: 'user', content: userMessage };
-          this.conversationHistory.push(userMsg);
-          chatHistoryStore.appendLlmMessage(userMsg);
-
-          const systemRejectionMsg = `The user wants to transfer funds, but you currently hold 0 USDC in your balance. Respond naturally and concisely that the transfer cannot be performed because you don't have any funds. Do not use the term "Sera Vault". Do not ask for missing parameters.`;
-          const response = await this.llm.generate([
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...this.conversationHistory,
-            { role: 'system', content: systemRejectionMsg }
-          ]);
-
-          const rawText = response.text.trim();
-          const asstMsg: QwenMessage = { role: 'assistant', content: rawText };
-          this.conversationHistory.push(asstMsg);
-          chatHistoryStore.appendLlmMessage(asstMsg);
-
-          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
-          return;
-        }
-      }
-
       // ── Step 2: Clarification Validation ───────────────────────────────────────
-      let missingParams: string[] = [];
-      if (intent === 'TRANSFER_FUNDS') {
-        if (!parameters.recipient || !parameters.recipient.type) missingParams.push('recipient address');
-        if (parameters.recipient?.type === 'EXTERNAL_ADDRESS' && !parameters.recipient.address) missingParams.push('recipient address');
-        if (!parameters.amount && parameters.amount !== 0) missingParams.push('amount to send');
-        if (!parameters.asset) parameters.asset = 'usdc';
-      } else if (intent === 'SCHEDULE_GOAL' && parameters.actionIntent === 'TRANSFER_FUNDS') {
-        if (!parameters.actionParameters) parameters.actionParameters = {};
-        if (!parameters.actionParameters.recipient || !parameters.actionParameters.recipient.type) missingParams.push('recipient address');
-        if (parameters.actionParameters.recipient?.type === 'EXTERNAL_ADDRESS' && !parameters.actionParameters.recipient.address) missingParams.push('recipient address');
-        if (!parameters.actionParameters.amount && parameters.actionParameters.amount !== 0) missingParams.push('amount to send');
-        if (!parameters.actionParameters.asset) parameters.actionParameters.asset = 'usdc';
-      }
+      // (Legacy logic removed - clarification is now natively handled by Tool Calling)
 
-      if (missingParams.length > 0) {
-        console.log(`[DialogueEngine] Missing parameters for ${intent}: ${missingParams.join(', ')}. Triggering Clarification Mode.`);
+        let uiCommandExecuted = false;
 
-        // Push user message to history so LLM has context
-        const userMsg: QwenMessage = { role: 'user', content: userMessage };
-        this.conversationHistory.push(userMsg);
-        chatHistoryStore.appendLlmMessage(userMsg);
+        if (intent === 'EXECUTE_UI_COMMAND') {
+          uiCommandExecuted = true;
+          // Immediately emit UI Command without waiting for the conversational reply
+          const cmd = parameters.uiCommand;
+          if (cmd === 'SET_THEME_DARK') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+          if (cmd === 'SET_THEME_LIGHT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+          if (cmd === 'CLEAR_CHAT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT' });
+          
+          // Force fallback to conversational response so the agent acknowledges the action naturally
+          intent = 'NONE';
+        }
 
-        const clarificationPrompt = `The user wants to transfer funds, but their request is missing the following required information: ${missingParams.join(', ')}. 
-Please ask the user naturally (in the same language they used) to provide this missing information. Keep it brief. Do not mention JSON or parameters.`;
-
-        const response = await this.llm.generate([
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...this.conversationHistory,
-          { role: 'system', content: clarificationPrompt }
-        ]);
-
-        const responseText = response.text.trim();
-        const asstMsg: QwenMessage = { role: 'assistant', content: responseText };
-        this.conversationHistory.push(asstMsg);
-        chatHistoryStore.appendLlmMessage(asstMsg);
-
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: responseText });
-        return; // Abort execution/proposal and wait for user's next message
-      }
-
-      // ── Step 3: Route actionable intents via Risk Policy ───────────────────
-      if (intent !== 'NONE') {
+        // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
+        if (intent !== 'NONE') {
         // AUTO-EXECUTE path: Read-only operations and authorized vault operations (e.g. transfers)
-        const AUTO_EXECUTE_INTENTS = ['CHECK_WALLET_BALANCE', 'CHECK_NETWORK'];
+        const AUTO_EXECUTE_INTENTS = ['CHECK_NETWORK'];
         const shouldAutoExecute = AUTO_EXECUTE_INTENTS.includes(intent);
 
         if (shouldAutoExecute) {
@@ -348,10 +292,37 @@ Please ask the user naturally (in the same language they used) to provide this m
             parameters
           });
 
-          // Reply conversationally that we are proposing it
-          const summaryText = intent === 'SCHEDULE_GOAL'
-            ? `I can set up that schedule for you. Please review the proposal.`
-            : `I have prepared the transaction. Please review the details before I proceed.`;
+          // Reply conversationally that we are proposing it using the LLM to maintain language continuity
+          const userMsgForProposal: QwenMessage = { role: 'user', content: userMessage };
+          this.conversationHistory.push(userMsgForProposal);
+          chatHistoryStore.appendLlmMessage(userMsgForProposal);
+
+          const walletState = this.worldStateService.getWalletState();
+          const systemProposalMsg = `You have just prepared an action proposal.
+Intent: ${intent}
+Parameters: ${JSON.stringify(parameters)}
+Current World State:
+- Agent Vault Balance: ${walletState?.vaultBalance ?? 'Unknown'} USDC
+- User Main Wallet Balance: ${walletState?.balance ?? 'Unknown'} USDC
+
+Write a brief, natural response asking the user to review and approve the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
+          const proposalResponse = await this.llm.generate([
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...this.conversationHistory,
+            { role: 'system', content: systemProposalMsg }
+          ]);
+
+          let summaryText = proposalResponse.text.trim();
+          
+          // Strip any UI commands just in case
+          const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
+          summaryText = summaryText.replace(darkThemeRegex, '').trim();
+          const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
+          summaryText = summaryText.replace(lightThemeRegex, '').trim();
+
+          const asstMsgForProposal: QwenMessage = { role: 'assistant', content: summaryText };
+          this.conversationHistory.push(asstMsgForProposal);
+          chatHistoryStore.appendLlmMessage(asstMsgForProposal);
 
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
@@ -361,26 +332,105 @@ Please ask the user naturally (in the same language they used) to provide this m
         this.conversationHistory.push(userMsg2);
         chatHistoryStore.appendLlmMessage(userMsg2);
 
-        const response = await this.llm.generate([
+        const messages: QwenMessage[] = [
           { role: 'system', content: SYSTEM_PROMPT },
           ...this.conversationHistory,
-        ]);
+        ];
+
+        if (uiCommandExecuted) {
+          messages.push({ 
+            role: 'system', 
+            content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.` 
+          });
+        }
+
+        const availableTools = this.capabilityCatalog?.availableTools();
+        const response = await this.llm.generate(messages, availableTools);
+
+        // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
+        if (response.toolCalls && response.toolCalls.length > 0) {
+          const toolCall = response.toolCalls[0];
+          console.log(`[DialogueEngine] LLM Native Tool Call selected: ${toolCall.name}`);
+          
+          const startTime = Date.now();
+          
+          // Route tool call through standard execution/proposal path
+          const toolIntent = toolCall.name;
+          const toolParams = toolCall.arguments;
+
+          // AUTO-EXECUTE path for safe tools
+          const SAFE_TOOLS = ['CHECK_WALLET_BALANCE'];
+          const isSafe = SAFE_TOOLS.includes(toolIntent);
+
+          if (isSafe) {
+            this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+              content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
+            });
+            const result = await this.spawnGoalAndAwaitResult(toolIntent, toolParams);
+            const duration = Date.now() - startTime;
+            
+            // Phase 8: Tool Telemetry
+            this.emitEvent('SYSTEM_TELEMETRY' as any, {
+              metric: 'tool_execution',
+              toolName: toolIntent,
+              success: result.success,
+              durationMs: duration
+            });
+
+            await this.narrateResult(userMessage, result);
+          } else {
+            // PROPOSAL path for risky tools
+            console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
+            const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            this.pendingProposals.set(proposalId, { intent: toolIntent, parameters: toolParams, userMessage });
+
+            this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
+              proposalId,
+              intent: toolIntent,
+              parameters: toolParams
+            });
+
+            const walletState = this.worldStateService.getWalletState();
+            const systemProposalMsg = `You have just prepared an action proposal via Tool Calling.
+Intent: ${toolIntent}
+Parameters: ${JSON.stringify(toolParams)}
+Current World State:
+- Agent Vault Balance: ${walletState?.vaultBalance ?? 'Unknown'} USDC
+- User Main Wallet Balance: ${walletState?.balance ?? 'Unknown'} USDC
+
+Respond naturally to the user acknowledging that you have prepared the proposal and are waiting for their approval in the UI. Keep it extremely brief and professional.`;
+
+            const proposalResponse = await this.llm.generate([
+              { role: 'system', content: SYSTEM_PROMPT },
+              ...this.conversationHistory,
+              { role: 'system', content: systemProposalMsg }
+            ]);
+
+            const summaryText = proposalResponse.text.trim();
+            const asstMsgForProposal: QwenMessage = { role: 'assistant', content: summaryText };
+            this.conversationHistory.push(asstMsgForProposal);
+            chatHistoryStore.appendLlmMessage(asstMsgForProposal);
+            
+            // Telemetry for proposal generation
+            this.emitEvent('SYSTEM_TELEMETRY' as any, {
+              metric: 'tool_proposal',
+              toolName: toolIntent,
+              success: true,
+              durationMs: Date.now() - startTime
+            });
+
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+          }
+          return;
+        }
 
         let rawText = response.text.trim();
         console.log(`[DialogueEngine] Qwen responded (${response.usage?.total_tokens || 0} tokens).`);
 
-        // Parse and strip embedded UI commands before sending text to UI
+        // Safety Net: Strip any legacy UI commands the LLM might hallucinate from its history
         const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
-        if (darkThemeRegex.test(rawText)) {
-          this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
-          rawText = rawText.replace(darkThemeRegex, '').trim();
-        }
-
         const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
-        if (lightThemeRegex.test(rawText)) {
-          this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-          rawText = rawText.replace(lightThemeRegex, '').trim();
-        }
+        rawText = rawText.replace(darkThemeRegex, '').replace(lightThemeRegex, '').trim();
 
         const asstMsg2: QwenMessage = { role: 'assistant', content: rawText };
         this.conversationHistory.push(asstMsg2);

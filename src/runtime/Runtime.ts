@@ -36,9 +36,12 @@ import { IntentStore } from '../core/intents/IntentStore';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 import { ExecutionDispatcher } from './ExecutionDispatcher';
 import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
+import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
+import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 
 export class Runtime {
   public worldStateService!: WorldStateService;
+  public capabilityCatalog!: CapabilityCatalog;
   public dialogueEngine!: DialogueEngine;
   private memoryStore: MemoryStore;
   private authorityService: AuthorityService;
@@ -136,8 +139,13 @@ export class Runtime {
 
   public setGlobalEventBus(globalEventBus: any): void {
     this.worldStateService = new WorldStateService(globalEventBus);
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService);
-    console.log('[Runtime] Global EventBus and Cognitive Engines Initialized');
+    
+    this.capabilityCatalog = new CapabilityCatalog();
+    const walletCap = new WalletToolCapability();
+    this.capabilityCatalog.registerTools([...walletCap.getTools()]);
+
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog);
+    console.log('[Runtime] Global EventBus, CapabilityCatalog, and Cognitive Engines Initialized');
   }
 
   public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {
