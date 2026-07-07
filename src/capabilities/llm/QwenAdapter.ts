@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { SeraTool, SeraToolCall } from '../../core/cognitive/Tool';
 
-const DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
+const DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
 
 export interface QwenMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -44,13 +44,10 @@ export class QwenAdapter {
 
     const body: any = {
       model: this.model,
-      input: { messages },
-      parameters: { result_format: 'message' },
+      messages: messages,
     };
 
     if (dashScopeTools && dashScopeTools.length > 0) {
-      // Pass tools directly in parameters or top-level depending on Qwen API
-      // For dashscope it's typically in tools field alongside model
       body.tools = dashScopeTools;
     }
 
@@ -69,7 +66,7 @@ export class QwenAdapter {
     }
 
     const data = await response.json();
-    const choice = data.output.choices[0].message;
+    const choice = data.choices[0].message;
     console.log('[QwenAdapter] raw response message:', JSON.stringify(choice, null, 2));
 
     let toolCalls: SeraToolCall[] | undefined;

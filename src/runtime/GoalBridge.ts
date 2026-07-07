@@ -324,7 +324,7 @@ export class GoalBridge {
           recipient,
           amount: transferAmount,
           asset,
-          fromWallet: parameters.fromWallet
+          fromWallet: parameters.fromWallet || 'sera_vault'
         }
       };
 

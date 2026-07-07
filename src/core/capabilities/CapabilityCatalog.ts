@@ -30,4 +30,11 @@ export class CapabilityCatalog {
   public availableTools(): SeraTool[] {
     return Array.from(this.tools.values());
   }
+
+  /**
+   * Retrieves a specific tool by name.
+   */
+  public getTool(name: string): SeraTool | undefined {
+    return this.tools.get(name);
+  }
 }

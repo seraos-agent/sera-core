@@ -17,6 +17,12 @@ import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
 import { WorkerManager } from '../workers/WorkerManager';
 import { observationStore } from '../core/perception/ObservationStore';
 import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
+import { AuditLogger } from '../core/telemetry/AuditLogger';
+import { ExperienceBuilder } from '../core/memory/ExperienceBuilder';
+import { MemoryService } from '../core/memory/MemoryService';
+import { MemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
+import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
+import { SeraTool } from '../core/cognitive/Tool';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -41,6 +47,24 @@ runtime.setGlobalEventBus(eventBus);
 runtime.setExecutionDispatcher(executionDispatcher);
 const temporalClockService = new TemporalClockService(eventBus, 10000);
 const cognitiveCompressor = new CognitiveCompressor(eventBus);
+const auditLogger = new AuditLogger(eventBus);
+const experienceBuilder = new ExperienceBuilder(eventBus);
+const memoryService = new MemoryService();
+const memoryPolicyEngine = new MemoryPolicyEngine(memoryService);
+
+// Initialize OS Capability Catalog
+const catalog = new CapabilityCatalog();
+const dummyPingTool: SeraTool = {
+  name: 'system_ping',
+  description: 'Pings the system to check if it is responsive. Use this when the user asks to ping the system.',
+  parameters: {
+    type: 'object',
+    properties: {
+      message: { type: 'string', description: 'Optional message to attach to the ping' }
+    }
+  }
+};
+catalog.registerTools([dummyPingTool]);
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;

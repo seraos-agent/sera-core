@@ -28,16 +28,35 @@ export class WalletToolCapability {
             }
           },
           required: ['recipient', 'amount']
-        }
+        },
+        requiresApproval: true
       },
       {
         name: 'CHECK_WALLET_BALANCE',
-        description: 'Use this tool to check the current wallet balance of the SERA agent.',
+        description: 'Use this tool to check, view, or inquire about the balance of either the user\'s personal wallet or the SERA agent\'s internal vault.',
         parameters: {
           type: 'object',
           properties: {},
           required: []
-        }
+        },
+        requiresApproval: false
+      },
+      {
+        name: 'SCHEDULE_GOAL',
+        description: 'Use this tool to schedule a recurring or future action. You must specify the action to be performed.',
+        parameters: {
+          type: 'object',
+          properties: {
+            scheduleType: { type: 'string', enum: ['cron', 'exact'], description: 'Type of schedule: cron for recurring, exact for a one-time delay.' },
+            humanIntent: { type: 'string', description: 'A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. e.g. "In 20 seconds"' },
+            cronExpression: { type: 'string', description: 'If recurring, the standard cron expression in UTC.' },
+            delaySeconds: { type: 'number', description: 'If exact timestamp, how many seconds from now this should execute. e.g. 20' },
+            actionIntent: { type: 'string', description: 'The actual tool or action to execute (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
+            actionParameters: { type: 'object', description: 'The parameters for the actionIntent' }
+          },
+          required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
+        },
+        requiresApproval: true
       }
     ];
   }

@@ -21,6 +21,7 @@ export const EventTypes = {
   SYSTEM_TRIGGER_FIRED: 'system.trigger.fired',
   SYSTEM_CYCLE_COMPLETED: 'system.cycle.completed',
   TRIGGER_SEMANTIC_REFLECTION: 'system.trigger.semantic_reflection',
+  SYSTEM_PROPOSE_GOAL: 'system.propose.goal',
 
   // Dialogue Domain
   DIALOGUE_USER_OBSERVED: 'dialogue.user.observed',
@@ -62,6 +63,12 @@ export interface SpawnGoalPayload {
   requestId: string;
   intent: string;
   parameters: Record<string, any>;
+}
+
+export interface ProposeGoalPayload {
+  intent: string;
+  parameters: Record<string, any>;
+  userMessage?: string; // Optional narration or context
 }
 
 export interface GoalResultPayload {

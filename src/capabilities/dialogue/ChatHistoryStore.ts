@@ -13,7 +13,6 @@ export interface UiMessage {
 
 export interface ChatHistoryState {
   uiMessages: UiMessage[];
-  llmMessages: QwenMessage[];
 }
 
 export class ChatHistoryStore {
@@ -41,7 +40,7 @@ export class ChatHistoryStore {
     } catch (e) {
       console.error('[ChatHistoryStore] Failed to load chat history:', e);
     }
-    return { uiMessages: [], llmMessages: [] };
+    return { uiMessages: [] };
   }
 
   private save(): void {
@@ -60,10 +59,6 @@ export class ChatHistoryStore {
     return this.state.uiMessages;
   }
 
-  public getLlmMessages(): QwenMessage[] {
-    return this.state.llmMessages;
-  }
-
   public appendUiMessage(msg: UiMessage): void {
     const existingIndex = this.state.uiMessages.findIndex(m => m.id === msg.id);
     if (existingIndex >= 0) {
@@ -71,11 +66,6 @@ export class ChatHistoryStore {
     } else {
       this.state.uiMessages.push(msg);
     }
-    this.save();
-  }
-
-  public appendLlmMessage(msg: QwenMessage): void {
-    this.state.llmMessages.push(msg);
     this.save();
   }
 
@@ -88,7 +78,7 @@ export class ChatHistoryStore {
   }
 
   public clear(): void {
-    this.state = { uiMessages: [], llmMessages: [] };
+    this.state = { uiMessages: [] };
     this.save();
   }
 }

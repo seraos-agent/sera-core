@@ -32,13 +32,11 @@ const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the 
 
 Supported intents:
 - CHECK_NETWORK: user asks about the current network, chain, or blockchain SERA is connected to.
-- SCHEDULE_GOAL: user wants to do an action in the future or on a recurring basis. parameters must include "scheduleType" ("cron" or "exact"), "humanIntent" (A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. Do NOT just copy the user's raw chat message), "cronExpression" (if recurring, in UTC), "delaySeconds" (if exact timestamp, how many seconds from now this should execute. e.g. 30 for 30 seconds from now), "actionIntent" (e.g. "CHECK_NETWORK"), and "actionParameters".
 - EXECUTE_UI_COMMAND: user wants to change a UI state, such as dark/light mode or clearing the chat. parameters must include "uiCommand" ("SET_THEME_DARK", "SET_THEME_LIGHT", or "CLEAR_CHAT").
-- NONE: anything else (conversation, questions, checking balances, transferring funds)
+- NONE: anything else (conversation, questions, checking balances, transferring funds, scheduling tasks)
 
 Response format:
 {"intent": "CHECK_NETWORK", "parameters": {}}
-{"intent": "SCHEDULE_GOAL", "parameters": {"scheduleType": "cron", "humanIntent": "every monday 9 AM", "cronExpression": "0 2 * * 1", "actionIntent": "CHECK_NETWORK", "actionParameters": {}}}
 {"intent": "EXECUTE_UI_COMMAND", "parameters": {"uiCommand": "SET_THEME_DARK"}}
 {"intent": "NONE", "parameters": {}}
 
@@ -62,12 +60,8 @@ User message: `;
 export class DialogueEngine {
   private llm: QwenAdapter;
   private eventBus: EventEmitter;
-  private conversationHistory: QwenMessage[];
   // Map from requestId → resolve function, for awaiting goal results
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
-
-  // Map from proposalId → proposal data (awaiting user approval)
-  private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage: string }>();
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
 
@@ -77,53 +71,59 @@ export class DialogueEngine {
     this.capabilityCatalog = capabilityCatalog;
     this.llm = new QwenAdapter();
 
-    this.conversationHistory = chatHistoryStore.getLlmMessages();
-    if (this.conversationHistory.length === 0) {
-      const sysMsg: QwenMessage = { role: 'system', content: SYSTEM_PROMPT };
-      this.conversationHistory.push(sysMsg);
-      chatHistoryStore.appendLlmMessage(sysMsg);
-    }
-
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
-    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, this.onProposalApproved.bind(this));
-    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_REJECTED, this.onProposalRejected.bind(this));
 
     console.log('[DialogueEngine] Initialized and listening for dialogue events.');
   }
 
-  // ── Proposal Listeners ────────────────────────────────────────────────────
+  public clearHistory(): void {
+    // History is managed via UI messages in ChatHistoryStore. Working memory is dynamic.
+  }
 
-  private async onProposalApproved(event: StandardEvent): Promise<void> {
-    const proposalId = event.payload.proposalId;
-    const proposal = this.pendingProposals.get(proposalId);
-    if (!proposal) return;
+  // ── Cognitive Context Builder ─────────────────────────────────────────────
 
-    this.pendingProposals.delete(proposalId);
+  private buildWorkingMemory(uiCommandExecuted?: boolean): QwenMessage[] {
+    const messages: QwenMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
 
-    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-      content: `${proposal.intent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
+    const walletState = this.worldStateService.getWalletState();
+
+    const cognitiveState = {
+      relevant_facts: {
+        userMainWalletAddress: walletState?.address || 'Unknown'
+      },
+      constraints: [
+        'User attention is limited. Keep answers concise.',
+        'Never hallucinate unverified state.',
+        'To get the user or agent balances, you MUST use the CHECK_WALLET_BALANCE tool.'
+      ]
+    };
+
+    messages.push({
+      role: 'system',
+      content: `[COGNITIVE STATE (WORKING MEMORY)]\n${JSON.stringify(cognitiveState, null, 2)}`
     });
 
-    // Execute after approval
-    const result = await this.spawnGoalAndAwaitResult(proposal.intent, proposal.parameters);
-    this.narrateResult(proposal.userMessage, result);
-  }
-
-  private onProposalRejected(event: StandardEvent): Promise<void> {
-    const proposalId = event.payload.proposalId;
-    if (this.pendingProposals.has(proposalId)) {
-      this.pendingProposals.delete(proposalId);
-
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        text: "Proposal has been cancelled. Let me know if you'd like to do something else."
+    if (uiCommandExecuted) {
+      messages.push({ 
+        role: 'system', 
+        content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.` 
       });
     }
-    return Promise.resolve();
-  }
 
-  public clearHistory(): void {
-    this.conversationHistory = [];
+    // Recent Dialogue Context (last 5 messages)
+    const recentUi = chatHistoryStore.getUiMessages()
+      .filter(m => m.type !== 'activity' && m.content)
+      .slice(-5);
+
+    for (const msg of recentUi) {
+      messages.push({
+        role: msg.role === 'agent' ? 'assistant' : 'user',
+        content: msg.content!
+      });
+    }
+
+    return messages;
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
@@ -208,12 +208,16 @@ export class DialogueEngine {
 
   // ── Event Handlers ────────────────────────────────────────────────────────
 
-  private onGoalResult(event: StandardEvent<GoalResultPayload>): void {
+  private async onGoalResult(event: StandardEvent<GoalResultPayload>): Promise<void> {
     const result = event.payload;
     const resolver = this.pendingGoals.get(result.requestId);
     if (resolver) {
       this.pendingGoals.delete(result.requestId);
       resolver(result);
+    } else {
+      // Goal was spawned externally (e.g. via ProposalManager after approval)
+      const userMessage = result.data?._userMessage || "The action was executed successfully after user approval.";
+      await this.narrateResult(userMessage, result);
     }
   }
 
@@ -262,40 +266,28 @@ export class DialogueEngine {
           // Pre-Proposal Validation
           const feasibility = this.evaluateFeasibility(intent, parameters);
           if (!feasibility.feasible) {
-            const userMsg3: QwenMessage = { role: 'user', content: userMessage };
-            this.conversationHistory.push(userMsg3);
-            chatHistoryStore.appendLlmMessage(userMsg3);
-
             const systemRejectionMsg = `The user's requested operation failed the pre-flight feasibility check. Reason: ${feasibility.reason}. Respond strictly as an objective operational system agent. Explain that the request was evaluated against current world state and cannot be prepared. Do NOT apologize. Maintain an operational, matter-of-fact tone.`;
-            const response = await this.llm.generate([
-              { role: 'system', content: SYSTEM_PROMPT },
-              ...this.conversationHistory,
-              { role: 'system', content: systemRejectionMsg }
-            ]);
+            
+            const messages = this.buildWorkingMemory();
+            messages.push({ role: 'system', content: systemRejectionMsg });
+
+            const response = await this.llm.generate(messages);
 
             const rawText = response.text.trim();
-            const asstMsg3: QwenMessage = { role: 'assistant', content: rawText };
-            this.conversationHistory.push(asstMsg3);
-            chatHistoryStore.appendLlmMessage(asstMsg3);
+            // LLM messages are no longer persisted
 
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
             return;
           }
 
           // PROPOSAL path (Risk-Tiered: WRITE/FINANCE/SCHEDULE)
-          const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-          this.pendingProposals.set(proposalId, { intent, parameters, userMessage });
-
-          this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
-            proposalId,
+          this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
             intent,
-            parameters
+            parameters,
+            userMessage
           });
 
           // Reply conversationally that we are proposing it using the LLM to maintain language continuity
-          const userMsgForProposal: QwenMessage = { role: 'user', content: userMessage };
-          this.conversationHistory.push(userMsgForProposal);
-          chatHistoryStore.appendLlmMessage(userMsgForProposal);
 
           const walletState = this.worldStateService.getWalletState();
           const systemProposalMsg = `You have just prepared an action proposal.
@@ -305,12 +297,12 @@ Current World State:
 - Agent Vault Balance: ${walletState?.vaultBalance ?? 'Unknown'} USDC
 - User Main Wallet Balance: ${walletState?.balance ?? 'Unknown'} USDC
 
-Write a brief, natural response asking the user to review and approve the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
-          const proposalResponse = await this.llm.generate([
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...this.conversationHistory,
-            { role: 'system', content: systemProposalMsg }
-          ]);
+CRITICAL INSTRUCTION:
+Do NOT say that you are processing, executing, or performing the action right now. The action has NOT happened yet.
+You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
+          const messages = this.buildWorkingMemory();
+          messages.push({ role: 'system', content: systemProposalMsg });
+          const proposalResponse = await this.llm.generate(messages);
 
           let summaryText = proposalResponse.text.trim();
           
@@ -320,29 +312,14 @@ Write a brief, natural response asking the user to review and approve the propos
           const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
           summaryText = summaryText.replace(lightThemeRegex, '').trim();
 
-          const asstMsgForProposal: QwenMessage = { role: 'assistant', content: summaryText };
-          this.conversationHistory.push(asstMsgForProposal);
-          chatHistoryStore.appendLlmMessage(asstMsgForProposal);
+          // LLM messages are no longer persisted
+
 
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
       } else {
         // ── Step 4: Pure conversational response ─────────────────────────────
-        const userMsg2: QwenMessage = { role: 'user', content: userMessage };
-        this.conversationHistory.push(userMsg2);
-        chatHistoryStore.appendLlmMessage(userMsg2);
-
-        const messages: QwenMessage[] = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...this.conversationHistory,
-        ];
-
-        if (uiCommandExecuted) {
-          messages.push({ 
-            role: 'system', 
-            content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.` 
-          });
-        }
+        const messages = this.buildWorkingMemory(uiCommandExecuted);
 
         const availableTools = this.capabilityCatalog?.availableTools();
         const response = await this.llm.generate(messages, availableTools);
@@ -356,11 +333,16 @@ Write a brief, natural response asking the user to review and approve the propos
           
           // Route tool call through standard execution/proposal path
           const toolIntent = toolCall.name;
-          const toolParams = toolCall.arguments;
+          let toolParams: Record<string, any> = {};
+          try {
+            toolParams = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments;
+          } catch (e) {
+            console.error('[DialogueEngine] Failed to parse tool arguments:', e);
+          }
 
-          // AUTO-EXECUTE path for safe tools
-          const SAFE_TOOLS = ['CHECK_WALLET_BALANCE'];
-          const isSafe = SAFE_TOOLS.includes(toolIntent);
+          // Determine safety dynamically via CapabilityCatalog
+          const toolMeta = this.capabilityCatalog?.getTool(toolIntent);
+          const isSafe = toolMeta ? !toolMeta.requiresApproval : true;
 
           if (isSafe) {
             this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
@@ -381,13 +363,10 @@ Write a brief, natural response asking the user to review and approve the propos
           } else {
             // PROPOSAL path for risky tools
             console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
-            const proposalId = `prop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            this.pendingProposals.set(proposalId, { intent: toolIntent, parameters: toolParams, userMessage });
-
-            this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
-              proposalId,
+            this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
               intent: toolIntent,
-              parameters: toolParams
+              parameters: toolParams,
+              userMessage
             });
 
             const walletState = this.worldStateService.getWalletState();
@@ -398,18 +377,17 @@ Current World State:
 - Agent Vault Balance: ${walletState?.vaultBalance ?? 'Unknown'} USDC
 - User Main Wallet Balance: ${walletState?.balance ?? 'Unknown'} USDC
 
-Respond naturally to the user acknowledging that you have prepared the proposal and are waiting for their approval in the UI. Keep it extremely brief and professional.`;
+CRITICAL INSTRUCTION:
+Do NOT say that you are processing, executing, or transferring the funds right now. The action has NOT happened yet.
+You MUST respond naturally to the user acknowledging that you have prepared the request and are currently WAITING for them to click "Approve" or "Reject" in the UI popup. Keep it extremely brief and professional.`;
 
-            const proposalResponse = await this.llm.generate([
-              { role: 'system', content: SYSTEM_PROMPT },
-              ...this.conversationHistory,
-              { role: 'system', content: systemProposalMsg }
-            ]);
+            const messages = this.buildWorkingMemory();
+            messages.push({ role: 'system', content: systemProposalMsg });
+
+            const proposalResponse = await this.llm.generate(messages);
 
             const summaryText = proposalResponse.text.trim();
-            const asstMsgForProposal: QwenMessage = { role: 'assistant', content: summaryText };
-            this.conversationHistory.push(asstMsgForProposal);
-            chatHistoryStore.appendLlmMessage(asstMsgForProposal);
+            // LLM messages are no longer persisted
             
             // Telemetry for proposal generation
             this.emitEvent('SYSTEM_TELEMETRY' as any, {
@@ -432,14 +410,8 @@ Respond naturally to the user acknowledging that you have prepared the proposal 
         const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
         rawText = rawText.replace(darkThemeRegex, '').replace(lightThemeRegex, '').trim();
 
-        const asstMsg2: QwenMessage = { role: 'assistant', content: rawText };
-        this.conversationHistory.push(asstMsg2);
-        chatHistoryStore.appendLlmMessage(asstMsg2);
+        // LLM messages are no longer persisted
 
-        // Keep history bounded to last 20 turns
-        if (this.conversationHistory.length > 20) {
-          this.conversationHistory = this.conversationHistory.slice(-20);
-        }
 
         // Parse any markdown links out of the text to render them as UI buttons instead
         const actionLinks = [];
@@ -478,18 +450,13 @@ Respond naturally to the user acknowledging that you have prepared the proposal 
       ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
       : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
-    const narrateResponse = await this.llm.generate([
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...this.conversationHistory,
-      { role: 'user', content: narratePrompt },
-    ]);
+    const messages = this.buildWorkingMemory();
+    messages.push({ role: 'user', content: narratePrompt });
+
+    const narrateResponse = await this.llm.generate(messages);
 
     const generatedText = narrateResponse.text.trim();
-
-    this.conversationHistory.push({ role: 'assistant', content: generatedText });
-    if (this.conversationHistory.length > 20) {
-      this.conversationHistory = this.conversationHistory.slice(-20);
-    }
+    // LLM messages are no longer persisted
 
     const actionLinks = [];
     if (result.success && result.data?.executionId && typeof result.data.executionId === 'string' && result.data.executionId.startsWith('0x')) {

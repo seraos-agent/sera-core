@@ -38,11 +38,13 @@ import { ExecutionDispatcher } from './ExecutionDispatcher';
 import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
+import { ProposalManager } from '../core/governance/ProposalManager';
 
 export class Runtime {
   public worldStateService!: WorldStateService;
   public capabilityCatalog!: CapabilityCatalog;
   public dialogueEngine!: DialogueEngine;
+  public proposalManager!: ProposalManager;
   private memoryStore: MemoryStore;
   private authorityService: AuthorityService;
   private workerManager: WorkerManager;
@@ -144,8 +146,10 @@ export class Runtime {
     const walletCap = new WalletToolCapability();
     this.capabilityCatalog.registerTools([...walletCap.getTools()]);
 
+    this.proposalManager = new ProposalManager(globalEventBus);
+
     this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog);
-    console.log('[Runtime] Global EventBus, CapabilityCatalog, and Cognitive Engines Initialized');
+    console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
   }
 
   public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {

@@ -23,6 +23,12 @@ export interface SeraTool {
    * The JSON Schema defining the expected parameters.
    */
   parameters: Record<string, any>;
+
+  /**
+   * Whether this tool requires user approval before execution (e.g. risky actions).
+   * If true, the system will intercept the tool call and generate a UI Proposal.
+   */
+  requiresApproval?: boolean;
 }
 
 export interface SeraToolCall {
