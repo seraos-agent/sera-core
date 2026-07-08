@@ -75,7 +75,7 @@ export function ChatView({
       {/* Messages area */}
       <div ref={scrollRef} style={{
         flex: 1, overflowY: "auto",
-        padding: isMobileView ? "18px 14px 120px" : "24px 26px 140px",
+        padding: isMobileView ? "72px 14px 120px" : "80px 26px 140px",
         maskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)",
         WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)"
       }}>
