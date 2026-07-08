@@ -45,6 +45,11 @@ export const EventTypes = {
 
   // UI Layer
   UI_COMMAND: 'ui.command',
+
+  // Governance Layer
+  GOVERNANCE_DECISION_RECORDED: 'governance.decision.recorded',
+  GOVERNANCE_OUTCOME_RECORDED: 'governance.outcome.recorded',
+  GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
 } as const;
 
 export type EventType = typeof EventTypes[keyof typeof EventTypes];

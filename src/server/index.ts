@@ -35,8 +35,17 @@ import { CalibrationEvaluationEngine } from '../core/cognition/CalibrationEvalua
 import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
 import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
 import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
+import { MetaGovernanceReview } from '../core/governance/MetaGovernanceReview';
+import { GovernanceCoordinator } from '../core/governance/GovernanceCoordinator';
+import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
+import { IrreversibleActionRule } from '../constitution/rules/IrreversibleActionRule';
+import { DestructiveActionRule } from '../constitution/rules/DestructiveActionRule';
+import { UnsafeActionRule } from '../constitution/rules/UnsafeActionRule';
 import { SignalArbitrator } from '../core/feedback/SignalArbitrator';
 import { MemoryPolicyEngine as EpistemicPolicyEngine } from '../memory/MemoryPolicyEngine';
+import { MemoryService } from '../core/memory/MemoryService';
+import { MemoryPolicyEngine as CoreMemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
+import { MemoryIngress } from '../core/memory/MemoryIngress';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { IntentEngine } from '../core/intents/IntentEngine';
 import { IntentStore } from '../core/intents/IntentStore';
@@ -75,13 +84,33 @@ const goalSynthesizer = new GoalSynthesizer();
 const proposalGovernance = new ProposalGovernance();
 
 const memoryStore = new MemoryStore();
+const memoryService = new MemoryService();
+const coreMemoryPolicyEngine = new CoreMemoryPolicyEngine(memoryService);
+const memoryIngress = new MemoryIngress(eventBus, coreMemoryPolicyEngine);
+
 const executionTraceStore = new ExecutionTraceStore();
 const coherenceMonitor = new CoherenceMonitor();
 const proposalEvaluator = new ProposalEvaluator(memoryStore);
 const calibrationEvaluationEngine = new CalibrationEvaluationEngine(memoryStore);
-const governanceOutcomeTracker = new GovernanceOutcomeTracker(memoryStore);
-const governanceReflectionEngine = new GovernanceReflectionEngine(memoryStore);
+const governanceOutcomeTracker = new GovernanceOutcomeTracker(memoryStore, memoryService, eventBus);
+const governanceReflectionEngine = new GovernanceReflectionEngine(memoryService, eventBus);
 const governanceCalibrationEngine = new GovernanceCalibrationEngine(memoryStore);
+const metaGovernanceReview = new MetaGovernanceReview(eventBus);
+
+const governanceCoordinator = new GovernanceCoordinator(
+  eventBus,
+  governanceOutcomeTracker,
+  governanceReflectionEngine,
+  calibrationEvaluationEngine,
+  governanceCalibrationEngine,
+  metaGovernanceReview
+);
+
+const constitutionEngine = new ConstitutionEngine();
+constitutionEngine.register(new IrreversibleActionRule());
+constitutionEngine.register(new DestructiveActionRule());
+constitutionEngine.register(new UnsafeActionRule());
+
 
 const signalArbitrator = new SignalArbitrator();
 const epistemicPolicyEngine = new EpistemicPolicyEngine(memoryStore);
@@ -89,7 +118,7 @@ const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyE
 
 const runtime = new Runtime(
   workerManager,
-  undefined,
+  constitutionEngine,
   feedbackPipeline,
   coherenceMonitor,
   calibrationEvaluationEngine,
@@ -143,6 +172,7 @@ catalog.registerTools([dummyPingTool]);
 // Start Engines
 triggerEngine.start();
 temporalClockService.start();
+governanceCoordinator.start();
 
 let msgIdCounter = Date.now();
 

@@ -1,10 +1,11 @@
 import { MetaCognitiveRecommendation, GovernanceDecision } from '../cognition/types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent } from '../events/types';
 
 export class MetaGovernanceReview {
   private pendingRecommendations: Map<string, MetaCognitiveRecommendation> = new Map();
 
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private eventBus: EventEmitter) {}
 
   submitRecommendation(rec: MetaCognitiveRecommendation): void {
     if (rec.status !== 'PENDING_GOVERNANCE_REVIEW') return;
@@ -44,19 +45,16 @@ export class MetaGovernanceReview {
       timestamp: Date.now()
     };
 
-    // Store the governance decision as a first-class memory artifact
-    // This allows future reflection layers to learn from the human judgment process
-    this.memoryStore.storeBelief({
-      id: `belief-${govDecision.id}`,
-      category: 'GOVERNANCE_DECISION_RECORD',
-      content: JSON.stringify(govDecision),
-      epistemicStatus: 'CONFIRMED',
-      confidence: 1.0, // It is an objective fact that this decision occurred
-      evidenceIds: [],
-      contradictionIds: [],
-      createdAt: govDecision.timestamp,
-      updatedAt: govDecision.timestamp
-    });
+    // Emit the governance decision as an event instead of writing directly to memory
+    const event: StandardEvent<GovernanceDecision> = {
+      id: `evt-${govDecision.id}`,
+      type: EventTypes.GOVERNANCE_DECISION_RECORDED,
+      source: 'MetaGovernanceReview',
+      timestamp: govDecision.timestamp,
+      payload: govDecision
+    };
+    
+    this.eventBus.emit(EventTypes.GOVERNANCE_DECISION_RECORDED, event);
 
     console.log(`\n[MetaGovernanceReview] Human Judgment Recorded: ${decision} for Recommendation ${rec.id}`);
     if (rationale) {

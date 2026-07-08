@@ -1,19 +1,23 @@
-import { MemoryStore } from '../../memory/MemoryStore';
 import { GovernanceOutcomeRecord, GovernancePattern, GovernanceDecision } from '../cognition/types';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent } from '../events/types';
+import { MemoryService } from '../../core/memory/MemoryService';
 
 export class GovernanceReflectionEngine {
   private readonly PATTERN_CRITICAL_MASS = 5;
 
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryService: MemoryService, private eventBus: EventEmitter) {}
 
   evaluate(): void {
-    const allBeliefs = this.memoryStore.getAllBeliefs();
+    const allItems = this.memoryService.getAll();
     
-    const outcomeBeliefs = allBeliefs.filter(b => b.category === 'GOVERNANCE_OUTCOME_RECORD');
-    const decisionBeliefs = allBeliefs.filter(b => b.category === 'GOVERNANCE_DECISION_RECORD');
-    
-    const outcomes = outcomeBeliefs.map(b => JSON.parse(b.content) as GovernanceOutcomeRecord);
-    const decisions = decisionBeliefs.map(b => JSON.parse(b.content) as GovernanceDecision);
+    const outcomes = allItems
+      .filter(item => item.key.startsWith('governance.outcome.'))
+      .map(item => item.value as GovernanceOutcomeRecord);
+      
+    const decisions = allItems
+      .filter(item => item.key.startsWith('governance.decision.'))
+      .map(item => item.value as GovernanceDecision);
     
     // Create a map of decisions for easy lookup
     const decisionMap = new Map<string, GovernanceDecision>();
@@ -89,9 +93,9 @@ export class GovernanceReflectionEngine {
         // For Phase 5.3, we assign 1.0 (highly stable). Phase 5.4 will refine this.
         const driftScore = 1.0; 
         
-        const existingPatterns = allBeliefs
-          .filter(b => b.category === 'GOVERNANCE_PATTERN_RECORD')
-          .map(b => ({ beliefId: b.id, data: JSON.parse(b.content) as GovernancePattern }));
+        const existingPatterns = allItems
+          .filter(item => item.key.startsWith('governance.pattern.'))
+          .map(item => ({ beliefId: item.id, data: item.value as GovernancePattern }));
           
         const existing = existingPatterns.find(p => p.data.contextSignature === signature);
         
@@ -108,17 +112,15 @@ export class GovernanceReflectionEngine {
             confidence: Math.min(1.0, 0.5 + (groupOutcomes.length * 0.05)),
             lastObservedAt: Date.now()
           };
-          this.memoryStore.updateBelief({
-            id: existing.beliefId,
-            category: 'GOVERNANCE_PATTERN_RECORD',
-            content: JSON.stringify(updatedPattern),
-            epistemicStatus: 'CONFIRMED',
-            confidence: updatedPattern.confidence,
-            evidenceIds: groupOutcomes.map(o => `belief-${o.id}`),
-            contradictionIds: [],
-            createdAt: existing.data.lastObservedAt, // keep original
-            updatedAt: Date.now()
-          });
+          // Emit event instead of writing to memory
+          const event: StandardEvent<GovernancePattern> = {
+            id: `evt-${existing.beliefId}`,
+            type: EventTypes.GOVERNANCE_PATTERN_RECORDED,
+            source: 'GovernanceReflectionEngine',
+            timestamp: Date.now(),
+            payload: updatedPattern
+          };
+          this.eventBus.emit(EventTypes.GOVERNANCE_PATTERN_RECORDED, event);
         } else {
           const pattern: GovernancePattern = {
             id: `gov-pattern-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -135,17 +137,15 @@ export class GovernanceReflectionEngine {
             confidence: Math.min(1.0, 0.5 + (groupOutcomes.length * 0.05)),
             lastObservedAt: Date.now()
           };
-          this.memoryStore.storeBelief({
-            id: `belief-${pattern.id}`,
-            category: 'GOVERNANCE_PATTERN_RECORD',
-            content: JSON.stringify(pattern),
-            epistemicStatus: 'CONFIRMED',
-            confidence: pattern.confidence,
-            evidenceIds: groupOutcomes.map(o => `belief-${o.id}`),
-            contradictionIds: [],
-            createdAt: pattern.lastObservedAt,
-            updatedAt: pattern.lastObservedAt
-          });
+          // Emit event instead of writing to memory
+          const event: StandardEvent<GovernancePattern> = {
+            id: `evt-${pattern.id}`,
+            type: EventTypes.GOVERNANCE_PATTERN_RECORDED,
+            source: 'GovernanceReflectionEngine',
+            timestamp: Date.now(),
+            payload: pattern
+          };
+          this.eventBus.emit(EventTypes.GOVERNANCE_PATTERN_RECORDED, event);
           console.log(`\n[GovernanceReflectionEngine] Formulated new GovernancePattern for ${signature}`);
         }
       }
