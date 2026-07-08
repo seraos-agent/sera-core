@@ -16,8 +16,6 @@ export class EpisodicSemanticBridge {
     });
   }
 
-  private failureCounts: Record<string, number> = {};
-
   private handleEpisodeConsolidated(record: ExperienceRecord) {
     if (!record || !record.summary) return;
 
@@ -32,20 +30,19 @@ export class EpisodicSemanticBridge {
       const toolName = toolMatch ? toolMatch[1] : 'unknown-tool';
 
       if (toolName !== 'unknown-tool') {
-        this.failureCounts[toolName] = (this.failureCounts[toolName] || 0) + 1;
-        const count = this.failureCounts[toolName];
-        
-        const isConfirmed = count >= 3;
         const content = `Tool '${toolName}' failed consistently during execution.`;
-        
         const existing = this.memoryStore.getBeliefsByCategory('SEMANTIC').find(b => b.content === content);
         
+        const count = existing ? existing.evidenceIds.length + 1 : 1;
+        const isConfirmed = count >= 3;
+        
         if (existing) {
+           // Upgrade or maintain status, never downgrade on restart
            existing.epistemicStatus = isConfirmed ? 'CONFIRMED' : 'HYPOTHESIS';
            existing.confidence = Math.min(0.3 + (count * 0.2), 0.95);
            existing.evidenceIds.push(record.id);
            this.memoryStore.updateBelief(existing);
-           console.log(`[EpisodicSemanticBridge] Updated semantic failure belief for tool: ${toolName} to ${existing.epistemicStatus}`);
+           console.log(`[EpisodicSemanticBridge] Updated semantic failure belief for tool: ${toolName} to ${existing.epistemicStatus} (Count: ${count})`);
         } else {
            const semanticBelief: Belief = {
              id: `belief-semantic-fail-${Date.now()}`,
