@@ -89,8 +89,8 @@ export function ChatView({
           alignItems: "center",
           gap: 10,
           padding: isMobileView ? "12px 14px" : "12px 20px",
-          background: theme.surface,
-          borderBottom: `1px solid ${theme.border}`,
+          background: theme.bg,
+          borderBottom: "none",
           flexShrink: 0,
         }}
       >

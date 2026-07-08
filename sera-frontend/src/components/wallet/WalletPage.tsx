@@ -106,7 +106,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
       `}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: "none", background: theme.bg, flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6 }}>
           <CloseIcon size={18} />
         </button>
@@ -129,7 +129,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
 
           {/* ── Sticky Services Tabs ── */}
           <div style={{
-            display: 'flex', gap: 12, overflowX: "auto", flexWrap: "nowrap",
+            display: 'flex', gap: 12, flexWrap: "wrap",
             position: 'sticky', top: -1, zIndex: 10,
             background: theme.bg, padding: `16px ${sidePad}px 16px`
           }}>
@@ -172,9 +172,9 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   <span style={{ background: theme.surface2, color: theme.inkSoft, padding: "4px 10px", borderRadius: 12, fontSize: 10, letterSpacing: 0.5, fontWeight: 700 }}>BASE MAINNET</span>
                 </div>
                 
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 38 : 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
                   ${(parsedAgentBalance + parsedVaultBalance).toFixed(2)}
-                  <span style={{ fontSize: 16, fontWeight: 600, color: theme.inkSoft }}>USDC</span>
+                  <span style={{ fontSize: isMobileView ? 14 : 16, fontWeight: 600, color: theme.inkSoft }}>USDC</span>
                 </div>
 
                 {walletState.syncing && (
@@ -220,7 +220,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                             color: direction === dir ? theme.ink : theme.inkSoft,
                             boxShadow: direction === dir ? "0 2px 8px rgba(0,0,0,0.04)" : "none"
                           }}>
-                          {dir === "toSera" ? "Deposit to Sera" : "Withdraw to Personal"}
+                          {dir === "toSera" ? (isMobileView ? "Deposit" : "Deposit to Sera") : (isMobileView ? "Withdraw" : "Withdraw to Personal")}
                         </button>
                       ))}
                     </div>
@@ -236,7 +236,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                         <input
                           type="number" placeholder="0.00" value={amount}
                           onChange={e => { setAmount(e.target.value); setStep("input"); }}
-                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: 36, fontWeight: 600, color: theme.ink, width: 0 }}
+                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 28 : 36, fontWeight: 600, color: theme.ink, width: 0 }}
                         />
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                           <button onClick={() => setAmount(activeBalance.toString())}

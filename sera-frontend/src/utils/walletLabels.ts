@@ -8,7 +8,11 @@ export function getWalletLabel(recipient: any): string {
   if (typeof recipient === 'string') return recipient;
   if (typeof recipient === 'object') {
     if (recipient.type === 'EXTERNAL_ADDRESS') {
-      return recipient.address || 'Unknown Address';
+      const addr = recipient.address || 'Unknown Address';
+      if (addr.startsWith('0x') && addr.length === 42) {
+        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+      }
+      return addr;
     }
     return WALLET_LABELS[recipient.type] || recipient.type;
   }

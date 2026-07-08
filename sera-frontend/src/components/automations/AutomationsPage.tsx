@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ChevronLeft, Trash2, Wallet, Terminal, Check, RefreshCw, X } from "lucide-react";
+import { Activity, ChevronLeft, Trash2, Wallet, Terminal, Check, RefreshCw, X, Copy } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import { getWalletLabel } from "../../utils/walletLabels";
@@ -36,7 +36,7 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative", minWidth: 0, minHeight: 0 }}>
       {/* Clean Top Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: "none", background: theme.bg, flexShrink: 0 }}>
         <button 
           onClick={onBack} 
           style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6, transition: "background 0.2s" }}
@@ -251,8 +251,36 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
-              <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 400 : 500 }}>
+              <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 400 : 500, display: "flex", alignItems: "center", gap: 8 }}>
                 {getWalletLabel(p.recipient)}
+                {p.recipient && p.recipient.type === 'EXTERNAL_ADDRESS' && p.recipient.address && (
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(p.recipient.address);
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 4,
+                      color: theme.inkSoft,
+                      display: "flex",
+                      alignItems: "center",
+                      borderRadius: 4
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = theme.ink;
+                      e.currentTarget.style.background = theme.surface2;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = theme.inkSoft;
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                    title="Copy Address"
+                  >
+                    <Copy size={14} />
+                  </button>
+                )}
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
