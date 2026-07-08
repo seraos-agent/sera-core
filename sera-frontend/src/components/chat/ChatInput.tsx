@@ -156,7 +156,7 @@ export function ChatInput({
         </div>
 
         <div style={{ textAlign: "center", fontSize: 11, color: theme.inkSoft, fontFamily: "Inter, sans-serif", marginTop: 14 }}>
-          SERA can make mistakes. Verify important information.
+          Sera can make mistakes. Verify important information.
         </div>
       </div>
     </div>

@@ -1,17 +1,17 @@
-# SERA
+# Sera
 
 > “Relationships must become structure before they become meaning.”
 
-SERA is an operating system for an autonomous AI agent.
+Sera is an operating system for an autonomous AI agent.
 It is a self-governing cognitive runtime designed to reason, remember, plan, and act with architectural discipline.
 
-## What is SERA
+## What is Sera
 
 Most AI agents today operate as simple loops:
 
 `Read prompt → Call tools → Repeat`
 
-SERA takes a fundamentally different approach.
+Sera takes a fundamentally different approach.
 
 Before interacting with the external world, it constructs an internal representation of reality through a structured cognitive system. This system separates memory, reasoning, governance, and execution into distinct layers connected through an event-driven architecture.
 
@@ -19,7 +19,7 @@ The result is not reactive behavior, but structured cognition.
 
 ## Core Philosophy
 
-SERA is built on four foundational principles.
+Sera is built on four foundational principles.
 
 ### Separation of Mind and Execution
 Reasoning is fully isolated from execution. The system evaluates state, uncertainty, and goals without assuming the world is stable or correct. Noise, delay, and failure are treated as inherent conditions.
@@ -35,10 +35,10 @@ The system may analyze and describe structural patterns within its state, but in
 
 ## Architecture
 
-SERA is composed of decoupled layers connected through a typed event system.
+Sera is composed of decoupled layers connected through a typed event system.
 
 ### Memory System
-SERA maintains multiple forms of memory:
+Sera maintains multiple forms of memory:
 - **Episodic memory** for experiences
 - **Semantic memory** for learned knowledge
 - **Procedural memory** for behaviors
@@ -47,7 +47,7 @@ SERA maintains multiple forms of memory:
 Each memory entry is bound to epistemic states such as hypothesis or confirmed truth, ensuring traceable evolution of knowledge.
 
 ### Cognitive Kernel
-The Cognitive Kernel is the reasoning core of SERA. It models system behavior through Motivation Physics.
+The Cognitive Kernel is the reasoning core of Sera. It models system behavior through Motivation Physics.
 - **Awareness** manages goal lifecycle and visibility.
 - **Structure** defines relationships between goals.
 - **Tension** measures friction across competing objectives.
@@ -151,4 +151,4 @@ http://localhost:5173
 ---
 
 ### Closing Statement
-*SERA is designed to think before it acts, not react after it receives input.*
+*Sera is designed to think before it acts, not react after it receives input.*

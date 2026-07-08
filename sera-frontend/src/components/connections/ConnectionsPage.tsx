@@ -192,10 +192,10 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
           {activeCategory === null ? (
             <>
               <div style={{ fontFamily: "Fraunces, serif", fontSize: titleSize, fontWeight: 400, color: theme.ink, marginBottom: 12, letterSpacing: -0.5, textAlign: "center" }}>
-                The world SERA can operate in.
+                The world Sera can operate in.
               </div>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, color: theme.inkSoft, marginBottom: 48, textAlign: "center", maxWidth: 480, margin: "0 auto 48px" }}>
-                Explore the mapped capabilities. No configuration required. SERA will request access when needed.
+                Explore the mapped capabilities. No configuration required. Sera will request access when needed.
               </div>
               {renderCategories()}
             </>

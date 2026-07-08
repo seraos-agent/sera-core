@@ -1,5 +1,5 @@
 /**
- * The standard envelope for all events in SERA's Event-Driven Architecture.
+ * The standard envelope for all events in Sera's Event-Driven Architecture.
  */
 export interface StandardEvent<T = any> {
   id: string;                    // UUID of the event
@@ -13,7 +13,7 @@ export interface StandardEvent<T = any> {
 // For backward compatibility during migration, alias Event to StandardEvent
 export type Event = StandardEvent;
 
-// ── SERA Unified Event Ontology ──────────────────────────────────────────────
+// ── Sera Unified Event Ontology ──────────────────────────────────────────────
 
 export const EventTypes = {
   // System Domain

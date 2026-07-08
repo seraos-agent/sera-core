@@ -11,7 +11,7 @@ export default function AppRoot() {
       setCurrentView('app');
     } else {
       // Jika berjalan di Vercel (Production), tampilkan pesan coming soon
-      alert("SERA is currently in local development mode. The public application will be available soon!");
+      alert("Sera is currently in local development mode. The public application will be available soon!");
     }
   };
 

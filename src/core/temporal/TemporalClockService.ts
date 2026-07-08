@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, TemporalTickPayload } from '../events/types';
 
 /**
- * TemporalClockService — The beating heart of SERA's time progression.
+ * TemporalClockService — The beating heart of Sera's time progression.
  * 
  * Architecture Role:
  * - Emits `temporal.tick` events at a configured interval.

@@ -141,8 +141,8 @@ eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
 
 // ─── Socket.io Bridge (Sensory Layer) ────────────────────────────────────────
 // This server is ONLY responsible for:
-//   1. EARS: Translating incoming Socket messages → SERA Events
-//   2. MOUTH: Translating SERA Events → outgoing Socket messages
+//   1. EARS: Translating incoming Socket messages → Sera Events
+//   2. MOUTH: Translating Sera Events → outgoing Socket messages
 // No cognitive logic lives here.
 
 io.on('connection', (socket: Socket) => {
@@ -189,7 +189,7 @@ io.on('connection', (socket: Socket) => {
     io.emit('chat:history', []);
   });
 
-  // ── MOUTH: SERA events → socket messages ─────────────────────────────────
+  // ── MOUTH: Sera events → socket messages ─────────────────────────────────
 
   const onAgentSpeak = (event: StandardEvent) => {
     const msgId = ++msgIdCounter;
@@ -215,7 +215,7 @@ io.on('connection', (socket: Socket) => {
   };
 
   const onUiCommand = (event: StandardEvent) => {
-    // Translate SERA Event → UI command format the React app understands
+    // Translate Sera Event → UI command format the React app understands
     socket.emit('ui:command', {
       type: 'SET_THEME',
       payload: event.payload.value,
@@ -342,6 +342,6 @@ io.on('connection', (socket: Socket) => {
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
-  console.log(`\n🚀 SERA Core Server is running on port ${PORT}`);
+  console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);
   console.log(`   Architecture: Sensory Layer (Socket.io Bridge) ↔ Event Bus ↔ Dialogue Capability (Qwen)\n`);
 });

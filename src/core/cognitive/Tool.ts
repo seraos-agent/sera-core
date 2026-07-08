@@ -1,7 +1,7 @@
 /**
  * SeraTool & SeraToolCall Definition
  * 
- * This file defines the universal tool schema for the SERA Cognitive OS.
+ * This file defines the universal tool schema for the Sera Cognitive OS.
  * It is completely provider-agnostic. LLM Adapters (e.g. QwenAdapter, OpenAIAdapter)
  * are responsible for translating this internal schema into their specific API formats.
  */

@@ -13,8 +13,8 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       <nav className="nav">
         <div className="wrap">
           <div className="nav-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src={seraLogo} alt="SERA Logo" style={{ height: 24, transform: 'translateZ(0)' }} />
-            SERA
+            <img src={seraLogo} alt="Sera Logo" style={{ height: 24, transform: 'translateZ(0)' }} />
+            Sera
           </div>
           <div className="nav-links">
             <a href="#capabilities">Capabilities</a>
@@ -30,9 +30,9 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
         <div className="wrap hero-grid">
           <div>
             <div className="hero-eyebrow"><span className="tick"></span>AUTONOMOUS AGENT SYSTEM</div>
-            <h1>SERA</h1>
+            <h1>Sera</h1>
             <div className="subtitle">A Universal Autonomous AI Agent System</div>
-            <p className="desc">SERA executes real world actions across digital systems using natural language from financial operations to external service automation.</p>
+            <p className="desc">Sera executes real world actions across digital systems using natural language from financial operations to external service automation.</p>
             <div className="hero-ctas">
               <a href="#" className="btn btn-primary btn-lg" onClick={handleLaunchApp}>Launch App</a>
               <a href="#product" className="btn btn-ghost btn-lg">View Demo</a>
@@ -73,7 +73,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
         <div className="wrap core-inner">
           <div className="core-bar"></div>
           <div className="core-text">
-            <p className="core-line-1">SERA is not <span className="strike">a chatbot.</span></p>
+            <p className="core-line-1">Sera is not <span className="strike">a chatbot.</span></p>
             <p className="core-line-2">It is an <em>execution capable</em> agent system.</p>
           </div>
         </div>
@@ -166,7 +166,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
         <div className="wrap">
           <div className="eyebrow">Extensible by Design</div>
           <h2 style={{ fontSize: "clamp(26px,3.6vw,36px)", fontWeight: 600, maxWidth: "640px", marginBottom: "14px" }}>One agent system, many execution layers</h2>
-          <p style={{ color: "var(--text-secondary)", fontSize: "15.5px", maxWidth: "600px" }}>SERA supports multiple execution environments including blockchain networks (e.g. Base), APIs, and external services. Each integration acts as an execution layer within a unified agent system.</p>
+          <p style={{ color: "var(--text-secondary)", fontSize: "15.5px", maxWidth: "600px" }}>Sera supports multiple execution environments including blockchain networks (e.g. Base), APIs, and external services. Each integration acts as an execution layer within a unified agent system.</p>
 
           <div className="integrations-row">
             <div className="integration-nodes">
@@ -218,7 +218,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
 
       <section className="final-cta">
         <div className="wrap">
-          <h2>Start building with SERA</h2>
+          <h2>Start building with Sera</h2>
           <p style={{ marginBottom: "28px", marginTop: "0" }}>A universal agent system for real world execution.</p>
           <a href="#" className="btn btn-primary btn-lg" onClick={handleLaunchApp}>Launch App</a>
         </div>
@@ -226,9 +226,9 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
 
       <footer>
         <div className="wrap footer-row">
-          <div className="footer-logo">SERA</div>
-          <div className="footer-position">SERA is a universal autonomous AI agent system for executing real world digital actions.</div>
-          <div className="footer-copy">© 2026 SERA</div>
+          <div className="footer-logo">Sera</div>
+          <div className="footer-position">Sera is a universal autonomous AI agent system for executing real world digital actions.</div>
+          <div className="footer-copy">© 2026 Sera</div>
         </div>
       </footer>
     </div>

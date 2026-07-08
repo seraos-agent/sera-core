@@ -1,5 +1,5 @@
 /**
- * ISecretStore — The pluggable backend for SERA's Secret Management Service.
+ * ISecretStore — The pluggable backend for Sera's Secret Management Service.
  *
  * Implementations:
  *   Phase 1: EncryptedDatabaseSecretStore (AES-256-GCM, local file)

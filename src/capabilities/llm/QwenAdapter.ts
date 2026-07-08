@@ -19,7 +19,7 @@ export interface QwenResponse {
 /**
  * QwenAdapter — A pure Capability Connector.
  * This class ONLY knows how to talk to the Qwen/DashScope API.
- * It has zero knowledge of SERA's cognitive architecture.
+ * It has zero knowledge of Sera's cognitive architecture.
  */
 export class QwenAdapter {
   private apiKey: string;

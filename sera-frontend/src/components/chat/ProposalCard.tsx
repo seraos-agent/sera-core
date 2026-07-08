@@ -104,12 +104,11 @@ export function ProposalCard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
               <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 500 : 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {getWalletLabel(p.recipient)}
-                {p.recipient?.address && (
-                  <span style={{ fontSize: 13, color: theme.inkFaint, fontWeight: 400, fontFamily: 'monospace' }}>
-                    ({shortenAddress(p.recipient.address)})
-                  </span>
-                )}
+                <span style={{ fontFamily: (p.recipient?.type === 'EXTERNAL_ADDRESS' || (typeof p.recipient === 'string' && p.recipient.startsWith('0x'))) ? 'monospace' : 'inherit' }}>
+                  {p.recipient?.type === 'EXTERNAL_ADDRESS' || (typeof p.recipient === 'string' && p.recipient.startsWith('0x'))
+                    ? shortenAddress(p.recipient?.address || p.recipient) 
+                    : getWalletLabel(p.recipient)}
+                </span>
               </span>
             </div>
             

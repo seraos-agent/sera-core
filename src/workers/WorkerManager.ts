@@ -11,7 +11,7 @@ export class WorkerManager {
 
   private selectWorker(workItem: WorkItem): Worker {
     // For Phase 2.2, we just pick the first available worker.
-    // In the future, SERA evaluates metadata or capabilities here.
+    // In the future, Sera evaluates metadata or capabilities here.
     const availableWorkers = Array.from(this.workers.values());
     
     if (availableWorkers.length === 0) {

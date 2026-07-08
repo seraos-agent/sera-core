@@ -65,7 +65,7 @@ export class ExperienceBuilder {
     const expType = hasGoal ? 'GOAL_EXECUTION' : 'CONVERSATION';
 
     const rawTranscript = events.map(e => `[${e.type}] ${JSON.stringify(e.payload)}`).join('\n');
-    const prompt = `You are the SERA Experience Consolidator. Summarize the following sequence of raw system events into a single, cohesive third-person sentence describing what happened in this episode. Do not add markdown or extra explanations. Focus on the user's intent and the final outcome (success/fail). Example: "The user asked to check their wallet balance, and the agent successfully returned the balance of 10 USDC."\n\nEvents:\n${rawTranscript}`;
+    const prompt = `You are the Sera Experience Consolidator. Summarize the following sequence of raw system events into a single, cohesive third-person sentence describing what happened in this episode. Do not add markdown or extra explanations. Focus on the user's intent and the final outcome (success/fail). Example: "The user asked to check their wallet balance, and the agent successfully returned the balance of 10 USDC."\n\nEvents:\n${rawTranscript}`;
     
     let summary = 'System interaction processed.';
     try {

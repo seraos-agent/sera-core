@@ -2,7 +2,7 @@ import { EventTypes, StandardEvent } from '../core/events/types';
 import { EventEmitter } from 'events';
 
 /**
- * ExecutionDispatcher — The hands of SERA's intent execution.
+ * ExecutionDispatcher — The hands of Sera's intent execution.
  * 
  * Architecture Role:
  * - Domain router for execution.

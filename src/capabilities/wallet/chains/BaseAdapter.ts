@@ -114,10 +114,24 @@ export class BaseAdapter {
           args: [tokenAddress, recipientAddress as `0x${string}`, amountWei],
         });
         
-        await this.ensureGas(account.address, this.vaultAddress, data);
+        const ownerKey = process.env.OWNER_WALLET_PRIVATE_KEY;
+        let executorAccount = account;
+        let executorClient = walletClient;
         
-        txHash = await walletClient.sendTransaction({
-          account,
+        if (ownerKey) {
+          console.log(`[BaseAdapter] Using Owner Key to authorize Vault transfer...`);
+          executorAccount = privateKeyToAccount(ownerKey as `0x${string}`);
+          executorClient = createWalletClient({
+            account: executorAccount,
+            chain: base,
+            transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
+          });
+        }
+        
+        await this.ensureGas(executorAccount.address, this.vaultAddress, data);
+        
+        txHash = await executorClient.sendTransaction({
+          account: executorAccount,
           to: this.vaultAddress,
           data,
         });

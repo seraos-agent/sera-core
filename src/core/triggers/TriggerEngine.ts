@@ -123,10 +123,8 @@ export class TriggerEngine {
         triggerId: trigger.id,
         action: trigger.action.type, // This is the payload to the ExecutionDispatcher
         targetId: trigger.action.targetId,
-        context: {
-          ...context,
-          actionPayload: trigger.action.payload // The actual intent parameters
-        }
+        actionPayload: trigger.action.payload, // The actual intent parameters
+        context
       }
     });
 

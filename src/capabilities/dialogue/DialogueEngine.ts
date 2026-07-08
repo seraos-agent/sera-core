@@ -10,8 +10,8 @@ import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 export { EventTypes as SERA_EVENTS };
 
 // ── System Prompt ──────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are SERA (Synthesizing & Evolving Rational Agent), an advanced Agentic OS AI assistant.
-You operate as an intelligent interface between the human owner and the SERA Core cognitive system.
+const SYSTEM_PROMPT = `You are Sera (Synthesizing & Evolving Rational Agent), an advanced Agentic OS AI assistant.
+You operate as an intelligent interface between the human owner and the Sera Core cognitive system.
 You MUST communicate naturally in the exact same language as the user's LATEST message.
 If the user's LATEST message is in English, you MUST reply in English. If it is in Indonesian, you MUST reply in Indonesian.
 Do not limit yourself to any specific language, and do not get stuck in a previous language if the user switches languages.
@@ -30,10 +30,10 @@ CRITICAL — TIMEZONE CONTEXT:
 - You must always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).`;
 
 // ── Intent Extraction Prompt ───────────────────────────────────────────────
-const INTENT_EXTRACTION_PROMPT = `You are SERA's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
+const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
 
 Supported intents:
-- CHECK_NETWORK: user asks about the current network, chain, or blockchain SERA is connected to.
+- CHECK_NETWORK: user asks about the current network, chain, or blockchain Sera is connected to.
 - EXECUTE_UI_COMMAND: user wants to change a UI state, such as dark/light mode or clearing the chat. parameters must include "uiCommand" ("SET_THEME_DARK", "SET_THEME_LIGHT", or "CLEAR_CHAT").
 - NONE: anything else (conversation, questions, checking balances, transferring funds, scheduling tasks)
 
@@ -49,7 +49,7 @@ Timezone: UTC+7 (WIB)
 User message: `;
 
 /**
- * DialogueEngine — A Capability that handles human↔SERA conversation.
+ * DialogueEngine — A Capability that handles human↔Sera conversation.
  *
  * Architecture role: Capability Layer (src/capabilities/dialogue/)
  * - Listens for USER_OBSERVATION events on the shared EventBus
@@ -128,7 +128,9 @@ export class DialogueEngine {
       constraints: [
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',
-        'To get the user or agent balances, you MUST use the CHECK_WALLET_BALANCE tool.'
+        'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
+        'If the user asks to transfer or send "all" funds, use the string "all" as the amount parameter. No need to check balance.',
+        'CRITICAL: If the user specifies a delay (e.g. "dalam 20dtk", "in 1 hour"), you MUST use the SCHEDULE_GOAL tool, NOT the TRANSFER_FUNDS tool. Put TRANSFER_FUNDS inside the actionIntent of SCHEDULE_GOAL.'
       ]
     };
 
@@ -216,16 +218,24 @@ export class DialogueEngine {
    * (Triggers, Planner, Reflection, APIs), feasibility validation should be promoted into a shared execution-stage service.
    */
   private evaluateFeasibility(intent: string, parameters: any): { feasible: boolean, reason?: string } {
-    if (intent === 'TRANSFER_FUNDS') {
+    let checkIntent = intent;
+    let checkParams = parameters;
+    
+    if (intent === 'SCHEDULE_GOAL' && parameters && parameters.actionIntent) {
+      checkIntent = parameters.actionIntent;
+      checkParams = parameters.actionParameters || {};
+    }
+
+    if (checkIntent === 'TRANSFER_FUNDS') {
       const walletState = this.worldStateService.getWalletState();
       if (!walletState) return { feasible: false, reason: "Wallet state is completely unknown or disconnected." };
 
-      const requestedAmount = parameters.amount;
-      const currentBalance = walletState.balance; // Using Main Wallet (or Vault depending on logic. Wait, SERA vault balance?)
+      const requestedAmount = checkParams.amount;
+      const currentBalance = walletState.balance; // Using Main Wallet (or Vault depending on logic)
 
-      // Based on rules, SERA writes to Sera Vault balance
+      // Based on rules, Sera writes to Sera Vault balance
       const vaultBalance = walletState.vaultBalance;
-      const effectiveBalance = parameters.fromWallet === 'sera_vault' ? vaultBalance : currentBalance;
+      const effectiveBalance = checkParams.fromWallet === 'user_main_wallet' ? currentBalance : vaultBalance;
 
       if (requestedAmount === 'all') {
         if (effectiveBalance <= 0) return { feasible: false, reason: `Insufficient funds. Available balance is 0 USDC.` };
@@ -395,6 +405,18 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             await this.narrateResult(userMessage, result);
           } else {
             // PROPOSAL path for risky tools
+            const feasibility = this.evaluateFeasibility(toolIntent, toolParams);
+            if (!feasibility.feasible) {
+              const messages = this.buildWorkingMemory();
+              messages.push({ 
+                role: 'system', 
+                content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.` 
+              });
+              const failResponse = await this.llm.generate(messages);
+              this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
+              return;
+            }
+
             console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
             this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
               intent: toolIntent,
@@ -480,8 +502,8 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
     sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
 
     const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The SERA system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
-      : `The user asked: "${userMessage}". The SERA system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
+      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
+      : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
     const messages = this.buildWorkingMemory();
     messages.push({ role: 'user', content: narratePrompt });

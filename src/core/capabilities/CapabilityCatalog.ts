@@ -3,7 +3,7 @@ import { SeraTool } from '../cognitive/Tool';
 /**
  * CapabilityCatalog
  * 
- * The central metadata registry for the SERA OS.
+ * The central metadata registry for the Sera OS.
  * It manages the discovery of Tools, Sensors, Policies, and Events
  * exposed by all active Capabilities.
  * 

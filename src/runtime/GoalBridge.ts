@@ -10,7 +10,7 @@ import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAd
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 
 /**
- * GoalBridge — Connects the SERA EventBus to real Capabilities.
+ * GoalBridge — Connects the Sera EventBus to real Capabilities.
  *
  * Architecture role: Runtime Bridge (src/runtime/)
  * - Listens for SPAWN_GOAL events from DialogueEngine
@@ -314,6 +314,11 @@ export class GoalBridge {
       console.log(`[GoalBridge] ⏳ Syncing... sending ${transferAmount} ${asset} → ${finalRecipient}`);
 
       // ── Dispatch via ExecutionContext ────────────────────────────────────
+      const normalizedRecipient = {
+        type: finalRecipient === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
+        address: finalRecipient
+      };
+
       const context = {
         network: 'auto',
         asset: {
@@ -321,7 +326,7 @@ export class GoalBridge {
           classification: 'token'
         },
         intent: {
-          recipient,
+          recipient: normalizedRecipient,
           amount: transferAmount,
           asset,
           fromWallet: parameters.fromWallet || 'sera_vault'

@@ -19,8 +19,8 @@ export class WalletToolCapability {
               required: ['type']
             },
             amount: {
-              type: 'number',
-              description: 'The amount of USDC to transfer'
+              type: ['number', 'string'],
+              description: 'The amount of USDC to transfer, or "all" to send the entire balance'
             },
             asset: {
               type: 'string',
@@ -33,7 +33,7 @@ export class WalletToolCapability {
       },
       {
         name: 'CHECK_WALLET_BALANCE',
-        description: 'Use this tool to check, view, or inquire about the balance of either the user\'s personal wallet or the SERA agent\'s internal vault.',
+        description: 'Use this tool to check, view, or inquire about the balance of either the user\'s personal wallet or the Sera agent\'s internal vault.',
         parameters: {
           type: 'object',
           properties: {},
@@ -52,7 +52,7 @@ export class WalletToolCapability {
             cronExpression: { type: 'string', description: 'If recurring, the standard cron expression in UTC.' },
             delaySeconds: { type: 'number', description: 'If exact timestamp, how many seconds from now this should execute. e.g. 20' },
             actionIntent: { type: 'string', description: 'The actual tool or action to execute (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
-            actionParameters: { type: 'object', description: 'The parameters for the actionIntent' }
+            actionParameters: { type: 'object', description: 'The exact parameters required for the actionIntent. For TRANSFER_FUNDS, MUST include recipient (object with type and address), amount, and asset ("usdc").' }
           },
           required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
         },

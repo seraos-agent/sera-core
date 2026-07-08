@@ -122,7 +122,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             <div style={{ marginBottom: 0 }}>
               <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
               <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
-                Assets and transactions SERA is currently managing for you.
+                Assets and transactions Sera is currently managing for you.
               </p>
             </div>
           </div>

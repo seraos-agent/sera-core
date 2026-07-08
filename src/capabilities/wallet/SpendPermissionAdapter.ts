@@ -26,10 +26,15 @@ export class SpendPermissionAdapter {
           this.processedIdempotencyKeys = new Set(parsed.processedKeys);
         }
       } else {
-        // We pre-fund the mock for the demo with 0.01 ETH if no state exists
+        // We pre-fund the mock for the demo with 0.01 ETH and 1000 USDC if no state exists
         this.allowances.set('eth', {
           asset: 'eth',
           amount: 0.01,
+          period: 'DAILY'
+        });
+        this.allowances.set('usdc', {
+          asset: 'usdc',
+          amount: 1000.0,
           period: 'DAILY'
         });
         this.savePersistedData();

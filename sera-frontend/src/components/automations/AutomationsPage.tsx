@@ -54,7 +54,7 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
           <div>
             <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Active Intent Stream</h1>
             <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
-              Ongoing automations and decisions SERA is currently managing for you.
+              Ongoing automations and decisions Sera is currently managing for you.
             </p>
           </div>
           </div>
@@ -108,7 +108,7 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
                 {activeTab === 'ACTIVE' 
-                  ? "SERA is not managing any ongoing tasks right now. Start a conversation to give SERA an instruction." 
+                  ? "Sera is not managing any ongoing tasks right now. Start a conversation to give Sera an instruction." 
                   : "You don't have any completed automations yet."}
               </div>
             </div>
@@ -243,7 +243,7 @@ function renderTriggerCard(t: any, theme: any, socket: Socket | null) {
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
-            {isTransfer ? 'Transfer assets from SERA Vault' : title}
+            {isTransfer ? 'Transfer assets from Sera Vault' : title}
           </span>
         </div>
 
