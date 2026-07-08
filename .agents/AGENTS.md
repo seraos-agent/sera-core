@@ -23,3 +23,9 @@ This file enshrines the core architectural constraints of Sera. As an AI buildin
    - `DialogueEngine` performs *pre-proposal validation*.
    - True *feasibility* validation inherently belongs to the Execution pipeline (e.g. before Triggers or Reflection execute a goal).
    - Any validation logic in `DialogueEngine` MUST be clearly commented with a boundary warning, noting it should be extracted to an execution-stage service when Sera scales to multiple entry points.
+
+6. **Cognitive Telemetry Boundary**
+   - Cognitive Telemetry measures the internal health and evolution of SERA. 
+   - It is not a measure of user activity, nor a replacement for reasoning. 
+   - Metrics provide evidence for reflection, not direct control over decisions.
+   - Do NOT expose this telemetry as an 'AI analytics dashboard' to end-users.

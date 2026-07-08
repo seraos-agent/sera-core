@@ -50,6 +50,8 @@ import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { IntentEngine } from '../core/intents/IntentEngine';
 import { IntentStore } from '../core/intents/IntentStore';
 import { ProposalStore } from '../core/intents/ProposalStore';
+import { InMemoryMetricsStore } from '../core/telemetry/MetricsStore';
+import { MetricsAggregator } from '../core/telemetry/MetricsAggregator';
 import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 
@@ -84,7 +86,7 @@ const goalSynthesizer = new GoalSynthesizer();
 const proposalGovernance = new ProposalGovernance();
 
 const memoryStore = new MemoryStore();
-const memoryService = new MemoryService();
+const memoryService = new MemoryService(eventBus);
 const coreMemoryPolicyEngine = new CoreMemoryPolicyEngine(memoryService);
 const memoryIngress = new MemoryIngress(eventBus, coreMemoryPolicyEngine);
 
@@ -151,6 +153,22 @@ const cognitiveCompressor = new CognitiveCompressor(eventBus);
 const auditLogger = new AuditLogger(eventBus);
 const experienceBuilder = new ExperienceBuilder(eventBus);
 const episodicSemanticBridge = new EpisodicSemanticBridge(eventBus, memoryStore);
+
+const metricsStore = new InMemoryMetricsStore();
+const metricsAggregator = new MetricsAggregator(eventBus, metricsStore);
+
+// Log metrics periodically for internal observability
+setInterval(() => {
+  const m = metricsStore.getMetrics();
+  console.log('\n--- INTERNAL COGNITIVE TELEMETRY ---');
+  console.log(`Memory: Verified=${m.memory.verified} | Superseded=${m.memory.superseded} | Invalidated=${m.memory.invalidated}`);
+  console.log(`Governance: Reviewed=${m.governance.actionsReviewed} | Allowed=${m.governance.allowed} | Denied=${m.governance.denied} | FalsePositives=${m.governance.falsePositive}`);
+  console.log(`Reflection: Patterns=${m.reflection.patternsLearned} | Wrong=${m.reflection.wrongPatterns}`);
+  console.log(`Execution: Success=${m.worker.success} | Failure=${m.worker.failure} | WinRate=${(m.worker.goalCompletionRate * 100).toFixed(1)}%`);
+  console.log('------------------------------------\n');
+}, 30000); // Every 30 seconds
+
+export { runtime };
 
 // Initialize OS Capability Catalog
 const catalog = new CapabilityCatalog();

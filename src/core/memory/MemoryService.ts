@@ -3,12 +3,14 @@ import path from 'node:path';
 import { MemoryItem, MemoryStatus } from './MemoryItem';
 import { MemoryProposal, MemoryOperation } from './MemoryProposal';
 import { VerificationLevel } from './VerificationLevel';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent, MemoryItemMutatedPayload } from '../events/types';
 
 export class MemoryService {
   private store: Map<string, MemoryItem> = new Map();
   private filePath: string;
 
-  constructor() {
+  constructor(private eventBus?: EventEmitter) {
     const dataDir = path.join(process.cwd(), '.data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -80,6 +82,25 @@ export class MemoryService {
 
     this.store.set(proposal.key, newItem);
     this.persist();
+    
+    if (this.eventBus) {
+      const payload: MemoryItemMutatedPayload = {
+        key: proposal.key,
+        previousStatus: existing ? existing.status : undefined,
+        newStatus: newItem.status,
+        source: newItem.source,
+        confidence: newItem.confidence
+      };
+      
+      const event: StandardEvent<MemoryItemMutatedPayload> = {
+        id: `evt-mem-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        type: EventTypes.MEMORY_ITEM_MUTATED,
+        source: 'MemoryService',
+        timestamp: Date.now(),
+        payload
+      };
+      this.eventBus.emit(EventTypes.MEMORY_ITEM_MUTATED, event);
+    }
     
     console.log(`[MemoryService] Mutated belief: ${proposal.key} -> ${JSON.stringify(proposal.value)} [${newItem.status}]`);
     return newItem;

@@ -50,6 +50,9 @@ export const EventTypes = {
   GOVERNANCE_DECISION_RECORDED: 'governance.decision.recorded',
   GOVERNANCE_OUTCOME_RECORDED: 'governance.outcome.recorded',
   GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
+
+  // Memory Layer
+  MEMORY_ITEM_MUTATED: 'memory.item.mutated',
 } as const;
 
 export type EventType = typeof EventTypes[keyof typeof EventTypes];
@@ -112,4 +115,12 @@ export interface CognitiveObservationPayload {
   timestamp?: number;
   // Optional metadata for semantic reflection or clustering
   metadata?: Record<string, any>;
+}
+
+export interface MemoryItemMutatedPayload {
+  key: string;
+  previousStatus?: string;
+  newStatus: string;
+  source: string;
+  confidence: number;
 }
