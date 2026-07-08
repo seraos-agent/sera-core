@@ -149,6 +149,10 @@ export class Runtime {
 
     this.proposalManager = new ProposalManager(globalEventBus);
 
+    globalEventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, (event: StandardEvent) => {
+      this.approveProposal(event.payload.proposalId, event.payload.candidateId);
+    });
+
     this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore);
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
   }
@@ -245,6 +249,21 @@ export class Runtime {
 
           this.proposalStore.register(proposal);
           
+          if (this.eventBus) {
+            this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
+              id: `evt-${Date.now()}`,
+              type: EventTypes.DIALOGUE_PROPOSAL_GENERATED,
+              source: 'Runtime',
+              timestamp: Date.now(),
+              payload: {
+                proposalId: proposal.id,
+                intent: 'COMPLEX_GOAL_PROPOSAL',
+                parameters: {},
+                candidates: proposal.candidates
+              }
+            } as StandardEvent);
+          }
+
           // Apply cooldown (e.g. 1 hour = 3600000ms. For demo, we use a mock value like 5000ms)
           intent.lastProposalAt = temporalContext.physicalTime;
           intent.proposalCooldownUntil = temporalContext.physicalTime + 5000;
@@ -529,7 +548,7 @@ export class Runtime {
 
     const proposal = this.proposalStore.getProposal(proposalId);
     if (!proposal) {
-      console.log(`[Runtime] Proposal ${proposalId} not found.`);
+      console.log(`[Runtime] Proposal ${proposalId} not found in Phase 4.1 ProposalStore. Ignoring (likely handled by ProposalManager).`);
       return;
     }
     
@@ -580,6 +599,8 @@ export class Runtime {
         timestamp: Date.now()
       });
     }
+
+    this.executeCycle(Date.now(), newGoalId).catch(console.error);
   }
 
   public submitAdaptationProposal(proposal: AdaptationProposal): AdaptationProposal {

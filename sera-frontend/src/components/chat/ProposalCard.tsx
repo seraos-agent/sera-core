@@ -13,6 +13,7 @@ export interface ProposalPayload {
   intent: string;
   parameters: Record<string, any>;
   status?: 'APPROVED' | 'REJECTED';
+  candidates?: any[];
 }
 
 export function ProposalCard({ 
@@ -22,16 +23,17 @@ export function ProposalCard({
 }: { 
   theme: ThemeType;
   proposal: ProposalPayload;
-  onRespond: (proposalId: string, action: 'APPROVE' | 'REJECT') => void;
+  onRespond: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
 }) {
   const [localStatus, setLocalStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [selectedCandidate, setSelectedCandidate] = useState<string>('');
   
   const status = proposal.status || localStatus;
 
   const handleRespond = (action: 'APPROVE' | 'REJECT') => {
     if (status !== 'PENDING') return;
     setLocalStatus(action === 'APPROVE' ? 'APPROVED' : 'REJECTED');
-    onRespond(proposal.proposalId, action);
+    onRespond(proposal.proposalId, action, selectedCandidate || undefined);
   };
 
   const isSchedule = proposal.intent === 'SCHEDULE_GOAL';
@@ -120,6 +122,38 @@ export function ProposalCard({
             </div>
           </>
         )}
+
+        {proposal.candidates && proposal.candidates.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Candidates</span>
+            {proposal.candidates.map((c: any) => (
+              <label key={c.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: 12, borderRadius: 8,
+                border: `1px solid ${selectedCandidate === c.id ? theme.accent : theme.border}`,
+                background: selectedCandidate === c.id ? (theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') : 'transparent',
+                cursor: status === 'PENDING' ? 'pointer' : 'default',
+                opacity: status === 'PENDING' ? 1 : 0.7,
+                transition: 'all 0.2s'
+              }}>
+                <input 
+                  type="radio" 
+                  name={`candidate-${proposal.proposalId}`} 
+                  value={c.id} 
+                  checked={selectedCandidate === c.id}
+                  onChange={() => status === 'PENDING' && setSelectedCandidate(c.id)}
+                  style={{ marginTop: 2, accentColor: theme.accent }}
+                  disabled={status !== 'PENDING'}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: theme.ink }}>{c.title}</span>
+                  <span style={{ fontSize: 12, color: theme.inkSoft }}>{c.rationale}</span>
+                  <span style={{ fontSize: 11, color: theme.accent, marginTop: 4 }}>Type: {c.category}</span>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Action Buttons or Status */}
@@ -131,6 +165,7 @@ export function ProposalCard({
           <div style={{ display: 'flex', gap: 10 }}>
             <button 
               onClick={() => handleRespond('APPROVE')}
+              disabled={(proposal.candidates?.length ?? 0) > 0 && !selectedCandidate}
               style={{
                 flex: 1,
                 background: theme.ink,
@@ -140,11 +175,12 @@ export function ProposalCard({
                 borderRadius: 8,
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: (proposal.candidates?.length ?? 0) > 0 && !selectedCandidate ? 'not-allowed' : 'pointer',
+                opacity: (proposal.candidates?.length ?? 0) > 0 && !selectedCandidate ? 0.5 : 1,
                 transition: 'opacity 0.2s'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseEnter={(e) => { if (!((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate)) e.currentTarget.style.opacity = '0.9'; }}
+              onMouseLeave={(e) => { if (!((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate)) e.currentTarget.style.opacity = '1'; }}
             >
               Approve
             </button>

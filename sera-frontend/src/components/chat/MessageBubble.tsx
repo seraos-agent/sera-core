@@ -9,7 +9,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
   msg: any;
   onCopy: (id: number, content: string) => void;
   copied: number | null;
-  onApprove: (proposalId: string, action: 'APPROVE' | 'REJECT') => void;
+  onApprove: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
 }) {
   const isUser = msg.role === "user";
   

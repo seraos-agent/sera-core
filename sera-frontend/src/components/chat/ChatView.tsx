@@ -55,9 +55,9 @@ export function ChatView({
     setTimeout(() => setCopied(null), 1500);
   }, []);
 
-  const handleApprove = useCallback((proposalId: string, action: 'APPROVE' | 'REJECT') => {
+  const handleApprove = useCallback((proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => {
     if (socket) {
-      socket.emit('chat:proposal_response', { proposalId, action });
+      socket.emit('chat:proposal_response', { proposalId, action, candidateId });
       setMessages(prev => prev.map(m => {
         if (m.proposal && m.proposal.proposalId === proposalId) {
           return { ...m, proposal: { ...m.proposal, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' } };

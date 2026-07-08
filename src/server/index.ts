@@ -38,6 +38,11 @@ import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibr
 import { SignalArbitrator } from '../core/feedback/SignalArbitrator';
 import { MemoryPolicyEngine as EpistemicPolicyEngine } from '../memory/MemoryPolicyEngine';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
+import { IntentEngine } from '../core/intents/IntentEngine';
+import { IntentStore } from '../core/intents/IntentStore';
+import { ProposalStore } from '../core/intents/ProposalStore';
+import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
+import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -62,6 +67,12 @@ const strategyStore = new StrategyStore();
 const strategyEngine = new StrategyEngine(strategyStore);
 const goalEngine = new GoalEngine();
 const attentionEngine = new AttentionEngine(goalEngine, strategyStore);
+
+const intentStore = new IntentStore();
+const proposalStore = new ProposalStore();
+const intentEngine = new IntentEngine(intentStore, goalEngine);
+const goalSynthesizer = new GoalSynthesizer();
+const proposalGovernance = new ProposalGovernance();
 
 const memoryStore = new MemoryStore();
 const executionTraceStore = new ExecutionTraceStore();
@@ -88,11 +99,11 @@ const runtime = new Runtime(
   strategyEngine,
   attentionEngine,
   goalEngine,
-  undefined,
-  undefined,
-  undefined,
-  undefined,
-  undefined,
+  intentEngine,
+  intentStore,
+  proposalStore,
+  goalSynthesizer,
+  proposalGovernance,
   proposalEvaluator,
   governanceOutcomeTracker,
   governanceReflectionEngine,
@@ -164,6 +175,20 @@ io.on('connection', (socket: Socket) => {
     // Legacy manual observation simulations removed
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION`);
 
+    // Phase 4.1 Manual Trigger
+    if (message.toLowerCase().trim() === 'sera, evaluasi peluang baru') {
+      console.log(`[Server] Manual Trigger for Phase 4.1 detected!`);
+      const intentId = `intent-${Date.now()}`;
+      runtime.intentStore?.registerIntent({
+        id: intentId,
+        description: 'Grow Asset Value',
+        status: 'ALIVE',
+        terminality: 'CONTINUOUS',
+        createdAt: Date.now()
+      });
+      runtime.executeCycle(Date.now()).catch(console.error);
+    }
+
     const event: StandardEvent = {
       id: `evt-${Date.now()}`,
       type: EventTypes.DIALOGUE_USER_OBSERVED,
@@ -228,7 +253,8 @@ io.on('connection', (socket: Socket) => {
       id: msgId,
       proposalId: event.payload.proposalId,
       intent: event.payload.intent,
-      parameters: event.payload.parameters
+      parameters: event.payload.parameters,
+      candidates: event.payload.candidates
     };
     socket.emit('chat:proposal', proposalData);
     chatHistoryStore.appendUiMessage({
@@ -264,9 +290,9 @@ io.on('connection', (socket: Socket) => {
   eventBus.on(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
 
   // ── EARS: Proposal Responses ──────────────────────────────────────────────
-  socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT' }) => {
-    const { proposalId, action } = data;
-    console.log(`[Server] Received proposal response for ${proposalId}: ${action}`);
+  socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT'; candidateId?: string }) => {
+    const { proposalId, action, candidateId } = data;
+    console.log(`[Server] Received proposal response for ${proposalId}: ${action} (candidateId: ${candidateId})`);
     
     const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
     chatHistoryStore.updateProposalStatus(proposalId, status);
@@ -277,7 +303,7 @@ io.on('connection', (socket: Socket) => {
         type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
         source: 'SocketServer',
         timestamp: Date.now(),
-        payload: { proposalId: proposalId }
+        payload: { proposalId: proposalId, candidateId }
       } as StandardEvent);
     } else {
       eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_REJECTED, {
