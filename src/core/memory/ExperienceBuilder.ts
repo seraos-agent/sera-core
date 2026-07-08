@@ -85,7 +85,17 @@ export class ExperienceBuilder {
 
     fs.appendFile(this.logPath, JSON.stringify(record) + '\n', (err) => {
       if (err) console.error(`[ExperienceBuilder] Failed to write record: ${err.message}`);
-      else console.log(`[ExperienceBuilder] Episode consolidated: ${summary}`);
+      else {
+        console.log(`[ExperienceBuilder] Episode consolidated: ${summary}`);
+        // Emit for downstream bridges (e.g., EpisodicSemanticBridge)
+        this.eventBus.emit('system.episode.consolidated', {
+          id: `evt-${Date.now()}`,
+          type: 'system.episode.consolidated',
+          source: 'ExperienceBuilder',
+          payload: record,
+          timestamp: Date.now()
+        } as StandardEvent);
+      }
     });
   }
 }

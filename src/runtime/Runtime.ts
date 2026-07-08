@@ -14,7 +14,7 @@ import { ExecutionTrace } from '../core/execution/types';
 import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
-import { MetaEvaluationEngine } from '../core/cognition/MetaEvaluationEngine';
+import { CalibrationEvaluationEngine } from '../core/cognition/CalibrationEvaluationEngine';
 import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
 import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
 import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
@@ -51,7 +51,7 @@ export class Runtime {
   private constitutionEngine: ConstitutionEngine;
   private feedbackPipeline?: FeedbackPipeline;
   private coherenceMonitor?: CoherenceMonitor;
-  private metaEvaluationEngine?: MetaEvaluationEngine;
+  private calibrationEvaluationEngine?: CalibrationEvaluationEngine;
   private executionTraceStore?: ExecutionTraceStore;
   private eventBus?: EventEmitter;
   private executionDispatcher?: ExecutionDispatcher;
@@ -83,7 +83,7 @@ export class Runtime {
     constitutionEngine: ConstitutionEngine = new ConstitutionEngine(),
     feedbackPipeline?: FeedbackPipeline,
     coherenceMonitor?: CoherenceMonitor,
-    metaEvaluationEngine?: MetaEvaluationEngine,
+    calibrationEvaluationEngine?: CalibrationEvaluationEngine,
     executionTraceStore?: ExecutionTraceStore,
     planner?: Planner,
     strategyStore?: StrategyStore,
@@ -110,7 +110,7 @@ export class Runtime {
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;
     this.coherenceMonitor = coherenceMonitor;
-    this.metaEvaluationEngine = metaEvaluationEngine;
+    this.calibrationEvaluationEngine = calibrationEvaluationEngine;
     this.executionTraceStore = executionTraceStore;
     this.eventBus = eventBus;
     this.executionDispatcher = dispatcher;
@@ -157,6 +157,9 @@ export class Runtime {
   }
   
   getWorldState() {
+    if (!this.worldStateService) {
+      return { wallet: {}, temporal: {} };
+    }
     return {
       wallet: this.worldStateService.getWalletState(),
       temporal: this.worldStateService.getTemporalState()
@@ -327,7 +330,7 @@ export class Runtime {
     }
 
     const activeProfile = this.strategyStore.getActiveProfile();
-    const plan = this.planner.generatePlan(goal, this.getWorldState(), this.memoryStore.getAllBeliefs(), activeProfile, temporalContext);
+    const plan = this.planner.generatePlan(goal, this.getWorldState(), this.memoryStore, activeProfile, temporalContext);
     
     let allSuccess = true;
     for (const step of plan.steps) {
@@ -482,7 +485,7 @@ export class Runtime {
       });
     } else {
       workItem.status = 'FAILED';
-      trace.finalOutcome = 'SUCCESS'; // Worker executed...
+      trace.finalOutcome = 'FAILED'; // Worker failed or verification failed
       trace.verificationResult = false; // ...but verification failed
       trace.decisionSnapshots.push({
         stage: 'VERIFICATION_STRATEGY',
@@ -516,7 +519,7 @@ export class Runtime {
       this.feedbackPipeline.processTrace(trace);
     }
 
-    // Old meta evaluation logic was removed here. The new MetaEvaluationEngine is executed at the end of startAutonomousLoop.
+    // Old meta evaluation logic was removed here. The new CalibrationEvaluationEngine is executed at the end of startAutonomousLoop.
   }
 
   // Phase 4.1: Human Approval Pipeline

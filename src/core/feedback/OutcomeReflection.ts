@@ -30,11 +30,14 @@ export class OutcomeReflection {
 
   private updatePattern(intentId: string, contextKey: string, category: string, isSuccess: boolean, intentProgress: number, prediction: any): void {
     // Fetch the existing pattern if any
-    const existingBeliefs = this.memoryStore.getAllBeliefs();
-    let patternBelief = existingBeliefs.find(b => 
-      b.category === 'OUTCOME_REALIZATION' && 
-      b.content.includes(`"intentType":"${intentId}"`)
-    );
+    const existingBeliefs = this.memoryStore.getBeliefsByCategory('OUTCOME_REALIZATION');
+    let patternBelief = existingBeliefs.find(b => {
+      try {
+        return JSON.parse(b.content).intentType === intentId;
+      } catch {
+        return false;
+      }
+    });
 
     let pattern: OutcomeRealizationPattern;
 

@@ -39,9 +39,15 @@ export class ProposalEvaluator {
     return proposal;
   }
 
-  private findRelevantPattern(intentId: string, category: string): any {
-    const history = this.memoryStore.getAllBeliefs();
-    return history.find(b => b.category === category && b.content.includes(`"intentType":"${intentId}"`));
+  private findRelevantPattern(intentId: string, category: any): any {
+    const history = this.memoryStore.getBeliefsByCategory(category);
+    return history.find(b => {
+      try {
+        return JSON.parse(b.content).intentType === intentId;
+      } catch {
+        return false;
+      }
+    });
   }
 
   private computeIntentAlignment(candidate: GoalCandidate): number {

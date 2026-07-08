@@ -6,7 +6,7 @@ import { StrategyProfile } from '../strategy/types';
 import { TemporalContext } from '../temporal/types';
 
 export class Planner {
-  generatePlan(goal: Goal, worldState: any, beliefs: Belief[], strategy: StrategyProfile, tc?: TemporalContext): Plan {
+  generatePlan(goal: Goal, worldState: any, memoryStore: any, strategy: StrategyProfile, tc?: TemporalContext): Plan {
     console.log(`\n[Planner] Generating Plan for Goal: ${goal.id} under Strategy: ${strategy.name}`);
     
     const now = tc ? tc.physicalTime : Date.now();
@@ -52,9 +52,9 @@ export class Planner {
     
     // EXPERIENCE-INFORMED PLANNING:
     // The Planner consults semantic beliefs before committing to a step.
-    const toolFailureBeliefs = beliefs.filter(b => 
+    const semanticBeliefs = memoryStore.getBeliefsByCategory('SEMANTIC');
+    const toolFailureBeliefs = semanticBeliefs.filter((b: any) => 
       b.epistemicStatus === 'CONFIRMED' && 
-      b.category === 'SEMANTIC' &&
       b.content.includes(intendedTool) && 
       b.content.includes('failed consistently')
     );

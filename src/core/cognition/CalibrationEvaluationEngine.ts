@@ -2,7 +2,7 @@ import { MemoryStore } from '../../memory/MemoryStore';
 import { Belief } from '../../memory/types';
 import { MetaCognitiveRecommendation } from './types';
 
-export class MetaEvaluationEngine {
+export class CalibrationEvaluationEngine {
   private memoryStore: MemoryStore;
   private recommendations: MetaCognitiveRecommendation[] = [];
 
