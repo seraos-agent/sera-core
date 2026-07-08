@@ -27,6 +27,17 @@ import { StrategyStore } from '../core/strategy/StrategyStore';
 import { StrategyEngine } from '../core/strategy/StrategyEngine';
 import { GoalEngine } from '../core/goals/GoalEngine';
 import { AttentionEngine } from '../core/attention/AttentionEngine';
+import { MemoryStore } from '../memory/MemoryStore';
+import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
+import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
+import { ProposalEvaluator } from '../core/intents/ProposalEvaluator';
+import { CalibrationEvaluationEngine } from '../core/cognition/CalibrationEvaluationEngine';
+import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
+import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
+import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
+import { SignalArbitrator } from '../core/feedback/SignalArbitrator';
+import { MemoryPolicyEngine as EpistemicPolicyEngine } from '../memory/MemoryPolicyEngine';
+import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -52,13 +63,26 @@ const strategyEngine = new StrategyEngine(strategyStore);
 const goalEngine = new GoalEngine();
 const attentionEngine = new AttentionEngine(goalEngine, strategyStore);
 
+const memoryStore = new MemoryStore();
+const executionTraceStore = new ExecutionTraceStore();
+const coherenceMonitor = new CoherenceMonitor();
+const proposalEvaluator = new ProposalEvaluator(memoryStore);
+const calibrationEvaluationEngine = new CalibrationEvaluationEngine(memoryStore);
+const governanceOutcomeTracker = new GovernanceOutcomeTracker(memoryStore);
+const governanceReflectionEngine = new GovernanceReflectionEngine(memoryStore);
+const governanceCalibrationEngine = new GovernanceCalibrationEngine(memoryStore);
+
+const signalArbitrator = new SignalArbitrator();
+const epistemicPolicyEngine = new EpistemicPolicyEngine(memoryStore);
+const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyEngine, goalEngine, coherenceMonitor);
+
 const runtime = new Runtime(
   workerManager,
   undefined,
-  undefined,
-  undefined,
-  undefined,
-  undefined,
+  feedbackPipeline,
+  coherenceMonitor,
+  calibrationEvaluationEngine,
+  executionTraceStore,
   planner,
   strategyStore,
   strategyEngine,
@@ -69,14 +93,15 @@ const runtime = new Runtime(
   undefined,
   undefined,
   undefined,
-  undefined,
-  undefined,
-  undefined,
-  undefined,
+  proposalEvaluator,
+  governanceOutcomeTracker,
+  governanceReflectionEngine,
+  governanceCalibrationEngine,
   undefined,
   undefined,
   eventBus,
-  executionDispatcher
+  executionDispatcher,
+  memoryStore
 );
 
 runtime.setGlobalEventBus(eventBus);
@@ -85,7 +110,7 @@ const temporalClockService = new TemporalClockService(eventBus, 10000);
 const cognitiveCompressor = new CognitiveCompressor(eventBus);
 const auditLogger = new AuditLogger(eventBus);
 const experienceBuilder = new ExperienceBuilder(eventBus);
-const episodicSemanticBridge = new EpisodicSemanticBridge(eventBus, runtime.memoryStore);
+const episodicSemanticBridge = new EpisodicSemanticBridge(eventBus, memoryStore);
 
 // Initialize OS Capability Catalog
 const catalog = new CapabilityCatalog();
