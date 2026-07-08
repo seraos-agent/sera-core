@@ -3,6 +3,8 @@ import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import { chatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 import { WorldStateService } from '../../core/world-state/WorldStateService';
+import { MemoryStore } from '../../memory/MemoryStore';
+import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -64,11 +66,15 @@ export class DialogueEngine {
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
+  private memoryStore: MemoryStore;
+  private episodicReader: EpisodicMemoryReader;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
+    this.memoryStore = memoryStore;
+    this.episodicReader = new EpisodicMemoryReader();
     this.llm = new QwenAdapter();
 
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
@@ -88,10 +94,37 @@ export class DialogueEngine {
 
     const walletState = this.worldStateService.getWalletState();
 
+    // Fetch Known Facts from MemoryStore
+    let knownFacts: string[] = [];
+    if (this.memoryStore) {
+      const semanticBeliefs = this.memoryStore.getBeliefsByCategory('SEMANTIC');
+      knownFacts = semanticBeliefs
+        .filter(b => b.epistemicStatus === 'CONFIRMED' && (!b.key || !b.key.startsWith('wallet.')))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 5)
+        .map(b => typeof b.content === 'string' ? b.content : JSON.stringify(b.content));
+    }
+
+    // Fetch Recent Activity
+    let recentActivity: string[] = [];
+    if (this.episodicReader) {
+      const episodes = this.episodicReader.readLastEpisodes(5);
+      recentActivity = episodes.map(ep => ep.summary || JSON.stringify(ep));
+    }
+
+    // Truncate safely to prevent prompt explosion (~1000 chars combined max)
+    let knownFactsStr = knownFacts.join('\n');
+    if (knownFactsStr.length > 500) knownFactsStr = knownFactsStr.substring(0, 500) + '...';
+    
+    let recentActivityStr = recentActivity.join('\n');
+    if (recentActivityStr.length > 500) recentActivityStr = recentActivityStr.substring(0, 500) + '...';
+
     const cognitiveState = {
       relevant_facts: {
         userMainWalletAddress: walletState?.address || 'Unknown'
       },
+      known_facts: knownFactsStr ? knownFactsStr.split('\n') : [],
+      recent_activity: recentActivityStr ? recentActivityStr.split('\n') : [],
       constraints: [
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',

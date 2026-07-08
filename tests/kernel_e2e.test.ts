@@ -147,6 +147,32 @@ async function runTest() {
     }
   }
 
+  // 6. Test DialogueEngine Memory Injection
+  console.log('--- Testing DialogueEngine Memory Injection ---');
+  runtime.setGlobalEventBus(eventBus); // Initialize dialogueEngine
+  
+  const messages = (runtime.dialogueEngine as any).buildWorkingMemory();
+  const systemMsg = messages.find((m: any) => m.content.includes('[COGNITIVE STATE (WORKING MEMORY)]'));
+  
+  if (!systemMsg) {
+    console.error('❌ E2E TEST FAILED: System message containing cognitive state not found.');
+    process.exit(1);
+  }
+  
+  if (!systemMsg.content.includes('failing-tool')) {
+    console.error('❌ E2E TEST FAILED: DialogueEngine did not inject CONFIRMED belief into working memory.');
+    process.exit(1);
+  }
+
+  if (systemMsg.content.includes('wallet.address') || systemMsg.content.includes('0x123')) {
+    console.error('❌ E2E TEST FAILED: DialogueEngine inadvertently injected wallet key into working memory.');
+    process.exit(1);
+  }
+  
+  console.log('✅ DialogueEngine successfully injected semantic memory while excluding protected keys.');
+
+
+
   console.log('✅ E2E TEST PASSED!');
 }
 

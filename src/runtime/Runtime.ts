@@ -149,7 +149,7 @@ export class Runtime {
 
     this.proposalManager = new ProposalManager(globalEventBus);
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog);
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore);
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
   }
 
