@@ -38,7 +38,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
         justifyContent: isUser ? "flex-end" : "flex-start",
       }}
     >
-      <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
+      <div style={{ maxWidth: "100%", width: isUser ? "auto" : "100%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
         <div
           style={{
             background: isUser ? theme.bubbleUser : "transparent",

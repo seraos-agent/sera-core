@@ -67,6 +67,8 @@ export function useSocket(
     newSocket.on("ui:command", (cmd: any) => {
       if (cmd.type === "SET_THEME") {
         setMode(cmd.payload);
+      } else if (cmd.type === "CLEAR_CHAT") {
+        newSocket.emit("chat:clear");
       }
     });
 

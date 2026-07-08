@@ -1,5 +1,4 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Menu, MoreVertical, Trash } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { MessageBubble } from "./MessageBubble";
 import { EmptyState } from "./EmptyState";
@@ -12,7 +11,6 @@ interface ChatViewProps {
   messages: any[];
   setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   isMobileView: boolean;
-  sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onSend: (text: string) => void;
   socket: Socket | null;
@@ -27,7 +25,6 @@ export function ChatView({
   messages,
   setMessages,
   isMobileView,
-  sidebarOpen,
   onOpenSidebar,
   onSend,
   socket,
@@ -38,7 +35,6 @@ export function ChatView({
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showObservations, setShowObservations] = useState(false);
 
   useEffect(() => {
@@ -71,123 +67,68 @@ export function ChatView({
     }
   }, [socket, setMessages]);
 
-  const handleClearChat = useCallback(() => {
-    if (socket) {
-      socket.emit('chat:clear');
-    }
-  }, [socket]);
-
-  const paddingVal = isMobileView ? "18px 14px" : "24px 26px";
-  const paddingBottomVal = isMobileView ? "10px 14px 8px" : "10px 26px 12px";
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-      {/* Header bar */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: isMobileView ? "12px 14px" : "12px 20px",
-          background: theme.bg,
-          borderBottom: "none",
-          flexShrink: 0,
-        }}
-      >
-        {(isMobileView || !sidebarOpen) && (
-          <button onClick={onOpenSidebar} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex" }}>
-            <Menu size={18} />
-          </button>
-        )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
 
-          
-          <div style={{ position: "relative" }}>
-            <button 
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex" }}
-            >
-              <MoreVertical size={18} />
-            </button>
-            {dropdownOpen && (
-              <>
-                <div 
-                  style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }} 
-                  onClick={() => setDropdownOpen(false)} 
-                />
-                <div style={{ 
-                  position: "absolute", right: 0, top: "100%", marginTop: 8,
-                  background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12,
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.1)", padding: 8, zIndex: 100, minWidth: 160
-                }}>
-                  <button 
-                    onClick={() => { handleClearChat(); setDropdownOpen(false); }}
-                    style={{ 
-                      width: "100%", display: "flex", alignItems: "center", gap: 10,
-                      background: "transparent", border: "none", cursor: "pointer", 
-                      color: "#ef4444", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 500,
-                      padding: "10px 12px", borderRadius: 8, textAlign: "left", transition: "background 0.2s"
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
-                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                  >
-                    <Trash size={16} />
-                    Clear Chat
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Messages area */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: paddingVal }}>
+      <div ref={scrollRef} style={{
+        flex: 1, overflowY: "auto",
+        padding: isMobileView ? "18px 14px 120px" : "24px 26px 140px",
+        maskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)",
+        WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)"
+      }}>
         {messages.length === 0 ? (
           <EmptyState theme={theme} />
         ) : (
           <div style={{ maxWidth: 760, margin: "0 auto" }}>
             {messages.map((msg, idx) => (
-            <MessageBubble 
-              key={msg.id || idx} 
-              theme={theme} 
-              msg={msg} 
-              onCopy={handleCopy} 
-              copied={copied} 
-              onApprove={handleApprove}
-            />
-          ))}
+              <MessageBubble
+                key={msg.id || idx}
+                theme={theme}
+                msg={msg}
+                onCopy={handleCopy}
+                copied={copied}
+                onApprove={handleApprove}
+              />
+            ))}
 
-          {currentActivity && (
-            <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
-              <div style={{ 
-                display: "flex", alignItems: "center", gap: 6,
-                fontSize: 12, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
-                fontWeight: 500
-              }}>
-                <div className="activity-spinner" style={{
-                  width: 12, height: 12, border: `2px solid ${theme.inkFaint}40`, borderTopColor: theme.inkFaint, borderRadius: "50%", animation: "spin 1s linear infinite"
-                }} />
-                {currentActivity}
-                <style>{`
+            {currentActivity && (
+              <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  fontSize: 12, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
+                  fontWeight: 500
+                }}>
+                  <div className="activity-spinner" style={{
+                    width: 12, height: 12, border: `2px solid ${theme.inkFaint}40`, borderTopColor: theme.inkFaint, borderRadius: "50%", animation: "spin 1s linear infinite"
+                  }} />
+                  {currentActivity}
+                  <style>{`
                   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
                 `}</style>
+                </div>
               </div>
-            </div>
-          )}
-          
-        </div>
+            )}
+
+          </div>
         )}
       </div>
 
       {/* Input area */}
-      <div style={{ padding: paddingBottomVal, flexShrink: 0, position: "relative" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto", position: "relative" }}>
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        padding: isMobileView ? "0px 14px 12px" : "0px 26px 16px",
+        background: theme.bg,
+        pointerEvents: "none" // so clicks pass through the gradient
+      }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", position: "relative", pointerEvents: "auto" }}>
           {showObservations && (
-            <CognitiveStreamPanel 
-              theme={theme} 
-              observations={observations} 
-              onClose={() => setShowObservations(false)} 
+            <CognitiveStreamPanel
+              theme={theme}
+              observations={observations}
+              onClose={() => setShowObservations(false)}
             />
           )}
           <ChatInput 
@@ -195,6 +136,8 @@ export function ChatView({
             onSend={onSend} 
             disabled={!socket}
             showObservations={showObservations}
+            isMobileView={isMobileView}
+            onOpenSidebar={onOpenSidebar}
             onToggleObservations={() => {
               const nextState = !showObservations;
               setShowObservations(nextState);

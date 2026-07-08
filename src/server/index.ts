@@ -217,7 +217,7 @@ io.on('connection', (socket: Socket) => {
   const onUiCommand = (event: StandardEvent) => {
     // Translate Sera Event → UI command format the React app understands
     socket.emit('ui:command', {
-      type: 'SET_THEME',
+      type: event.payload.command,
       payload: event.payload.value,
     });
   };

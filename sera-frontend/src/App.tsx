@@ -120,7 +120,6 @@ export default function App() {
             messages={messages}
             setMessages={setMessages}
             isMobileView={isMobileView}
-            sidebarOpen={sidebarOpen}
             onOpenSidebar={() => setSidebarOpen(true)}
             onSend={handleSend}
             socket={socket}

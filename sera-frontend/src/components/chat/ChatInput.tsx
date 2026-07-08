@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Plus, Mic, ArrowUp, Bell } from "lucide-react";
+import { Plus, Mic, ArrowUp, Bell, FileText, X, PanelLeft } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
 export function ChatInput({ 
@@ -8,16 +8,21 @@ export function ChatInput({
   disabled,
   onToggleObservations,
   showObservations,
-  unreadCount = 0
+  unreadCount = 0,
+  isMobileView,
+  onOpenSidebar
 }: { 
   theme: ThemeType, 
   onSend: (text: string) => void, 
   disabled?: boolean,
   onToggleObservations?: () => void,
   showObservations?: boolean,
-  unreadCount?: number
+  unreadCount?: number,
+  isMobileView?: boolean,
+  onOpenSidebar?: () => void
 }) {
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -33,10 +38,28 @@ export function ChatInput({
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    if (text.length > 250 || text.split('\n').length > 5) {
+      e.preventDefault();
+      setAttachments(prev => [...prev, text]);
+    }
+  };
+
   const handleSend = () => {
-    if (!input.trim() || disabled) return;
-    onSend(input.trim());
+    if ((!input.trim() && attachments.length === 0) || disabled) return;
+    
+    let finalText = "";
+    if (attachments.length > 0) {
+      attachments.forEach((att, i) => {
+        finalText += `[Pasted Text ${i + 1}]\n${att}\n\n`;
+      });
+    }
+    finalText += input.trim();
+    
+    onSend(finalText.trim());
     setInput("");
+    setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -53,12 +76,33 @@ export function ChatInput({
             padding: "12px 14px 10px",
           }}
         >
+          {attachments.length > 0 && (
+            <div style={{ display: "flex", gap: 8, padding: "2px 8px 12px", overflowX: "auto", flexWrap: "wrap" }}>
+              {attachments.map((_, idx) => (
+                <div key={idx} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  background: theme.surface2, padding: "6px 10px", borderRadius: 8,
+                  border: `1px solid ${theme.border}`, fontSize: 13, color: theme.ink
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, opacity: 0.9 }}>
+                    <FileText size={14} color={theme.inkSoft} />
+                    <span style={{ fontWeight: 500 }}>Pasted</span>
+                  </div>
+                  <button onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 2, marginLeft: 4 }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <textarea
             ref={textareaRef}
             className="chatui-textarea"
             value={input}
             onChange={autoGrow}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Ask anything..."
             rows={1}
             disabled={disabled}
@@ -81,6 +125,19 @@ export function ChatInput({
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
             <div style={{ display: "flex", gap: 8, paddingLeft: 6, position: "relative" }}>
+              {isMobileView && onOpenSidebar && (
+                <button
+                  title="Menu"
+                  onClick={onOpenSidebar}
+                  style={{
+                    background: "transparent", border: "none", color: theme.inkSoft, 
+                    cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center"
+                  }}
+                >
+                  <PanelLeft size={20} />
+                </button>
+              )}
               <button
                 title="Attach file"
                 disabled={disabled}
@@ -132,20 +189,20 @@ export function ChatInput({
 
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || disabled}
+                disabled={(!input.trim() && attachments.length === 0) || disabled}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
                   border: "none",
-                  background: input.trim() && !disabled ? theme.accent : theme.surface2,
-                  color: input.trim() && !disabled ? theme.accentInk : theme.inkSoft,
+                  background: (input.trim() || attachments.length > 0) && !disabled ? theme.accent : theme.surface2,
+                  color: (input.trim() || attachments.length > 0) && !disabled ? theme.accentInk : theme.inkSoft,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: input.trim() && !disabled ? "pointer" : "default",
+                  cursor: (input.trim() || attachments.length > 0) && !disabled ? "pointer" : "default",
                   flexShrink: 0,
-                  transform: input.trim() && !disabled ? "scale(1)" : "scale(0.95)",
+                  transform: (input.trim() || attachments.length > 0) && !disabled ? "scale(1)" : "scale(0.95)",
                   transition: "all 180ms ease",
                 }}
               >
