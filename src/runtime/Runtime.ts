@@ -102,9 +102,10 @@ export class Runtime {
     adaptationPlanner?: AdaptationPlanner,
     adaptationExecutor?: AdaptationExecutor,
     eventBus?: EventEmitter,
-    dispatcher?: ExecutionDispatcher
+    dispatcher?: ExecutionDispatcher,
+    memoryStore?: MemoryStore
   ) {
-    this.memoryStore = new MemoryStore();
+    this.memoryStore = memoryStore || new MemoryStore();
     this.authorityService = new AuthorityService();
     this.workerManager = workerManager;
     this.constitutionEngine = constitutionEngine;

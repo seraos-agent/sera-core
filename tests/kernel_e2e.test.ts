@@ -50,7 +50,9 @@ async function runTest() {
     undefined, // governanceCalibrationEngine
     undefined, // adaptationPlanner
     undefined, // adaptationExecutor
-    eventBus
+    eventBus,
+    undefined, // dispatcher
+    memoryStore
   );
 
   // Initialize bridges
