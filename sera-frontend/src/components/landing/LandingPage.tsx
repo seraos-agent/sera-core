@@ -1,5 +1,6 @@
 import React from 'react';
 import './LandingPage.css';
+import seraLogo from '../../assets/sera-logo.png';
 
 export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const handleLaunchApp = (e: React.MouseEvent) => {
@@ -12,7 +13,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       <nav className="nav">
         <div className="wrap">
           <div className="nav-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/sera-logo.png" alt="SERA Logo" style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', transform: 'translateZ(0)', border: '1px solid rgba(255, 255, 255, 0.1)', background: '#fff' }} />
+            <img src={seraLogo} alt="SERA Logo" style={{ height: 24, transform: 'translateZ(0)' }} />
             SERA
           </div>
           <div className="nav-links">

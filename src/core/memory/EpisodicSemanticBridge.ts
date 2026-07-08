@@ -16,40 +16,52 @@ export class EpisodicSemanticBridge {
     });
   }
 
+  private failureCounts: Record<string, number> = {};
+
   private handleEpisodeConsolidated(record: ExperienceRecord) {
     if (!record || !record.summary) return;
 
     console.log(`[EpisodicSemanticBridge] Analyzing episode: ${record.id}`);
 
-    // Simple heuristic-based semantic distillation for demo purposes
-    // In a full implementation, this would use an LLM or pattern extractor to find recurring themes.
     const lowerSummary = record.summary.toLowerCase();
 
     // Distill a failure pattern
-    if (lowerSummary.includes('failed') || lowerSummary.includes('error')) {
-      const toolMatch = lowerSummary.match(/tool '([^']+)'/);
+    if (lowerSummary.includes('fail') || lowerSummary.includes('error')) {
+      // More flexible match for tool name
+      const toolMatch = lowerSummary.match(/tool\s*['"]?([^'"\s]+)['"]?/i);
       const toolName = toolMatch ? toolMatch[1] : 'unknown-tool';
 
       if (toolName !== 'unknown-tool') {
+        this.failureCounts[toolName] = (this.failureCounts[toolName] || 0) + 1;
+        const count = this.failureCounts[toolName];
+        
+        const isConfirmed = count >= 3;
         const content = `Tool '${toolName}' failed consistently during execution.`;
         
-        const semanticBelief: Belief = {
-          id: `belief-semantic-fail-${Date.now()}`,
-          category: 'SEMANTIC',
-          content,
-          epistemicStatus: 'CONFIRMED',
-          confidence: 0.9,
-          evidenceIds: [record.id],
-          contradictionIds: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
-
-        this.memoryStore.storeBelief(semanticBelief);
-        console.log(`[EpisodicSemanticBridge] Distilled new semantic failure belief for tool: ${toolName}`);
+        const existing = this.memoryStore.getBeliefsByCategory('SEMANTIC').find(b => b.content === content);
+        
+        if (existing) {
+           existing.epistemicStatus = isConfirmed ? 'CONFIRMED' : 'HYPOTHESIS';
+           existing.confidence = Math.min(0.3 + (count * 0.2), 0.95);
+           existing.evidenceIds.push(record.id);
+           this.memoryStore.updateBelief(existing);
+           console.log(`[EpisodicSemanticBridge] Updated semantic failure belief for tool: ${toolName} to ${existing.epistemicStatus}`);
+        } else {
+           const semanticBelief: Belief = {
+             id: `belief-semantic-fail-${Date.now()}`,
+             category: 'SEMANTIC',
+             content,
+             epistemicStatus: isConfirmed ? 'CONFIRMED' : 'HYPOTHESIS',
+             confidence: Math.min(0.3 + (count * 0.2), 0.95),
+             evidenceIds: [record.id],
+             contradictionIds: [],
+             createdAt: Date.now(),
+             updatedAt: Date.now()
+           };
+           this.memoryStore.storeBelief(semanticBelief);
+           console.log(`[EpisodicSemanticBridge] Distilled new semantic failure belief for tool: ${toolName} as ${semanticBelief.epistemicStatus}`);
+        }
       }
     }
-
-    // You can add more heuristics here for successful patterns, user preferences, etc.
   }
 }

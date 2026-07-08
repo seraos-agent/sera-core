@@ -55,6 +55,7 @@ export class Planner {
     const semanticBeliefs = memoryStore.getBeliefsByCategory('SEMANTIC');
     const toolFailureBeliefs = semanticBeliefs.filter((b: any) => 
       b.epistemicStatus === 'CONFIRMED' && 
+      typeof b.content === 'string' &&
       b.content.includes(intendedTool) && 
       b.content.includes('failed consistently')
     );

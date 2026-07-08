@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { Runtime } from '../src/runtime/Runtime';
 import { WorkerManager } from '../src/workers/WorkerManager';
 import { MemoryStore } from '../src/memory/MemoryStore';
@@ -24,9 +25,11 @@ async function runTest() {
   const goalEngine = new GoalEngine();
   const attentionEngine = new AttentionEngine(goalEngine, strategyStore);
   
+  const constitutionEngine = new ConstitutionEngine();
+  
   const runtime = new Runtime(
     workerManager,
-    undefined, // constitutionEngine
+    constitutionEngine, // constitutionEngine
     undefined, // feedbackPipeline
     undefined, // coherenceMonitor
     undefined, // metaEvaluation
@@ -66,39 +69,82 @@ async function runTest() {
   };
   goalEngine.registerGoal(testGoal);
 
-  // 2. Mock a failed tool episodic event
-  eventBus.emit('system.episode.consolidated', {
-    id: `evt-mock`,
-    type: 'system.episode.consolidated',
-    source: 'ExperienceBuilder',
-    payload: {
-      id: 'mock-exp',
-      summary: "The execution of tool 'failing-tool' failed due to a timeout.",
-      type: 'GOAL_EXECUTION',
-      evidence: [],
+  // Spy on WorkerManager to verify which tool was actually dispatched
+  let dispatchedTool = '';
+  const originalDispatch = workerManager.dispatch.bind(workerManager);
+  workerManager.dispatch = async (workItem: any) => {
+    if (workItem.payload?.toolId) {
+      dispatchedTool = workItem.payload.toolId;
+    }
+    return { status: 'SUCCESS', result: {}, events: [] };
+  };
+
+  // 2. Mock a failed tool episodic event 3 times to make it CONFIRMED
+  for (let i = 0; i < 3; i++) {
+    eventBus.emit('system.episode.consolidated', {
+      id: `evt-mock-${i}`,
+      type: 'system.episode.consolidated',
+      source: 'ExperienceBuilder',
+      payload: {
+        id: `mock-exp-${i}`,
+        summary: "The execution of tool 'failing-tool' failed due to a timeout.",
+        type: 'GOAL_EXECUTION',
+        evidence: [],
+        timestamp: Date.now()
+      },
       timestamp: Date.now()
-    },
-    timestamp: Date.now()
-  });
+    });
+  }
 
   // Small delay to let bridge process it
   await new Promise(r => setTimeout(r, 100));
 
-  // 3. Verify belief is stored
+  // 3. Verify belief is stored and CONFIRMED
   const semanticBeliefs = memoryStore.getBeliefsByCategory('SEMANTIC');
   const failureBelief = semanticBeliefs.find(b => b.content.includes('failing-tool'));
-  if (!failureBelief) {
-    console.error('❌ E2E TEST FAILED: Semantic belief for failing-tool was not created.');
+  if (!failureBelief || failureBelief.epistemicStatus !== 'CONFIRMED') {
+    console.error('❌ E2E TEST FAILED: Semantic belief for failing-tool was not created or not CONFIRMED.');
     process.exit(1);
   }
-  console.log('✅ Semantic belief successfully created from episode.');
+  console.log('✅ Semantic belief successfully created and CONFIRMED from episodes.');
 
   // 4. Run cycle - Planner should avoid failing-tool
   await runtime.executeCycle(1, testGoal.id);
 
-  // If the planner successfully avoided it, it substituted 'mock-read-tool'
-  // In a real test, we would inspect the generated plan or trace.
-  
+  // Assertion: Check if the planner substituted the failing-tool
+  if (dispatchedTool !== 'mock-read-tool') {
+    console.error(`❌ E2E TEST FAILED: Planner dispatched '${dispatchedTool}' instead of fallback 'mock-read-tool'`);
+    process.exit(1);
+  }
+  console.log('✅ Planner successfully substituted failing-tool with mock-read-tool.');
+
+  // 5. Test wallet mutation rejection
+  console.log('--- Testing Wallet Mutation Policy ---');
+  const walletBelief: any = {
+    id: 'wallet-test',
+    category: 'STATE',
+    key: 'wallet.address',
+    content: { address: '0x123' },
+    epistemicStatus: 'CONFIRMED',
+    confidence: 1.0,
+    evidenceIds: [],
+    contradictionIds: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  try {
+    memoryStore.storeBelief(walletBelief);
+    console.error('❌ E2E TEST FAILED: wallet mutation was not rejected by policy.');
+    process.exit(1);
+  } catch (e: any) {
+    if (e.message.includes('rejected storage of wallet.address')) {
+      console.log('✅ Wallet mutation correctly rejected by policy engine.');
+    } else {
+      console.error('❌ E2E TEST FAILED with unknown error:', e);
+      process.exit(1);
+    }
+  }
+
   console.log('✅ E2E TEST PASSED!');
 }
 

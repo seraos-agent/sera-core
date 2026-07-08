@@ -89,13 +89,15 @@ export interface TemporalTickPayload {
   timestampUtc: number;
 }
 
-export enum SignalLevel {
-  TRACE = 'TRACE',   // System noise, usually hidden
-  INFO = 'INFO',     // Context parsing, standard operations
-  ACTION = 'ACTION', // Real-world execution (blockchain/API)
-  ALERT = 'ALERT',   // Critical failure, anomaly, or high-value insights
-  SYSTEM = 'SYSTEM'  // Engine boots, core state changes
-}
+export const SignalLevel = {
+  TRACE: 'TRACE',   // System noise, usually hidden
+  INFO: 'INFO',     // Context parsing, standard operations
+  ACTION: 'ACTION', // Real-world execution (blockchain/API)
+  ALERT: 'ALERT',   // Critical failure, anomaly, or high-value insights
+  SYSTEM: 'SYSTEM'  // Engine boots, core state changes
+} as const;
+
+export type SignalLevel = typeof SignalLevel[keyof typeof SignalLevel];
 
 export interface CognitiveObservationPayload {
   title: string;

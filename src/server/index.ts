@@ -19,10 +19,14 @@ import { observationStore } from '../core/perception/ObservationStore';
 import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 import { AuditLogger } from '../core/telemetry/AuditLogger';
 import { ExperienceBuilder } from '../core/memory/ExperienceBuilder';
-import { MemoryService } from '../core/memory/MemoryService';
-import { MemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
+import { EpisodicSemanticBridge } from '../core/memory/EpisodicSemanticBridge';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { SeraTool } from '../core/cognitive/Tool';
+import { Planner } from '../core/planner/Planner';
+import { StrategyStore } from '../core/strategy/StrategyStore';
+import { StrategyEngine } from '../core/strategy/StrategyEngine';
+import { GoalEngine } from '../core/goals/GoalEngine';
+import { AttentionEngine } from '../core/attention/AttentionEngine';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -42,15 +46,46 @@ const triggerStore = new InMemoryTriggerStore();
 const triggerEngine = new TriggerEngine(triggerStore, eventBus);
 const goalBridge = new GoalBridge(eventBus);
 const executionDispatcher = new ExecutionDispatcher(eventBus);
-const runtime = new Runtime(workerManager);
+const planner = new Planner();
+const strategyStore = new StrategyStore();
+const strategyEngine = new StrategyEngine(strategyStore);
+const goalEngine = new GoalEngine();
+const attentionEngine = new AttentionEngine(goalEngine, strategyStore);
+
+const runtime = new Runtime(
+  workerManager,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  planner,
+  strategyStore,
+  strategyEngine,
+  attentionEngine,
+  goalEngine,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  eventBus,
+  executionDispatcher
+);
+
 runtime.setGlobalEventBus(eventBus);
-runtime.setExecutionDispatcher(executionDispatcher);
+
 const temporalClockService = new TemporalClockService(eventBus, 10000);
 const cognitiveCompressor = new CognitiveCompressor(eventBus);
 const auditLogger = new AuditLogger(eventBus);
 const experienceBuilder = new ExperienceBuilder(eventBus);
-const memoryService = new MemoryService();
-const memoryPolicyEngine = new MemoryPolicyEngine(memoryService);
+const episodicSemanticBridge = new EpisodicSemanticBridge(eventBus, runtime.memoryStore);
 
 // Initialize OS Capability Catalog
 const catalog = new CapabilityCatalog();

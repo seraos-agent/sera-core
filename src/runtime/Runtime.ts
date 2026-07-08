@@ -45,7 +45,7 @@ export class Runtime {
   public capabilityCatalog!: CapabilityCatalog;
   public dialogueEngine!: DialogueEngine;
   public proposalManager!: ProposalManager;
-  private memoryStore: MemoryStore;
+  public memoryStore: MemoryStore;
   private authorityService: AuthorityService;
   private workerManager: WorkerManager;
   private constitutionEngine: ConstitutionEngine;

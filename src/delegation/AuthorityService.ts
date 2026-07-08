@@ -28,7 +28,7 @@ export class AuthorityService {
     }
 
     const isAllowed = scope.allowedPermissions.some(
-      (p) => p.action === context.action
+      (p) => p.action === context.action || p.action === '*'
     );
 
     if (isAllowed) {
