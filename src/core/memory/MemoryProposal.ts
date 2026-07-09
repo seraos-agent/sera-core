@@ -1,5 +1,6 @@
 import { MemorySource } from './MemorySource';
 import { MemoryEvidence } from './MemoryEvidence';
+import { MemoryCategory } from '../../memory/types';
 
 export enum MemoryOperation {
   CREATE = 'CREATE',
@@ -16,4 +17,5 @@ export interface MemoryProposal {
   evidence: MemoryEvidence;
   confidence: number;
   source: MemorySource;
+  category?: MemoryCategory;
 }

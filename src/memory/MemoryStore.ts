@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Event } from '../core/events/types';
+import { EventEmitter } from 'events';
+import { Event, EventTypes, StandardEvent, MemoryItemMutatedPayload } from '../core/events/types';
 import { Belief, MemoryCategory } from './types';
 import { MemoryProposal, MemoryOperation } from '../core/memory/MemoryProposal';
 import { MemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
@@ -21,7 +22,7 @@ export class MemoryStore {
   private MAX_EVENTS = 500;
   private MAX_BELIEFS_PER_CATEGORY = 100;
 
-  constructor() {
+  constructor(private eventBus?: EventEmitter) {
     const dataDir = path.join(process.cwd(), '.data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -148,6 +149,13 @@ export class MemoryStore {
     this.persist();
   }
 
+  public proposeBelief(proposal: MemoryProposal): void {
+    const result = this.policyEngine.evaluate(proposal);
+    if (!result.approved) {
+      throw new Error(`PolicyEngine rejected proposal for ${proposal.key}: ${result.reason}`);
+    }
+  }
+
   updateBelief(belief: Belief): void {
     this.storeBelief(belief);
   }
@@ -181,7 +189,7 @@ export class MemoryStore {
 
     const newItem: Belief = {
       id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      category: 'SEMANTIC', // Default for key-value items
+      category: proposal.category || 'SEMANTIC',
       key: proposal.key,
       content: proposal.value, // store in content
       status: newStatus,
@@ -198,6 +206,25 @@ export class MemoryStore {
     this._addBeliefToIndex(newItem);
     this.prune();
     this.persist();
+    
+    if (this.eventBus) {
+      const payload: MemoryItemMutatedPayload = {
+        key: proposal.key,
+        previousStatus: existing?.status ? String(existing.status) : undefined,
+        newStatus: String(newItem.status),
+        source: String(newItem.source),
+        confidence: newItem.confidence
+      };
+      
+      const event: StandardEvent<MemoryItemMutatedPayload> = {
+        id: `evt-mem-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        type: EventTypes.MEMORY_ITEM_MUTATED,
+        source: 'MemoryStore',
+        timestamp: Date.now(),
+        payload
+      };
+      this.eventBus.emit(EventTypes.MEMORY_ITEM_MUTATED, event);
+    }
     
     console.log(`[MemoryStore] Mutated protected belief: ${proposal.key} -> [${newItem.status}]`);
     return newItem;

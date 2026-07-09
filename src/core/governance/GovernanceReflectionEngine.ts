@@ -1,23 +1,23 @@
 import { GovernanceOutcomeRecord, GovernancePattern, GovernanceDecision } from '../cognition/types';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
-import { MemoryService } from '../../core/memory/MemoryService';
+import { MemoryStore } from '../../memory/MemoryStore';
 
 export class GovernanceReflectionEngine {
   private readonly PATTERN_CRITICAL_MASS = 5;
 
-  constructor(private memoryService: MemoryService, private eventBus: EventEmitter) {}
+  constructor(private memoryStore: MemoryStore, private eventBus: EventEmitter) {}
 
   evaluate(): void {
-    const allItems = this.memoryService.getAll();
+    const allBeliefs = this.memoryStore.getAllBeliefs();
     
-    const outcomes = allItems
-      .filter(item => item.key.startsWith('governance.outcome.'))
-      .map(item => item.value as GovernanceOutcomeRecord);
+    const outcomes = allBeliefs
+      .filter(b => b.category === 'GOVERNANCE_OUTCOME_RECORD')
+      .map(b => JSON.parse(b.content) as GovernanceOutcomeRecord);
       
-    const decisions = allItems
-      .filter(item => item.key.startsWith('governance.decision.'))
-      .map(item => item.value as GovernanceDecision);
+    const decisions = allBeliefs
+      .filter(b => b.category === 'GOVERNANCE_DECISION_RECORD')
+      .map(b => JSON.parse(b.content) as GovernanceDecision);
     
     // Create a map of decisions for easy lookup
     const decisionMap = new Map<string, GovernanceDecision>();
@@ -93,9 +93,9 @@ export class GovernanceReflectionEngine {
         // For Phase 5.3, we assign 1.0 (highly stable). Phase 5.4 will refine this.
         const driftScore = 1.0; 
         
-        const existingPatterns = allItems
-          .filter(item => item.key.startsWith('governance.pattern.'))
-          .map(item => ({ beliefId: item.id, data: item.value as GovernancePattern }));
+        const existingPatterns = allBeliefs
+          .filter(b => b.category === 'GOVERNANCE_PATTERN_RECORD')
+          .map(b => ({ beliefId: b.id, data: JSON.parse(b.content) as GovernancePattern }));
           
         const existing = existingPatterns.find(p => p.data.contextSignature === signature);
         

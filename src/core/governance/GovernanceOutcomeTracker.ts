@@ -3,31 +3,27 @@ import { GovernanceDecision, GovernanceOutcomeRecord } from '../cognition/types'
 import { CalibrationState } from '../execution/types';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
-import { MemoryService } from '../../core/memory/MemoryService';
 
 export class GovernanceOutcomeTracker {
   private readonly OBSERVATION_WINDOW_CYCLES = 3;
 
-  constructor(private memoryStore: MemoryStore, private memoryService: MemoryService, private eventBus: EventEmitter) {}
+  constructor(private memoryStore: MemoryStore, private eventBus: EventEmitter) {}
 
   evaluate(): GovernanceOutcomeRecord[] {
     const outcomes: GovernanceOutcomeRecord[] = [];
-    
-    // Retrieve all items from MemoryService
-    const allItems = this.memoryService.getAll();
-    
-    const decisionRecords = allItems
-      .filter(item => item.key.startsWith('governance.decision.'))
-      .map(item => item.value as GovernanceDecision);
+    const allBeliefs = this.memoryStore.getAllBeliefs();
+
+    const decisionRecords = allBeliefs
+      .filter(b => b.category === 'GOVERNANCE_DECISION_RECORD')
+      .map(b => JSON.parse(b.content) as GovernanceDecision);
     
     // Retrieve already tracked outcomes to avoid duplicate tracking
-    const trackedOutcomeRecords = allItems
-      .filter(item => item.key.startsWith('governance.outcome.'))
-      .map(item => item.value as GovernanceOutcomeRecord);
+    const trackedOutcomeRecords = allBeliefs
+      .filter(b => b.category === 'GOVERNANCE_OUTCOME_RECORD')
+      .map(b => JSON.parse(b.content) as GovernanceOutcomeRecord);
     const trackedDecisionIds = new Set(trackedOutcomeRecords.map(o => o.governanceDecisionId));
 
-    // Retrieve calibration records from legacy MemoryStore
-    const allBeliefs = this.memoryStore.getAllBeliefs();
+    // Retrieve calibration records
     const calibrationRecords = allBeliefs
       .filter(b => b.category === 'CALIBRATION')
       .map(b => JSON.parse(b.content));

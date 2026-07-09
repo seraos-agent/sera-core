@@ -43,8 +43,6 @@ import { DestructiveActionRule } from '../constitution/rules/DestructiveActionRu
 import { UnsafeActionRule } from '../constitution/rules/UnsafeActionRule';
 import { SignalArbitrator } from '../core/feedback/SignalArbitrator';
 import { MemoryPolicyEngine as EpistemicPolicyEngine } from '../memory/MemoryPolicyEngine';
-import { MemoryService } from '../core/memory/MemoryService';
-import { MemoryPolicyEngine as CoreMemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
 import { MemoryIngress } from '../core/memory/MemoryIngress';
 import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { IntentEngine } from '../core/intents/IntentEngine';
@@ -85,17 +83,15 @@ const intentEngine = new IntentEngine(intentStore, goalEngine);
 const goalSynthesizer = new GoalSynthesizer();
 const proposalGovernance = new ProposalGovernance();
 
-const memoryStore = new MemoryStore();
-const memoryService = new MemoryService(eventBus);
-const coreMemoryPolicyEngine = new CoreMemoryPolicyEngine(memoryService);
-const memoryIngress = new MemoryIngress(eventBus, coreMemoryPolicyEngine);
+const memoryStore = new MemoryStore(eventBus);
+const memoryIngress = new MemoryIngress(eventBus, memoryStore);
 
 const executionTraceStore = new ExecutionTraceStore();
 const coherenceMonitor = new CoherenceMonitor();
 const proposalEvaluator = new ProposalEvaluator(memoryStore);
 const calibrationEvaluationEngine = new CalibrationEvaluationEngine(memoryStore);
-const governanceOutcomeTracker = new GovernanceOutcomeTracker(memoryStore, memoryService, eventBus);
-const governanceReflectionEngine = new GovernanceReflectionEngine(memoryService, eventBus);
+const governanceOutcomeTracker = new GovernanceOutcomeTracker(memoryStore, eventBus);
+const governanceReflectionEngine = new GovernanceReflectionEngine(memoryStore, eventBus);
 const governanceCalibrationEngine = new GovernanceCalibrationEngine(memoryStore);
 const metaGovernanceReview = new MetaGovernanceReview(eventBus);
 

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
 import { MemoryProposal, MemoryOperation } from './MemoryProposal';
-import { MemoryPolicyEngine } from './MemoryPolicyEngine';
+import { MemoryStore } from '../../memory/MemoryStore';
 import { MemorySource } from './MemorySource';
 import { EvidenceType } from './MemoryEvidence';
 
@@ -16,7 +16,7 @@ import { EvidenceType } from './MemoryEvidence';
 export class MemoryIngress {
   constructor(
     private eventBus: EventEmitter,
-    private policyEngine: MemoryPolicyEngine
+    private memoryStore: MemoryStore
   ) {
     this.setupListeners();
     console.log('[MemoryIngress] Initialized. Listening for domain events to propose.');
@@ -30,9 +30,10 @@ export class MemoryIngress {
         value: event.payload,
         source: MemorySource.REFLECTION_INFERENCE,
         evidence: { type: EvidenceType.DOMAIN_EVENT, referenceId: event.id, timestamp: event.timestamp },
-        confidence: 1.0 // Objective fact that this decision occurred
+        confidence: 1.0, // Objective fact that this decision occurred
+        category: 'GOVERNANCE_DECISION_RECORD'
       };
-      this.policyEngine.evaluate(proposal);
+      this.memoryStore.proposeBelief(proposal);
     });
 
     this.eventBus.on(EventTypes.GOVERNANCE_OUTCOME_RECORDED, (event: StandardEvent) => {
@@ -42,9 +43,10 @@ export class MemoryIngress {
         value: event.payload,
         source: MemorySource.REFLECTION_INFERENCE,
         evidence: { type: EvidenceType.DOMAIN_EVENT, referenceId: event.id, timestamp: event.timestamp },
-        confidence: event.payload.confidence || 0.85 
+        confidence: event.payload.confidence || 0.85,
+        category: 'GOVERNANCE_OUTCOME_RECORD'
       };
-      this.policyEngine.evaluate(proposal);
+      this.memoryStore.proposeBelief(proposal);
     });
 
     this.eventBus.on(EventTypes.GOVERNANCE_PATTERN_RECORDED, (event: StandardEvent) => {
@@ -55,9 +57,10 @@ export class MemoryIngress {
         value: event.payload,
         source: MemorySource.REFLECTION_INFERENCE,
         evidence: { type: EvidenceType.REFLECTION_PATTERN, referenceId: event.id, timestamp: event.timestamp },
-        confidence: event.payload.confidence || 1.0
+        confidence: event.payload.confidence || 1.0,
+        category: 'GOVERNANCE_PATTERN_RECORD'
       };
-      this.policyEngine.evaluate(proposal);
+      this.memoryStore.proposeBelief(proposal);
     });
   }
 }

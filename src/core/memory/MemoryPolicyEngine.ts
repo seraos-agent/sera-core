@@ -1,15 +1,19 @@
 import { MemoryProposal, MemoryOperation } from './MemoryProposal';
-import { MemoryService } from './MemoryService';
 import { MemoryPolicy } from './MemoryPolicy';
 import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
 import { MemorySource } from './MemorySource';
 
+export interface IMemoryServiceAdapter {
+  get(key: string): any;
+  __mutate_protected(proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel): any;
+}
+
 export class MemoryPolicyEngine {
-  private memoryService: MemoryService;
+  private memoryService: IMemoryServiceAdapter;
   private policies: Map<string, MemoryPolicy> = new Map();
 
-  constructor(memoryService: MemoryService) {
+  constructor(memoryService: IMemoryServiceAdapter) {
     this.memoryService = memoryService;
     this.loadDefaultPolicies();
     console.log('[MemoryPolicyEngine] Initialized.');
