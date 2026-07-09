@@ -68,6 +68,8 @@ export class MemoryPolicyEngine {
     if (proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION) proposedVerification = VerificationLevel.SYSTEM_OBSERVED;
     else if (proposal.source === MemorySource.USER_STATEMENT) proposedVerification = VerificationLevel.USER_CONFIRMED;
 
+    let newStatus = MemoryStatus.ACTIVE;
+    
     if (existing && existing.status === MemoryStatus.ACTIVE) {
       const existingWeight = this.getVerificationWeight(existing.verificationLevel);
       const proposedWeight = this.getVerificationWeight(proposedVerification);
@@ -76,10 +78,17 @@ export class MemoryPolicyEngine {
         console.log(`[MemoryPolicyEngine] REJECTED: Proposed weight (${proposedWeight}) < Existing weight (${existingWeight}) for ${proposal.key}.`);
         return { approved: false, reason: 'Proposed memory has lower verification weight than existing belief.' };
       }
+      
+      if (proposedWeight === existingWeight) {
+        const proposedContent = typeof proposal.value === 'string' ? proposal.value : JSON.stringify(proposal.value);
+        if (existing.content !== proposedContent) {
+           console.log(`[MemoryPolicyEngine] CONFLICT DETECTED: Equal weight for ${proposal.key}. Moving to PENDING state.`);
+           newStatus = MemoryStatus.PENDING;
+        }
+      }
     }
 
     // 4. Check Confidence Threshold
-    let newStatus = MemoryStatus.ACTIVE;
     if (proposal.confidence < policy.minConfidenceForAutoConfirm) {
       newStatus = MemoryStatus.PENDING; // Needs manual confirmation via Dialogue
     }

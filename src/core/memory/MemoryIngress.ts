@@ -62,5 +62,26 @@ export class MemoryIngress {
       };
       this.memoryStore.proposeBelief(proposal);
     });
+
+    this.eventBus.on(EventTypes.COMMUNICATION_OBSERVED, (event: StandardEvent) => {
+      const observation = event.payload; // CommunicationObservation
+      
+      // Extremely naive fact extraction for demonstration.
+      // In reality, this would be routed through a Cognitive Compressor or LLM intent check
+      // to determine if the message is stating a fact worth remembering.
+      const msg = observation.message.toLowerCase();
+      if (msg.includes('is ') || msg.includes('are ')) {
+        const proposal: MemoryProposal = {
+          operation: MemoryOperation.CREATE,
+          key: `workspace.fact.${Date.now()}`, // Would be semantic extracted key
+          value: observation.message,
+          source: MemorySource.USER_STATEMENT,
+          evidence: { type: EvidenceType.USER_MESSAGE, referenceId: event.id, timestamp: event.timestamp },
+          confidence: 0.5, // Unverified claim
+          category: 'SEMANTIC'
+        };
+        this.memoryStore.proposeBelief(proposal);
+      }
+    });
   }
 }

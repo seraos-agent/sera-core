@@ -46,6 +46,11 @@ export const EventTypes = {
   // UI Layer
   UI_COMMAND: 'ui.command',
 
+  // Communication Layer
+  COMMUNICATION_OBSERVED: 'communication.observed',
+  COMMUNICATION_ACTION_DISPATCHED: 'communication.action.dispatched',
+  COMMUNICATION_STATE_UPDATED: 'communication.state.updated',
+
   // Governance Layer
   GOVERNANCE_DECISION_RECORDED: 'governance.decision.recorded',
   GOVERNANCE_OUTCOME_RECORDED: 'governance.outcome.recorded',

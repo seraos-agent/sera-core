@@ -53,6 +53,11 @@ import { MetricsAggregator } from '../core/telemetry/MetricsAggregator';
 import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 
+// Communication Capability
+import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
+import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
+import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
+
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
 const app = express();
@@ -179,6 +184,13 @@ const dummyPingTool: SeraTool = {
   }
 };
 catalog.registerTools([dummyPingTool]);
+
+// Initialize Communication Capability
+const communicationBridge = new CommunicationBridge(eventBus);
+// Note: In a real environment, boltApp is created from @slack/bolt and passed here.
+// We pass null for boltApp to run in mock mode for now.
+const slackAdapter = new SlackAdapter(null, eventBus, 'U12345_SERA_BOT_ID'); 
+communicationBridge.registerAdapter('slack', slackAdapter);
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;

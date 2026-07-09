@@ -38,6 +38,7 @@ import { ExecutionDispatcher } from './ExecutionDispatcher';
 import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
+import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { ProposalManager } from '../core/governance/ProposalManager';
 
 export class Runtime {
@@ -145,7 +146,8 @@ export class Runtime {
     
     this.capabilityCatalog = new CapabilityCatalog();
     const walletCap = new WalletToolCapability();
-    this.capabilityCatalog.registerTools([...walletCap.getTools()]);
+    const commCap = new CommunicationToolCapability();
+    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools()]);
 
     this.proposalManager = new ProposalManager(globalEventBus);
 

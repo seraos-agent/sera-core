@@ -183,7 +183,7 @@ export class MemoryStore {
   public __mutate_protected(proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel): any {
     const existing = this.keyIndex.get(proposal.key);
     
-    if (existing) {
+    if (existing && newStatus === MemoryStatus.ACTIVE) {
       existing.status = MemoryStatus.SUPERSEDED;
     }
 

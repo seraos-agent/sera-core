@@ -16,6 +16,7 @@ export class WorldStateService {
       lastUpdatedAt: Date.now(),
       wallet: null,
       temporal: null,
+      communication: null
     };
     
     const projectRoot = process.cwd();
@@ -43,6 +44,22 @@ export class WorldStateService {
           confidence: 1.0
         }
       };
+      this.state.lastUpdatedAt = Date.now();
+      this.savePersistedData();
+    });
+
+    this.eventBus.on(EventTypes.COMMUNICATION_STATE_UPDATED, (event: StandardEvent) => {
+      const p = event.payload; // Should be partial or full CommunicationState
+      
+      if (!this.state.communication) {
+        this.state.communication = { platforms: {} };
+      }
+
+      const platformId = p.platformId;
+      if (platformId && p.platformData) {
+         this.state.communication.platforms[platformId] = p.platformData;
+      }
+      
       this.state.lastUpdatedAt = Date.now();
       this.savePersistedData();
     });

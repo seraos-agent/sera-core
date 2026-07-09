@@ -45,8 +45,30 @@ export interface TemporalState {
   quality: ObservationQuality;
 }
 
+export interface ChannelRef {
+  id: string;
+  name: string;
+  platform: string;
+  isDirectMessage: boolean;
+  memberCount?: number;
+}
+
+export interface CommunicationState {
+  platforms: {
+    [platformId: string]: {
+      connected: boolean;
+      workspaceId?: string;
+      workspaceName?: string;
+      activeChannels: ChannelRef[];
+      lastActivityAt: number;
+      quality: ObservationQuality;
+    }
+  }
+}
+
 export interface WorldStateSnapshot {
   lastUpdatedAt: number;
   wallet: WalletState | null;
   temporal: TemporalState | null;
+  communication: CommunicationState | null;
 }
