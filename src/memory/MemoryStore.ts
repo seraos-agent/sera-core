@@ -191,7 +191,7 @@ export class MemoryStore {
       id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       category: proposal.category || 'SEMANTIC',
       key: proposal.key,
-      content: proposal.value, // store in content
+      content: typeof proposal.value === 'string' ? proposal.value : JSON.stringify(proposal.value), // store in content
       status: newStatus,
       source: proposal.source,
       verificationLevel: verification,
