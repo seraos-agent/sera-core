@@ -2,7 +2,7 @@
 
 > "Relationships must become structure before they become meaning."
 
-Sera is an operating system for an autonomous AI agent. It is a self-governing cognitive runtime designed to reason, remember, plan, and act with architectural discipline — with real, verified enforcement behind that claim, not just aspiration.
+Sera is an operating system for an autonomous AI agent. It is a self-governing cognitive runtime designed to reason, remember, plan, and act with architectural discipline with real, verified enforcement behind that claim, not just aspiration.
 
 ## What is Sera
 
@@ -23,7 +23,7 @@ Reasoning is isolated from execution. The system evaluates state, uncertainty, a
 Goals exist in a shared system where constraints create tension. Motivation emerges from relationships between goals, resources, and execution pathways.
 
 ### Epistemic Boundaries
-Information is not inherently truth. Observations are classified by verification level and source before they are allowed to influence memory or decisions — enforced in code, not just in principle.
+Information is not inherently truth. Observations are classified by verification level and source before they are allowed to influence memory or decisions enforced in code, not just in principle.
 
 ### Interpretation Without Prescription
 The system may analyze structural patterns in its own state, but interpretation is never automatically converted into unreviewed action. Where autonomy is not yet proven safe, a human checkpoint is kept in the loop deliberately.
@@ -47,17 +47,17 @@ Every executed action is evaluated by **`ConstitutionEngine`** against a registe
 `GoalEngine`, `Planner`, and `AttentionEngine` plan and prioritize goals using confirmed memory — for example, a plan will actively avoid a tool that memory confirms has failed consistently, and goal priority is boosted using real historical calibration data, not a static default.
 
 Three distinct action pathways exist by design:
-1. **Direct action** — single-step, user-triggered (e.g. a manual wallet transfer).
-2. **Simple confirmed actions** (`ProposalManager`) — the agent proposes a straightforward action via chat, a human approves, and it executes immediately without a full planning cycle.
-3. **Complex goals** (`IntentEngine` → `GoalSynthesizer` → `ProposalGovernance` → human candidate selection → `Runtime`) — for multi-step goals, the system synthesizes multiple candidate strategies and requires a human to select and approve one before a goal is registered and planned.
+1. **Direct action** single-step, user-triggered (e.g. a manual wallet transfer).
+2. **Simple confirmed actions** (`ProposalManager`) the agent proposes a straightforward action via chat, a human approves, and it executes immediately without a full planning cycle.
+3. **Complex goals** (`IntentEngine` → `GoalSynthesizer` → `ProposalGovernance` → human candidate selection → `Runtime`) for multi-step goals, the system synthesizes multiple candidate strategies and requires a human to select and approve one before a goal is registered and planned.
 
 These three pathways are intentionally independent and do not share state, so a failure or change in one cannot silently affect the other two.
 
 ### Feedback & Calibration
-`FeedbackPipeline` and `OutcomeReflection` convert execution traces into calibration beliefs recording how accurate the system's own predictions were. This is consumed by `AttentionRebalancer` (goal prioritization) and `Planner` (tool selection) — verified to measurably change behavior, not merely recorded for display.
+`FeedbackPipeline` and `OutcomeReflection` convert execution traces into calibration beliefs recording how accurate the system's own predictions were. This is consumed by `AttentionRebalancer` (goal prioritization) and `Planner` (tool selection) verified to measurably change behavior, not merely recorded for display.
 
 ### Governance Reflection Loop
-**`GovernanceCoordinator`** runs on a periodic temporal cadence — deliberately decoupled from the execution cycle, since governance reflection is a slower, deliberative process rather than something that should run after every action. Each cycle:
+**`GovernanceCoordinator`** runs on a periodic temporal cadence deliberately decoupled from the execution cycle, since governance reflection is a slower, deliberative process rather than something that should run after every action. Each cycle:
 
 1. `GovernanceOutcomeTracker` correlates past governance decisions against calibration history to judge whether they were beneficial.
 2. `GovernanceReflectionEngine` finds stable patterns across those outcomes.
@@ -66,12 +66,12 @@ These three pathways are intentionally independent and do not share state, so a 
 
 This loop has been validated end-to-end with real execution data: a repeated pattern of governance decisions measurably changed the confidence and communication strategy of a subsequent, unrelated recommendation.
 
-**Known gap:** step 4 requires a human to record a judgment on a recommendation before the loop can close and inform future cycles. No production trigger for this step exists yet — today it can only be exercised in a controlled validation, not through a live UI. This is a known, named limitation rather than a hidden one.
+**Known gap:** step 4 requires a human to record a judgment on a recommendation before the loop can close and inform future cycles. No production trigger for this step exists yet today it can only be exercised in a controlled validation, not through a live UI. This is a known, named limitation rather than a hidden one.
 
 ### Capabilities Layer
-- **Dialogue Engine** — translates natural language into structured system events, and incorporates confirmed memory (recent facts and activity) into its working context.
-- **LLM Adapter** — modular interface to language models.
-- **Agentic Wallet** — controlled on-chain execution under explicit permission boundaries.
+- **Dialogue Engine** translates natural language into structured system events, and incorporates confirmed memory (recent facts and activity) into its working context.
+- **LLM Adapter** modular interface to language models.
+- **Agentic Wallet** controlled on-chain execution under explicit permission boundaries.
 
 ### Sensory Server
 A lightweight communication bridge between the user interface and the cognitive system. It contains no reasoning logic.
@@ -79,7 +79,7 @@ A lightweight communication bridge between the user interface and the cognitive 
 `UI (React) → WebSocket → Sensory Layer → Event Bus → Capabilities → Cognitive Kernel`
 
 ### Internal Telemetry
-An internal observability layer (`MetricsStore`, `MetricsAggregator`) tracks reflection, memory, governance, and execution KPIs for development and debugging. This is strictly an internal sensor — it is not exposed as a user-facing feature.
+An internal observability layer (`MetricsStore`, `MetricsAggregator`) tracks reflection, memory, governance, and execution KPIs for development and debugging. This is strictly an internal sensor it is not exposed as a user-facing feature.
 
 ## Development Status
 
@@ -91,7 +91,7 @@ This table reflects verified behavior, not planned scope.
 | Episodic → Semantic Memory Bridge | Live, verified |
 | Constitution Enforcement | Live, verified |
 | Simple Action Pipeline (`ProposalManager`) | Live |
-| Complex Goal Pipeline (Intent → Synthesis → Human Approval) | Live, verified — candidate reasoning currently uses placeholder logic, not full strategic reasoning |
+| Complex Goal Pipeline (Intent → Synthesis → Human Approval) | Live, verified candidate reasoning currently uses placeholder logic, not full strategic reasoning |
 | Feedback & Calibration Loop (task execution) | Live, verified |
 | Governance Reflection Loop | Mechanically verified end-to-end; missing a production trigger for the human review step |
 | Internal Telemetry | Live (internal only) |
