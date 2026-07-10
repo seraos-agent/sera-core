@@ -57,6 +57,7 @@ import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
+import { App as BoltApp } from '@slack/bolt';
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -187,10 +188,34 @@ catalog.registerTools([dummyPingTool]);
 
 // Initialize Communication Capability
 const communicationBridge = new CommunicationBridge(eventBus);
-// Note: In a real environment, boltApp is created from @slack/bolt and passed here.
-// We pass null for boltApp to run in mock mode for now.
-const slackAdapter = new SlackAdapter(null, eventBus, 'U12345_SERA_BOT_ID'); 
-communicationBridge.registerAdapter('slack', slackAdapter);
+
+// ── Slack Socket Mode Bootstrap ───────────────────────────────────────────────
+// Architecture: Slack is a sensory + operational interface ONLY.
+// The Bolt App is injected into SlackAdapter; Core has zero dependency on Slack.
+const slackBotToken = process.env.SLACK_BOT_TOKEN;
+const slackSocketToken = process.env.SERA_SLACK_SOCKET;
+
+if (slackBotToken && slackSocketToken) {
+  const boltApp = new BoltApp({
+    token: slackBotToken,
+    appToken: slackSocketToken,
+    socketMode: true,
+    // Disable default Bolt logging to keep console clean; SERA logs are the authority
+    logLevel: 'error' as any
+  });
+
+  const slackAdapter = new SlackAdapter(boltApp, eventBus);
+  communicationBridge.registerAdapter('slack', slackAdapter);
+
+  // Start Bolt after registering so message listeners are bound before connection opens
+  boltApp.start()
+    .then(() => console.log('[SERA] Slack Socket Mode connected. Listening for events...'))
+    .catch((err: any) => console.error('[SERA] Slack Socket Mode failed to start:', err.message));
+} else {
+  console.warn('[SERA] SLACK_BOT_TOKEN or SERA_SLACK_SOCKET not set. Slack adapter running in MOCK mode.');
+  const slackAdapter = new SlackAdapter(null, eventBus);
+  communicationBridge.registerAdapter('slack', slackAdapter);
+}
 
 // Expose TriggerEngine to global for GoalBridge to register
 (globalThis as any).__triggerEngine = triggerEngine;

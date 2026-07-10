@@ -104,20 +104,26 @@ export class CommunicationBridge {
    */
   private async handleAgentSpeak(event: StandardEvent): Promise<void> {
     const payload = event.payload;
-    
+
+    // [DIAGNOSTIC] Always log incoming DIALOGUE_AGENT_SPEAK to verify payload arrives
+    console.log(`[CommunicationBridge][DIAG] DIALOGUE_AGENT_SPEAK received. responseContext=${JSON.stringify(payload.responseContext ?? null)}`);
+
     // We expect DialogueEngine to pass through the responseContext
     // If it's missing, this message might be intended for the UI/Socket layer
     if (!payload.responseContext || !payload.responseContext.platform) {
+      console.log(`[CommunicationBridge][DIAG] No platform responseContext — treating as UI-only reply. Skipping Slack routing.`);
       return; // Not a communication platform message
     }
 
     const context = payload.responseContext;
     const adapter = this.adapters.get(context.platform);
-    
+
     if (!adapter) {
       console.warn(`[CommunicationBridge] Cannot route reply to ${context.platform}: adapter not found.`);
       return;
     }
+
+    console.log(`[CommunicationBridge][DIAG] Routing reply to platform=${context.platform} channel=${context.channelId}`);
 
     const action: CommunicationAction = {
       platform: context.platform,
@@ -132,6 +138,7 @@ export class CommunicationBridge {
       console.error(`[CommunicationBridge] Failed to route agent speak to ${context.platform}:`, error.message);
     }
   }
+
 
   private emitResult(requestId: string, success: boolean, data: Record<string, any>, errorMessage?: string): void {
     const resultPayload: GoalResultPayload = { requestId, success, data, errorMessage };

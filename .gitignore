@@ -6,3 +6,4 @@ src/demos/
 .data/
 
 .vercel
+tests/

@@ -69,6 +69,20 @@ export class DialogueEngine {
   private memoryStore: MemoryStore;
   private episodicReader: EpisodicMemoryReader;
 
+  /**
+   * TRANSPORT-AGNOSTIC RESPONSE ROUTING
+   * Holds the response context for the currently active observation request.
+   * This is set at the start of onUserObservation() and cleared when the reply
+   * is emitted. DialogueEngine does NOT inspect platform-specific fields.
+   * It simply carries this opaque object from input event to output event,
+   * allowing CommunicationBridge to route the reply back to the correct channel.
+   *
+   * BOUNDARY NOTE: No Slack-specific logic shall ever be added here.
+   * The entire platform surface area is contained inside CommunicationBridge
+   * and the adapter layer.
+   */
+  private _activeResponseContext: Record<string, any> | undefined = undefined;
+
   constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
@@ -163,11 +177,32 @@ export class DialogueEngine {
 
   // ── Utilities ─────────────────────────────────────────────────────────────
 
+  /**
+   * Emits a StandardEvent on the EventBus.
+   * When emitting DIALOGUE_AGENT_SPEAK, automatically attaches the active
+   * responseContext so CommunicationBridge can route the reply to the
+   * correct platform and channel. The context is opaque to DialogueEngine.
+   */
   private emitEvent(type: string, payload: Record<string, any>): void {
+    const enrichedPayload =
+      type === EventTypes.DIALOGUE_AGENT_SPEAK && this._activeResponseContext
+        ? { ...payload, responseContext: this._activeResponseContext }
+        : payload;
+
+    // [DIAGNOSTIC] Trace responseContext propagation on every AGENT_SPEAK emit
+    if (type === EventTypes.DIALOGUE_AGENT_SPEAK) {
+      const ctx = enrichedPayload.responseContext;
+      if (ctx) {
+        console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITH responseContext → platform=${ctx.platform} channel=${ctx.channelId} thread=${ctx.threadRef}`);
+      } else {
+        console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITHOUT responseContext (UI/Socket reply only)`);
+      }
+    }
+
     const event: StandardEvent<any> = {
       id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       type,
-      payload,
+      payload: enrichedPayload,
       timestamp: Date.now(),
       source: 'DialogueEngine'
     };
@@ -266,7 +301,14 @@ export class DialogueEngine {
 
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
     const userMessage: string = event.payload.message;
-    console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"`);
+
+    // Capture any response routing context injected by the transport layer (e.g. SlackAdapter).
+    // This is stored as opaque state and forwarded on every DIALOGUE_AGENT_SPEAK emit.
+    // DialogueEngine does NOT inspect the platform field — it is irrelevant to cognition.
+    this._activeResponseContext = (event.payload as any)._responseContext ?? undefined;
+
+    console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +
+      (this._activeResponseContext ? ` [routing context: platform=${this._activeResponseContext.platform}]` : ''));
 
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
@@ -488,6 +530,10 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
         text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
       });
+    } finally {
+      // Clear routing context after every request cycle to prevent cross-request contamination.
+      // The next message (from any transport layer) starts with a clean slate.
+      this._activeResponseContext = undefined;
     }
   }
 
