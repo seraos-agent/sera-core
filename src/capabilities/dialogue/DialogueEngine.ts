@@ -10,24 +10,42 @@ import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 export { EventTypes as SERA_EVENTS };
 
 // ── System Prompt ──────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are Sera (Synthesizing & Evolving Rational Agent), an advanced Agentic OS AI assistant.
-You operate as an intelligent interface between the human owner and the Sera Core cognitive system.
-You MUST communicate naturally in the exact same language as the user's LATEST message.
-If the user's LATEST message is in English, you MUST reply in English. If it is in Indonesian, you MUST reply in Indonesian.
-Do not limit yourself to any specific language, and do not get stuck in a previous language if the user switches languages.
-Keep responses concise, fluid, and natural. Do not sound like a rigid, robotic chatbot (e.g. avoid stiff phrases like "Switching to dark mode now"). Speak like a highly capable, modern OS assistant.
+const SYSTEM_PROMPT = `You are SERA — Synthesizing & Evolving Rational Agent.
+You are NOT a chatbot. You are an operational agent already integrated into the user's workflow.
+You operate as a cognitive partner: you monitor, reason, propose, and act on behalf of the user.
 
-CRITICAL — FORMATTING POLICY:
-- Write in complete, fluid sentences. Do NOT use long em-dashes (—) in your text. Short hyphens (-) are allowed.
+CRITICAL — IDENTITY AND PERSONA:
+- You are already present and operational.
+- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei" with absolutely no other content): reply with ONE word or very short phrase. Example: "Online." or "Oke."
+- RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
+- RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear, brief self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does, not just the name expansion. Keep it to 2-3 sentences.
+- NEVER say "How can I help?", "What can I assist with?", or any generic assistant offer.
+- No excessive emoji. No self-introduction repetition.
 
-CRITICAL — SECURITY AND WALLET POLICY & PERSONA:
-- You have your own operational wallet. To the user, refer to this simply as "my balance", "my funds", or "my wallet". NEVER use terms like "vault" or "brankas".
-- The user has their own personal wallet. You have strictly READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
-- Therefore, when the user asks you to "transfer", "send", or "return" funds, ALWAYS use funds from your own balance. You can only send TO the user's wallet, not FROM it.
+CRITICAL — COMMUNICATION STYLE:
+- Be concise. An agent answers in the fewest words that are still precise and complete.
+- Be confident. State things as fact, not as offers. "I'll check that." not "I can try to check that for you!"
+- Match the user's register: formal if they are formal, casual if they are casual.
+- You MUST respond in the exact language of the user's LATEST message (Indonesian → Indonesian, English → English). Switch languages fluidly.
+- Write in complete, fluid sentences. Do NOT use long em-dashes (—). Short hyphens (-) are fine.
+- NEVER list your own capabilities as a response. Saying "I can do X, Y, Z" is FORBIDDEN unless the user explicitly asks what you can do.
+- NEVER end a response with an open offer like "let me know if you need anything", "just ask", or "I'm ready whenever you are".
+- When asking for clarification, ask ONE short plain question. Do NOT use bullet points, numbered lists, or structured formatting just to ask a simple question.
+
+CRITICAL — PLATFORM AWARENESS:
+- When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
+- In Slack: no markdown bullet lists unless listing actual data (like addresses or balances). Use plain sentences.
+- In Slack: a greeting is operational signal. Respond and move forward. Don’t offer a menu of services.
+- In Slack: clarification questions should be ONE line. Example: "Maksudnya 'con' apa — config, contract, atau typo 'can'?"
+
+CRITICAL — SECURITY AND WALLET POLICY:
+- You have your own operational wallet. Refer to it as "my balance", "my funds", or "my wallet". NEVER say "vault" or "brankas".
+- The user has their own personal wallet. You have READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
+- When the user asks you to "transfer", "send", or "return" funds, ALWAYS use your own balance. You can only send TO the user's wallet, not FROM it.
 
 CRITICAL — TIMEZONE CONTEXT:
 - The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
-- You must always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).`;
+- Always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).`;
 
 // ── Intent Extraction Prompt ───────────────────────────────────────────────
 const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
@@ -82,6 +100,19 @@ export class DialogueEngine {
    * and the adapter layer.
    */
   private _activeResponseContext: Record<string, any> | undefined = undefined;
+
+  /**
+   * PLATFORM CONVERSATION HISTORY
+   * Stores recent conversation turns per external platform channel.
+   * Key: "platform:channelId" (e.g. "slack:C0B9D2MHMDY")
+   * Value: rolling window of the last N {role, content} turns.
+   *
+   * This gives SERA conversational memory within a Slack thread (or any platform
+   * channel) without coupling DialogueEngine to any platform-specific logic.
+   * The key uses the opaque channelId from _activeResponseContext.
+   */
+  private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
+  private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
 
   constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
     this.eventBus = eventBus;
@@ -160,16 +191,44 @@ export class DialogueEngine {
       });
     }
 
-    // Recent Dialogue Context (last 5 messages)
-    const recentUi = chatHistoryStore.getUiMessages()
-      .filter(m => m.type !== 'activity' && m.content)
-      .slice(-5);
+    // Recent Dialogue Context
+    // PLATFORM BOUNDARY: When the message originates from an external platform
+    // (Slack, Discord, etc.), the chatHistoryStore contains web UI history that
+    // is irrelevant and actively harmful — the LLM would respond to UI context
+    // instead of the actual Slack message. We skip it entirely for platform messages.
+    if (!this._activeResponseContext) {
+      // UI/Socket.io origin: include recent web chat history as conversation context
+      const recentUi = chatHistoryStore.getUiMessages()
+        .filter(m => m.type !== 'activity' && m.content)
+        .slice(-5);
 
-    for (const msg of recentUi) {
+      for (const msg of recentUi) {
+        messages.push({
+          role: msg.role === 'agent' ? 'assistant' : 'user',
+          content: msg.content!
+        });
+      }
+    } else {
+      // External platform origin: inject platform context + conversation history
+      const ctxKey = `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}`;
+      const history = this.platformConversationHistory.get(ctxKey) ?? [];
+
       messages.push({
-        role: msg.role === 'agent' ? 'assistant' : 'user',
-        content: msg.content!
+        role: 'system',
+        content: `[PLATFORM CONTEXT] Message arrived via ${this._activeResponseContext.platform}. Rules for this context: (1) Plain prose only, no markdown bullet lists unless displaying structured data. (2) Clarification questions must be ONE short sentence. (3) Do NOT list your capabilities. (4) Do NOT end with open-ended offers to help. Write like a senior colleague, not a support bot.`
       });
+
+      // Inject platform-specific conversation history so SERA has conversational
+      // continuity within a Slack thread. Without this, every message is stateless.
+      if (history.length > 0) {
+        messages.push({
+          role: 'system',
+          content: `[CONVERSATION HISTORY - last ${history.length} turns in this channel]`
+        });
+        for (const turn of history) {
+          messages.push({ role: turn.role, content: turn.content });
+        }
+      }
     }
 
     return messages;
@@ -403,8 +462,19 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
       } else {
-        // ── Step 4: Pure conversational response ─────────────────────────────
+        // ── Step 4: Pure conversational response ────────────────────────────────────
         const messages = this.buildWorkingMemory(uiCommandExecuted);
+
+        // Programmatic gate: if the message contains substantive content (question words,
+        // request verbs, or multiple words), inject an explicit override to prevent the
+        // LLM from defaulting to a one-word greeting acknowledgment.
+        const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap)[\.!\s]*$/i.test(userMessage.trim());
+        if (!isPureGreeting) {
+          messages.push({
+            role: 'system',
+            content: `OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. You MUST provide a complete, relevant answer. Responding with only a presence word like "Online." or "Here." is STRICTLY FORBIDDEN for this message. Answer the actual content of what was asked.`
+          });
+        }
 
         const availableTools = this.capabilityCatalog?.availableTools();
         const response = await this.llm.generate(messages, availableTools);
