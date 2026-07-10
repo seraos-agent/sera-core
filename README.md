@@ -12,7 +12,7 @@ Most AI agents today operate as simple loops:
 
 Sera takes a different approach. Before interacting with the external world, it constructs an internal representation of reality through a structured cognitive system. Memory, reasoning, governance, and execution are separated into distinct layers connected through an event-driven architecture.
 
-This document describes the system as it actually behaves today, verified through direct code audit and end-to-end execution — not as a roadmap of intentions.
+This document describes the system as it actually behaves today, verified through direct code audit and end-to-end execution not as a roadmap of intentions.
 
 ## Core Philosophy
 
@@ -30,21 +30,21 @@ The system may analyze structural patterns in its own state, but interpretation 
 
 ## Architecture
 
-### Memory System — One Authority, Not Several
+### Memory System One Authority, Not Several
 All memory is owned by a single store: **`MemoryStore`**. It holds a unified `Belief` schema (merging what were once separate "memory item" and "belief" models into one), persisted to disk, indexed by category and key, and bounded by eviction so it cannot grow without limit.
 
-Nothing writes to memory directly. All domain events — governance decisions, outcomes, patterns, wallet-related facts — pass through **`MemoryIngress`**, which converts them into proposals evaluated by **`MemoryPolicyEngine`** before they are committed. Protected keys (e.g. `wallet.*`) require a verified source; unverified inference cannot silently overwrite them.
+Nothing writes to memory directly. All domain events governance decisions, outcomes, patterns, wallet-related facts pass through **`MemoryIngress`**, which converts them into proposals evaluated by **`MemoryPolicyEngine`** before they are committed. Protected keys (e.g. `wallet.*`) require a verified source; unverified inference cannot silently overwrite them.
 
-- **Episodic memory** (`ExperienceBuilder`) — the agent's execution episodes are summarized and appended to a durable log.
-- **Semantic memory** — durable facts and learned patterns, each carrying an epistemic status (`HYPOTHESIS` → `CONFIRMED`) rather than being asserted as true on first observation.
-- **`EpisodicSemanticBridge`** — distills recurring episodic patterns (e.g. a tool failing repeatedly) into semantic beliefs, requiring repeated evidence before a belief is promoted to `CONFIRMED`.
-- Confirmed, non-protected facts are surfaced into the agent's conversational working memory — wallet-related keys are explicitly excluded from this exposure regardless of their confirmation status.
+- **Episodic memory** (`ExperienceBuilder`) the agent's execution episodes are summarized and appended to a durable log.
+- **Semantic memory** durable facts and learned patterns, each carrying an epistemic status (`HYPOTHESIS` → `CONFIRMED`) rather than being asserted as true on first observation.
+- **`EpisodicSemanticBridge`** distills recurring episodic patterns (e.g. a tool failing repeatedly) into semantic beliefs, requiring repeated evidence before a belief is promoted to `CONFIRMED`.
+- Confirmed, non-protected facts are surfaced into the agent's conversational working memory wallet-related keys are explicitly excluded from this exposure regardless of their confirmation status.
 
 ### Constitution
 Every executed action is evaluated by **`ConstitutionEngine`** against a registered set of rules (`IrreversibleActionRule`, `DestructiveActionRule`, `UnsafeActionRule`) before it is allowed to proceed. This is an enforcement point, not a passive log.
 
 ### Cognitive Kernel & Planning
-`GoalEngine`, `Planner`, and `AttentionEngine` plan and prioritize goals using confirmed memory — for example, a plan will actively avoid a tool that memory confirms has failed consistently, and goal priority is boosted using real historical calibration data, not a static default.
+`GoalEngine`, `Planner`, and `AttentionEngine` plan and prioritize goals using confirmed memory for example, a plan will actively avoid a tool that memory confirms has failed consistently, and goal priority is boosted using real historical calibration data, not a static default.
 
 Three distinct action pathways exist by design:
 1. **Direct action** single-step, user-triggered (e.g. a manual wallet transfer).
@@ -104,7 +104,7 @@ This table reflects verified behavior, not planned scope.
 Documented deliberately, so they are addressed by design rather than rediscovered by accident:
 
 - `GoalSynthesizer` generates candidate strategies using placeholder logic today. The pipeline that carries them through synthesis, human review, and execution is real; the reasoning quality of the candidates themselves is a separate, future improvement.
-- The governance reflection loop cannot close autonomously in production until a human-review trigger is built — it currently requires simulation to exercise fully.
+- The governance reflection loop cannot close autonomously in production until a human-review trigger is built it currently requires simulation to exercise fully.
 - Memory retrieval into conversation is recency- and confirmation-based, not similarity/embedding-based. There is no vector search in this system today.
 
 ## Technology Stack
@@ -138,7 +138,7 @@ sera-core/
 │   │   ├── planner/
 │   │   ├── telemetry/
 │   │   └── events/
-│   ├── memory/            # MemoryStore — the single memory authority
+│   ├── memory/            # MemoryStore the single memory authority
 │   ├── runtime/
 │   └── server/
 ├── sera-frontend/
@@ -177,4 +177,4 @@ Open: http://localhost:5173
 ---
 
 ### Closing Statement
-*Sera is designed to think before it acts — and to be honest about the parts of itself that don't think yet.*
+*Sera is designed to think before it acts and to be honest about the parts of itself that don't think yet.*
