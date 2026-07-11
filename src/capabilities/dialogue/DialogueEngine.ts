@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import { chatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
@@ -120,6 +122,7 @@ export class DialogueEngine {
   private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
   
   private consentedUsers: Set<string> = new Set();
+  private readonly CONSENT_FILE_PATH = path.join(process.cwd(), '.data', 'consented_users.json');
 
   constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
     this.eventBus = eventBus;
@@ -129,6 +132,8 @@ export class DialogueEngine {
     this.episodicReader = new EpisodicMemoryReader();
     this.llm = new QwenAdapter();
 
+    this.loadConsentedUsers();
+
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
 
@@ -137,6 +142,32 @@ export class DialogueEngine {
 
   public clearHistory(): void {
     // History is managed via UI messages in ChatHistoryStore. Working memory is dynamic.
+  }
+
+  private loadConsentedUsers(): void {
+    try {
+      if (fs.existsSync(this.CONSENT_FILE_PATH)) {
+        const data = fs.readFileSync(this.CONSENT_FILE_PATH, 'utf-8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          this.consentedUsers = new Set(parsed);
+        }
+      }
+    } catch (e) {
+      console.error('[DialogueEngine] Failed to load consented users:', e);
+    }
+  }
+
+  private saveConsentedUsers(): void {
+    try {
+      const dir = path.dirname(this.CONSENT_FILE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.CONSENT_FILE_PATH, JSON.stringify(Array.from(this.consentedUsers)));
+    } catch (e) {
+      console.error('[DialogueEngine] Failed to save consented users:', e);
+    }
   }
 
   // ── Cognitive Context Builder ─────────────────────────────────────────────
@@ -379,25 +410,6 @@ export class DialogueEngine {
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
     try {
-      // --- PRIVACY CONSENT GATE ---
-      if (this._activeResponseContext && this._activeResponseContext.platform) {
-        const userId = this._activeResponseContext.senderId || 'unknown-user';
-        if (!this.consentedUsers.has(userId)) {
-          if (userMessage.toLowerCase().trim() === 'setuju') {
-            this.consentedUsers.add(userId);
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
-              text: "Terima kasih, Anda telah memberikan persetujuan. Apa yang bisa saya bantu hari ini?" 
-            });
-            return;
-          } else {
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
-              text: "I am SERA (Guarded Beta). I log conversations to improve my cognitive models. Please note that PII scrubbing (via regex) is best-effort and may not catch unstructured names or addresses. Retained logs will be kept for max 30 days. Ketik 'setuju' untuk melanjutkan interaksi."
-            });
-            return;
-          }
-        }
-      }
-
       // ── Step 1: Classify intent ──────────────────────────────────────────
       let { intent, parameters } = await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
@@ -426,6 +438,11 @@ export class DialogueEngine {
           this.platformConversationHistory.clear();
           chatHistoryStore.clear();
           
+          if (this._activeResponseContext && this._activeResponseContext.senderId) {
+            this.consentedUsers.delete(this._activeResponseContext.senderId);
+            this.saveConsentedUsers();
+          }
+
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
             text: "Data dan riwayat percakapan Anda telah dihapus dari memori dan log mentah sistem sesuai dengan kebijakan privasi kami." 
           });
