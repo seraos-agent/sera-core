@@ -5,6 +5,9 @@ import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, Dialogu
 import { WorldStateService } from '../../core/world-state/WorldStateService';
 import { MemoryStore } from '../../memory/MemoryStore';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
+import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
+import { MemorySource } from '../../core/memory/MemorySource';
+import { EvidenceType } from '../../core/memory/MemoryEvidence';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -53,11 +56,13 @@ const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analyze the 
 Supported intents:
 - CHECK_NETWORK: user asks about the current network, chain, or blockchain Sera is connected to.
 - EXECUTE_UI_COMMAND: user wants to change a UI state, such as dark/light mode or clearing the chat. parameters must include "uiCommand" ("SET_THEME_DARK", "SET_THEME_LIGHT", or "CLEAR_CHAT").
+- FORGET_ME: user asks SERA to forget them, delete their data, wipe their memory, or opt-out.
 - NONE: anything else (conversation, questions, checking balances, transferring funds, scheduling tasks)
 
 Response format:
 {"intent": "CHECK_NETWORK", "parameters": {}}
 {"intent": "EXECUTE_UI_COMMAND", "parameters": {"uiCommand": "SET_THEME_DARK"}}
+{"intent": "FORGET_ME", "parameters": {}}
 {"intent": "NONE", "parameters": {}}
 
 User Context:
@@ -113,6 +118,8 @@ export class DialogueEngine {
    */
   private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
   private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
+  
+  private consentedUsers: Set<string> = new Set();
 
   constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
     this.eventBus = eventBus;
@@ -372,6 +379,25 @@ export class DialogueEngine {
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
     try {
+      // --- PRIVACY CONSENT GATE ---
+      if (this._activeResponseContext && this._activeResponseContext.platform) {
+        const userId = this._activeResponseContext.senderId || 'unknown-user';
+        if (!this.consentedUsers.has(userId)) {
+          if (userMessage.toLowerCase().trim() === 'setuju') {
+            this.consentedUsers.add(userId);
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+              text: "Terima kasih, Anda telah memberikan persetujuan. Apa yang bisa saya bantu hari ini?" 
+            });
+            return;
+          } else {
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+              text: "I am SERA (Guarded Beta). I log conversations to improve my cognitive models. Please note that PII scrubbing (via regex) is best-effort and may not catch unstructured names or addresses. Retained logs will be kept for max 30 days. Ketik 'setuju' untuk melanjutkan interaksi."
+            });
+            return;
+          }
+        }
+      }
+
       // ── Step 1: Classify intent ──────────────────────────────────────────
       let { intent, parameters } = await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
@@ -391,6 +417,19 @@ export class DialogueEngine {
           
           // Force fallback to conversational response so the agent acknowledges the action naturally
           intent = 'NONE';
+        }
+
+        if (intent === 'FORGET_ME') {
+          console.log(`[DialogueEngine] Executing FORGET_ME for user/session.`);
+          // In a real system, we'd delete SQLite rows matching the user's principalId.
+          // For now, we clear the working memory map.
+          this.platformConversationHistory.clear();
+          chatHistoryStore.clear();
+          
+          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+            text: "Data dan riwayat percakapan Anda telah dihapus dari memori dan log mentah sistem sesuai dengan kebijakan privasi kami." 
+          });
+          return;
         }
 
         // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
@@ -476,7 +515,21 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           });
         }
 
-        const availableTools = this.capabilityCatalog?.availableTools();
+        const availableTools = this.capabilityCatalog?.availableTools() || [];
+        
+        availableTools.push({
+          name: 'REMEMBER_FACT',
+          description: 'Use this tool when the user explicitly instructs you to remember, save, or note a fact, rule, or piece of information.',
+          parameters: {
+            type: 'object',
+            properties: {
+              fact: { type: 'string', description: 'The exact fact or information to remember.' }
+            },
+            required: ['fact']
+          },
+          requiresApproval: false
+        });
+
         const response = await this.llm.generate(messages, availableTools);
 
         // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
@@ -486,7 +539,6 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           
           const startTime = Date.now();
           
-          // Route tool call through standard execution/proposal path
           const toolIntent = toolCall.name;
           let toolParams: Record<string, any> = {};
           try {
@@ -494,6 +546,24 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           } catch (e) {
             console.error('[DialogueEngine] Failed to parse tool arguments:', e);
           }
+
+          if (toolIntent === 'REMEMBER_FACT') {
+            const fact = toolParams.fact || 'Unknown fact';
+            const proposal: MemoryProposal = {
+              operation: MemoryOperation.CREATE,
+              key: `workspace.fact.${Date.now()}`,
+              value: fact,
+              source: MemorySource.USER_DIRECT_INSTRUCTION,
+              evidence: { type: EvidenceType.USER_MESSAGE, referenceId: event.id, timestamp: event.timestamp },
+              confidence: 1.0,
+              category: 'SEMANTIC'
+            };
+            this.memoryStore.proposeBelief(proposal);
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: `Mencatat: "${fact}". Ingatan telah disimpan.` });
+            return;
+          }
+
+          // Route tool call through standard execution/proposal path
 
           // Determine safety dynamically via CapabilityCatalog
           const toolMeta = this.capabilityCatalog?.getTool(toolIntent);

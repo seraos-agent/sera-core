@@ -49,7 +49,7 @@ export class MemoryPolicyEngine {
 
     // 1. Check Protected Keys
     if (policy.protectedKeys.includes(proposal.key)) {
-      if (proposal.source === MemorySource.REFLECTION_INFERENCE || proposal.source === MemorySource.USER_STATEMENT) {
+      if (proposal.source === MemorySource.REFLECTION_INFERENCE || proposal.source === MemorySource.USER_STATEMENT || proposal.source === MemorySource.USER_DIRECT_INSTRUCTION) {
         console.log(`[MemoryPolicyEngine] REJECTED: Protected key ${proposal.key} cannot be modified by unverified sources.`);
         return { approved: false, reason: 'Protected key cannot be modified by unverified sources.' };
       }
@@ -66,7 +66,7 @@ export class MemoryPolicyEngine {
     
     let proposedVerification = VerificationLevel.UNVERIFIED;
     if (proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION) proposedVerification = VerificationLevel.SYSTEM_OBSERVED;
-    else if (proposal.source === MemorySource.USER_STATEMENT) proposedVerification = VerificationLevel.USER_CONFIRMED;
+    else if (proposal.source === MemorySource.USER_STATEMENT || proposal.source === MemorySource.USER_DIRECT_INSTRUCTION) proposedVerification = VerificationLevel.USER_CONFIRMED;
 
     let newStatus = MemoryStatus.ACTIVE;
     

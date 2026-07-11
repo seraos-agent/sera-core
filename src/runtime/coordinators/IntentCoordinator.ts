@@ -52,6 +52,11 @@ export class IntentCoordinator {
   }
 
   private runProposalPipeline(temporalContext: TemporalContext, worldState: any): void {
+    if (process.env.ENABLE_COMPLEX_AUTONOMY !== 'true') {
+      this.logger.debug('Complex autonomy disabled by feature flag. Skipping ProposalPipeline.');
+      return;
+    }
+
     const auditReport = this.intentEngine ? this.intentEngine.auditRepresentations(temporalContext) : null;
       
     if (auditReport && this.intentStore && this.proposalStore && this.goalSynthesizer) {
