@@ -40,6 +40,11 @@ import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { ProposalManager } from '../core/governance/ProposalManager';
+import { Logger } from '../core/logging/Logger';
+
+import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
+import { IntentCoordinator } from './coordinators/IntentCoordinator';
+import { ExecutionCoordinator } from './coordinators/ExecutionCoordinator';
 
 export class Runtime {
   public worldStateService!: WorldStateService;
@@ -73,6 +78,13 @@ export class Runtime {
   public governanceCalibrationEngine?: GovernanceCalibrationEngine;
   public adaptationPlanner?: AdaptationPlanner;
   public adaptationExecutor?: AdaptationExecutor;
+
+  // Coordinators
+  private cognitiveCoordinator: CognitiveCoordinator;
+  private intentCoordinator: IntentCoordinator;
+  private executionCoordinator: ExecutionCoordinator;
+
+  private logger = new Logger('Runtime');
 
   private EVICTION_THRESHOLD = 20;
   private cognitiveCycleCount = 0;
@@ -133,6 +145,35 @@ export class Runtime {
     this.adaptationPlanner = adaptationPlanner;
     this.adaptationExecutor = adaptationExecutor;
 
+    // Initialize Coordinators
+    // MemoryStore is created exactly ONCE in Runtime and passed by reference
+    this.cognitiveCoordinator = new CognitiveCoordinator(
+      this.attentionEngine,
+      this.goalEngine,
+      this.planner,
+      this.strategyStore,
+      this.memoryStore,
+      this.coherenceMonitor
+    );
+
+    this.intentCoordinator = new IntentCoordinator(
+      this.intentEngine,
+      this.intentStore,
+      this.proposalStore,
+      this.goalSynthesizer,
+      this.proposalGovernance,
+      this.proposalEvaluator,
+      this.eventBus,
+      this.feedbackPipeline
+    );
+
+    this.executionCoordinator = new ExecutionCoordinator(
+      this.workerManager,
+      this.constitutionEngine,
+      this.authorityService,
+      this.feedbackPipeline,
+      this.executionTraceStore
+    );
   }
 
   public setAdaptationExecutor(adaptationExecutor: AdaptationExecutor): void {
@@ -174,23 +215,7 @@ export class Runtime {
   }
 
   private governProposals(temporalContext: TemporalContext): void {
-    if (!this.proposalStore) return;
-    const staleProposals = this.proposalStore.getStaleProposals(temporalContext.physicalTime);
-    
-    for (const proposal of staleProposals) {
-      console.log(`[Runtime] Proposal ${proposal.id} for Intent ${proposal.parentIntentId} has EXPIRED due to age.`);
-      this.proposalStore.updateStatus(proposal.id, 'EXPIRED');
-      
-      if (this.feedbackPipeline) {
-        this.feedbackPipeline.processProposalTrace({
-          id: `ptrace-${Date.now()}`,
-          proposalSnapshot: proposal,
-          worldStateSnapshot: this.getWorldState(),
-          outcome: 'EXPIRED',
-          timestamp: temporalContext.physicalTime
-        });
-      }
-    }
+    // Moved to IntentCoordinator
   }
   
   getMemory() {
@@ -200,348 +225,53 @@ export class Runtime {
   // TriggerFired is now handled directly by ExecutionDispatcher
 
   async executeCycle(cycleId: number, targetGoalId?: string, scope?: DelegationScope): Promise<void> {
-    if (!this.attentionEngine || !this.goalEngine) {
-      console.error("[Runtime] AttentionEngine and GoalEngine are required for execution.");
-      return;
-    }
-
-    console.log(`\n--- Execution Cycle ${cycleId} ---`);
+    this.logger.info(`--- Execution Cycle ${cycleId} ---`);
     const temporalContext: TemporalContext = {
       physicalTime: Date.now(),
       cognitiveCycleId: cycleId
     };
     
-    this.governProposals(temporalContext);
+    // 1. Intent & Proposal Pipeline (managed by IntentCoordinator)
+    this.intentCoordinator.runCycle(temporalContext, this.getWorldState());
 
-      const auditReport = this.intentEngine ? this.intentEngine.auditRepresentations(temporalContext) : null;
-      
-      // Phase 4.1: Proposal Pipeline
-      if (auditReport && this.intentStore && this.proposalStore && this.goalSynthesizer) {
-        for (const gap of auditReport.gaps) {
-          const intent = this.intentStore.getIntent(gap.intentId);
-          if (!intent) continue;
+    // 2. Cognitive Cycle: Allocation, Goal Selection, Planning (managed by CognitiveCoordinator)
+    const { goal, plan } = this.cognitiveCoordinator.runCycle(temporalContext, this.getWorldState(), targetGoalId);
 
-          // Check cooldown
-          if (intent.proposalCooldownUntil && intent.proposalCooldownUntil > temporalContext.physicalTime) {
-            console.log(`[ProposalPipeline] Intent ${intent.id} gap ignored (Cooldown active).`);
-            continue;
-          }
-
-          // Check for existing pending proposal
-          const pending = this.proposalStore.getActiveProposalForIntent(intent.id);
-          if (pending) {
-            console.log(`[ProposalPipeline] Intent ${intent.id} already has a PENDING_REVIEW proposal.`);
-            continue;
-          }
-
-          // Generate new proposal
-          let proposal = this.goalSynthesizer.generateProposal(intent, gap, this.getWorldState());
-          
-          if (this.proposalEvaluator) {
-            proposal = this.proposalEvaluator.evaluate(proposal);
-          }
-
-          if (this.proposalGovernance) {
-            const govResult = this.proposalGovernance.evaluate(proposal);
-            if (!govResult.valid) {
-              console.log(`[ProposalPipeline] Proposal rejected by Governance:`, govResult.reasons);
-              continue; // Do not register
-            }
-          }
-
-          this.proposalStore.register(proposal);
-          
-          if (this.eventBus) {
-            this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
-              id: `evt-${Date.now()}`,
-              type: EventTypes.DIALOGUE_PROPOSAL_GENERATED,
-              source: 'Runtime',
-              timestamp: Date.now(),
-              payload: {
-                proposalId: proposal.id,
-                intent: 'COMPLEX_GOAL_PROPOSAL',
-                parameters: {},
-                candidates: proposal.candidates
-              }
-            } as StandardEvent);
-          }
-
-          // Apply cooldown (e.g. 1 hour = 3600000ms. For demo, we use a mock value like 5000ms)
-          intent.lastProposalAt = temporalContext.physicalTime;
-          intent.proposalCooldownUntil = temporalContext.physicalTime + 5000;
-
-          console.log(`\n[ProposalPipeline] *** NEW PROPOSAL GENERATED ***`);
-          console.log(`Intent: ${intent.id}`);
-          console.log(`Proposal ID: ${proposal.id}`);
-          console.log(`Candidates:`);
-          proposal.candidates.forEach((c: any, idx: number) => {
-            console.log(`  ${idx + 1}. [${c.id}] ${c.title}`);
-            if (c.evaluationVector) {
-              console.log(`     Acceptance History: ${(c.evaluationVector.acceptanceProbability * 100).toFixed(0)}%`);
-              console.log(`     Outcome Effectiveness: ${(c.evaluationVector.historicalOutcomeEffectiveness * 100).toFixed(0)}%`);
-              console.log(`     [Align: ${c.evaluationVector.intentAlignment}, Quality: ${c.evaluationVector.outcomeQuality}, Div: ${c.evaluationVector.diversityContribution}]`);
-            }
-            console.log(`     Rationale: ${c.rationale}`);
-          });
-          console.log(`Awaiting Human Review.\n`);
-        }
-      }
-
-      const allocation = this.attentionEngine.allocate(temporalContext);
-      
-      let focusedId = targetGoalId || allocation.focusedGoalId;
-      
-      if (!focusedId) {
-        console.log(`[Runtime] No focused goal. System sleeping...`);
-        return;
-      }
-      
-      const goalToProcess = this.goalEngine.getGoal(focusedId);
-      if (!goalToProcess) {
-        console.error(`[Runtime] Focused goal ${focusedId} not found in GoalEngine!`);
-        return;
-      }
-
-      console.log(`[Runtime] Execution Cycle targeting Goal: ${goalToProcess.id}`);
-      this.goalEngine.updateStatus(goalToProcess.id, 'IN_PROGRESS');
-      
+    // 3. Execution Cycle: Dispatch, Verification, Feedback (managed by ExecutionCoordinator)
+    if (goal && plan) {
       try {
-        const success = await this.processGoal(goalToProcess, scope || {
+        const defaultScope = scope || {
           id: 'auto-scope',
           principalId: 'system',
           allowedPermissions: [{ action: '*' }],
           requiresApprovalPermissions: []
-        }, undefined, undefined, undefined, temporalContext);
+        };
+        
+        const success = await this.executionCoordinator.runCycle(goal, plan, defaultScope, temporalContext);
         
         if (success) {
-          this.goalEngine.updateStatus(goalToProcess.id, 'COMPLETED');
+          this.goalEngine?.updateStatus(goal.id, 'COMPLETED');
         } else {
-          if (goalToProcess.status === 'IN_PROGRESS') {
-             this.goalEngine.updateStatus(goalToProcess.id, 'FAILED', 'Runtime execution failed');
+          if (goal.status === 'IN_PROGRESS') {
+             this.goalEngine?.updateStatus(goal.id, 'FAILED', 'Runtime execution failed');
           }
         }
       } catch (err: any) {
         if (err.name === 'IntentInvalidationError') {
-           this.goalEngine.invalidate(goalToProcess.id, err.invalidation);
+           this.goalEngine?.invalidate(goal.id, err.invalidation);
         } else if (err.message && err.message.includes('STRATEGY-ENFORCED')) {
-           this.goalEngine.updateStatus(goalToProcess.id, 'ABANDONED', err.message);
+           this.goalEngine?.updateStatus(goal.id, 'ABANDONED', err.message);
         } else {
-           this.goalEngine.updateStatus(goalToProcess.id, 'FAILED', err.message);
+           this.goalEngine?.updateStatus(goal.id, 'FAILED', err.message);
         }
       }
+    }
+
     if (this.adaptationPlanner) {
       this.adaptationPlanner.removeExpiredProposals();
     }
     
-    console.log(`\n[Runtime] Execution Cycle Terminated. Yielding back to TriggerEngine.`);
-  }
-
-  async processGoal(goal: Goal, scope: DelegationScope, customAction?: string, customMetadata?: any, spendingRequest?: any, temporalContext?: TemporalContext): Promise<boolean> {
-    console.log(`\n[Runtime] Processing Goal: ${goal.id} - ${goal.description}`);
-    
-    if (this.coherenceMonitor) {
-      const state = this.coherenceMonitor.getState();
-      if (state.autonomyLevel === 'RESTRICTED') {
-        console.log(`[Runtime] System is RESTRICTED due to low coherence. Applying strict policies.`);
-      }
-    }
-
-    if (!this.planner || !this.strategyStore) {
-      console.log(`[Runtime] Error: Planner or StrategyStore is not injected.`);
-      return false;
-    }
-
-    const activeProfile = this.strategyStore.getActiveProfile();
-    const plan = this.planner.generatePlan(goal, this.getWorldState(), this.memoryStore, activeProfile, temporalContext);
-    
-    let allSuccess = true;
-    for (const step of plan.steps) {
-      step.status = 'IN_PROGRESS';
-      
-      const workItem: WorkItem = {
-        id: `wi-${temporalContext?.physicalTime || Date.now()}`,
-        goalId: goal.id,
-        planId: plan.id,
-        planStepId: step.id,
-        action: step.action,
-        payload: step.payload,
-        status: 'PENDING',
-        createdAt: temporalContext?.physicalTime || Date.now()
-      };
-      
-      const stepSuccess = await this.executeWorkItem(workItem, plan, step, goal, scope, temporalContext, customMetadata, spendingRequest);
-      if (!stepSuccess) {
-         step.status = 'FAILED';
-         allSuccess = false;
-         break;
-      } else {
-         step.status = 'COMPLETED';
-      }
-    }
-    
-    return allSuccess;
-  }
-
-  private async executeWorkItem(
-    workItem: WorkItem, 
-    plan: Plan,
-    step: PlanStep,
-    goal: Goal, 
-    scope: DelegationScope, 
-    temporalContext?: TemporalContext,
-    customMetadata?: any, 
-    spendingRequest?: any
-  ): Promise<boolean> {
-    const trace: ExecutionTrace = {
-      id: `trace-${temporalContext?.physicalTime || Date.now()}`,
-      goalId: goal.id,
-      planId: plan.id,
-      planStepId: step.id,
-      intentSnapshot: { ...goal },
-      plan: { ...plan }, 
-      workerAssignments: [],
-      toolCalls: [],
-      intermediateResults: [],
-      failures: [],
-      costTracking: 0,
-      finalOutcome: 'PENDING',
-      verificationResult: false,
-      settlementStatus: 'NONE',
-      governanceContext: {
-        delegationScopeId: scope.id
-      },
-      decisionSnapshots: [
-        {
-          stage: 'GOAL_PRIORITIZATION',
-          decision: 'PROCEED',
-          rationale: 'Goal selected based on priority and system coherence state.',
-          timestamp: temporalContext?.physicalTime || Date.now()
-        }
-      ],
-      createdAt: temporalContext?.physicalTime || Date.now()
-    };
-
-    // 2. Constitution Check
-    const constitutionContext: ConstitutionContext = {
-      principalId: scope.principalId,
-      goalId: goal.id,
-      workItemId: workItem.id,
-      action: workItem.action,
-      metadata: customMetadata
-    };
-
-    const constitutionDecision = this.constitutionEngine.evaluate(constitutionContext);
-    trace.governanceContext!.constitution = {
-      decision: constitutionDecision.status as any,
-      triggeredRules: constitutionDecision.findings ? constitutionDecision.findings.map((f: any) => f.ruleId) : [],
-      rationale: constitutionDecision.reason || 'All rules passed'
-    };
-    trace.decisionSnapshots.push({
-      stage: 'CONSTITUTION_CHECK',
-      decision: constitutionDecision.status,
-      rationale: trace.governanceContext!.constitution.rationale,
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    if (constitutionDecision.status === 'DENIED') {
-      trace.finalOutcome = 'FAILED';
-      this.finalizeCycle(trace, goal, workItem);
-      return false;
-    }
-
-    // 3. Authority Check
-    const authorityContext: AuthorityContext = {
-      principalId: scope.principalId,
-      goalId: goal.id,
-      workItemId: workItem.id,
-      action: workItem.action,
-    };
-
-    const authDecision = this.authorityService.evaluate(authorityContext, scope);
-    trace.governanceContext!.authority = {
-      scopeId: scope.id,
-      decision: authDecision.status as any,
-      rationale: authDecision.reason || 'Delegation scope grants necessary authority'
-    };
-    trace.decisionSnapshots.push({
-      stage: 'AUTHORITY_CHECK',
-      decision: authDecision.status,
-      rationale: trace.governanceContext!.authority.rationale,
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    if (authDecision.status === 'DENIED') {
-      trace.finalOutcome = 'FAILED';
-      this.finalizeCycle(trace, goal, workItem);
-      return false;
-    }
-
-    // 5. Worker Dispatch
-    trace.workerAssignments.push('demo-worker'); 
-    trace.toolCalls.push(workItem.payload?.toolId || 'mock-read-tool');
-    trace.decisionSnapshots.push({
-      stage: 'WORKER_SELECTION',
-      decision: 'demo-worker',
-      rationale: 'Static routing for demo',
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-    trace.decisionSnapshots.push({
-      stage: 'TOOL_SELECTION',
-      decision: trace.toolCalls[0],
-      rationale: 'Required by targetState',
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    const result = await this.workerManager.dispatch(workItem);
-    
-    // 6. Process WorkerResult
-    if (result.status === 'SUCCESS') {
-      workItem.status = 'COMPLETED';
-      trace.finalOutcome = 'SUCCESS';
-      trace.verificationResult = true; // Inferred from worker SUCCESS
-      trace.decisionSnapshots.push({
-        stage: 'VERIFICATION_STRATEGY',
-        decision: 'SUCCESS',
-        rationale: 'Worker executed and verified tool successfully',
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-    } else {
-      workItem.status = 'FAILED';
-      trace.finalOutcome = 'FAILED'; // Worker failed or verification failed
-      trace.verificationResult = false; // ...but verification failed
-      trace.decisionSnapshots.push({
-        stage: 'VERIFICATION_STRATEGY',
-        decision: 'FAILED',
-        rationale: 'Verification rejected the tool output',
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-    }
-    
-    this.finalizeCycle(trace, goal, workItem);
-    return trace.finalOutcome === 'SUCCESS' && trace.verificationResult;
-  }
-
-  private finalizeCycle(trace: ExecutionTrace, goal: Goal, workItem: WorkItem) {
-    trace.completedAt = Date.now();
-    
-    trace.decisionSnapshots.push({
-      stage: 'GOAL_RESOLUTION',
-      decision: workItem.status,
-      rationale: `Execution outcome: ${trace.finalOutcome}, Verification: ${trace.verificationResult}`,
-      timestamp: Date.now()
-    });
-
-    if (this.executionTraceStore) {
-      this.executionTraceStore.store(trace);
-      console.log(`[Runtime] Stored ExecutionTrace: ${trace.id} in ExecutionTraceStore.`);
-    }
-
-    if (this.feedbackPipeline) {
-      console.log(`[Runtime] Emitting ExecutionTrace: ${trace.id} to FeedbackPipeline.`);
-      this.feedbackPipeline.processTrace(trace);
-    }
-
-    // Old meta evaluation logic was removed here. The new CalibrationEvaluationEngine is executed at the end of startAutonomousLoop.
+    this.logger.info(`Execution Cycle Terminated. Yielding back to TriggerEngine.`);
   }
 
   // Phase 4.1: Human Approval Pipeline
@@ -606,18 +336,18 @@ export class Runtime {
   }
 
   public submitAdaptationProposal(proposal: AdaptationProposal): AdaptationProposal {
-    console.log(`\n[Runtime] Received AdaptationProposal: ${proposal.id}`);
-    console.log(`  -> Target Subsystem: ${proposal.target.subsystem}`);
-    console.log(`  -> Scope: ${proposal.target.scope}`);
+    this.logger.info(`Received AdaptationProposal: ${proposal.id}`);
+    this.logger.info(`  -> Target Subsystem: ${proposal.target.subsystem}`);
+    this.logger.info(`  -> Scope: ${proposal.target.scope}`);
     
     if (proposal.target.scope === 'PROTECTED') {
-      console.log(`[Runtime] FATAL: Adaptation targeting PROTECTED subsystem rejected by Runtime safeguard.`);
+      this.logger.error(`FATAL: Adaptation targeting PROTECTED subsystem rejected by Runtime safeguard.`);
       proposal.status = 'REJECTED';
     } else if (proposal.target.scope === 'GOVERNANCE_ONLY') {
-      console.log(`[Runtime] INFO: Adaptation requires explicit GOVERNANCE authorization.`);
+      this.logger.info(`INFO: Adaptation requires explicit GOVERNANCE authorization.`);
       proposal.status = 'PENDING_REVIEW';
     } else {
-      console.log(`[Runtime] INFO: Adaptation accepted for standard evaluation review.`);
+      this.logger.info(`INFO: Adaptation accepted for standard evaluation review.`);
       proposal.status = 'PENDING_REVIEW';
     }
     
