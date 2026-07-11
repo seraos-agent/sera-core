@@ -92,7 +92,7 @@ const proposalGovernance = new ProposalGovernance();
 const memoryStore = new MemoryStore(eventBus);
 const memoryIngress = new MemoryIngress(eventBus, memoryStore);
 
-const executionTraceStore = new ExecutionTraceStore();
+const executionTraceStore = new ExecutionTraceStore(eventBus);
 const coherenceMonitor = new CoherenceMonitor();
 const proposalEvaluator = new ProposalEvaluator(memoryStore);
 const calibrationEvaluationEngine = new CalibrationEvaluationEngine(memoryStore);
@@ -166,7 +166,8 @@ setInterval(() => {
   console.log(`Memory: Verified=${m.memory.verified} | Superseded=${m.memory.superseded} | Invalidated=${m.memory.invalidated}`);
   console.log(`Governance: Reviewed=${m.governance.actionsReviewed} | Allowed=${m.governance.allowed} | Denied=${m.governance.denied} | FalsePositives=${m.governance.falsePositive}`);
   console.log(`Reflection: Patterns=${m.reflection.patternsLearned} | Wrong=${m.reflection.wrongPatterns}`);
-  console.log(`Execution: Success=${m.worker.success} | Failure=${m.worker.failure} | WinRate=${(m.worker.goalCompletionRate * 100).toFixed(1)}%`);
+  console.log(`Worker: Success=${m.worker.success} | Failure=${m.worker.failure} | WinRate=${(m.worker.goalCompletionRate * 100).toFixed(1)}%`);
+  console.log(`Execution: TotalTasks=${m.execution.totalExecuted} | AvgLatency=${m.execution.avgLatencyMs.toFixed(0)}ms`);
   console.log('------------------------------------\n');
 }, 30000); // Every 30 seconds
 

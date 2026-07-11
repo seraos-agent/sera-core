@@ -21,6 +21,7 @@ export interface DecisionSnapshot {
 
 export interface ExecutionTrace {
   id: string;
+  taskId: string;
   goalId: string;
   planId?: string;
   planStepId?: string;
@@ -37,6 +38,7 @@ export interface ExecutionTrace {
   settlementStatus: 'SETTLED' | 'RELEASED' | 'NONE';
   governanceContext?: GovernanceContext;
   decisionSnapshots: DecisionSnapshot[];
+  timeline: { state: string; timestamp: number }[];
   createdAt: number;
   completedAt?: number;
 }

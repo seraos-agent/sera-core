@@ -16,6 +16,7 @@ import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
 import { CalibrationEvaluationEngine } from '../core/cognition/CalibrationEvaluationEngine';
 import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
+import { ExecutionReflectionEngine } from '../core/reflection/ExecutionReflectionEngine';
 import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
 import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
 import { TemporalContext } from '../core/temporal/types';
@@ -75,8 +76,9 @@ export class Runtime {
   public governanceOutcomeTracker?: GovernanceOutcomeTracker;
   public governanceReflectionEngine?: GovernanceReflectionEngine;
   public governanceCalibrationEngine?: GovernanceCalibrationEngine;
-  public adaptationPlanner?: AdaptationPlanner;
-  public adaptationExecutor?: AdaptationExecutor;
+  private adaptationPlanner: AdaptationPlanner | undefined;
+  private adaptationExecutor: AdaptationExecutor | undefined;
+  private executionReflectionEngine: ExecutionReflectionEngine | undefined;
 
   // Coordinators
   private cognitiveCoordinator: CognitiveCoordinator;
@@ -173,6 +175,10 @@ export class Runtime {
       this.memoryStore,
       this.eventBus
     );
+
+    if (this.executionTraceStore) {
+      this.executionReflectionEngine = new ExecutionReflectionEngine(this.executionTraceStore, this.memoryStore);
+    }
   }
 
   public setAdaptationExecutor(adaptationExecutor: AdaptationExecutor): void {
@@ -275,6 +281,10 @@ export class Runtime {
     }
     
     this.logger.info(`Execution Cycle Terminated. Yielding back to TriggerEngine.`);
+
+    if (this.executionReflectionEngine) {
+      this.executionReflectionEngine.evaluate();
+    }
   }
 
   // Phase 4.1: Human Approval Pipeline

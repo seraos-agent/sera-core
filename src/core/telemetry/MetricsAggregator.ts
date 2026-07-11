@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, MemoryItemMutatedPayload, GoalResultPayload } from '../events/types';
+import { ExecutionEvent } from '../execution/aios_types';
 import { MetricsStore } from './MetricsStore';
 import { MemoryStatus } from '../memory/MemoryItem';
 import { GovernanceDecision, GovernanceOutcomeRecord, GovernancePattern } from '../cognition/types';
@@ -98,6 +99,22 @@ export class MetricsAggregator {
       }
       
       this.store.updateWorker({ success, failure, goalCompletionRate });
+    });
+
+    // 6. Execution Trace Metrics
+    this.eventBus.on('system.execution.completed', (event: ExecutionEvent) => {
+      const metrics = this.store.getMetrics().execution;
+      let { totalExecuted, avgLatencyMs } = metrics;
+
+      totalExecuted++;
+      
+      const newLatency = event.payload?.latencyMs;
+      if (newLatency !== undefined) {
+        // Moving average
+        avgLatencyMs = ((avgLatencyMs * (totalExecuted - 1)) + newLatency) / totalExecuted;
+      }
+      
+      this.store.updateExecution({ totalExecuted, avgLatencyMs });
     });
   }
 }

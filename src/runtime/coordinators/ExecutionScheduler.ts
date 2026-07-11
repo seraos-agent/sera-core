@@ -160,11 +160,18 @@ export class ExecutionScheduler {
 
     const type = eventTypeMap[newState];
     if (type) {
+      const payload: any = { state: newState };
+      
+      // Calculate total latency if completed
+      if (newState === ExecutionState.COMPLETED && instance.task.context.createdAt) {
+        payload.latencyMs = Date.now() - instance.task.context.createdAt;
+      }
+      
       this.eventBus.emit(type, {
         type,
         taskId: instance.task.taskId,
         timestamp: Date.now(),
-        payload: { state: newState }
+        payload
       } as ExecutionEvent);
     }
     

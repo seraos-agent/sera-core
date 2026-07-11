@@ -26,6 +26,10 @@ export interface SystemMetrics {
     failure: number;
     goalCompletionRate: number;
   };
+  execution: {
+    totalExecuted: number;
+    avgLatencyMs: number;
+  };
 }
 
 export interface MetricsStore {
@@ -34,6 +38,7 @@ export interface MetricsStore {
   updateMemory(metrics: Partial<SystemMetrics['memory']>): void;
   updateGovernance(metrics: Partial<SystemMetrics['governance']>): void;
   updateWorker(metrics: Partial<SystemMetrics['worker']>): void;
+  updateExecution(metrics: Partial<SystemMetrics['execution']>): void;
 }
 
 export class InMemoryMetricsStore implements MetricsStore {
@@ -65,6 +70,10 @@ export class InMemoryMetricsStore implements MetricsStore {
       failure: 0,
       goalCompletionRate: 0,
     },
+    execution: {
+      totalExecuted: 0,
+      avgLatencyMs: 0,
+    },
   };
 
   getMetrics(): SystemMetrics {
@@ -86,5 +95,9 @@ export class InMemoryMetricsStore implements MetricsStore {
 
   updateWorker(metrics: Partial<SystemMetrics['worker']>): void {
     this.metrics.worker = { ...this.metrics.worker, ...metrics };
+  }
+
+  updateExecution(metrics: Partial<SystemMetrics['execution']>): void {
+    this.metrics.execution = { ...this.metrics.execution, ...metrics };
   }
 }

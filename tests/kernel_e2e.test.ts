@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { Runtime } from '../src/runtime/Runtime';
+import { ExecutionTraceStore } from '../src/core/execution/ExecutionTraceStore';
 
 import { MemoryStore } from '../src/memory/MemoryStore';
 import { Planner } from '../src/core/planner/Planner';
@@ -31,7 +32,7 @@ async function runTest() {
     undefined, // feedbackPipeline
     undefined, // coherenceMonitor
     undefined, // metaEvaluation
-    undefined, // executionTraceStore
+    new ExecutionTraceStore(eventBus), // executionTraceStore
     planner,
     strategyStore,
     strategyEngine,
@@ -134,6 +135,77 @@ async function runTest() {
     process.exit(1);
   }
   console.log('✅ Planner successfully substituted failing-tool with mock-read-tool.');
+
+  // Check ExecutionTraceStore observability
+  console.log('--- Testing Execution Observability (Phase 3) ---');
+  const traceStore = runtime['executionCoordinator']['executionTraceStore'];
+  if (!traceStore) {
+    console.error('❌ E2E TEST FAILED: ExecutionTraceStore not initialized in coordinator.');
+    process.exit(1);
+  }
+  
+  const allTraces = traceStore.getAll();
+  if (allTraces.length === 0) {
+    console.error('❌ E2E TEST FAILED: No execution trace was stored.');
+    process.exit(1);
+  }
+
+  const trace = allTraces[0];
+  if (trace.timeline.length < 2) {
+    console.error('❌ E2E TEST FAILED: Trace timeline was not populated by events.');
+    process.exit(1);
+  }
+  
+  if (trace.finalOutcome !== 'SUCCESS') {
+    console.error(`❌ E2E TEST FAILED: Trace finalOutcome is ${trace.finalOutcome}, expected SUCCESS.`);
+    process.exit(1);
+  }
+  
+  console.log('✅ ExecutionTraceStore successfully tracked timeline and outcome via events.');
+
+  // 4b. Test Adaptive Execution (Phase 4)
+  console.log('--- Testing Adaptive Execution (Phase 4) ---');
+  // Simulate 3 FAILED traces for 'fragile-tool' to trigger REPEATED_FAILURE adaptation
+  for (let i = 0; i < 3; i++) {
+    traceStore.store({
+      id: `trace-fragile-${i}`,
+      taskId: `task-fragile-${i}`,
+      goalId: 'dummy-goal',
+      toolCalls: ['fragile-tool'],
+      workerAssignments: [],
+      intermediateResults: [],
+      failures: [],
+      costTracking: 0,
+      finalOutcome: 'FAILED',
+      verificationResult: false,
+      settlementStatus: 'NONE',
+      timeline: [],
+      decisionSnapshots: [],
+      intentSnapshot: {},
+      plan: {},
+      createdAt: Date.now()
+    });
+  }
+
+  // Run the reflection engine explicitly
+  runtime['executionReflectionEngine']?.evaluate();
+  
+  // Verify adaptation belief was created
+  const adaptations = memoryStore.getBeliefsByCategory('EXECUTION_POLICY_ADAPTATION');
+  const fragileAdaptation = adaptations.find(b => b.key === 'adaptation:fragile-tool');
+  
+  if (!fragileAdaptation) {
+    console.error('❌ E2E TEST FAILED: ExecutionReflectionEngine failed to create adaptation for fragile-tool.');
+    process.exit(1);
+  }
+
+  const parsedAdaptation = JSON.parse(fragileAdaptation.content);
+  if (parsedAdaptation.policy?.retry?.maxRetries !== 0) {
+    console.error('❌ E2E TEST FAILED: Adaptation did not reduce maxRetries to 0 for fragile-tool.');
+    process.exit(1);
+  }
+
+  console.log('✅ ExecutionReflectionEngine successfully created adaptive policy based on trace anomalies.');
 
   // 5. Test wallet mutation rejection
   console.log('--- Testing Wallet Mutation Policy ---');

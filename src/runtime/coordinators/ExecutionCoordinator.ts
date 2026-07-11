@@ -60,7 +60,7 @@ export class ExecutionCoordinator {
   ): Promise<void> {
     this.logger.debug(`Submitting task for goal ${goal.id} to ExecutionScheduler`);
     
-    const trace = this.createTrace(goal, plan, scope);
+
     const temporalContext: TemporalContext = { physicalTime: Date.now(), cognitiveCycleId: 0 };
     
     // 1. Governance Pre-Check before Execution
@@ -119,12 +119,37 @@ export class ExecutionCoordinator {
     const checkpointId = `chkpt-${Date.now()}`;
     await this.checkpointStore.save(checkpointId, { plan, scope });
 
-    // 3. Define Immutable Policy Snapshot
-    const policySnapshot: ExecutionPolicy = {
+    // 3. Define Immutable Policy Snapshot (Merging with Adaptive Policies)
+    let policySnapshot: ExecutionPolicy = {
       id: 'DefaultPolicy-v1',
       retry: { maxRetries: 3, initialDelayMs: 1000, backoffMultiplier: 2, maxDelayMs: 10000 },
       timeout: { timeoutMs: 30000 }
     };
+
+    // Find tools used in this plan to check for policy adaptations
+    const toolsUsed = plan.steps.map(s => s.payload?.toolId).filter(Boolean);
+    
+    for (const tool of toolsUsed) {
+      const adaptations = this.memoryStore.getBeliefsByCategory('EXECUTION_POLICY_ADAPTATION');
+      const adaptation = adaptations.find(b => b.key === `adaptation:${tool}`);
+      if (adaptation) {
+        try {
+          const parsed = JSON.parse(adaptation.content);
+          if (parsed.policy) {
+            this.logger.info(`Applying Adaptive Execution Policy for tool ${tool} (Reason: ${parsed.reason})`);
+            
+            policySnapshot = {
+              ...policySnapshot,
+              id: `AdaptivePolicy-${tool}-${Date.now()}`,
+              retry: { ...policySnapshot.retry, ...parsed.policy.retry },
+              timeout: { ...policySnapshot.timeout, ...parsed.policy.timeout }
+            };
+          }
+        } catch (e) {
+          this.logger.warn(`Failed to parse adaptation for ${tool}: ${e}`);
+        }
+      }
+    }
 
     // 4. Create Immutable Task Definition
     const task: ExecutionTask = {
@@ -134,13 +159,20 @@ export class ExecutionCoordinator {
       checkpointId
     };
 
-    // 5. Submit to Scheduler
+    // 5. Create Trace and Store it
+    const trace = this.createTrace(goal, plan, scope, task.taskId);
+    if (this.executionTraceStore) {
+      this.executionTraceStore.store(trace);
+    }
+
+    // 6. Submit to Scheduler
     this.scheduler.submitTask(task);
   }
 
-  private createTrace(goal: Goal, plan: Plan, scope: DelegationScope): ExecutionTrace {
+  private createTrace(goal: Goal, plan: Plan, scope: DelegationScope, taskId: string): ExecutionTrace {
     return {
       id: `trace-${Date.now()}`,
+      taskId,
       goalId: goal.id,
       planId: plan.id,
       intentSnapshot: { ...goal },
@@ -154,6 +186,7 @@ export class ExecutionCoordinator {
       verificationResult: false,
       settlementStatus: 'NONE',
       createdAt: Date.now(),
+      timeline: [],
       decisionSnapshots: []
     };
   }
