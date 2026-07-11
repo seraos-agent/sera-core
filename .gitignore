@@ -4,5 +4,11 @@ dist/
 .env.local
 src/demos/
 .data/
+coverage/
+
+# OS/Logs/Caches
+.DS_Store
+*.log
+*.tsbuildinfo
 
 .vercel

@@ -11,7 +11,6 @@
     "test:coverage": "vitest run --coverage",
     "start": "ts-node src/server/index.ts",
     "start:server": "ts-node src/server/index.ts",
-    "test:all": "ts-node tests/kernel_e2e.test.ts && ts-node tests/cognitive_loop_e2e.test.ts && ts-node tests/cognitive_simulations.test.ts && ts-node tests/communication_simulations.test.ts",
     "build": "tsc"
   },
   "author": "",

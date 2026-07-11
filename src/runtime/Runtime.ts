@@ -208,6 +208,19 @@ export class Runtime {
         this.capabilityCatalog
       );
       mcpMemoryClient.connect().catch(console.error);
+
+      // Initialize MCP Brave Search Server
+      // Requires BRAVE_API_KEY in environment variables
+      const mcpBraveClient = new McpClientAdapter(
+        'brave-search-server',
+        'npx',
+        ['-y', '@modelcontextprotocol/server-brave-search'],
+        globalEventBus,
+        this.capabilityCatalog
+      );
+      mcpBraveClient.connect().catch((e) => {
+        this.logger.warn(`Failed to connect to Brave MCP (is BRAVE_API_KEY set?): ${e.message}`);
+      });
     }
 
     this.proposalManager = new ProposalManager(globalEventBus);

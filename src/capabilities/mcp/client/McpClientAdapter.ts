@@ -38,7 +38,8 @@ export class McpClientAdapter {
     try {
       this.transport = new StdioClientTransport({
         command: this.command,
-        args: this.args
+        args: this.args,
+        env: process.env as Record<string, string>
       });
       
       await this.client.connect(this.transport);
