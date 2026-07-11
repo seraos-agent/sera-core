@@ -3,17 +3,13 @@ import { MemoryPolicy } from './MemoryPolicy';
 import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
 import { MemorySource } from './MemorySource';
-
-export interface IMemoryServiceAdapter {
-  get(key: string): any;
-  __mutate_protected(proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel): any;
-}
+import { IMemoryStore } from './IMemoryStore';
 
 export class MemoryPolicyEngine {
-  private memoryService: IMemoryServiceAdapter;
+  private memoryService: IMemoryStore;
   private policies: Map<string, MemoryPolicy> = new Map();
 
-  constructor(memoryService: IMemoryServiceAdapter) {
+  constructor(memoryService: IMemoryStore) {
     this.memoryService = memoryService;
     this.loadDefaultPolicies();
     console.log('[MemoryPolicyEngine] Initialized.');
@@ -62,7 +58,7 @@ export class MemoryPolicyEngine {
     }
 
     // 3. Conflict Resolution with Existing Memory
-    const existing = this.memoryService.get(proposal.key);
+    const existing = this.memoryService.getBeliefByKey(proposal.key);
     
     let proposedVerification = VerificationLevel.UNVERIFIED;
     if (proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION) proposedVerification = VerificationLevel.SYSTEM_OBSERVED;
@@ -71,7 +67,7 @@ export class MemoryPolicyEngine {
     let newStatus = MemoryStatus.ACTIVE;
     
     if (existing && existing.status === MemoryStatus.ACTIVE) {
-      const existingWeight = this.getVerificationWeight(existing.verificationLevel);
+      const existingWeight = this.getVerificationWeight(existing.verificationLevel || VerificationLevel.UNVERIFIED);
       const proposedWeight = this.getVerificationWeight(proposedVerification);
 
       if (proposedWeight < existingWeight) {

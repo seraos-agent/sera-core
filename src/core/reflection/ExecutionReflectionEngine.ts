@@ -1,5 +1,5 @@
 import { ExecutionTraceStore } from '../execution/ExecutionTraceStore';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IMemoryStore } from '../memory/IMemoryStore';
 import { Belief } from '../../memory/types';
 import { ExecutionPolicy } from '../execution/aios_types';
 import { Logger } from '../logging/Logger';
@@ -11,7 +11,7 @@ export class ExecutionReflectionEngine {
 
   constructor(
     private traceStore: ExecutionTraceStore,
-    private memoryStore: MemoryStore
+    private memoryStore: IMemoryStore
   ) {}
 
   public evaluate(): void {

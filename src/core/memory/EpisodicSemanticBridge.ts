@@ -1,11 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { StandardEvent } from '../events/types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IMemoryStore } from './IMemoryStore';
 import { ExperienceRecord } from './ExperienceRecord';
-import { Belief } from '../../memory/types';
+import { Belief } from './types';
 
 export class EpisodicSemanticBridge {
-  constructor(private eventBus: EventEmitter, private memoryStore: MemoryStore) {
+  constructor(private eventBus: EventEmitter, private memoryStore: IMemoryStore) {
     this.setupListeners();
     console.log('[EpisodicSemanticBridge] Initialized. Listening for episodes.');
   }

@@ -63,6 +63,14 @@ export class CapabilityExecutor implements ExecutionExecutor {
 
           this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, handler);
 
+          // Transition to paused state while waiting for the async action to complete
+          this.eventBus.emit('system.execution.paused', {
+            type: 'system.execution.paused',
+            taskId: task.taskId,
+            timestamp: Date.now(),
+            payload: { waitCondition: { correlationId: stepRequestId } }
+          } as ExecutionEvent);
+
           this.eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
             id: `evt-${Date.now()}`,
             type: EventTypes.DOMAIN_ACTION_DISPATCHED,

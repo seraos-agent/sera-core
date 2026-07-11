@@ -3,7 +3,7 @@ import { AttentionEngine } from '../../core/attention/AttentionEngine';
 import { GoalEngine } from '../../core/goals/GoalEngine';
 import { Planner } from '../../core/planner/Planner';
 import { StrategyStore } from '../../core/strategy/StrategyStore';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IMemoryStore } from '../../core/memory/IMemoryStore';
 import { Plan } from '../../core/planner/types';
 import { Goal } from '../../core/goals/types';
 import { Logger } from '../../core/logging/Logger';
@@ -22,7 +22,7 @@ export class CognitiveCoordinator {
     private goalEngine: GoalEngine | undefined,
     private planner: Planner | undefined,
     private strategyStore: StrategyStore | undefined,
-    private memoryStore: MemoryStore, // Single reference enforced by Runtime
+    private memoryStore: IMemoryStore, // Single reference enforced by Runtime
     private coherenceMonitor: CoherenceMonitor | undefined
   ) {}
 

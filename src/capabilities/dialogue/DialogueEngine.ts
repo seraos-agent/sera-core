@@ -5,7 +5,7 @@ import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import { chatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 import { WorldStateService } from '../../core/world-state/WorldStateService';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IMemoryStore } from '../../core/memory/IMemoryStore';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
 import { MemorySource } from '../../core/memory/MemorySource';
@@ -91,7 +91,7 @@ export class DialogueEngine {
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
-  private memoryStore: MemoryStore;
+  private memoryStore: IMemoryStore;
   private episodicReader: EpisodicMemoryReader;
 
   /**
@@ -124,7 +124,7 @@ export class DialogueEngine {
   private consentedUsers: Set<string> = new Set();
   private readonly CONSENT_FILE_PATH = path.join(process.cwd(), '.data', 'consented_users.json');
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: MemoryStore) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IMemoryStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;

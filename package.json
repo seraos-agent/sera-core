@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "Sera Core - Phase 1 Foundation",
   "main": "src/index.ts",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
     "start": "ts-node src/server/index.ts",
     "start:server": "ts-node src/server/index.ts",
     "test:all": "ts-node tests/kernel_e2e.test.ts && ts-node tests/cognitive_loop_e2e.test.ts && ts-node tests/cognitive_simulations.test.ts && ts-node tests/communication_simulations.test.ts",
@@ -16,8 +21,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.51.2",

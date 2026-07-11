@@ -3,7 +3,8 @@ import { EventEmitter } from 'events';
 import { WorkItem } from '../core/work-items/types';
 import { WorldStateService } from '../core/world-state/WorldStateService';
 import { Goal } from '../core/goals/types';
-import { MemoryStore } from '../memory/MemoryStore';
+import { IMemoryStore } from '../core/memory/IMemoryStore';
+import { JsonMemoryStore } from '../memory/adapters/JsonMemoryStore';
 import { AuthorityService } from '../delegation/AuthorityService';
 import { AuthorityContext, DelegationScope } from '../delegation/types';
 import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
@@ -53,7 +54,7 @@ export class Runtime {
   public capabilityCatalog!: CapabilityCatalog;
   public dialogueEngine!: DialogueEngine;
   public proposalManager!: ProposalManager;
-  public memoryStore: MemoryStore;
+  public memoryStore: IMemoryStore;
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
   private feedbackPipeline?: FeedbackPipeline;
@@ -117,9 +118,9 @@ export class Runtime {
     adaptationExecutor?: AdaptationExecutor,
     eventBus?: EventEmitter,
     dispatcher?: ExecutionDispatcher,
-    memoryStore?: MemoryStore
+    memoryStore?: IMemoryStore
   ) {
-    this.memoryStore = memoryStore || new MemoryStore();
+    this.memoryStore = memoryStore || new JsonMemoryStore();
     this.authorityService = new AuthorityService();
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;
@@ -188,7 +189,7 @@ export class Runtime {
 
   // Replaced by ExecutionDispatcher's direct listening
 
-  public setGlobalEventBus(globalEventBus: any): void {
+  public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean }): void {
     this.worldStateService = new WorldStateService(globalEventBus);
     
     this.capabilityCatalog = new CapabilityCatalog();
@@ -198,14 +199,16 @@ export class Runtime {
     
     // Initialize MCP Memory Server for testing/capabilities
     // Using npx -y @modelcontextprotocol/server-memory
-    const mcpMemoryClient = new McpClientAdapter(
-      'memory-server',
-      'npx',
-      ['-y', '@modelcontextprotocol/server-memory'],
-      globalEventBus,
-      this.capabilityCatalog
-    );
-    mcpMemoryClient.connect().catch(console.error);
+    if (!options?.disableMcp) {
+      const mcpMemoryClient = new McpClientAdapter(
+        'memory-server',
+        'npx',
+        ['-y', '@modelcontextprotocol/server-memory'],
+        globalEventBus,
+        this.capabilityCatalog
+      );
+      mcpMemoryClient.connect().catch(console.error);
+    }
 
     this.proposalManager = new ProposalManager(globalEventBus);
 

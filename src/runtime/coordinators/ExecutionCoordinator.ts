@@ -12,7 +12,7 @@ import { AuthorityService } from '../../delegation/AuthorityService';
 import { FeedbackPipeline } from '../../core/feedback/FeedbackPipeline';
 import { ExecutionTraceStore } from '../../core/execution/ExecutionTraceStore';
 import { Logger } from '../../core/logging/Logger';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IMemoryStore } from '../../core/memory/IMemoryStore';
 import { ExecutionScheduler } from './ExecutionScheduler';
 import { ExecutionTask, ExecutionContext, ExecutionState, ExecutionPolicy } from '../../core/execution/aios_types';
 import { CheckpointStore } from '../../core/execution/CheckpointStore';
@@ -35,7 +35,7 @@ export class ExecutionCoordinator {
     private authorityService: AuthorityService,
     private feedbackPipeline: FeedbackPipeline | undefined,
     private executionTraceStore: ExecutionTraceStore | undefined,
-    private memoryStore: MemoryStore,
+    private memoryStore: IMemoryStore,
     eventBus?: EventEmitter
   ) {
     this.eventBus = eventBus || new EventEmitter();

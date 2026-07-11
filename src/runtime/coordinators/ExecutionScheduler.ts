@@ -22,6 +22,13 @@ export class ExecutionScheduler {
       this.handleSupervisorCancel(event.taskId, 'TIMEOUT');
     });
 
+    this.eventBus.on('system.execution.paused', (event: ExecutionEvent) => {
+      const instance = this.activeInstances.get(event.taskId);
+      if (instance && instance.state === ExecutionState.RUNNING) {
+        this.transitionState(instance, ExecutionState.WAITING_CONDITION);
+      }
+    });
+
     this.eventBus.on('system.execution.completed', (event: ExecutionEvent) => {
       this.handleWorkerResult(event.taskId, ExecutionState.COMPLETED);
     });
