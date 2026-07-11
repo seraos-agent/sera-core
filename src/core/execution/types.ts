@@ -89,3 +89,4 @@ export interface ProposalTrace {
   selectedCandidateId?: string;
   timestamp: number;
 }
+export * from './aios_types';

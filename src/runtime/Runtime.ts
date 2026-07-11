@@ -249,15 +249,19 @@ export class Runtime {
           requiresApprovalPermissions: []
         };
         
-        const success = await this.executionCoordinator.runCycle(goal, plan, defaultScope, temporalContext);
+        // Mock ExecutionContext for now until fully propagated
+        const executionContext = {
+          executionId: `exec-${Date.now()}`,
+          goalId: goal.id,
+          triggerSource: 'SYSTEM' as any,
+          priority: 1, // NORMAL
+          createdAt: Date.now()
+        };
+
+        this.executionCoordinator.submitTask(goal, plan, defaultScope, executionContext as any);
         
-        if (success) {
-          this.goalEngine?.updateStatus(goal.id, 'COMPLETED');
-        } else {
-          if (goal.status === 'IN_PROGRESS') {
-             this.goalEngine?.updateStatus(goal.id, 'FAILED', 'Runtime execution failed');
-          }
-        }
+        // Since it's queued asynchronously now, we just mark it as in progress (or let the queue handle it)
+        this.goalEngine?.updateStatus(goal.id, 'IN_PROGRESS');
       } catch (err: any) {
         if (err.name === 'IntentInvalidationError') {
            this.goalEngine?.invalidate(goal.id, err.invalidation);

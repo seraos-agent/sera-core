@@ -13,9 +13,22 @@ import { FeedbackPipeline } from '../../core/feedback/FeedbackPipeline';
 import { ExecutionTraceStore } from '../../core/execution/ExecutionTraceStore';
 import { Logger } from '../../core/logging/Logger';
 import { MemoryStore } from '../../memory/MemoryStore';
+import { ExecutionScheduler } from './ExecutionScheduler';
+import { ExecutionTask, ExecutionContext, ExecutionState, ExecutionPolicy } from '../../core/execution/aios_types';
+import { CheckpointStore } from '../../core/execution/CheckpointStore';
+import { WorkerPool } from '../../core/execution/workers/WorkerPool';
+import { ExecutionSupervisor } from '../../core/execution/ExecutionSupervisor';
+import { CapabilityExecutor } from '../../core/execution/workers/CapabilityExecutor';
+import { ExecutionWorker } from '../../core/execution/workers/ExecutionWorker';
+import { EventEmitter } from 'events';
 
 export class ExecutionCoordinator {
   private logger = new Logger('ExecutionCoordinator');
+  private scheduler: ExecutionScheduler;
+  private checkpointStore: CheckpointStore;
+  private workerPool: WorkerPool;
+  private supervisor: ExecutionSupervisor;
+  private eventBus: EventEmitter;
 
   constructor(
     private workerManager: WorkerManager,
@@ -24,61 +37,112 @@ export class ExecutionCoordinator {
     private feedbackPipeline: FeedbackPipeline | undefined,
     private executionTraceStore: ExecutionTraceStore | undefined,
     private memoryStore: MemoryStore
-  ) {}
+  ) {
+    this.eventBus = new EventEmitter();
+    this.workerPool = new WorkerPool();
+    this.scheduler = new ExecutionScheduler(this.workerPool, this.eventBus);
+    this.checkpointStore = new CheckpointStore();
+    this.supervisor = new ExecutionSupervisor(this.eventBus, this.workerPool, this.scheduler.getActiveInstances());
+    
+    // Register Default Worker
+    const capExecutor = new CapabilityExecutor(this.eventBus, this.workerManager, this.checkpointStore);
+    const defaultWorker = new ExecutionWorker('worker-default-1', capExecutor);
+    this.workerPool.registerWorker(defaultWorker);
 
-  public async runCycle(
+    this.supervisor.start();
+  }
+
+  public async submitTask(
     goal: Goal,
     plan: Plan,
     scope: DelegationScope,
-    temporalContext: TemporalContext,
-    customMetadata?: any,
-    spendingRequest?: any
-  ): Promise<boolean> {
-    this.logger.debug(`Running execution cycle for goal ${goal.id}`);
+    executionContext: ExecutionContext
+  ): Promise<void> {
+    this.logger.debug(`Submitting task for goal ${goal.id} to ExecutionScheduler`);
     
-    let allSuccess = true;
+    const trace = this.createTrace(goal, plan, scope);
+    const temporalContext: TemporalContext = { physicalTime: Date.now(), cognitiveCycleId: 0 };
+    
+    // 1. Governance Pre-Check before Execution
+    let allChecksPassed = true;
     for (const step of plan.steps) {
-      step.status = 'IN_PROGRESS';
-      
       const workItem: WorkItem = {
-        id: `wi-${temporalContext?.physicalTime || Date.now()}`,
+        id: `wi-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         goalId: goal.id,
         planId: plan.id,
         planStepId: step.id,
         action: step.action,
         payload: step.payload,
         status: 'PENDING',
-        createdAt: temporalContext?.physicalTime || Date.now()
+        createdAt: Date.now()
+      };
+
+      // Constitution Check
+      const constitutionContext: ConstitutionContext = {
+        principalId: scope.principalId,
+        goalId: goal.id,
+        workItemId: workItem.id,
+        action: workItem.action,
+        metadata: {}
       };
       
-      const stepSuccess = await this.executeWorkItem(workItem, plan, step, goal, scope, temporalContext, customMetadata, spendingRequest);
-      if (!stepSuccess) {
-         step.status = 'FAILED';
-         allSuccess = false;
-         break;
-      } else {
-         step.status = 'COMPLETED';
+      const constitutionDecision = this.constitutionEngine.evaluate(constitutionContext);
+      if (constitutionDecision.status === 'DENIED') {
+        this.logger.warn(`Constitution Check DENIED for work item ${workItem.id}`);
+        allChecksPassed = false;
+        break;
+      }
+
+      // Authority Check
+      const authorityContext: AuthorityContext = {
+        principalId: scope.principalId,
+        goalId: goal.id,
+        workItemId: workItem.id,
+        action: workItem.action,
+      };
+
+      const authDecision = this.authorityService.evaluate(authorityContext, scope);
+      if (authDecision.status === 'DENIED') {
+        this.logger.warn(`Authority Check DENIED for work item ${workItem.id}`);
+        allChecksPassed = false;
+        break;
       }
     }
-    
-    return allSuccess;
+
+    if (!allChecksPassed) {
+      this.logger.error(`Task for goal ${goal.id} rejected by Governance. Task will not be scheduled.`);
+      // Emit failure back up...
+      return;
+    }
+
+    // 2. Create a Checkpoint for the payload
+    const checkpointId = `chkpt-${Date.now()}`;
+    await this.checkpointStore.save(checkpointId, { plan, scope });
+
+    // 3. Define Immutable Policy Snapshot
+    const policySnapshot: ExecutionPolicy = {
+      id: 'DefaultPolicy-v1',
+      retry: { maxRetries: 3, initialDelayMs: 1000, backoffMultiplier: 2, maxDelayMs: 10000 },
+      timeout: { timeoutMs: 30000 }
+    };
+
+    // 4. Create Immutable Task Definition
+    const task: ExecutionTask = {
+      taskId: `task-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      context: executionContext,
+      policySnapshot,
+      checkpointId
+    };
+
+    // 5. Submit to Scheduler
+    this.scheduler.submitTask(task);
   }
 
-  private async executeWorkItem(
-    workItem: WorkItem, 
-    plan: Plan,
-    step: PlanStep,
-    goal: Goal, 
-    scope: DelegationScope, 
-    temporalContext: TemporalContext,
-    customMetadata?: any, 
-    spendingRequest?: any
-  ): Promise<boolean> {
-    const trace: ExecutionTrace = {
-      id: `trace-${temporalContext?.physicalTime || Date.now()}`,
+  private createTrace(goal: Goal, plan: Plan, scope: DelegationScope): ExecutionTrace {
+    return {
+      id: `trace-${Date.now()}`,
       goalId: goal.id,
       planId: plan.id,
-      planStepId: step.id,
       intentSnapshot: { ...goal },
       plan: { ...plan }, 
       workerAssignments: [],
@@ -89,140 +153,12 @@ export class ExecutionCoordinator {
       finalOutcome: 'PENDING',
       verificationResult: false,
       settlementStatus: 'NONE',
-      governanceContext: {
-        delegationScopeId: scope.id
-      },
-      decisionSnapshots: [
-        {
-          stage: 'GOAL_PRIORITIZATION',
-          decision: 'PROCEED',
-          rationale: 'Goal selected based on priority and system coherence state.',
-          timestamp: temporalContext?.physicalTime || Date.now()
-        }
-      ],
-      createdAt: temporalContext?.physicalTime || Date.now()
+      createdAt: Date.now(),
+      decisionSnapshots: []
     };
-
-    // 2. Constitution Check
-    const constitutionContext: ConstitutionContext = {
-      principalId: scope.principalId,
-      goalId: goal.id,
-      workItemId: workItem.id,
-      action: workItem.action,
-      metadata: customMetadata
-    };
-
-    const constitutionDecision = this.constitutionEngine.evaluate(constitutionContext);
-    trace.governanceContext!.constitution = {
-      decision: constitutionDecision.status as any,
-      triggeredRules: constitutionDecision.findings ? constitutionDecision.findings.map((f: any) => f.ruleId) : [],
-      rationale: constitutionDecision.reason || 'All rules passed'
-    };
-    trace.decisionSnapshots.push({
-      stage: 'CONSTITUTION_CHECK',
-      decision: constitutionDecision.status,
-      rationale: trace.governanceContext!.constitution.rationale,
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    if (constitutionDecision.status === 'DENIED') {
-      trace.finalOutcome = 'FAILED';
-      this.logger.warn(`Constitution Check DENIED for work item ${workItem.id}`);
-      this.finalizeCycle(trace, goal, workItem);
-      return false;
-    }
-
-    // 3. Authority Check
-    const authorityContext: AuthorityContext = {
-      principalId: scope.principalId,
-      goalId: goal.id,
-      workItemId: workItem.id,
-      action: workItem.action,
-    };
-
-    const authDecision = this.authorityService.evaluate(authorityContext, scope);
-    trace.governanceContext!.authority = {
-      scopeId: scope.id,
-      decision: authDecision.status as any,
-      rationale: authDecision.reason || 'Delegation scope grants necessary authority'
-    };
-    trace.decisionSnapshots.push({
-      stage: 'AUTHORITY_CHECK',
-      decision: authDecision.status,
-      rationale: trace.governanceContext!.authority.rationale,
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    if (authDecision.status === 'DENIED') {
-      trace.finalOutcome = 'FAILED';
-      this.logger.warn(`Authority Check DENIED for work item ${workItem.id}`);
-      this.finalizeCycle(trace, goal, workItem);
-      return false;
-    }
-
-    // 5. Worker Dispatch
-    trace.workerAssignments.push('demo-worker'); 
-    trace.toolCalls.push(workItem.payload?.toolId || 'mock-read-tool');
-    trace.decisionSnapshots.push({
-      stage: 'WORKER_SELECTION',
-      decision: 'demo-worker',
-      rationale: 'Static routing for demo',
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-    trace.decisionSnapshots.push({
-      stage: 'TOOL_SELECTION',
-      decision: trace.toolCalls[0],
-      rationale: 'Required by targetState',
-      timestamp: temporalContext?.physicalTime || Date.now()
-    });
-
-    const result = await this.workerManager.dispatch(workItem);
-    
-    // 6. Process WorkerResult
-    if (result.status === 'SUCCESS') {
-      workItem.status = 'COMPLETED';
-      trace.finalOutcome = 'SUCCESS';
-      trace.verificationResult = true; // Inferred from worker SUCCESS
-      trace.decisionSnapshots.push({
-        stage: 'VERIFICATION_STRATEGY',
-        decision: 'SUCCESS',
-        rationale: 'Worker executed and verified tool successfully',
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-    } else {
-      workItem.status = 'FAILED';
-      trace.finalOutcome = 'FAILED'; // Worker failed or verification failed
-      trace.verificationResult = false; // ...but verification failed
-      trace.decisionSnapshots.push({
-        stage: 'VERIFICATION_STRATEGY',
-        decision: 'FAILED',
-        rationale: 'Verification rejected the tool output',
-        timestamp: temporalContext?.physicalTime || Date.now()
-      });
-    }
-    
-    this.finalizeCycle(trace, goal, workItem);
-    return trace.finalOutcome === 'SUCCESS' && trace.verificationResult;
   }
 
-  private finalizeCycle(trace: ExecutionTrace, goal: Goal, workItem: WorkItem) {
-    trace.completedAt = Date.now();
-    
-    trace.decisionSnapshots.push({
-      stage: 'GOAL_RESOLUTION',
-      decision: workItem.status,
-      rationale: `Execution outcome: ${trace.finalOutcome}, Verification: ${trace.verificationResult}`,
-      timestamp: Date.now()
-    });
-
-    if (this.executionTraceStore) {
-      this.executionTraceStore.store(trace);
-      this.logger.debug(`Stored ExecutionTrace: ${trace.id}`);
-    }
-
-    if (this.feedbackPipeline) {
-      this.logger.debug(`Emitting ExecutionTrace: ${trace.id} to FeedbackPipeline.`);
-      this.feedbackPipeline.processTrace(trace);
-    }
+  public getEventBus(): EventEmitter {
+    return this.eventBus;
   }
 }

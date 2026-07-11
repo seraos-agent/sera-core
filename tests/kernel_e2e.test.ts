@@ -113,6 +113,9 @@ async function runTest() {
   // 4. Run cycle - Planner should avoid failing-tool
   await runtime.executeCycle(1, testGoal.id);
 
+  // Small delay to let async scheduler process the queued task
+  await new Promise(r => setTimeout(r, 100));
+
   // Assertion: Check if the planner substituted the failing-tool
   if (dispatchedTool !== 'mock-read-tool') {
     console.error(`❌ E2E TEST FAILED: Planner dispatched '${dispatchedTool}' instead of fallback 'mock-read-tool'`);
