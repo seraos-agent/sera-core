@@ -63,6 +63,58 @@ import { App as BoltApp } from '@slack/bolt';
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+
+// ── MCP Internal REST API ───────────────────────────────────────────────────
+// This API is ONLY accessible to the local MCP Server Proxy (localhost)
+app.use('/api/mcp', (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (req.ip !== '127.0.0.1' && req.ip !== '::1' && req.ip !== '::ffff:127.0.0.1') {
+    return res.status(403).json({ error: 'Access denied: Localhost only' });
+  }
+  if (!process.env.SERA_MCP_SECRET || authHeader !== `Bearer ${process.env.SERA_MCP_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid SERA_MCP_SECRET' });
+  }
+  next();
+});
+
+// Expose memory for external agents (read-only, confirmed beliefs)
+app.get('/api/mcp/memory', (req, res) => {
+  const store = (globalThis as any).__memoryStore as import('../memory/MemoryStore').MemoryStore | undefined;
+  if (!store) return res.status(503).json({ error: 'MemoryStore not ready' });
+  
+  const allBeliefs = store.getAllBeliefs();
+  const summary = allBeliefs.map(b => `[${b.category}] ${b.key}: ${b.content}`).join('\n');
+  res.json({ text: summary });
+});
+
+// Propose actions (goes through Governance)
+app.post('/api/mcp/proposal', (req, res) => {
+  const { action, target, amount, asset, description } = req.body;
+  if (!action || !description) return res.status(400).json({ error: 'Missing action or description' });
+  
+  // Submit via ProposalManager / IntentStore
+  // We emit a new Intent so the Cognitive Coordinator evaluates it
+  const intentId = `intent-mcp-${Date.now()}`;
+  const runtimeInstance = (globalThis as any).__runtime as import('../runtime/Runtime').Runtime | undefined;
+  
+  if (runtimeInstance && runtimeInstance.intentStore) {
+    runtimeInstance.intentStore.registerIntent({
+      id: intentId,
+      description: `[MCP PROPOSAL] ${action}: ${description} (Target: ${target}, Amount: ${amount} ${asset})`,
+      status: 'ALIVE',
+      terminality: 'DISCRETE',
+      createdAt: Date.now()
+    });
+    
+    // Trigger cycle evaluation
+    runtimeInstance.executeCycle(Date.now()).catch(console.error);
+    return res.json({ status: 'PROPOSAL_SUBMITTED', intentId });
+  } else {
+    return res.status(503).json({ error: 'Runtime intentStore not ready' });
+  }
+});
+
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -147,6 +199,8 @@ const runtime = new Runtime(
   executionDispatcher,
   memoryStore
 );
+(globalThis as any).__runtime = runtime;
+(globalThis as any).__memoryStore = memoryStore;
 
 runtime.setGlobalEventBus(eventBus);
 

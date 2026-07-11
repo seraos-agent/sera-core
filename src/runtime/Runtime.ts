@@ -42,6 +42,7 @@ import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapabilit
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
+import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';
@@ -194,6 +195,17 @@ export class Runtime {
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
     this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools()]);
+    
+    // Initialize MCP Memory Server for testing/capabilities
+    // Using npx -y @modelcontextprotocol/server-memory
+    const mcpMemoryClient = new McpClientAdapter(
+      'memory-server',
+      'npx',
+      ['-y', '@modelcontextprotocol/server-memory'],
+      globalEventBus,
+      this.capabilityCatalog
+    );
+    mcpMemoryClient.connect().catch(console.error);
 
     this.proposalManager = new ProposalManager(globalEventBus);
 
