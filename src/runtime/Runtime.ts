@@ -164,7 +164,8 @@ export class Runtime {
       this.proposalGovernance,
       this.proposalEvaluator,
       this.eventBus,
-      this.feedbackPipeline
+      this.feedbackPipeline,
+      this.memoryStore
     );
 
     this.executionCoordinator = new ExecutionCoordinator(
@@ -172,7 +173,8 @@ export class Runtime {
       this.constitutionEngine,
       this.authorityService,
       this.feedbackPipeline,
-      this.executionTraceStore
+      this.executionTraceStore,
+      this.memoryStore
     );
   }
 

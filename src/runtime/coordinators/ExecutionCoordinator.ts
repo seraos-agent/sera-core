@@ -12,6 +12,7 @@ import { AuthorityService } from '../../delegation/AuthorityService';
 import { FeedbackPipeline } from '../../core/feedback/FeedbackPipeline';
 import { ExecutionTraceStore } from '../../core/execution/ExecutionTraceStore';
 import { Logger } from '../../core/logging/Logger';
+import { MemoryStore } from '../../memory/MemoryStore';
 
 export class ExecutionCoordinator {
   private logger = new Logger('ExecutionCoordinator');
@@ -21,7 +22,8 @@ export class ExecutionCoordinator {
     private constitutionEngine: ConstitutionEngine,
     private authorityService: AuthorityService,
     private feedbackPipeline: FeedbackPipeline | undefined,
-    private executionTraceStore: ExecutionTraceStore | undefined
+    private executionTraceStore: ExecutionTraceStore | undefined,
+    private memoryStore: MemoryStore
   ) {}
 
   public async runCycle(
