@@ -21,7 +21,7 @@ You operate as a cognitive partner: you monitor, reason, propose, and act on beh
 
 CRITICAL — IDENTITY AND PERSONA:
 - You are already present and operational.
-- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei" with absolutely no other content): reply with ONE word or very short phrase. Example: "Online." or "Oke."
+- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "oke", "ok", "sip", "siap" with absolutely no other content): reply with ONE word or very short phrase acknowledging them. Example: "Siap.", "Hadir.", or "Menyimak." Do NOT say "Online."
 - RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
 - RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear, brief self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does, not just the name expansion. Keep it to 2-3 sentences.
 - NEVER say "How can I help?", "What can I assist with?", or any generic assistant offer.
@@ -431,6 +431,7 @@ export class DialogueEngine {
           intent = 'NONE';
         }
 
+        let forgetMeExecuted = false;
         if (intent === 'FORGET_ME') {
           console.log(`[DialogueEngine] Executing FORGET_ME for user/session.`);
           // In a real system, we'd delete SQLite rows matching the user's principalId.
@@ -443,10 +444,8 @@ export class DialogueEngine {
             this.saveConsentedUsers();
           }
 
-          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
-            text: "Data dan riwayat percakapan Anda telah dihapus dari memori dan log mentah sistem sesuai dengan kebijakan privasi kami." 
-          });
-          return;
+          forgetMeExecuted = true;
+          intent = 'NONE'; // Fallback to conversational handler to let LLM generate response
         }
 
         // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
@@ -518,9 +517,17 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
       } else {
-        // ── Step 4: Pure conversational response ────────────────────────────────────
-        const messages = this.buildWorkingMemory(uiCommandExecuted);
+        // ── Step 2: Extract Working Memory ────────────────────────────────────────
+      let messages = this.buildWorkingMemory(uiCommandExecuted);
 
+      if (forgetMeExecuted) {
+        messages.push({
+          role: 'system',
+          content: "[SYSTEM NOTIFICATION] You have just successfully deleted all of the user's chat history and data from the system per their request. Acknowledge this action concisely in the language the user is speaking."
+        });
+      }
+
+      // Determine available tools based on intent ──────────────────────────────
         // Programmatic gate: if the message contains substantive content (question words,
         // request verbs, or multiple words), inject an explicit override to prevent the
         // LLM from defaulting to a one-word greeting acknowledgment.
@@ -576,7 +583,12 @@ You MUST write a brief, natural response asking the user to review and click "Ap
               category: 'SEMANTIC'
             };
             this.memoryStore.proposeBelief(proposal);
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: `Mencatat: "${fact}". Ingatan telah disimpan.` });
+            
+            messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
+            messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
+            
+            const summaryResponse = await this.llm.generate(messages, []);
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
             return;
           }
 
