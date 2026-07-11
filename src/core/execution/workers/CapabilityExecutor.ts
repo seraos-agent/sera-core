@@ -1,18 +1,15 @@
 import { ExecutionExecutor } from './ExecutionExecutor';
 import { ExecutionTask, ExecutionEvent } from '../aios_types';
 import { EventEmitter } from 'events';
-import { WorkerManager } from '../../../workers/WorkerManager';
 import { Logger } from '../../logging/Logger';
 import { CheckpointStore } from '../CheckpointStore';
-
-import { WorkItem, WorkItemStatus } from '../../../core/work-items/types';
+import { EventTypes, GoalResultPayload, StandardEvent } from '../../../core/events/types';
 
 export class CapabilityExecutor implements ExecutionExecutor {
   private logger = new Logger('CapabilityExecutor');
 
   constructor(
     private eventBus: EventEmitter,
-    private workerManager: WorkerManager,
     private checkpointStore: CheckpointStore
   ) {}
 
@@ -48,26 +45,41 @@ export class CapabilityExecutor implements ExecutionExecutor {
           throw new Error('Execution Cancelled');
         }
 
-        const workItem: WorkItem = {
-          id: `wi-${Date.now()}`,
-          goalId: task.context.goalId || 'unknown-goal',
-          planId: task.context.planId || '',
-          planStepId: step.id,
-          action: step.action,
-          payload: step.payload,
-          status: 'PENDING' as WorkItemStatus,
-          createdAt: Date.now()
-        };
+        const stepRequestId = `req-${task.taskId}-${step.id}`;
 
-        const result = await this.workerManager.dispatch(workItem);
-        if (result.status !== 'SUCCESS') {
+        const result: GoalResultPayload = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            this.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, handler);
+            reject(new Error(`Timeout waiting for capability execution of step ${step.id}`));
+          }, 60000); // 60s timeout for safety, should be driven by ExecutionPolicy
+
+          const handler = (event: StandardEvent<GoalResultPayload>) => {
+            if (event.correlationId === stepRequestId) {
+              clearTimeout(timeout);
+              this.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, handler);
+              resolve(event.payload as GoalResultPayload);
+            }
+          };
+
+          this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, handler);
+
+          this.eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+            id: `evt-${Date.now()}`,
+            type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+            source: 'CapabilityExecutor',
+            payload: {
+              actionType: step.action,
+              actionPayload: step.payload,
+              context: { triggerId: stepRequestId }
+            },
+            timestamp: Date.now()
+          });
+        });
+
+        if (!result.success) {
           allSuccess = false;
-          break;
+          throw new Error(result.errorMessage || 'Step execution failed without explicit error');
         }
-      }
-      
-      if (!allSuccess) {
-        throw new Error('Step execution failed');
       }
 
       this.eventBus.emit('system.execution.completed', {

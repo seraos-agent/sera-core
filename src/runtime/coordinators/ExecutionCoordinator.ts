@@ -6,7 +6,7 @@ import { ExecutionTrace } from '../../core/execution/types';
 import { DelegationScope, AuthorityContext } from '../../delegation/types';
 import { ConstitutionContext } from '../../constitution/types';
 
-import { WorkerManager } from '../../workers/WorkerManager';
+
 import { ConstitutionEngine } from '../../constitution/ConstitutionEngine';
 import { AuthorityService } from '../../delegation/AuthorityService';
 import { FeedbackPipeline } from '../../core/feedback/FeedbackPipeline';
@@ -31,21 +31,21 @@ export class ExecutionCoordinator {
   private eventBus: EventEmitter;
 
   constructor(
-    private workerManager: WorkerManager,
     private constitutionEngine: ConstitutionEngine,
     private authorityService: AuthorityService,
     private feedbackPipeline: FeedbackPipeline | undefined,
     private executionTraceStore: ExecutionTraceStore | undefined,
-    private memoryStore: MemoryStore
+    private memoryStore: MemoryStore,
+    eventBus?: EventEmitter
   ) {
-    this.eventBus = new EventEmitter();
+    this.eventBus = eventBus || new EventEmitter();
     this.workerPool = new WorkerPool();
     this.scheduler = new ExecutionScheduler(this.workerPool, this.eventBus);
     this.checkpointStore = new CheckpointStore();
     this.supervisor = new ExecutionSupervisor(this.eventBus, this.workerPool, this.scheduler.getActiveInstances());
     
     // Register Default Worker
-    const capExecutor = new CapabilityExecutor(this.eventBus, this.workerManager, this.checkpointStore);
+    const capExecutor = new CapabilityExecutor(this.eventBus, this.checkpointStore);
     const defaultWorker = new ExecutionWorker('worker-default-1', capExecutor);
     this.workerPool.registerWorker(defaultWorker);
 

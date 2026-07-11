@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { WorkerManager } from '../workers/WorkerManager';
+
 import { WorkItem } from '../core/work-items/types';
 import { WorldStateService } from '../core/world-state/WorldStateService';
 import { Goal } from '../core/goals/types';
@@ -53,7 +53,6 @@ export class Runtime {
   public proposalManager!: ProposalManager;
   public memoryStore: MemoryStore;
   private authorityService: AuthorityService;
-  private workerManager: WorkerManager;
   private constitutionEngine: ConstitutionEngine;
   private feedbackPipeline?: FeedbackPipeline;
   private coherenceMonitor?: CoherenceMonitor;
@@ -92,7 +91,6 @@ export class Runtime {
   private readonly EVALUATION_INTERVAL = 3;
 
   constructor(
-    workerManager: WorkerManager,
     constitutionEngine: ConstitutionEngine = new ConstitutionEngine(),
     feedbackPipeline?: FeedbackPipeline,
     coherenceMonitor?: CoherenceMonitor,
@@ -120,7 +118,6 @@ export class Runtime {
   ) {
     this.memoryStore = memoryStore || new MemoryStore();
     this.authorityService = new AuthorityService();
-    this.workerManager = workerManager;
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;
     this.coherenceMonitor = coherenceMonitor;
@@ -169,12 +166,12 @@ export class Runtime {
     );
 
     this.executionCoordinator = new ExecutionCoordinator(
-      this.workerManager,
       this.constitutionEngine,
       this.authorityService,
       this.feedbackPipeline,
       this.executionTraceStore,
-      this.memoryStore
+      this.memoryStore,
+      this.eventBus
     );
   }
 

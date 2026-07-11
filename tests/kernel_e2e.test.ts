@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { Runtime } from '../src/runtime/Runtime';
-import { WorkerManager } from '../src/workers/WorkerManager';
+
 import { MemoryStore } from '../src/memory/MemoryStore';
 import { Planner } from '../src/core/planner/Planner';
 import { StrategyStore } from '../src/core/strategy/StrategyStore';
@@ -16,8 +16,7 @@ async function runTest() {
   console.log('--- Starting Kernel E2E Integration Test ---');
   
   const eventBus = new EventEmitter();
-  const workerManager = new WorkerManager();
-  
+
   const memoryStore = new MemoryStore();
   const planner = new Planner();
   const strategyStore = new StrategyStore();
@@ -28,7 +27,6 @@ async function runTest() {
   const constitutionEngine = new ConstitutionEngine();
   
   const runtime = new Runtime(
-    workerManager,
     constitutionEngine, // constitutionEngine
     undefined, // feedbackPipeline
     undefined, // coherenceMonitor
@@ -71,15 +69,29 @@ async function runTest() {
   };
   goalEngine.registerGoal(testGoal);
 
-  // Spy on WorkerManager to verify which tool was actually dispatched
+  // Mock GoalBridge / Capability execution by listening to eventBus
   let dispatchedTool = '';
-  const originalDispatch = workerManager.dispatch.bind(workerManager);
-  workerManager.dispatch = async (workItem: any) => {
-    if (workItem.payload?.toolId) {
-      dispatchedTool = workItem.payload.toolId;
+  eventBus.on('domain.action.dispatched', (event: any) => {
+    if (event.payload?.actionPayload?.toolId) {
+      dispatchedTool = event.payload.actionPayload.toolId;
     }
-    return { status: 'SUCCESS', result: {}, events: [] };
-  };
+    
+    // Simulate async execution and response
+    setTimeout(() => {
+      eventBus.emit('domain.goal.result', {
+        id: `evt-res-${Date.now()}`,
+        type: 'domain.goal.result',
+        source: 'MockGoalBridge',
+        correlationId: event.payload.context.triggerId,
+        payload: {
+          requestId: event.payload.context.triggerId,
+          success: true,
+          data: {},
+        },
+        timestamp: Date.now()
+      });
+    }, 10);
+  });
 
   // 2. Mock a failed tool episodic event 3 times to make it CONFIRMED
   for (let i = 0; i < 3; i++) {

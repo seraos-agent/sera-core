@@ -14,7 +14,7 @@ import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
 import { Runtime } from '../runtime/Runtime';
 import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
-import { WorkerManager } from '../workers/WorkerManager';
+
 import { observationStore } from '../core/perception/ObservationStore';
 import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 import { AuditLogger } from '../core/telemetry/AuditLogger';
@@ -72,7 +72,7 @@ const io = new Server(httpServer, {
 const eventBus = new EventEmitter();
 
 // Core Services
-const workerManager = new WorkerManager();
+
 const triggerStore = new InMemoryTriggerStore();
 const triggerEngine = new TriggerEngine(triggerStore, eventBus);
 const goalBridge = new GoalBridge(eventBus);
@@ -121,7 +121,7 @@ const epistemicPolicyEngine = new EpistemicPolicyEngine(memoryStore);
 const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyEngine, goalEngine, coherenceMonitor);
 
 const runtime = new Runtime(
-  workerManager,
+
   constitutionEngine,
   feedbackPipeline,
   coherenceMonitor,
