@@ -18,6 +18,7 @@ interface ChatViewProps {
   lastViewedCount: number;
   setLastViewedCount: (n: number) => void;
   currentActivity: string | null;
+  onCancelChat: () => void;
 }
 
 export function ChatView({
@@ -31,7 +32,8 @@ export function ChatView({
   observations,
   lastViewedCount,
   setLastViewedCount,
-  currentActivity
+  currentActivity,
+  onCancelChat
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -136,9 +138,11 @@ export function ChatView({
             theme={theme} 
             onSend={onSend} 
             disabled={!socket}
+            isProcessing={!!currentActivity}
             showObservations={showObservations}
             isMobileView={isMobileView}
             onOpenSidebar={onOpenSidebar}
+            onCancelChat={onCancelChat}
             onToggleObservations={() => {
               const nextState = !showObservations;
               setShowObservations(nextState);

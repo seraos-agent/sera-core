@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   ChevronLeft as CloseIcon, 
   MonitorPlay, 
@@ -32,7 +32,6 @@ const CATEGORIES = [
   { id: "productivity", name: "Stay Organized", icon: CalendarCheck },
   { id: "commerce", name: "Run Business", icon: Store },
   { id: "social", name: "Grow Audience", icon: Megaphone },
-  { id: "knowledge", name: "Knowledge", icon: BookOpen },
   { id: "smarthome", name: "Smart Home", icon: Home },
 ];
 
@@ -77,11 +76,6 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
     { name: "LinkedIn", icon: Megaphone },
     { name: "Bluesky", icon: "bluesky-icon" },
   ],
-  knowledge: [
-    { name: "Wikipedia", icon: BookOpen },
-    { name: "Google Scholar", icon: BookOpen },
-    { name: "ArXiv", icon: BookOpen },
-  ],
   smarthome: [
     { name: "Home Assistant", icon: Home },
     { name: "Philips Hue", icon: Home },
@@ -92,7 +86,18 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
 export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  
+  const [activeCategory, setActiveCategory] = useState<string | null>(() => {
+    return localStorage.getItem("sera_active_category") || null;
+  });
+
+  useEffect(() => {
+    if (activeCategory === null) {
+      localStorage.removeItem("sera_active_category");
+    } else {
+      localStorage.setItem("sera_active_category", activeCategory);
+    }
+  }, [activeCategory]);
 
   const renderCategories = () => (
     <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileView ? 12 : 16 }}>

@@ -1,4 +1,4 @@
-import { X, Plus, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { X, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
 
@@ -127,12 +127,6 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
               </div>
             )}
 
-            <button
-              title={!open ? "Settings" : undefined}
-              style={{ display: "flex", alignItems: "center", padding: "4px", borderRadius: 6, border: "none", background: "transparent", color: theme.inkFaint, cursor: "pointer", flexShrink: 0 }}
-            >
-              <Settings size={15} />
-            </button>
           </div>
         </div>
       </div>

@@ -23,6 +23,14 @@ export function useSocket(
     });
   }, []);
 
+  const cancelChat = useCallback(() => {
+    if (socket) {
+      socket.emit("chat:cancel");
+      // Give immediate visual feedback by clearing the spinner
+      setCurrentActivity(null);
+    }
+  }, [socket]);
+
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
@@ -102,6 +110,7 @@ export function useSocket(
     setMessages,
     observations,
     streamReply,
-    currentActivity
+    currentActivity,
+    cancelChat
   };
 }

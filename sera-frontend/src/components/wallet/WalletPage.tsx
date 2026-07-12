@@ -163,7 +163,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             {/* ── Flat Theme-Aware Card ── */}
             <div style={{
               background: theme.surface,
-              borderRadius: 24, padding: "28px 24px 24px", position: "relative", overflow: "hidden", marginBottom: 32,
+              borderRadius: 24, padding: isMobileView ? "16px" : "28px 24px 24px", position: "relative", overflow: "hidden", marginBottom: isMobileView ? 20 : 32,
               border: `1px solid ${theme.border}`
             }}>
               <div style={{ position: "relative", zIndex: 1 }}>
@@ -172,7 +172,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   <span style={{ background: theme.surface2, color: theme.inkSoft, padding: "4px 10px", borderRadius: 12, fontSize: 10, letterSpacing: 0.5, fontWeight: 700 }}>BASE MAINNET</span>
                 </div>
                 
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 38 : 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 32 : 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
                   ${(parsedAgentBalance + parsedVaultBalance).toFixed(2)}
                   <span style={{ fontSize: isMobileView ? 14 : 16, fontWeight: 600, color: theme.inkSoft }}>USDC</span>
                 </div>
@@ -185,15 +185,15 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 )}
 
                 {/* Nested Bento for accounts */}
-                <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
-                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: "14px 16px", border: `1px solid ${theme.border}` }}>
+                <div style={{ display: "flex", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 20 : 32 }}>
+                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortAgent}</div>
                   </div>
-                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: "14px 16px", border: `1px solid ${theme.border}` }}>
+                  <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Sera</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 18, fontWeight: 600, color: theme.ink }}>{parsedVaultBalance.toFixed(2)}</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedVaultBalance.toFixed(2)}</div>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortVault || "—"}</div>
                   </div>
                 </div>
@@ -204,7 +204,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             <div>
               <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: theme.ink, marginBottom: 12 }}>Internal Transfer</div>
 
-              <div style={{ background: theme.surface, borderRadius: 20, border: `1px solid ${theme.border}`, padding: "20px" }}>
+              <div style={{ background: theme.surface, borderRadius: 20, border: `1px solid ${theme.border}`, padding: isMobileView ? "14px" : "20px" }}>
 
                 {/* ─ STEP: input ─ */}
                 {(step === "input" || step === "confirm") && (
@@ -236,7 +236,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                         <input
                           type="number" placeholder="0.00" value={amount}
                           onChange={e => { setAmount(e.target.value); setStep("input"); }}
-                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 28 : 36, fontWeight: 600, color: theme.ink, width: 0 }}
+                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 24 : 36, fontWeight: 600, color: theme.ink, width: 0 }}
                         />
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                           <button onClick={() => setAmount(activeBalance.toString())}

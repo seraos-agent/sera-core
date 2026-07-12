@@ -1,29 +1,77 @@
 import React, { useRef, useState } from "react";
-import { Plus, Mic, ArrowUp, Bell, FileText, X, PanelLeft } from "lucide-react";
+import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square } from "lucide-react";
 import type { ThemeType } from "../../theme";
+
+interface ChatInputProps {
+  theme: ThemeType;
+  onSend: (text: string) => void;
+  disabled?: boolean;
+  isProcessing?: boolean;
+  onToggleObservations?: () => void;
+  showObservations?: boolean;
+  unreadCount?: number;
+  isMobileView?: boolean;
+  onOpenSidebar?: () => void;
+  onCancelChat?: () => void;
+}
 
 export function ChatInput({ 
   theme, 
   onSend, 
   disabled,
+  isProcessing,
   onToggleObservations,
   showObservations,
   unreadCount = 0,
   isMobileView,
-  onOpenSidebar
-}: { 
-  theme: ThemeType, 
-  onSend: (text: string) => void, 
-  disabled?: boolean,
-  onToggleObservations?: () => void,
-  showObservations?: boolean,
-  unreadCount?: number,
-  isMobileView?: boolean,
-  onOpenSidebar?: () => void
-}) {
+  onOpenSidebar,
+  onCancelChat
+}: ChatInputProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    if (showAttachMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAttachMenu]);
+
+  const handleAttachOption = (type: 'document' | 'image' | 'camera') => {
+    setShowAttachMenu(false);
+    if (fileInputRef.current) {
+      if (type === 'document') {
+        fileInputRef.current.accept = '.pdf,.txt,.csv,.md,.json';
+        fileInputRef.current.removeAttribute('capture');
+      } else if (type === 'image') {
+        fileInputRef.current.accept = 'image/*';
+        fileInputRef.current.removeAttribute('capture');
+      } else if (type === 'camera') {
+        fileInputRef.current.accept = 'image/*';
+        fileInputRef.current.setAttribute('capture', 'environment');
+      }
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // For now, mock adding the file name to attachments
+    setAttachments(prev => [...prev, `[Attached: ${file.name}]`]);
+    e.target.value = ''; // Reset
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -66,6 +114,14 @@ export function ChatInput({
   return (
     <div style={{ padding: "0", flexShrink: 0 }}>
       <div style={{ maxWidth: 760, margin: "0 auto", position: "relative" }}>
+        
+        {/* Hidden file input */}
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          style={{ display: 'none' }} 
+          onChange={handleFileChange}
+        />
         <div
           style={{
             display: "flex",
@@ -138,18 +194,79 @@ export function ChatInput({
                   <PanelLeft size={20} />
                 </button>
               )}
-              <button
-                title="Attach file"
-                disabled={disabled}
-                style={{
-                  background: "transparent", border: "none", color: theme.inkSoft, 
-                  cursor: disabled ? "default" : "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center"
-                }}
-              >
-                <Plus size={20} />
-              </button>
-              
+              <div ref={menuRef} style={{ position: "relative" }}>
+                <button
+                  title="Attach file"
+                  onClick={() => setShowAttachMenu(!showAttachMenu)}
+                  disabled={disabled}
+                  style={{
+                    background: showAttachMenu ? theme.surface2 : "transparent", border: "none", 
+                    color: showAttachMenu ? theme.ink : theme.inkSoft, 
+                    cursor: disabled ? "default" : "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: 8, padding: 4, transition: "all 0.2s"
+                  }}
+                >
+                  <Plus size={20} />
+                </button>
+                
+                {/* Pop-up Menu */}
+                {showAttachMenu && (
+                  <div style={{
+                    position: "absolute", bottom: "100%", left: 0, marginBottom: 8,
+                    background: theme.surface, border: `1px solid ${theme.border}`,
+                    borderRadius: 12, padding: 6, boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                    display: "flex", flexDirection: "column", gap: 2, minWidth: 160, zIndex: 50,
+                    animation: "walletPageIn 150ms cubic-bezier(0.16, 1, 0.3, 1) forwards"
+                  }}>
+                    <button
+                      onClick={() => handleAttachOption('document')}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                        background: "transparent", border: "none", borderRadius: 6,
+                        color: theme.ink, fontSize: 13, fontWeight: 500, cursor: "pointer",
+                        transition: "background 0.2s", width: "100%", textAlign: "left"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = theme.surface2}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <FileText size={16} color={theme.inkSoft} />
+                      Document
+                    </button>
+                    <button
+                      onClick={() => handleAttachOption('image')}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                        background: "transparent", border: "none", borderRadius: 6,
+                        color: theme.ink, fontSize: 13, fontWeight: 500, cursor: "pointer",
+                        transition: "background 0.2s", width: "100%", textAlign: "left"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = theme.surface2}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <ImageIcon size={16} color={theme.inkSoft} />
+                      Library
+                    </button>
+                    <button
+                      onClick={() => handleAttachOption('camera')}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                        background: "transparent", border: "none", borderRadius: 6,
+                        color: theme.ink, fontSize: 13, fontWeight: 500, cursor: "pointer",
+                        transition: "background 0.2s", width: "100%", textAlign: "left"
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = theme.surface2}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <Camera size={16} color={theme.inkSoft} />
+                      Camera
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <button
                 title="Observations"
                 onClick={onToggleObservations}
@@ -159,7 +276,7 @@ export function ChatInput({
                   color: showObservations ? theme.ink : theme.inkSoft, 
                   cursor: disabled ? "default" : "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  borderRadius: 8, padding: 4, marginLeft: -4, transition: "all 0.2s",
+                  borderRadius: 8, padding: 4, transition: "all 0.2s",
                   position: "relative"
                 }}
               >
@@ -173,40 +290,37 @@ export function ChatInput({
                   }} />
                 )}
               </button>
-            </div>
-            
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <button
-                title="Voice input"
-                disabled={disabled}
-                style={{
-                  background: "transparent", border: "none", color: theme.inkSoft, 
-                  cursor: disabled ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center"
-                }}
-              >
-                <Mic size={20} />
-              </button>
 
               <button
-                onClick={handleSend}
-                disabled={(!input.trim() && attachments.length === 0) || disabled}
+                onClick={() => {
+                  if (isProcessing) {
+                    if (onCancelChat) onCancelChat();
+                  } else {
+                    handleSend();
+                  }
+                }}
+                disabled={(!isProcessing && !input.trim() && attachments.length === 0) || (disabled && !isProcessing)}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
                   border: "none",
-                  background: (input.trim() || attachments.length > 0) && !disabled ? theme.accent : theme.surface2,
-                  color: (input.trim() || attachments.length > 0) && !disabled ? theme.accentInk : theme.inkSoft,
+                  background: isProcessing ? theme.surface2 : ((input.trim() || attachments.length > 0) && !disabled ? theme.accent : theme.surface2),
+                  color: isProcessing ? theme.ink : ((input.trim() || attachments.length > 0) && !disabled ? theme.accentInk : theme.inkSoft),
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: (input.trim() || attachments.length > 0) && !disabled ? "pointer" : "default",
+                  cursor: isProcessing || ((input.trim() || attachments.length > 0) && !disabled) ? "pointer" : "default",
                   flexShrink: 0,
-                  transform: (input.trim() || attachments.length > 0) && !disabled ? "scale(1)" : "scale(0.95)",
+                  transform: isProcessing || ((input.trim() || attachments.length > 0) && !disabled) ? "scale(1)" : "scale(0.95)",
                   transition: "all 180ms ease",
                 }}
               >
-                <ArrowUp size={18} />
+                {isProcessing ? (
+                  <Square size={14} fill="currentColor" strokeWidth={0} />
+                ) : (
+                  <ArrowUp size={18} />
+                )}
               </button>
             </div>
           </div>

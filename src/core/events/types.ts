@@ -27,6 +27,7 @@ export const EventTypes = {
   DIALOGUE_USER_OBSERVED: 'dialogue.user.observed',
   DIALOGUE_AGENT_SPEAK: 'dialogue.agent.speak',
   DIALOGUE_ACTIVITY: 'dialogue.activity',
+  DIALOGUE_USER_CANCELLED: 'dialogue.user.cancelled',
   DIALOGUE_PROPOSAL_GENERATED: 'dialogue.proposal.generated',
   DIALOGUE_PROPOSAL_APPROVED: 'dialogue.proposal.approved',
   DIALOGUE_PROPOSAL_REJECTED: 'dialogue.proposal.rejected',

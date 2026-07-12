@@ -32,11 +32,19 @@ export default function App() {
 
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
-  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">("chat");
+  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">(() => {
+    const saved = localStorage.getItem("sera_view") as any;
+    return ["chat", "wallet", "connections", "automations"].includes(saved) ? saved : "chat";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sera_view", currentView);
+  }, [currentView]);
+
   const [lastViewedCount, setLastViewedCount] = useState(0);
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages, observations, currentActivity } = useSocket(setWalletState, setMode);
+  const { socket, messages, setMessages, observations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
 
@@ -134,6 +142,7 @@ export default function App() {
             lastViewedCount={lastViewedCount}
             setLastViewedCount={setLastViewedCount}
             currentActivity={currentActivity}
+            onCancelChat={cancelChat}
           />
         )}
       </div>

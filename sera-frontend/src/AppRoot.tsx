@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LandingPage } from './components/landing/LandingPage';
 import App from './App';
 
 export default function AppRoot() {
-  const [currentView, setCurrentView] = useState<'landing' | 'app'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'app'>(() => {
+    return (localStorage.getItem("sera_app_root_view") as any) === 'app' ? 'app' : 'landing';
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sera_app_root_view", currentView);
+  }, [currentView]);
 
   const handleLaunchApp = () => {
     if (import.meta.env.DEV) {

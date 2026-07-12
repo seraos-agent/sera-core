@@ -32,7 +32,7 @@ export class QwenAdapter {
     this.model = model;
   }
 
-  async generate(messages: QwenMessage[], tools?: SeraTool[]): Promise<QwenResponse> {
+  async generate(messages: QwenMessage[], tools?: SeraTool[], abortSignal?: AbortSignal): Promise<QwenResponse> {
     const dashScopeTools = tools?.map(t => ({
       type: 'function',
       function: {
@@ -58,6 +58,7 @@ export class QwenAdapter {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: abortSignal
     });
 
     if (!response.ok) {

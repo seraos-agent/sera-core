@@ -353,6 +353,18 @@ io.on('connection', (socket: Socket) => {
     io.emit('chat:history', []);
   });
 
+  socket.on('chat:cancel', () => {
+    console.log(`[Server] Received chat:cancel → dispatching DIALOGUE_USER_CANCELLED`);
+    const event: StandardEvent = {
+      id: `evt-${Date.now()}`,
+      type: EventTypes.DIALOGUE_USER_CANCELLED,
+      source: 'SocketServer',
+      payload: {},
+      timestamp: Date.now(),
+    };
+    eventBus.emit(EventTypes.DIALOGUE_USER_CANCELLED, event);
+  });
+
   // ── MOUTH: Sera events → socket messages ─────────────────────────────────
 
   const onAgentSpeak = (event: StandardEvent) => {

@@ -96,6 +96,7 @@ export class DialogueEngine {
   private capabilityCatalog: any;
   private memoryStore: IMemoryStore;
   private episodicReader: EpisodicMemoryReader;
+  private activeAbortController: AbortController | null = null;
 
   /**
    * TRANSPORT-AGNOSTIC RESPONSE ROUTING
@@ -138,6 +139,7 @@ export class DialogueEngine {
     this.loadConsentedUsers();
 
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_USER_CANCELLED, this.onUserCancelled.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
 
     console.log('[DialogueEngine] Initialized and listening for dialogue events.');
@@ -399,8 +401,22 @@ export class DialogueEngine {
     }
   }
 
+  private onUserCancelled(event: StandardEvent): void {
+    console.log('[DialogueEngine] Received DIALOGUE_USER_CANCELLED. Aborting active generation if any.');
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+    }
+  }
+
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
     const userMessage: string = event.payload.message;
+
+    // Reset abort controller for the new request
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+    }
+    this.activeAbortController = new AbortController();
 
     // Capture any response routing context injected by the transport layer (e.g. SlackAdapter).
     // This is stored as opaque state and forwarded on every DIALOGUE_AGENT_SPEAK emit.
@@ -478,7 +494,7 @@ export class DialogueEngine {
             const messages = this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemRejectionMsg });
 
-            const response = await this.llm.generate(messages);
+            const response = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
 
             const rawText = response.text.trim();
             // LLM messages are no longer persisted
@@ -509,7 +525,7 @@ Do NOT say that you are processing, executing, or performing the action right no
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
           const messages = this.buildWorkingMemory();
           messages.push({ role: 'system', content: systemProposalMsg });
-          const proposalResponse = await this.llm.generate(messages);
+          const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
 
           let summaryText = proposalResponse.text.trim();
           
@@ -562,7 +578,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           requiresApproval: false
         });
 
-        const response = await this.llm.generate(messages, availableTools);
+        const response = await this.llm.generate(messages, availableTools, this.activeAbortController?.signal);
 
         // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
         if (response.toolCalls && response.toolCalls.length > 0) {
@@ -595,7 +611,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
             messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
             
-            const summaryResponse = await this.llm.generate(messages, []);
+            const summaryResponse = await this.llm.generate(messages, [], this.activeAbortController?.signal);
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
             return;
           }
@@ -631,7 +647,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
                 role: 'system', 
                 content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.` 
               });
-              const failResponse = await this.llm.generate(messages);
+              const failResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
               this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
               return;
             }
@@ -658,7 +674,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
             const messages = this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemProposalMsg });
 
-            const proposalResponse = await this.llm.generate(messages);
+            const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
 
             const summaryText = proposalResponse.text.trim();
             // LLM messages are no longer persisted
@@ -703,10 +719,19 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       }
 
     } catch (error: any) {
-      console.error('[DialogueEngine] Error:', error.message);
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
-      });
+      if (error.name === 'AbortError') {
+        console.log('[DialogueEngine] LLM generation aborted by user.');
+        // We can emit a specific message or just end silently
+        // Let's emit an activity update that clears the processing spinner
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: '[Generation stopped by user]',
+        });
+      } else {
+        console.error('[DialogueEngine] Error:', error.message);
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
+        });
+      }
     } finally {
       // Clear routing context after every request cycle to prevent cross-request contamination.
       // The next message (from any transport layer) starts with a clean slate.
@@ -731,7 +756,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
     const messages = this.buildWorkingMemory();
     messages.push({ role: 'user', content: narratePrompt });
 
-    const narrateResponse = await this.llm.generate(messages);
+    const narrateResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
 
     const generatedText = narrateResponse.text.trim();
     // LLM messages are no longer persisted
