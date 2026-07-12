@@ -21,8 +21,15 @@ function useFonts() {
 
 export default function App() {
   useFonts();
-  
-  const [mode, setMode] = useState<"light" | "dark">("light");
+  const [mode, setMode] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("sera_theme");
+    return (saved === "light" || saved === "dark") ? saved : "light";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("sera_theme", mode);
+  }, [mode]);
+
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">("chat");

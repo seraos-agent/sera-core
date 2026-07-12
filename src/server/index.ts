@@ -216,14 +216,17 @@ const metricsAggregator = new MetricsAggregator(eventBus, metricsStore);
 // Log metrics periodically for internal observability
 setInterval(() => {
   const m = metricsStore.getMetrics();
-  console.log('\n--- INTERNAL COGNITIVE TELEMETRY ---');
-  console.log(`Memory: Verified=${m.memory.verified} | Superseded=${m.memory.superseded} | Invalidated=${m.memory.invalidated}`);
-  console.log(`Governance: Reviewed=${m.governance.actionsReviewed} | Allowed=${m.governance.allowed} | Denied=${m.governance.denied} | FalsePositives=${m.governance.falsePositive}`);
-  console.log(`Reflection: Patterns=${m.reflection.patternsLearned} | Wrong=${m.reflection.wrongPatterns}`);
-  console.log(`Worker: Success=${m.worker.success} | Failure=${m.worker.failure} | WinRate=${(m.worker.goalCompletionRate * 100).toFixed(1)}%`);
-  console.log(`Execution: TotalTasks=${m.execution.totalExecuted} | AvgLatency=${m.execution.avgLatencyMs.toFixed(0)}ms`);
-  console.log('------------------------------------\n');
-}, 30000); // Every 30 seconds
+  // Only log if there's actual execution activity to prevent terminal spam
+  if (m.execution.totalExecuted > 0 || m.governance.actionsReviewed > 0) {
+    console.log('\n--- INTERNAL COGNITIVE TELEMETRY ---');
+    console.log(`Memory: Verified=${m.memory.verified} | Superseded=${m.memory.superseded} | Invalidated=${m.memory.invalidated}`);
+    console.log(`Governance: Reviewed=${m.governance.actionsReviewed} | Allowed=${m.governance.allowed} | Denied=${m.governance.denied} | FalsePositives=${m.governance.falsePositive}`);
+    console.log(`Reflection: Patterns=${m.reflection.patternsLearned} | Wrong=${m.reflection.wrongPatterns}`);
+    console.log(`Worker: Success=${m.worker.success} | Failure=${m.worker.failure} | WinRate=${(m.worker.goalCompletionRate * 100).toFixed(1)}%`);
+    console.log(`Execution: TotalTasks=${m.execution.totalExecuted} | AvgLatency=${m.execution.avgLatencyMs.toFixed(0)}ms`);
+    console.log('------------------------------------\n');
+  }
+}, 60000); // Check every 60 seconds
 
 export { runtime };
 

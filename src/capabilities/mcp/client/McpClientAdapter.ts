@@ -10,7 +10,7 @@ export class McpClientAdapter {
   private client: Client;
   private transport: StdioClientTransport | null = null;
   private logger = new Logger('McpClientAdapter');
-  private supportedTools: Set<string> = new Set();
+  private supportedTools: Map<string, string> = new Map(); // friendlyName -> originalName
   
   constructor(
     private serverName: string,
@@ -62,16 +62,28 @@ export class McpClientAdapter {
       }
 
       const seraTools: SeraTool[] = tools.map((t: any) => {
-        this.supportedTools.add(t.name);
+        // Explicit elegant mappings for known tools
+        const elegantNames: Record<string, string> = {
+          'brave_web_search': 'search',
+          'brave_local_search': 'local_search'
+        };
+
+        // Use the explicit name, or strip the vendor prefix as a fallback
+        let friendlyName = elegantNames[t.name] || t.name;
+        if (friendlyName === t.name && friendlyName.startsWith('brave_')) {
+          friendlyName = friendlyName.replace(/^brave_/, '');
+        }
+        
+        this.supportedTools.set(friendlyName, t.name);
         return {
-          name: t.name,
+          name: friendlyName,
           description: `[MCP: ${this.serverName}] ${t.description || ''}`,
           parameters: t.inputSchema || {}
         };
       });
 
       this.catalog.registerTools(seraTools);
-      this.logger.info(`Registered ${seraTools.length} tools from MCP Server '${this.serverName}' into CapabilityCatalog.`);
+      this.logger.info(`Registered ${seraTools.length} tools from MCP Server '${this.serverName}' into CapabilityCatalog with friendly names.`);
     } catch (e: any) {
       this.logger.error(`Failed to discover tools from '${this.serverName}': ${e.message}`);
     }
@@ -81,16 +93,17 @@ export class McpClientAdapter {
     const { actionType, actionPayload, context } = event.payload;
     const requestId = context?.triggerId || `req-${Date.now()}`;
     
-    // Check if the requested tool is managed by this MCP server
-    if (!this.supportedTools.has(actionType)) {
+    // Check if the requested tool is managed by this MCP server (using the friendly name)
+    const originalToolName = this.supportedTools.get(actionType);
+    if (!originalToolName) {
       return; // Not our tool, ignore
     }
 
-    this.logger.info(`Executing MCP Tool '${actionType}' on server '${this.serverName}'`);
+    this.logger.info(`Executing MCP Tool '${actionType}' (mapped to '${originalToolName}') on server '${this.serverName}'`);
 
     try {
       const result = await this.client.callTool({
-        name: actionType,
+        name: originalToolName,
         arguments: actionPayload || {}
       });
 

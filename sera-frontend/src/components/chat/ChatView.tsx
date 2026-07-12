@@ -91,6 +91,7 @@ export function ChatView({
                 onCopy={handleCopy}
                 copied={copied}
                 onApprove={handleApprove}
+                onClearChat={() => socket?.emit("chat:clear")}
               />
             ))}
 

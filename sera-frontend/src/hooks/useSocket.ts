@@ -69,6 +69,8 @@ export function useSocket(
         setMode(cmd.payload);
       } else if (cmd.type === "CLEAR_CHAT") {
         newSocket.emit("chat:clear");
+      } else if (cmd.type === "CLEAR_CHAT_COUNTDOWN") {
+        setMessages(prev => [...prev, { id: Date.now() + Math.random(), type: 'clear_chat_countdown', role: 'agent' }]);
       }
     });
 

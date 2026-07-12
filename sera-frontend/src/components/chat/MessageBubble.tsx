@@ -3,13 +3,63 @@ import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useState, useEffect } from 'react';
 
-export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
+function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear: () => void }) {
+  const [timeLeft, setTimeLeft] = useState(5);
+  const [canceled, setCanceled] = useState(false);
+
+  useEffect(() => {
+    if (canceled) return;
+    if (timeLeft <= 0) {
+      onClear();
+      return;
+    }
+    const timer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [timeLeft, canceled, onClear]);
+
+  if (canceled) {
+    return <div style={{ color: theme.inkFaint, fontSize: 13, fontStyle: 'italic', padding: '8px 0' }}>Chat history clearing canceled.</div>;
+  }
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'space-between',
+      background: theme.surface2, 
+      border: `1px solid ${theme.border}`, 
+      borderRadius: 12, 
+      padding: '10px 14px', 
+      marginTop: 4, 
+      width: '100%', 
+      maxWidth: 300 
+    }}>
+      <div style={{ fontSize: 14, color: theme.ink, fontWeight: 500 }}>
+        Clearing chat in <span style={{ color: '#EF4444', fontWeight: 700, marginLeft: 2 }}>{timeLeft}</span>
+      </div>
+      <button 
+        onClick={() => setCanceled(true)}
+        style={{
+          background: theme.surface, border: `1px solid ${theme.border}`, color: theme.ink,
+          padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 500,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'background 0.2s'
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat }: {
   theme: ThemeType;
   msg: any;
   onCopy: (id: number, content: string) => void;
   copied: number | null;
   onApprove: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
+  onClearChat?: () => void;
 }) {
   const isUser = msg.role === "user";
   
@@ -30,6 +80,14 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
           <Activity size={13} color={theme.inkFaint} />
           {msg.content}
         </div>
+      </div>
+    );
+  }
+
+  if (msg.type === "clear_chat_countdown") {
+    return (
+      <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 22 }}>
+        <ClearChatCountdownCard theme={theme} onClear={() => onClearChat && onClearChat()} />
       </div>
     );
   }
@@ -148,7 +206,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove }: {
             }}
           >
             {copied === msg.id ? <Check size={13} /> : <Copy size={13} />}
-            {copied === msg.id ? "Disalin" : "Salin"}
+            {copied === msg.id ? "Copied" : "Copy"}
           </button>
         )}
       </div>

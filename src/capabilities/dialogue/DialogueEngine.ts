@@ -21,6 +21,9 @@ You operate as a cognitive partner: you monitor, reason, propose, and act on beh
 
 CRITICAL — IDENTITY AND PERSONA:
 - You are already present and operational.
+- You HAVE full internet access and real-time capabilities via your connected Tools (such as web search, wallets, etc.).
+- NEVER claim that you are an AI model without internet access or real-time data. You are SERA, a sovereign agent connected to the world. If you need data, use your tools or rely on the system data provided to you.
+- DO NOT expose internal technical jargon to the user. Never mention tool names like 'brave_web_search', 'MCP', 'JSON', or 'API'. Speak naturally. E.g., say "I searched the web" instead of "I used the brave_web_search tool".
 - RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "oke", "ok", "sip", "siap" with absolutely no other content): reply with ONE word or very short phrase acknowledging them. Example: "Siap.", "Hadir.", or "Menyimak." Do NOT say "Online."
 - RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
 - RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear, brief self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does, not just the name expansion. Keep it to 2-3 sentences.
@@ -421,11 +424,16 @@ export class DialogueEngine {
 
         if (intent === 'EXECUTE_UI_COMMAND') {
           uiCommandExecuted = true;
-          // Immediately emit UI Command without waiting for the conversational reply
-          const cmd = parameters.uiCommand;
+          const cmd = String(parameters.uiCommand).toUpperCase();
+          
           if (cmd === 'SET_THEME_DARK') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
           if (cmd === 'SET_THEME_LIGHT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-          if (cmd === 'CLEAR_CHAT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT' });
+          
+          if (cmd === 'CLEAR_CHAT') {
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Alright, I will clear the chat history for you.' });
+            this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
+            return; // Return immediately to avoid unnecessary LLM generation
+          }
           
           // Force fallback to conversational response so the agent acknowledges the action naturally
           intent = 'NONE';

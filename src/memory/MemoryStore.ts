@@ -31,7 +31,7 @@ export class MemoryStore {
     
     // Inject self into MemoryPolicyEngine via an adapter so it can call __mutate_protected
     this.policyEngine = new MemoryPolicyEngine({
-      get: (key: string) => this.keyIndex.get(key) as any,
+      getBeliefByKey: (key: string) => this.keyIndex.get(key) as any,
       __mutate_protected: (proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel) => {
         return this.__mutate_protected(proposal, newStatus, verification);
       }
