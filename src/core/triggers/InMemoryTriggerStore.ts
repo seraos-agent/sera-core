@@ -4,11 +4,21 @@ import * as path from 'path';
 
 export class InMemoryTriggerStore implements TriggerStore {
   private triggers: Map<string, Trigger> = new Map();
+  private basePath: string;
   private filePath: string;
 
   constructor() {
-    this.filePath = path.join(process.cwd(), '.data', 'triggers.json');
+    this.basePath = path.join(process.cwd(), '.data');
+    this.filePath = path.join(this.basePath, 'triggers_dev.json');
     this.load();
+  }
+
+  public switchUser(userAddress?: string): void {
+    const filename = userAddress ? `triggers_${userAddress.toLowerCase()}.json` : 'triggers_dev.json';
+    this.filePath = path.join(this.basePath, filename);
+    this.triggers = new Map();
+    this.load();
+    console.log(`[InMemoryTriggerStore] Switched context to ${filename}`);
   }
 
   private load(): void {

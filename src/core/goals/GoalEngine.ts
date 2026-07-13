@@ -1,8 +1,32 @@
 import { Goal, GoalStatus, GoalInvalidation } from './types';
 
 export class GoalEngine {
-  private goals: Map<string, Goal> = new Map();
-  private goalHistory: Map<string, { success: number, failure: number, updates: number }> = new Map();
+  private goalStores: Map<string, Map<string, Goal>> = new Map();
+  private historyStores: Map<string, Map<string, { success: number, failure: number, updates: number }>> = new Map();
+  private activeContext: string = 'dev';
+
+  constructor() {
+    this.goalStores.set(this.activeContext, new Map());
+    this.historyStores.set(this.activeContext, new Map());
+  }
+
+  public switchUser(userAddress?: string): void {
+    const contextId = userAddress ? userAddress.toLowerCase() : 'dev';
+    if (!this.goalStores.has(contextId)) {
+      this.goalStores.set(contextId, new Map());
+      this.historyStores.set(contextId, new Map());
+    }
+    this.activeContext = contextId;
+    console.log(`[GoalEngine] Switched context to ${contextId}`);
+  }
+
+  private get goals(): Map<string, Goal> {
+    return this.goalStores.get(this.activeContext)!;
+  }
+
+  private get goalHistory(): Map<string, { success: number, failure: number, updates: number }> {
+    return this.historyStores.get(this.activeContext)!;
+  }
 
   registerGoal(goal: Goal): void {
     if (goal.priority === undefined) goal.priority = 1.0;

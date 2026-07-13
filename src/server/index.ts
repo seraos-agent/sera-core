@@ -339,6 +339,15 @@ io.on('connection', (socket: Socket) => {
     if (wsService && typeof wsService.switchUser === 'function') {
       wsService.switchUser(address);
     }
+
+    // 6. Switch Executive & Intent States (Automations)
+    if (typeof triggerStore.switchUser === 'function') triggerStore.switchUser(address);
+    if (typeof intentStore.switchUser === 'function') intentStore.switchUser(address);
+    if (typeof proposalStore.switchUser === 'function') proposalStore.switchUser(address);
+    if (typeof goalEngine.switchUser === 'function') goalEngine.switchUser(address);
+    
+    // Refresh automations UI after switching context
+    socket.emit('automations:update', triggerStore.getAll());
   });
 
   // ── EARS: user message → USER_OBSERVATION event ───────────────────────────
