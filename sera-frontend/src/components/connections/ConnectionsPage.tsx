@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
-import { 
-  ChevronLeft as CloseIcon, 
-  MonitorPlay, 
-  Wallet, 
-  MessageCircle, 
-  Store, 
-  CalendarCheck, 
-  Megaphone, 
-  BookOpen, 
+import {
+  ChevronLeft as CloseIcon,
+  MonitorPlay,
+  Wallet,
+  MessageCircle,
+  Store,
+  CalendarCheck,
+  Megaphone,
+  BookOpen,
   Home,
   Cloud,
   Database,
@@ -20,6 +20,7 @@ import type { ThemeType } from "../../theme";
 
 interface WorkspacePageProps {
   theme: ThemeType;
+  walletState?: any; // Kept for backwards compatibility with App.tsx if still passed
   onBack: () => void;
   isMobileView?: boolean;
 }
@@ -86,7 +87,7 @@ const CAPABILITIES: Record<string, { name: string, icon: any }[]> = {
 export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
-  
+
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
     return localStorage.getItem("sera_active_category") || null;
   });
@@ -104,7 +105,7 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
       {CATEGORIES.map(cat => {
         const Icon = cat.icon;
         return (
-          <div 
+          <div
             key={cat.id}
             onClick={() => setActiveCategory(cat.id)}
             style={{
@@ -146,7 +147,7 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
           {caps.map(cap => {
             const Icon = cap.icon;
             return (
-              <div 
+              <div
                 key={cap.name}
                 style={{
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: isMobileView ? 10 : 14,
@@ -179,9 +180,9 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, animation: "walletPageIn 400ms cubic-bezier(.4,0,.2,1) forwards", minWidth: 0, minHeight: 0 }}>
       {/* Header */}
-      <div style={{ 
-        display: "flex", alignItems: "center", justifyContent: "space-between", 
-        padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: "none", background: theme.bg 
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: "none", background: theme.bg
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={activeCategory === null ? onBack : () => setActiveCategory(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 4 }}>
@@ -193,7 +194,7 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: `${isMobileView ? 24 : 48}px ${sidePad}px` }}>
         <div style={{ maxWidth: 860, margin: "0 auto" }}>
-          
+
           {activeCategory === null ? (
             <>
               <div style={{ fontFamily: "Fraunces, serif", fontSize: titleSize, fontWeight: 400, color: theme.ink, marginBottom: 12, letterSpacing: -0.5, textAlign: "center" }}>

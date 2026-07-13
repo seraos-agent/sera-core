@@ -10,12 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.2",
+    "@walletconnect/ethereum-provider": "^2.23.10",
+    "@web3modal/wagmi": "^5.1.11",
     "lucide-react": "^1.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "viem": "^2.55.1",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
@@ -25,5 +30,8 @@
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
+  },
+  "overrides": {
+    "@paulmillr/qr": "0.2.0"
   }
 }

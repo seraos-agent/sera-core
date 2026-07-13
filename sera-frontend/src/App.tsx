@@ -8,6 +8,36 @@ import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
 
+
+import { createWeb3Modal, useWeb3ModalTheme } from '@web3modal/wagmi/react';
+import { defaultWagmiConfig } from '@web3modal/wagmi/react/config';
+import { WagmiProvider } from 'wagmi';
+import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
+import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
+
+const queryClient = new QueryClient();
+const projectId = '58d806d66c104f547275d0afe4086b04';
+
+const metadata = {
+  name: 'SERA OS',
+  description: 'SERA OS Web3 Interface',
+  url: 'https://sera-os.app',
+  icons: ['https://avatars.githubusercontent.com/u/37784886']
+};
+
+const chains = [base, mainnet, polygon, arbitrum] as const;
+const wagmiConfig = defaultWagmiConfig({
+  chains,
+  projectId,
+  metadata,
+});
+
+createWeb3Modal({
+  wagmiConfig,
+  projectId,
+  themeMode: 'light',
+});
+
 function useFonts() {
   useEffect(() => {
     if (document.getElementById(FONT_LINK_ID)) return;
@@ -25,6 +55,12 @@ export default function App() {
     const saved = localStorage.getItem("sera_theme");
     return (saved === "light" || saved === "dark") ? saved : "light";
   });
+
+  const { setThemeMode } = useWeb3ModalTheme();
+
+  useEffect(() => {
+    setThemeMode(mode);
+  }, [mode, setThemeMode]);
 
   useEffect(() => {
     localStorage.setItem("sera_theme", mode);
@@ -62,7 +98,7 @@ export default function App() {
     const nextMsgId = Date.now();
     const userMsg = { id: nextMsgId, role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
-    
+
     if (socket) {
       socket.emit("chat:message", text);
     } else {
@@ -73,79 +109,90 @@ export default function App() {
   const shellWidth = "100%";
   const shellHeight = isMobileView ? "100dvh" : "100vh";
 
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
+
+  if (!isMounted) return null;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
-      <style>{`
-        body { margin: 0; padding: 0; overflow: hidden; }
-        @keyframes chatui-blink { 50% { opacity: 0; } }
-        @keyframes chatui-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
-        .chatui-shell, .chatui-shell * { transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease; }
-        .chatui-textarea::placeholder { color: ${theme.inkFaint}; }
-        .chatui-textarea { scrollbar-width: thin; }
-      `}</style>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
+          <style>{`
+          body { margin: 0; padding: 0; overflow: hidden; }
+          @keyframes chatui-blink { 50% { opacity: 0; } }
+          @keyframes chatui-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
+          .chatui-shell, .chatui-shell * { transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease; }
+          .chatui-textarea::placeholder { color: ${theme.inkFaint}; }
+          .chatui-textarea { scrollbar-width: thin; }
+        `}</style>
 
-      <div
-        className="chatui-shell"
-        style={{
-          width: shellWidth,
-          maxWidth: "100%",
-          height: shellHeight,
-          background: theme.bg,
-          borderRadius: isMobileView ? 28 : 0,
-          border: isMobileView ? `1px solid ${theme.border}` : "none",
-          overflow: "hidden",
-          display: "flex",
-          position: "relative",
-          boxShadow: isMobileView ? theme.shellShadow : "none",
-        }}
-      >
-        <Sidebar 
-          theme={theme} 
-          open={sidebarOpen} 
-          onClose={() => setSidebarOpen(false)} 
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-          isMobileView={isMobileView} 
-          onNavigate={setCurrentView} 
-        />
+          <div
 
-        {currentView === "wallet" ? (
-          <WalletPage
-            theme={theme}
-            walletState={walletState}
-            socket={socket}
-            isMobileView={isMobileView}
-            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          />
-        ) : currentView === "connections" ? (
-          <ConnectionsPage 
-            theme={theme}
-            isMobileView={isMobileView}
-            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          />
-        ) : currentView === "automations" ? (
-          <AutomationsPage
-            theme={theme}
-            socket={socket}
-            isMobileView={isMobileView}
-            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          />
-        ) : (
-          <ChatView
-            theme={theme}
-            messages={messages}
-            setMessages={setMessages}
-            isMobileView={isMobileView}
-            onOpenSidebar={() => setSidebarOpen(true)}
-            onSend={handleSend}
-            socket={socket}
-            observations={observations}
-            lastViewedCount={lastViewedCount}
-            setLastViewedCount={setLastViewedCount}
-            currentActivity={currentActivity}
-            onCancelChat={cancelChat}
-          />
-        )}
-      </div>
-    </div>
+            className="chatui-shell"
+            style={{
+              width: shellWidth,
+              maxWidth: "100%",
+              height: shellHeight,
+              background: theme.bg,
+              borderRadius: isMobileView ? 28 : 0,
+              border: isMobileView ? `1px solid ${theme.border}` : "none",
+              overflow: "hidden",
+              display: "flex",
+              position: "relative",
+              boxShadow: isMobileView ? theme.shellShadow : "none",
+            }}
+          >
+            <Sidebar
+              theme={theme}
+              open={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+              onToggle={() => setSidebarOpen(!sidebarOpen)}
+              isMobileView={isMobileView}
+              onNavigate={setCurrentView}
+            />
+
+            {currentView === "wallet" ? (
+              <WalletPage
+                theme={theme}
+                walletState={walletState}
+                socket={socket}
+                isMobileView={isMobileView}
+                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+              />
+            ) : currentView === "connections" ? (
+              <ConnectionsPage
+                theme={theme}
+                walletState={walletState}
+                isMobileView={isMobileView}
+                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+              />
+            ) : currentView === "automations" ? (
+              <AutomationsPage
+                theme={theme}
+                socket={socket}
+                isMobileView={isMobileView}
+                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+              />
+            ) : (
+              <ChatView
+                theme={theme}
+                messages={messages}
+                setMessages={setMessages}
+                isMobileView={isMobileView}
+                onOpenSidebar={() => setSidebarOpen(true)}
+                onSend={handleSend}
+                socket={socket}
+                observations={observations}
+                lastViewedCount={lastViewedCount}
+                setLastViewedCount={setLastViewedCount}
+                currentActivity={currentActivity}
+                onCancelChat={cancelChat}
+              />
+            )}
+          </div>
+        </div>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }

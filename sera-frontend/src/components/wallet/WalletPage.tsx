@@ -4,6 +4,7 @@ import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
 
+
 const UsdcLogo = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 2000 2000" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M1000 2000c554.17 0 1000-445.83 1000-1000S1554.17 0 1000 0 0 445.83 0 1000s445.83 1000 1000 1000z" fill="#2775ca" />
@@ -129,33 +130,40 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
 
           {/* ── Sticky Services Tabs ── */}
           <div style={{
-            display: 'flex', gap: 12, flexWrap: "wrap",
+            display: 'flex', gap: 12, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center",
             position: 'sticky', top: -1, zIndex: 10,
             background: theme.bg, padding: `16px ${sidePad}px 16px`
           }}>
-            <button style={{
-              padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
-              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
-              background: theme.border, color: theme.ink, transition: 'all 0.2s'
-            }}>
-              Base Network
-            </button>
-            <button style={{
-              padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-              background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-            }} title="Coming Soon">
-              Stripe
-              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-            </button>
-            <button style={{
-              padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-              fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-              background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-            }} title="Coming Soon">
-              Bank Account
-              <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-            </button>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button style={{
+                padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
+                background: theme.border, color: theme.ink, transition: 'all 0.2s'
+              }}>
+                Base Network
+              </button>
+              <button style={{
+                padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
+                fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+                background: theme.surface2, color: theme.inkSoft, opacity: 0.7
+              }} title="Coming Soon">
+                Stripe
+                <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
+              </button>
+              <button style={{
+                padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
+                fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
+                background: theme.surface2, color: theme.inkSoft, opacity: 0.7
+              }} title="Coming Soon">
+                Bank Account
+                <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex" }}>
+              {/* @ts-expect-error - Web component from Web3Modal */}
+              <w3m-button />
+            </div>
           </div>
 
           {/* ── Scrollable Content ── */}
@@ -171,7 +179,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   <span>Total Balance</span>
                   <span style={{ background: theme.surface2, color: theme.inkSoft, padding: "4px 10px", borderRadius: 12, fontSize: 10, letterSpacing: 0.5, fontWeight: 700 }}>BASE MAINNET</span>
                 </div>
-                
+
                 <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 32 : 46, fontWeight: 600, letterSpacing: "-1px", display: "flex", alignItems: "center", gap: 10, marginBottom: 4, color: theme.ink }}>
                   ${(parsedAgentBalance + parsedVaultBalance).toFixed(2)}
                   <span style={{ fontSize: isMobileView ? 14 : 16, fontWeight: 600, color: theme.inkSoft }}>USDC</span>

@@ -34,7 +34,7 @@ export function useSocket(
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-        ? "ws://localhost:3001" 
+        ? "ws://127.0.0.1:3001" 
         : window.location.origin.replace(/^http/, 'ws'));
     
     const newSocket = io(wsUrl);
