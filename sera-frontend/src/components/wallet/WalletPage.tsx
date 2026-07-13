@@ -142,22 +142,6 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
               }}>
                 Base Network
               </button>
-              <button style={{
-                padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-                fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-                background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-              }} title="Coming Soon">
-                Stripe
-                <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-              </button>
-              <button style={{
-                padding: '8px 16px', borderRadius: 20, border: `1px solid ${theme.border}`, cursor: 'not-allowed',
-                fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6,
-                background: theme.surface2, color: theme.inkSoft, opacity: 0.7
-              }} title="Coming Soon">
-                Bank Account
-                <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 10, background: theme.surface, color: theme.inkFaint }}>SOON</span>
-              </button>
             </div>
 
             <div style={{ display: "flex" }}>

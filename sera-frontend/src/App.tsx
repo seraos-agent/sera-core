@@ -8,10 +8,10 @@ import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
 
-
-import { createWeb3Modal, useWeb3ModalTheme } from '@web3modal/wagmi/react';
+import { LandingPage } from "./components/landing/LandingPage";
+import { createWeb3Modal, useWeb3ModalTheme, useWeb3Modal } from '@web3modal/wagmi/react';
 import { defaultWagmiConfig } from '@web3modal/wagmi/react/config';
-import { WagmiProvider } from 'wagmi';
+import { WagmiProvider, useAccount } from 'wagmi';
 import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
@@ -21,7 +21,7 @@ const projectId = '58d806d66c104f547275d0afe4086b04';
 const metadata = {
   name: 'SERA OS',
   description: 'SERA OS Web3 Interface',
-  url: 'https://sera-os.app',
+  url: typeof window !== 'undefined' ? window.location.origin : 'https://sera-os.app',
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 };
 
@@ -49,7 +49,7 @@ function useFonts() {
   }, []);
 }
 
-export default function App() {
+function InnerApp() {
   useFonts();
   const [mode, setMode] = useState<"light" | "dark">(() => {
     const saved = localStorage.getItem("sera_theme");
@@ -112,12 +112,37 @@ export default function App() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
+  const { isConnected } = useAccount();
+  const { open } = useWeb3Modal();
+  const [isBypassed, setIsBypassed] = useState(false);
+
   if (!isMounted) return null;
 
+  if (!isConnected && !isBypassed) {
+    return (
+      <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
+        <LandingPage onLaunchApp={() => open()} />
+        
+        {/* Tombol Bypass khusus Localhost */}
+        {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
+          <button 
+            onClick={() => setIsBypassed(true)}
+            style={{ 
+              position: "fixed", bottom: 20, right: 20, background: "#ef4444", color: "#fff", 
+              border: "none", padding: "10px 20px", borderRadius: 12, cursor: "pointer", 
+              fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+              fontFamily: "Inter, sans-serif"
+            }}
+          >
+            🚧 Bypass Auth (Dev)
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
           <style>{`
           body { margin: 0; padding: 0; overflow: hidden; }
           @keyframes chatui-blink { 50% { opacity: 0; } }
@@ -192,6 +217,14 @@ export default function App() {
             )}
           </div>
         </div>
+  );
+}
+
+export default function App() {
+  return (
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <InnerApp />
       </QueryClientProvider>
     </WagmiProvider>
   );
