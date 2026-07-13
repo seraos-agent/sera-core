@@ -7,24 +7,41 @@ import { Observation, WorldStateSnapshot, WalletState, TemporalState } from './t
 export class WorldStateService {
   private state: WorldStateSnapshot;
   private processedObservationIds: Set<string>;
+  private basePath: string;
   private persistPath: string;
   private eventBus: EventEmitter;
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
-    this.state = {
+    this.state = this.getDefaultState();
+    
+    this.basePath = path.join(process.cwd(), '.data');
+    this.persistPath = path.join(this.basePath, 'world_state_dev.json');
+    this.processedObservationIds = new Set<string>();
+    
+    this.loadPersistedData();
+    this.subscribeToReality();
+  }
+
+  private getDefaultState(): WorldStateSnapshot {
+    return {
       lastUpdatedAt: Date.now(),
       wallet: null,
       temporal: null,
       communication: null
     };
+  }
+
+  public switchUser(userAddress?: string): void {
+    const filename = userAddress ? `world_state_${userAddress.toLowerCase()}.json` : 'world_state_dev.json';
+    this.persistPath = path.join(this.basePath, filename);
     
-    const projectRoot = process.cwd();
-    this.persistPath = path.join(projectRoot, '.data', 'world_state.json');
+    // Clear state before loading
+    this.state = this.getDefaultState();
     this.processedObservationIds = new Set<string>();
     
     this.loadPersistedData();
-    this.subscribeToReality();
+    console.log(`[WorldStateService] Switched context to ${filename}`);
   }
 
   private subscribeToReality() {

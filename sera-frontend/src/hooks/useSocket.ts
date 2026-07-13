@@ -109,6 +109,7 @@ export function useSocket(
     messages,
     setMessages,
     observations,
+    setObservations,
     streamReply,
     currentActivity,
     cancelChat

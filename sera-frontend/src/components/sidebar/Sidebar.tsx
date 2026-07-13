@@ -1,6 +1,9 @@
 import { X, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
+import { useAccount } from 'wagmi';
+import { useWeb3Modal } from '@web3modal/wagmi/react';
+import type { WalletState } from "../../hooks/useWallet";
 
 interface SidebarProps {
   theme: ThemeType;
@@ -9,11 +12,19 @@ interface SidebarProps {
   onToggle?: () => void;
   isMobileView: boolean;
   onNavigate: (view: "chat" | "wallet" | "connections" | "automations") => void;
+  walletState?: WalletState;
+  onDisconnect?: () => void;
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate, walletState, onDisconnect }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
+  const { address } = useAccount();
+  const { open: openWeb3Modal } = useWeb3Modal();
+  const devAddress = walletState?.fullAddress;
+  const shortAddress = address 
+    ? `${address.slice(0, 6)}...${address.slice(-4)}` 
+    : (devAddress ? `${devAddress.slice(0, 6)}...${devAddress.slice(-4)}` : "Sera Admin");
 
   return (
     <>
@@ -119,14 +130,27 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
             })}
           </div>
 
-          <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 12, marginTop: 8, display: "flex", alignItems: "center", gap: 8, padding: open ? "12px 4px 2px" : "12px 0 2px", justifyContent: open ? "flex-start" : "center", flexDirection: open ? "row" : "column-reverse" }}>
+          <div 
+            onClick={() => {
+              if (onDisconnect) {
+                onDisconnect();
+              } else {
+                openWeb3Modal();
+              }
+            }}
+            style={{ 
+              borderTop: `1px solid ${theme.border}`, paddingTop: 12, marginTop: 8, display: "flex", alignItems: "center", gap: 8, padding: open ? "12px 6px" : "12px 0", justifyContent: open ? "flex-start" : "center", flexDirection: open ? "row" : "column-reverse",
+              cursor: "pointer", borderRadius: 8, transition: "background 150ms"
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
             {open && (
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
-                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, fontWeight: 600, whiteSpace: "nowrap" }}>Sera Admin</span>
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, fontWeight: 600, whiteSpace: "nowrap" }}>{shortAddress}</span>
                 <span style={{ fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, background: theme.accentSoft, color: theme.accent, padding: "2px 5px", borderRadius: 4, letterSpacing: 0.5, flexShrink: 0 }}>PRO</span>
               </div>
             )}
-
           </div>
         </div>
       </div>

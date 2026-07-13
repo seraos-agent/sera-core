@@ -16,12 +16,21 @@ export interface ChatHistoryState {
 }
 
 export class ChatHistoryStore {
+  private basePath: string;
   private filePath: string;
   private state: ChatHistoryState;
 
   constructor() {
-    this.filePath = path.join(process.cwd(), '.data', 'chat_history.json');
+    this.basePath = path.join(process.cwd(), '.data');
+    this.filePath = path.join(this.basePath, 'chat_history_dev.json');
     this.state = this.load();
+  }
+
+  public switchUser(userAddress?: string): void {
+    const filename = userAddress ? `chat_history_${userAddress.toLowerCase()}.json` : 'chat_history_dev.json';
+    this.filePath = path.join(this.basePath, filename);
+    this.state = this.load();
+    console.log(`[ChatHistoryStore] Switched context to ${filename}`);
   }
 
   private load(): ChatHistoryState {

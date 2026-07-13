@@ -80,7 +80,7 @@ function InnerApp() {
   const [lastViewedCount, setLastViewedCount] = useState(0);
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages, observations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
+  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
 
   const theme = THEME[mode];
 
@@ -112,9 +112,21 @@ function InnerApp() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { open } = useWeb3Modal();
   const [isBypassed, setIsBypassed] = useState(false);
+
+  useEffect(() => {
+    // Kapan pun address/isBypassed berubah, langsung bersihkan state UI secara lokal (Optimistic Clear)
+    // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
+    setMessages([]);
+    setObservations([]);
+    setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
+
+    if (socket && isConnected && address) {
+      socket.emit("auth:login", { address });
+    }
+  }, [socket, isConnected, address, isBypassed, setMessages, setObservations]);
 
   if (!isMounted) return null;
 
@@ -126,7 +138,12 @@ function InnerApp() {
         {/* Tombol Bypass khusus Localhost */}
         {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
           <button 
-            onClick={() => setIsBypassed(true)}
+            onClick={() => {
+              setIsBypassed(true);
+              if (socket) {
+                socket.emit("auth:login", {});
+              }
+            }}
             style={{ 
               position: "fixed", bottom: 20, right: 20, background: "#ef4444", color: "#fff", 
               border: "none", padding: "10px 20px", borderRadius: 12, cursor: "pointer", 
@@ -175,6 +192,14 @@ function InnerApp() {
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               isMobileView={isMobileView}
               onNavigate={setCurrentView}
+              walletState={walletState}
+              onDisconnect={() => {
+                if (isConnected) {
+                  open();
+                } else {
+                  setIsBypassed(false);
+                }
+              }}
             />
 
             {currentView === "wallet" ? (

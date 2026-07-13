@@ -48,21 +48,58 @@ export class GoalBridge {
     console.log('[GoalBridge] Initialized. Listening for SPAWN_GOAL events.');
   }
 
-  private async initWallet(): Promise<void> {
+  public async switchUser(userAddress: string): Promise<void> {
+    console.log(`[GoalBridge] Switching context to user: ${userAddress}`);
+    this.walletInitializing = this.initWallet(userAddress);
+    await this.walletInitializing;
+  }
+
+  private async initWallet(userAddress?: string): Promise<void> {
     try {
-      const walletId = await this.walletAdapter.initialize();
+      const walletId = await this.walletAdapter.initialize(userAddress);
       this.walletInitialized = true;
       this.currentWalletId = walletId;
-      const balance = await this.walletAdapter.getBalance(walletId, 'usdc');
       
-      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      let primaryAddress = '';
+      let vaultAddress = '';
+      let primaryBalance = '0';
       let vaultBalance = '0';
-      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+
+      if (!userAddress) {
+        // --- DEV BYPASS MODE (Legacy Behavior) ---
+        primaryAddress = walletId.address;
+        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+        
         try {
-          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-          vaultBalance = vb.toString();
+          const pb = await this.walletAdapter.getBalance(walletId, 'usdc');
+          primaryBalance = pb.toString();
         } catch (e) {
-          console.error('Failed to get vault balance:', e);
+          console.error('Failed to get primary balance in dev mode:', e);
+        }
+
+        if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+          try {
+            const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+            vaultBalance = vb.toString();
+          } catch (e) {
+            console.error('Failed to get vault balance in dev mode:', e);
+          }
+        }
+      } else {
+        // --- 1:1 AGENT WALLET MODE ---
+        primaryAddress = userAddress;
+        vaultAddress = walletId.address; // The generated agent wallet for this user
+        
+        // Mocking user balance as 0 for now until implemented
+        primaryBalance = '0'; 
+        
+        if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+          try {
+            const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
+            vaultBalance = vb.toString();
+          } catch (e) {
+            console.error('Failed to get agent vault balance:', e);
+          }
         }
       }
 
@@ -71,9 +108,9 @@ export class GoalBridge {
         type: EventTypes.DOMAIN_WALLET_STATE,
         source: 'GoalBridge',
         payload: {
-          address: walletId.address,
+          address: primaryAddress,
           vaultAddress,
-          balance: balance.toString(),
+          balance: primaryBalance,
           vaultBalance,
           network: walletId.network,
           asset: 'USDC'

@@ -21,25 +21,33 @@ export class SecretManager {
 
   // ── Wallet Secrets ─────────────────────────────────────────────────────
 
-  async getAgenticWalletPrivateKey(): Promise<string | null> {
-    return this.store.getSecret(SecretKeys.AGENTIC_WALLET_PRIVATE_KEY);
+  private getAgenticPkKey(userAddress?: string): string {
+    return userAddress ? `AGENTIC_WALLET_PRIVATE_KEY_${userAddress.toLowerCase()}` : SecretKeys.AGENTIC_WALLET_PRIVATE_KEY;
   }
 
-  async setAgenticWalletPrivateKey(privateKey: string): Promise<void> {
-    return this.store.setSecret(SecretKeys.AGENTIC_WALLET_PRIVATE_KEY, privateKey);
+  private getAgenticAddressKey(userAddress?: string): string {
+    return userAddress ? `AGENTIC_WALLET_ADDRESS_${userAddress.toLowerCase()}` : SecretKeys.AGENTIC_WALLET_ADDRESS;
   }
 
-  async getAgenticWalletAddress(): Promise<string | null> {
-    return this.store.getSecret(SecretKeys.AGENTIC_WALLET_ADDRESS);
+  async getAgenticWalletPrivateKey(userAddress?: string): Promise<string | null> {
+    return this.store.getSecret(this.getAgenticPkKey(userAddress));
   }
 
-  async setAgenticWalletAddress(address: string): Promise<void> {
-    return this.store.setSecret(SecretKeys.AGENTIC_WALLET_ADDRESS, address);
+  async setAgenticWalletPrivateKey(privateKey: string, userAddress?: string): Promise<void> {
+    return this.store.setSecret(this.getAgenticPkKey(userAddress), privateKey);
   }
 
-  async deleteAgenticWallet(): Promise<void> {
-    await this.store.deleteSecret(SecretKeys.AGENTIC_WALLET_PRIVATE_KEY);
-    await this.store.deleteSecret(SecretKeys.AGENTIC_WALLET_ADDRESS);
+  async getAgenticWalletAddress(userAddress?: string): Promise<string | null> {
+    return this.store.getSecret(this.getAgenticAddressKey(userAddress));
+  }
+
+  async setAgenticWalletAddress(address: string, userAddress?: string): Promise<void> {
+    return this.store.setSecret(this.getAgenticAddressKey(userAddress), address);
+  }
+
+  async deleteAgenticWallet(userAddress?: string): Promise<void> {
+    await this.store.deleteSecret(this.getAgenticPkKey(userAddress));
+    await this.store.deleteSecret(this.getAgenticAddressKey(userAddress));
   }
 
   // ── Generic Pass-through (for future connectors: OAuth, API keys, etc.) ─

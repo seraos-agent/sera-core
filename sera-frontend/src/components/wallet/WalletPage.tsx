@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft as CloseIcon, X, Check } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check, Copy } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -29,6 +29,20 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const [step, setStep] = useState<"input" | "confirm" | "pending" | "success" | "failed">("input");
   const [txHash, setTxHash] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  const [copiedAgent, setCopiedAgent] = useState(false);
+  const [copiedVault, setCopiedVault] = useState(false);
+
+  const handleCopy = (text: string, type: "agent" | "vault") => {
+    navigator.clipboard.writeText(text);
+    if (type === "agent") {
+      setCopiedAgent(true);
+      setTimeout(() => setCopiedAgent(false), 2000);
+    } else {
+      setCopiedVault(true);
+      setTimeout(() => setCopiedVault(false), 2000);
+    }
+  };
 
   const agentAddr = walletState.fullAddress || "";
   const vaultAddr = walletState.vaultAddress || "";
@@ -143,11 +157,6 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 Base Network
               </button>
             </div>
-
-            <div style={{ display: "flex" }}>
-              {/* @ts-expect-error - Web component from Web3Modal */}
-              <w3m-button />
-            </div>
           </div>
 
           {/* ── Scrollable Content ── */}
@@ -181,12 +190,26 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortAgent}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortAgent}</div>
+                      {agentAddr && (
+                        <button onClick={() => handleCopy(agentAddr, "agent")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedAgent ? theme.status : theme.inkFaint }}>
+                          {copiedAgent ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Sera</div>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedVaultBalance.toFixed(2)}</div>
-                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint, marginTop: 4 }}>{shortVault || "—"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortVault || "—"}</div>
+                      {vaultAddr && (
+                        <button onClick={() => handleCopy(vaultAddr, "vault")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedVault ? theme.status : theme.inkFaint }}>
+                          {copiedVault ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

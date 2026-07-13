@@ -309,6 +309,38 @@ io.on('connection', (socket: Socket) => {
   // Send the initial observations history
   socket.emit('observations:history', observationStore.getAll());
 
+  socket.on('auth:login', async (payload: { address?: string }) => {
+    // If address is missing, it implies DEV BYPASS mode
+    const address = payload?.address;
+    console.log(`[Server] Received auth:login for user: ${address || 'DEV'}`);
+    
+    // 1. Switch Wallet (GoalBridge)
+    const bridge = (globalThis as any).__goalBridge;
+    if (bridge && typeof bridge.switchUser === 'function') {
+      await bridge.switchUser(address);
+    }
+
+    // 2. Switch Chat History
+    chatHistoryStore.switchUser(address);
+    socket.emit('chat:history', chatHistoryStore.getUiMessages());
+
+    // 3. Switch Observations
+    observationStore.switchUser(address);
+    socket.emit('observations:history', observationStore.getAll());
+
+    // 4. Switch Memory
+    const memStore = (globalThis as any).__memoryStore;
+    if (memStore && typeof memStore.switchUser === 'function') {
+      memStore.switchUser(address);
+    }
+
+    // 5. Switch World State
+    const wsService = runtime.worldStateService;
+    if (wsService && typeof wsService.switchUser === 'function') {
+      wsService.switchUser(address);
+    }
+  });
+
   // ── EARS: user message → USER_OBSERVATION event ───────────────────────────
   socket.on('chat:message', (message: string) => {
     // Legacy manual observation simulations removed

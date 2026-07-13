@@ -32,16 +32,16 @@ export class UniversalAgenticWallet implements IExecutionCapability {
     this.baseAdapter = new BaseAdapter();
   }
 
-  async initialize(): Promise<WalletId> {
-    let privateKey = await this.secretManager.getAgenticWalletPrivateKey();
+  async initialize(userAddress?: string): Promise<WalletId> {
+    let privateKey = await this.secretManager.getAgenticWalletPrivateKey(userAddress);
 
     if (!privateKey) {
-      console.log(`[UniversalAgenticWallet] No Agentic Wallet found. Generating a new one...`);
+      console.log(`[UniversalAgenticWallet] No Agentic Wallet found${userAddress ? ` for ${userAddress}` : ''}. Generating a new one...`);
       const pk = generatePrivateKey();
       const account = privateKeyToAccount(pk as `0x${string}`);
       
-      await this.secretManager.setAgenticWalletPrivateKey(pk);
-      await this.secretManager.setAgenticWalletAddress(account.address);
+      await this.secretManager.setAgenticWalletPrivateKey(pk, userAddress);
+      await this.secretManager.setAgenticWalletAddress(account.address, userAddress);
 
       console.log(`[UniversalAgenticWallet] ✅ New Agentic Wallet generated.`);
       this.walletId = { address: account.address, network: 'auto' };
