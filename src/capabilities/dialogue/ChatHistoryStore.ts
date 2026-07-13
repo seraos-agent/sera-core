@@ -20,17 +20,11 @@ export class ChatHistoryStore {
   private filePath: string;
   private state: ChatHistoryState;
 
-  constructor() {
+  constructor(sessionId: string) {
     this.basePath = path.join(process.cwd(), '.data');
-    this.filePath = path.join(this.basePath, 'chat_history_dev.json');
+    const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    this.filePath = path.join(this.basePath, `chat_history_${safeId}.json`);
     this.state = this.load();
-  }
-
-  public switchUser(userAddress?: string): void {
-    const filename = userAddress ? `chat_history_${userAddress.toLowerCase()}.json` : 'chat_history_dev.json';
-    this.filePath = path.join(this.basePath, filename);
-    this.state = this.load();
-    console.log(`[ChatHistoryStore] Switched context to ${filename}`);
   }
 
   private load(): ChatHistoryState {
@@ -92,4 +86,3 @@ export class ChatHistoryStore {
   }
 }
 
-export const chatHistoryStore = new ChatHistoryStore();

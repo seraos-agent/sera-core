@@ -11,12 +11,13 @@ export class WorldStateService {
   private persistPath: string;
   private eventBus: EventEmitter;
 
-  constructor(eventBus: EventEmitter) {
+  constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
     this.eventBus = eventBus;
     this.state = this.getDefaultState();
     
     this.basePath = path.join(process.cwd(), '.data');
-    this.persistPath = path.join(this.basePath, 'world_state_dev.json');
+    const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    this.persistPath = path.join(this.basePath, `world_state_${safeId}.json`);
     this.processedObservationIds = new Set<string>();
     
     this.loadPersistedData();
@@ -32,17 +33,7 @@ export class WorldStateService {
     };
   }
 
-  public switchUser(userAddress?: string): void {
-    const filename = userAddress ? `world_state_${userAddress.toLowerCase()}.json` : 'world_state_dev.json';
-    this.persistPath = path.join(this.basePath, filename);
-    
-    // Clear state before loading
-    this.state = this.getDefaultState();
-    this.processedObservationIds = new Set<string>();
-    
-    this.loadPersistedData();
-    console.log(`[WorldStateService] Switched context to ${filename}`);
-  }
+
 
   private subscribeToReality() {
     this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {

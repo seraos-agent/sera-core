@@ -7,18 +7,11 @@ export class InMemoryTriggerStore implements TriggerStore {
   private basePath: string;
   private filePath: string;
 
-  constructor() {
+  constructor(sessionId: string = 'dev') {
     this.basePath = path.join(process.cwd(), '.data');
-    this.filePath = path.join(this.basePath, 'triggers_dev.json');
+    const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    this.filePath = path.join(this.basePath, `triggers_${safeId}.json`);
     this.load();
-  }
-
-  public switchUser(userAddress?: string): void {
-    const filename = userAddress ? `triggers_${userAddress.toLowerCase()}.json` : 'triggers_dev.json';
-    this.filePath = path.join(this.basePath, filename);
-    this.triggers = new Map();
-    this.load();
-    console.log(`[InMemoryTriggerStore] Switched context to ${filename}`);
   }
 
   private load(): void {

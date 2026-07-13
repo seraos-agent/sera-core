@@ -1,25 +1,7 @@
 import { GoalProposal, GoalProposalStatus } from './types';
 
 export class ProposalStore {
-  private stores: Map<string, Map<string, GoalProposal>> = new Map();
-  private activeContext: string = 'dev';
-
-  constructor() {
-    this.stores.set(this.activeContext, new Map());
-  }
-
-  public switchUser(userAddress?: string): void {
-    const contextId = userAddress ? userAddress.toLowerCase() : 'dev';
-    if (!this.stores.has(contextId)) {
-      this.stores.set(contextId, new Map());
-    }
-    this.activeContext = contextId;
-    console.log(`[ProposalStore] Switched context to ${contextId}`);
-  }
-
-  private get proposals(): Map<string, GoalProposal> {
-    return this.stores.get(this.activeContext)!;
-  }
+  private proposals: Map<string, GoalProposal> = new Map();
 
   register(proposal: GoalProposal): void {
     if (this.proposals.has(proposal.id)) {

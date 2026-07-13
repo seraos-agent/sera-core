@@ -55,6 +55,7 @@ export class Runtime {
   public dialogueEngine!: DialogueEngine;
   public proposalManager!: ProposalManager;
   public memoryStore: IMemoryStore;
+  public chatHistoryStore: any;
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
   private feedbackPipeline?: FeedbackPipeline;
@@ -118,7 +119,8 @@ export class Runtime {
     adaptationExecutor?: AdaptationExecutor,
     eventBus?: EventEmitter,
     dispatcher?: ExecutionDispatcher,
-    memoryStore?: IMemoryStore
+    memoryStore?: IMemoryStore,
+    chatHistoryStore?: any
   ) {
     this.memoryStore = memoryStore || new JsonMemoryStore();
     this.authorityService = new AuthorityService();
@@ -129,6 +131,7 @@ export class Runtime {
     this.executionTraceStore = executionTraceStore;
     this.eventBus = eventBus;
     this.executionDispatcher = dispatcher;
+    this.chatHistoryStore = chatHistoryStore;
     this.planner = planner;
     this.strategyStore = strategyStore;
     this.strategyEngine = strategyEngine;
@@ -229,7 +232,7 @@ export class Runtime {
       this.approveProposal(event.payload.proposalId, event.payload.candidateId);
     });
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore);
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore);
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
   }
 

@@ -29,7 +29,7 @@ export class GoalBridge {
   private cachedPersonal: string = '0';
   private cachedVault: string = '0';
 
-  constructor(eventBus: EventEmitter) {
+  constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
     this.eventBus = eventBus;
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
@@ -40,19 +40,12 @@ export class GoalBridge {
     this.walletAdapter = new UniversalAgenticWallet(secretManager, spendPermissionAdapter);
 
     // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
-    this.walletInitializing = this.initWallet();
+    this.walletInitializing = this.initWallet(sessionId !== 'dev' ? sessionId : undefined);
 
-    // Expose this instance globally for direct server access
-    (globalThis as any).__goalBridge = this;
-
-    console.log('[GoalBridge] Initialized. Listening for SPAWN_GOAL events.');
+    console.log(`[GoalBridge] Initialized for session ${sessionId}. Listening for SPAWN_GOAL events.`);
   }
 
-  public async switchUser(userAddress: string): Promise<void> {
-    console.log(`[GoalBridge] Switching context to user: ${userAddress}`);
-    this.walletInitializing = this.initWallet(userAddress);
-    await this.walletInitializing;
-  }
+
 
   private async initWallet(userAddress?: string): Promise<void> {
     try {

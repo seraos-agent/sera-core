@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
-import { chatHistoryStore } from './ChatHistoryStore';
+import { ChatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 import { WorldStateService } from '../../core/world-state/WorldStateService';
 import { IMemoryStore } from '../../core/memory/IMemoryStore';
@@ -128,11 +128,14 @@ export class DialogueEngine {
   private consentedUsers: Set<string> = new Set();
   private readonly CONSENT_FILE_PATH = path.join(process.cwd(), '.data', 'consented_users.json');
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IMemoryStore) {
+  private chatHistoryStore: ChatHistoryStore;
+
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IMemoryStore, chatHistoryStore: ChatHistoryStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
     this.memoryStore = memoryStore;
+    this.chatHistoryStore = chatHistoryStore;
     this.episodicReader = new EpisodicMemoryReader();
     this.llm = new QwenAdapter();
 
@@ -241,7 +244,7 @@ export class DialogueEngine {
     // instead of the actual Slack message. We skip it entirely for platform messages.
     if (!this._activeResponseContext) {
       // UI/Socket.io origin: include recent web chat history as conversation context
-      const recentUi = chatHistoryStore.getUiMessages()
+      const recentUi = this.chatHistoryStore.getUiMessages()
         .filter(m => m.type !== 'activity' && m.content)
         .slice(-5);
 
@@ -461,7 +464,7 @@ export class DialogueEngine {
           // In a real system, we'd delete SQLite rows matching the user's principalId.
           // For now, we clear the working memory map.
           this.platformConversationHistory.clear();
-          chatHistoryStore.clear();
+          this.chatHistoryStore.clear();
           
           if (this._activeResponseContext && this._activeResponseContext.senderId) {
             this.consentedUsers.delete(this._activeResponseContext.senderId);

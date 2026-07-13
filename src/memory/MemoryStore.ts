@@ -23,12 +23,13 @@ export class MemoryStore {
   private MAX_EVENTS = 500;
   private MAX_BELIEFS_PER_CATEGORY = 100;
 
-  constructor(private eventBus?: EventEmitter) {
+  constructor(private eventBus?: EventEmitter, sessionId: string = 'dev') {
     this.basePath = path.join(process.cwd(), '.data');
     if (!fs.existsSync(this.basePath)) {
       fs.mkdirSync(this.basePath, { recursive: true });
     }
-    this.filePath = path.join(this.basePath, 'memory_store_dev.json');
+    const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    this.filePath = path.join(this.basePath, `memory_store_${safeId}.json`);
     
     // Inject self into MemoryPolicyEngine via an adapter so it can call __mutate_protected
     this.policyEngine = new MemoryPolicyEngine({
@@ -41,19 +42,7 @@ export class MemoryStore {
     this.load();
   }
 
-  public switchUser(userAddress?: string): void {
-    const filename = userAddress ? `memory_store_${userAddress.toLowerCase()}.json` : 'memory_store_dev.json';
-    this.filePath = path.join(this.basePath, filename);
-    
-    // Clear current state before loading new one
-    this.events = [];
-    this.beliefs = new Map();
-    this.categoryIndex = new Map();
-    this.keyIndex = new Map();
-    
-    this.load();
-    console.log(`[MemoryStore] Switched context to ${filename}`);
-  }
+
 
   private load() {
     if (fs.existsSync(this.filePath)) {
