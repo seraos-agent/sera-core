@@ -5,6 +5,7 @@ import { Runtime } from '../src/runtime/Runtime';
 import { ExecutionTraceStore } from '../src/core/execution/ExecutionTraceStore';
 import { IMemoryStore } from '../src/core/memory/IMemoryStore';
 import { JsonMemoryStore } from '../src/memory/adapters/JsonMemoryStore';
+import { ChatHistoryStore } from '../src/capabilities/dialogue/ChatHistoryStore';
 import { Planner } from '../src/core/planner/Planner';
 import { StrategyStore } from '../src/core/strategy/StrategyStore';
 import { StrategyEngine } from '../src/core/strategy/StrategyEngine';
@@ -56,7 +57,8 @@ describe('Kernel E2E Integration', () => {
       planner, strategyStore, strategyEngine, attentionEngine, goalEngine,
       undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
       eventBus, undefined,
-      memoryStore
+      memoryStore,
+      new ChatHistoryStore('test-session')
     );
 
     expBuilder = new ExperienceBuilder(eventBus);

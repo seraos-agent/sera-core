@@ -36,7 +36,7 @@ describe('Liquidity Capability E2E', () => {
   beforeEach(() => {
     eventBus = new EventEmitter();
     directory = new LiquidityDirectory();
-    memoryStore = new MemoryStore(eventBus); // MemoryStore expects eventBus
+    memoryStore = new MemoryStore(eventBus, `test-${Date.now()}-${Math.random()}`);
     new LiquidityReputationBridge(eventBus, memoryStore);
   });
 
