@@ -8,7 +8,7 @@ import { EventEmitter } from 'events';
 import { StandardEvent, EventTypes } from '../../core/events/types';
 import { Logger } from '../../core/logging/Logger';
 
-import { IMemoryStore } from '../../core/memory/IMemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
 export class IntentCoordinator {
   private logger = new Logger('IntentCoordinator');
@@ -22,7 +22,7 @@ export class IntentCoordinator {
     private proposalEvaluator: any | undefined,
     private eventBus: EventEmitter | undefined,
     private feedbackPipeline: any | undefined,
-    private memoryStore?: IMemoryStore
+    private memoryStore?: IWorkingMemory
   ) {}
 
   public runCycle(temporalContext: TemporalContext, worldState: any): void {

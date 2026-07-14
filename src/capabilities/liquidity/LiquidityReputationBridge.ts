@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { IMemoryStore } from '../../core/memory/IMemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { Belief } from '../../core/memory/types';
 import { LiquidityExecutionReceipt } from './types';
 
@@ -22,7 +22,7 @@ interface ReputationRecord {
  * consumer of memory.
  */
 export class LiquidityReputationBridge {
-  constructor(private eventBus: EventEmitter, private memoryStore: IMemoryStore) {
+  constructor(private eventBus: EventEmitter, private memoryStore: IWorkingMemory) {
     this.eventBus.on('liquidity.execution.completed', (e: { payload: LiquidityExecutionReceipt }) =>
       this.record(e.payload.nodeId, 'SUCCESS')
     );

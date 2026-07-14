@@ -1,36 +1,27 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { EventEmitter } from 'events';
 import { Event, EventTypes, StandardEvent, MemoryItemMutatedPayload } from '../core/events/types';
-import { Belief, MemoryCategory } from './types';
+import { Belief, MemoryCategory } from '../core/memory/types';
 import { MemoryProposal, MemoryOperation } from '../core/memory/MemoryProposal';
 import { MemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
 import { MemoryStatus } from '../core/memory/MemoryItem';
 import { VerificationLevel } from '../core/memory/VerificationLevel';
 import { MemorySource } from '../core/memory/MemorySource';
 import { EvidenceType } from '../core/memory/MemoryEvidence';
+import { IWorkingMemory } from '../core/memory/IWorkingMemory';
+import { MemorySnapshot } from '../core/memory/IMemoryPersistence';
 
-export class MemoryStore {
+export class WorkingMemory implements IWorkingMemory {
   private events: Event[] = [];
   private beliefs: Map<string, Belief> = new Map();
   private categoryIndex: Map<MemoryCategory, Belief[]> = new Map();
   private keyIndex: Map<string, Belief> = new Map();
   
-  private basePath: string;
-  private filePath: string;
   private policyEngine: MemoryPolicyEngine;
 
   private MAX_EVENTS = 500;
   private MAX_BELIEFS_PER_CATEGORY = 100;
 
-  constructor(private eventBus?: EventEmitter, sessionId: string = 'dev') {
-    this.basePath = path.join(process.cwd(), '.data');
-    if (!fs.existsSync(this.basePath)) {
-      fs.mkdirSync(this.basePath, { recursive: true });
-    }
-    const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
-    this.filePath = path.join(this.basePath, `memory_store_${safeId}.json`);
-    
+  constructor(private eventBus?: EventEmitter) {
     // Inject self into MemoryPolicyEngine via an adapter so it can call __mutate_protected
     this.policyEngine = new MemoryPolicyEngine({
       getBeliefByKey: (key: string) => this.keyIndex.get(key) as any,
@@ -38,37 +29,28 @@ export class MemoryStore {
         return this.__mutate_protected(proposal, newStatus, verification);
       }
     } as any);
-
-    this.load();
   }
 
 
 
-  private load() {
-    if (fs.existsSync(this.filePath)) {
-      try {
-        const raw = fs.readFileSync(this.filePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        
-        this.events = parsed.events || [];
-        
-        if (parsed.beliefs) {
-          for (const belief of parsed.beliefs) {
-            this._addBeliefToIndex(belief);
-          }
-        }
-      } catch (e) {
-        console.error('[MemoryStore] Failed to load memory', e);
+  public loadSnapshot(snapshot: MemorySnapshot) {
+    this.events = snapshot.events || [];
+    this.beliefs.clear();
+    this.categoryIndex.clear();
+    this.keyIndex.clear();
+    
+    if (snapshot.beliefs) {
+      for (const belief of snapshot.beliefs) {
+        this._addBeliefToIndex(belief);
       }
     }
   }
 
-  private persist() {
-    const data = {
-      events: this.events,
+  public getSnapshot(): MemorySnapshot {
+    return {
+      events: [...this.events],
       beliefs: Array.from(this.beliefs.values())
     };
-    fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
   }
 
   private prune() {
@@ -121,7 +103,6 @@ export class MemoryStore {
   store(event: Event): void {
     this.events.push(event);
     this.prune();
-    this.persist();
   }
 
   getHistory(): Event[] {
@@ -129,9 +110,9 @@ export class MemoryStore {
   }
 
   storeBelief(belief: Belief): void {
-    // Intercept wallet.* keys for policy evaluation
+    // wallet.* protection MUST be strictly preserved as per testing requirements
     if (belief.key && belief.key.startsWith('wallet.')) {
-      console.log(`[MemoryStore] Intercepting ${belief.key} for Policy Evaluation...`);
+      console.log(`[WorkingMemory] Intercepting ${belief.key} for Policy Evaluation...`);
       const proposal: MemoryProposal = {
         operation: MemoryOperation.UPDATE,
         key: belief.key,
@@ -150,7 +131,6 @@ export class MemoryStore {
 
     this._addBeliefToIndex(belief);
     this.prune();
-    this.persist();
   }
 
   public proposeBelief(proposal: MemoryProposal): void {
@@ -207,9 +187,11 @@ export class MemoryStore {
       updatedAt: Date.now()
     };
 
+    if (existing) {
+      this.beliefs.delete(existing.id);
+    }
     this._addBeliefToIndex(newItem);
     this.prune();
-    this.persist();
     
     if (this.eventBus) {
       const payload: MemoryItemMutatedPayload = {
@@ -230,7 +212,7 @@ export class MemoryStore {
       this.eventBus.emit(EventTypes.MEMORY_ITEM_MUTATED, event);
     }
     
-    console.log(`[MemoryStore] Mutated protected belief: ${proposal.key} -> [${newItem.status}]`);
+    console.log(`[WorkingMemory] Mutated protected belief: ${proposal.key} -> [${newItem.status}]`);
     return newItem;
   }
 }

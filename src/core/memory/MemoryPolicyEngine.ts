@@ -3,13 +3,13 @@ import { MemoryPolicy } from './MemoryPolicy';
 import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
 import { MemorySource } from './MemorySource';
-import { IMemoryStore } from './IMemoryStore';
+import { IWorkingMemory } from './IWorkingMemory';
 
 export class MemoryPolicyEngine {
-  private memoryService: IMemoryStore;
+  private memoryService: IWorkingMemory;
   private policies: Map<string, MemoryPolicy> = new Map();
 
-  constructor(memoryService: IMemoryStore) {
+  constructor(memoryService: IWorkingMemory) {
     this.memoryService = memoryService;
     this.loadDefaultPolicies();
     console.log('[MemoryPolicyEngine] Initialized.');

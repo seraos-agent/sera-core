@@ -1,8 +1,11 @@
 import { EventEmitter } from 'events';
 import { Runtime } from '../runtime/Runtime';
 import { WorldStateService } from '../core/world-state/WorldStateService';
+import { EventTypes } from '../core/events/types';
+import { IWorkingMemory } from '../core/memory/IWorkingMemory';
+import { WorkingMemory } from '../memory/WorkingMemory';
+import { FileMemoryPersistence } from '../memory/persistence/FileMemoryPersistence';
 import { GoalBridge } from '../runtime/GoalBridge';
-import { MemoryStore } from '../memory/MemoryStore';
 import { ChatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { ObservationStore } from '../core/perception/ObservationStore';
 import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
@@ -50,7 +53,8 @@ export class SeraAgentInstance {
   public runtime!: Runtime;
   public chatHistoryStore!: ChatHistoryStore;
   public observationStore!: ObservationStore;
-  public memoryStore!: MemoryStore;
+  public memoryStore!: IWorkingMemory;
+  public persistence!: FileMemoryPersistence;
   public worldStateService!: WorldStateService;
   public triggerStore!: InMemoryTriggerStore;
   public triggerEngine!: TriggerEngine;
@@ -71,7 +75,12 @@ export class SeraAgentInstance {
 
     this.chatHistoryStore = new ChatHistoryStore(this.sessionId);
     this.observationStore = new ObservationStore(100);
-    this.memoryStore = new MemoryStore(this.eventBus, this.sessionId);
+    this.memoryStore = new WorkingMemory(this.eventBus);
+    
+    // Derived key mock for this scope (32-bytes hex) based on "sign-to-unlock" pattern discussed.
+    const mockDerivedWalletKey = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    this.persistence = new FileMemoryPersistence(this.sessionId, mockDerivedWalletKey);
+
     this.worldStateService = new WorldStateService(this.eventBus, this.sessionId);
     
     this.triggerStore = new InMemoryTriggerStore(this.sessionId);
@@ -173,8 +182,24 @@ export class SeraAgentInstance {
     this.communicationBridge = new CommunicationBridge(this.eventBus);
   }
 
-  public start() {
+  public async start() {
     console.log(`[SeraAgentInstance] Starting engines for ${this.sessionId}`);
+    
+    // Load snapshot at start
+    const snapshot = await this.persistence.load();
+    if (snapshot) {
+      if ('loadSnapshot' in this.memoryStore) {
+        (this.memoryStore as WorkingMemory).loadSnapshot(snapshot);
+      }
+    }
+
+    // Subscribe to temporal tick for checkpointing
+    this.eventBus.on('temporal.tick', async () => {
+      if ('getSnapshot' in this.memoryStore) {
+         await this.persistence.save((this.memoryStore as WorkingMemory).getSnapshot());
+      }
+    });
+
     this.triggerEngine.start();
     this.temporalClockService.start();
     this.governanceCoordinator.start();

@@ -5,7 +5,7 @@ import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import { ChatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 import { WorldStateService } from '../../core/world-state/WorldStateService';
-import { IMemoryStore } from '../../core/memory/IMemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
 import { MemorySource } from '../../core/memory/MemorySource';
@@ -94,7 +94,7 @@ export class DialogueEngine {
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
-  private memoryStore: IMemoryStore;
+  private memoryStore: IWorkingMemory;
   private episodicReader: EpisodicMemoryReader;
   private activeAbortController: AbortController | null = null;
 
@@ -130,7 +130,7 @@ export class DialogueEngine {
 
   private chatHistoryStore: ChatHistoryStore;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IMemoryStore, chatHistoryStore: ChatHistoryStore) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;

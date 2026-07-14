@@ -4,7 +4,7 @@ import { MemoryProposal } from './MemoryProposal';
 import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
 
-export interface IMemoryStore {
+export interface IWorkingMemory {
   store(event: Event): void;
   getHistory(): Event[];
   

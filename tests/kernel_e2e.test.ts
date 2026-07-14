@@ -3,8 +3,8 @@ import { EventEmitter } from 'events';
 import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { Runtime } from '../src/runtime/Runtime';
 import { ExecutionTraceStore } from '../src/core/execution/ExecutionTraceStore';
-import { IMemoryStore } from '../src/core/memory/IMemoryStore';
-import { JsonMemoryStore } from '../src/memory/adapters/JsonMemoryStore';
+import { IWorkingMemory } from '../src/core/memory/IWorkingMemory';
+import { WorkingMemory } from '../src/memory/WorkingMemory';
 import { ChatHistoryStore } from '../src/capabilities/dialogue/ChatHistoryStore';
 import { Planner } from '../src/core/planner/Planner';
 import { StrategyStore } from '../src/core/strategy/StrategyStore';
@@ -17,7 +17,7 @@ import { Goal } from '../src/core/goals/types';
 
 describe('Kernel E2E Integration', () => {
   let eventBus: EventEmitter;
-  let memoryStore: IMemoryStore;
+  let memoryStore: IWorkingMemory;
   let planner: Planner;
   let strategyStore: StrategyStore;
   let strategyEngine: StrategyEngine;
@@ -42,7 +42,7 @@ describe('Kernel E2E Integration', () => {
 
   beforeAll(() => {
     eventBus = new EventEmitter();
-    memoryStore = new JsonMemoryStore();
+    memoryStore = new WorkingMemory(eventBus);
     planner = new Planner();
     strategyStore = new StrategyStore();
     strategyEngine = new StrategyEngine(strategyStore);

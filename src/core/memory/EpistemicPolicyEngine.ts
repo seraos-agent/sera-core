@@ -1,15 +1,15 @@
-import { IMemoryStore } from './IMemoryStore';
+import { IWorkingMemory } from './IWorkingMemory';
 import { Belief, MemoryCategory, EpistemicStatus } from './types';
 
 export class EpistemicPolicyEngine {
-  private store: IMemoryStore;
+  private store: IWorkingMemory;
   
   // Configuration
   private readonly PROMOTION_THRESHOLD = 0.8;
   private readonly DEFAULT_BOOST = 0.3;
   private readonly DEFAULT_DROP = 0.4;
 
-  constructor(store: IMemoryStore) {
+  constructor(store: IWorkingMemory) {
     this.store = store;
   }
 

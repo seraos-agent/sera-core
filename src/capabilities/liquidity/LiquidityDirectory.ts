@@ -9,7 +9,7 @@ import { LiquidityNode, LiquidityDiscoveryCriteria } from './types';
  * a hybrid registry (on-chain identity anchor + off-chain gossip for live
  * availability) later without touching LiquidityExecutor or its callers —
  * the same adapter-behind-an-interface shape already used for
- * IMemoryStore/JsonMemoryStore.
+ * IWorkingMemory/JsonMemoryStore.
  */
 export class LiquidityDirectory {
   private nodes: Map<string, LiquidityNode> = new Map();

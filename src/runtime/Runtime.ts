@@ -3,8 +3,8 @@ import { EventEmitter } from 'events';
 import { WorkItem } from '../core/work-items/types';
 import { WorldStateService } from '../core/world-state/WorldStateService';
 import { Goal } from '../core/goals/types';
-import { IMemoryStore } from '../core/memory/IMemoryStore';
-import { JsonMemoryStore } from '../memory/adapters/JsonMemoryStore';
+import { IWorkingMemory } from '../core/memory/IWorkingMemory';
+import { WorkingMemory } from '../memory/WorkingMemory';
 import { AuthorityService } from '../delegation/AuthorityService';
 import { AuthorityContext, DelegationScope } from '../delegation/types';
 import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
@@ -54,7 +54,7 @@ export class Runtime {
   public capabilityCatalog!: CapabilityCatalog;
   public dialogueEngine!: DialogueEngine;
   public proposalManager!: ProposalManager;
-  public memoryStore: IMemoryStore;
+  public memoryStore: IWorkingMemory;
   public chatHistoryStore: any;
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
@@ -119,10 +119,10 @@ export class Runtime {
     adaptationExecutor?: AdaptationExecutor,
     eventBus?: EventEmitter,
     dispatcher?: ExecutionDispatcher,
-    memoryStore?: IMemoryStore,
+    memoryStore?: IWorkingMemory,
     chatHistoryStore?: any
   ) {
-    this.memoryStore = memoryStore || new JsonMemoryStore();
+    this.memoryStore = memoryStore || new WorkingMemory();
     this.authorityService = new AuthorityService();
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;

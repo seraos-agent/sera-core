@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { EventEmitter } from 'events';
-import { IMemoryStore } from '../src/core/memory/IMemoryStore';
-import { JsonMemoryStore } from '../src/memory/adapters/JsonMemoryStore';
+import { IWorkingMemory } from '../src/core/memory/IWorkingMemory';
+import { WorkingMemory } from '../src/memory/WorkingMemory';
 import { MemoryIngress } from '../src/core/memory/MemoryIngress';
 import { GovernanceOutcomeTracker } from '../src/core/governance/GovernanceOutcomeTracker';
 import { GovernanceReflectionEngine } from '../src/core/governance/GovernanceReflectionEngine';
@@ -11,7 +11,7 @@ import { MetaGovernanceReview } from '../src/core/governance/MetaGovernanceRevie
 
 describe('Cognitive Loop E2E', () => {
   let eventBus: EventEmitter;
-  let memoryStore: IMemoryStore;
+  let memoryStore: IWorkingMemory;
   let memoryIngress: MemoryIngress;
   let calibrationEvaluationEngine: CalibrationEvaluationEngine;
   let governanceCalibrationEngine: GovernanceCalibrationEngine;
@@ -50,7 +50,7 @@ describe('Cognitive Loop E2E', () => {
 
   beforeAll(() => {
     eventBus = new EventEmitter();
-    memoryStore = new JsonMemoryStore(eventBus);
+    memoryStore = new WorkingMemory(eventBus);
     memoryIngress = new MemoryIngress(eventBus, memoryStore as any);
     
     calibrationEvaluationEngine = new CalibrationEvaluationEngine(memoryStore as any);
