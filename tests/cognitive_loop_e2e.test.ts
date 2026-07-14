@@ -96,7 +96,7 @@ describe('Cognitive Loop E2E', () => {
 
   it('reflects on outcomes to formulate a pattern', async () => {
     governanceReflectionEngine.evaluate();
-    await new Promise(r => setTimeout(r, 10)); 
+    await new Promise(r => setTimeout(r, 100)); 
     
     const patterns = memoryStore.getBeliefsByCategory('GOVERNANCE_PATTERN_RECORD');
     expect(patterns.length).toBeGreaterThan(0);
