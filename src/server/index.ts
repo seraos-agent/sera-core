@@ -7,7 +7,7 @@ import { Server, Socket } from 'socket.io';
 import { StandardEvent, EventTypes } from '../core/events/types';
 import { App as BoltApp } from '@slack/bolt';
 import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
-import { agentManager } from './AgentManager';
+import { agentManager, SubscriptionRequiredError } from './AgentManager';
 
 const app = express();
 const httpServer = createServer(app);
@@ -132,6 +132,16 @@ io.on('connection', (socket: Socket) => {
   socket.on('auth:login', async (payload: { address?: string }) => {
     const address = payload?.address || 'dev';
     console.log(`[Server] Received auth:login for user: ${address}`);
+
+    try {
+      agentManager.checkEntitlement(address);
+    } catch (err) {
+      if (err instanceof SubscriptionRequiredError) {
+        socket.emit('subscription:required', { address });
+        return;
+      }
+      throw err;
+    }
     
     // Switch to new context
     unbindListeners();
@@ -140,6 +150,25 @@ io.on('connection', (socket: Socket) => {
     bindListeners();
 
     sendInitialState();
+  });
+
+  socket.on('billing:fetch', (payload: { address: string }) => {
+    const address = payload.address;
+    const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
+    socket.emit('billing:update', { periods });
+  });
+
+  socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
+    const address = payload.address;
+    const amountUsdc = payload.amountUsdc;
+    console.log(`[Server] Received mock topup for ${address} amount: ${amountUsdc} USDC`);
+    try {
+      agentManager.getSubscriptionService().recordTopUp(address, amountUsdc);
+      const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
+      socket.emit('billing:update', { periods });
+    } catch (e) {
+      console.error(e);
+    }
   });
 
   socket.on('chat:message', (message: string) => {

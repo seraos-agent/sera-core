@@ -39,9 +39,11 @@ export function ProposalCard({
   const isSchedule = proposal.intent === 'SCHEDULE_GOAL';
   const targetIntent = isSchedule ? proposal.parameters?.actionIntent : proposal.intent;
   const isTransfer = targetIntent === 'TRANSFER_FUNDS';
+  const isPurchase = proposal.intent === 'PURCHASE_INTEGRATION';
   
   let title = "Action Proposal";
-  if (isSchedule && isTransfer) title = "Recurring Transfer";
+  if (isPurchase) title = "Integration Purchase";
+  else if (isSchedule && isTransfer) title = "Recurring Transfer";
   else if (isSchedule) title = "Scheduled Automation";
   else if (isTransfer) title = "Wallet Transfer";
 
@@ -90,9 +92,20 @@ export function ProposalCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
-            {isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
+            {isPurchase ? `Install ${p.integrationName} Integration` : isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
           </span>
         </div>
+
+        {isPurchase && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monthly Cost</span>
+              <span style={{ fontSize: 14, color: theme.status, fontWeight: 600 }}>
+                {p.priceUsdc} USDC / month
+              </span>
+            </div>
+          </>
+        )}
 
         {isTransfer && (
           <>

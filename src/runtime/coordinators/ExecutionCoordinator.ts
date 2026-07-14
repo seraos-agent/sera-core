@@ -194,4 +194,8 @@ export class ExecutionCoordinator {
   public getEventBus(): EventEmitter {
     return this.eventBus;
   }
+
+  public stop(): void {
+    this.supervisor.stop();
+  }
 }

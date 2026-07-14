@@ -58,6 +58,9 @@ export function ChatView({
   }, []);
 
   const handleApprove = useCallback((proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => {
+    if (proposalId === "mock_purchase_github" && action === "APPROVE") {
+      window.dispatchEvent(new Event("mock_github_installed"));
+    }
     if (socket) {
       socket.emit('chat:proposal_response', { proposalId, action, candidateId });
       setMessages(prev => prev.map(m => {

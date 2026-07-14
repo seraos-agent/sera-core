@@ -37,3 +37,4 @@ jobs:
         SLACK_BOT_TOKEN: "xoxb-mock-token"
         SERA_SLACK_SOCKET: "xapp-mock-token"
         BRAVE_API_KEY: "mock_brave_key_for_tests"
+        MASTER_ENCRYPTION_KEY: "000000000000000000000000000000000000000000000000000000000000000a"

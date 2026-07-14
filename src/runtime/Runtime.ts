@@ -190,6 +190,10 @@ export class Runtime {
     this.adaptationExecutor = adaptationExecutor;
   }
 
+  public stop(): void {
+    this.executionCoordinator.stop();
+  }
+
   // Replaced by ExecutionDispatcher's direct listening
 
   public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean }): void {

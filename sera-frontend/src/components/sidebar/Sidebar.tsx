@@ -3,6 +3,7 @@ import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
+import { useState, useEffect } from 'react';
 import type { WalletState } from "../../hooks/useWallet";
 
 interface SidebarProps {
@@ -13,10 +14,10 @@ interface SidebarProps {
   isMobileView: boolean;
   onNavigate: (view: "chat" | "wallet" | "connections" | "automations") => void;
   walletState?: WalletState;
-  onDisconnect?: () => void;
+  onAccountClick?: () => void;
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate, walletState, onDisconnect }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate, walletState, onAccountClick }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
   const { address } = useAccount();
@@ -25,6 +26,18 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
   const shortAddress = address 
     ? `${address.slice(0, 6)}...${address.slice(-4)}` 
     : (devAddress ? `${devAddress.slice(0, 6)}...${devAddress.slice(-4)}` : "Sera Admin");
+
+  const [hasGithub, setHasGithub] = useState(false);
+  useEffect(() => {
+    const handleGithubInstall = () => setHasGithub(true);
+    window.addEventListener("mock_github_installed", handleGithubInstall);
+    return () => window.removeEventListener("mock_github_installed", handleGithubInstall);
+  }, []);
+
+  const connectors = [...CONNECTORS];
+  if (hasGithub) {
+    connectors.push({ id: "github_mock", name: "GitHub", icon: "github-icon" as any });
+  }
 
   return (
     <>
@@ -89,7 +102,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
               )}
             </div>
 
-            {CONNECTORS.map((c) => {
+            {connectors.map((c) => {
               const Icon = c.icon;
               const isClickable = c.id === "wallet" || c.id === "automations";
               return (
@@ -113,7 +126,13 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
                   onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  <Icon size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
+                  {typeof Icon === "string" ? (
+                    <svg width={15} height={15} style={{ fill: theme.inkSoft, flexShrink: 0 }}>
+                      <use href={`/icons.svg#${Icon}`} />
+                    </svg>
+                  ) : (
+                    <Icon size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
+                  )}
                   {open && (
                     <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {c.name}
@@ -132,8 +151,8 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
 
           <div 
             onClick={() => {
-              if (onDisconnect) {
-                onDisconnect();
+              if (onAccountClick) {
+                onAccountClick();
               } else {
                 openWeb3Modal();
               }

@@ -76,6 +76,7 @@ export class SeraAgentInstance {
     
     this.triggerStore = new InMemoryTriggerStore(this.sessionId);
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
+    (globalThis as any).__triggerEngine = this.triggerEngine;
     
     this.goalBridge = new GoalBridge(this.eventBus, this.sessionId);
 
@@ -182,5 +183,7 @@ export class SeraAgentInstance {
   public stop() {
     console.log(`[SeraAgentInstance] Stopping engines for ${this.sessionId}`);
     this.temporalClockService.stop();
+    this.triggerEngine.stop();
+    this.runtime.stop();
   }
 }

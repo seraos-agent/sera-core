@@ -7,6 +7,7 @@ import { WalletPage } from "./components/wallet/WalletPage";
 import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
+import { AccountModal } from "./components/account/AccountModal";
 
 import { LandingPage } from "./components/landing/LandingPage";
 import { createWeb3Modal, useWeb3ModalTheme, useWeb3Modal } from '@web3modal/wagmi/react';
@@ -78,6 +79,7 @@ function InnerApp() {
   }, [currentView]);
 
   const [lastViewedCount, setLastViewedCount] = useState(0);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
 
   const { walletState, setWalletState } = useWallet();
   const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
@@ -98,6 +100,26 @@ function InnerApp() {
     const nextMsgId = Date.now();
     const userMsg = { id: nextMsgId, role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
+
+    if (text.toLowerCase().includes("github") && (text.toLowerCase().includes("beli") || text.toLowerCase().includes("pasang") || text.toLowerCase().includes("install"))) {
+      // Mock agent response for purchasing a product
+      setTimeout(() => {
+        setMessages(prev => [...prev, {
+          id: Date.now() + 1,
+          role: "assistant",
+          type: "proposal",
+          proposal: {
+            proposalId: "mock_purchase_github",
+            intent: "PURCHASE_INTEGRATION",
+            parameters: {
+              integrationName: "GitHub",
+              priceUsdc: 10
+            }
+          }
+        }]);
+      }, 800);
+      return;
+    }
 
     if (socket) {
       socket.emit("chat:message", text);
@@ -125,6 +147,16 @@ function InnerApp() {
 
     if (socket && isConnected && address) {
       socket.emit("auth:login", { address });
+    }
+
+    if (socket) {
+      const handleSubscriptionRequired = () => {
+        setIsAccountModalOpen(true);
+      };
+      socket.on("subscription:required", handleSubscriptionRequired);
+      return () => {
+        socket.off("subscription:required", handleSubscriptionRequired);
+      };
     }
   }, [socket, isConnected, address, isBypassed, setMessages, setObservations]);
 
@@ -193,7 +225,18 @@ function InnerApp() {
               isMobileView={isMobileView}
               onNavigate={setCurrentView}
               walletState={walletState}
+              onAccountClick={() => setIsAccountModalOpen(true)}
+            />
+
+            <AccountModal
+              theme={theme}
+              isOpen={isAccountModalOpen}
+              onClose={() => setIsAccountModalOpen(false)}
+              walletState={walletState}
+              socket={socket}
+              isMobileView={isMobileView}
               onDisconnect={() => {
+                setIsAccountModalOpen(false);
                 if (isConnected) {
                   open();
                 } else {
