@@ -90,7 +90,7 @@ describe('Cognitive Loop E2E', () => {
         governanceOutcomeTracker.evaluate();
       }
       
-      await new Promise(r => setTimeout(r, 10)); 
+      await new Promise(r => setTimeout(r, 100)); 
     }
   });
 

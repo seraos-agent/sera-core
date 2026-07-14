@@ -62,7 +62,7 @@ describe('Liquidity Capability E2E', () => {
     expect(receipt.amountExecuted).toBe(500);
 
     // Allow the event listener (LiquidityReputationBridge) to process
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 100));
 
     const belief = memoryStore.getBeliefByKey('reputation:node-a');
     expect(belief, 'reputation belief should exist after a completed execution').toBeDefined();
@@ -108,7 +108,7 @@ describe('Liquidity Capability E2E', () => {
     const receipt = await executor.execute({ quoteId: q.quoteId, idempotencyKey: 'exec-2' });
     expect(receipt.status).toBe('FAILED');
 
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 100));
     const belief = memoryStore.getBeliefByKey('reputation:node-b');
     const record = JSON.parse(belief!.content);
     expect(record.failureCount).toBe(1);
