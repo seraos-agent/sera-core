@@ -40,8 +40,8 @@ describe('Human-In-The-Loop Governance', () => {
   });
 
   it('pauses execution and emits GOAL_REQUIRES_APPROVAL when authority requires it', async () => {
-    const goal: Goal = { id: 'g1', intentId: 'i1', description: 'Test', status: 'IN_PROGRESS', priority: 1, stabilityIndex: 1, createdAt: Date.now() };
-    const plan: Plan = { id: 'p1', goalId: 'g1', steps: [{ id: 's1', action: 'wallet:transfer', status: 'PENDING', description: 'desc', payload: {} }], confidence: 1, createdAt: Date.now() };
+    const goal: Goal = { id: 'g1', intentId: 'i1', description: 'Test', status: 'IN_PROGRESS', priority: 1, stabilityIndex: 1, targetState: {}, createdAt: Date.now() };
+    const plan: Plan = { id: 'p1', goalId: 'g1', steps: [{ id: 's1', action: 'wallet:transfer', status: 'PENDING', description: 'desc', payload: {} }], status: 'APPROVED', createdAt: Date.now() };
     const scope: DelegationScope = { id: 'scope1', principalId: 'u1', allowedPermissions: [], requiresApprovalPermissions: [{ action: 'wallet:transfer' }] };
     const ctx: ExecutionContext = { executionId: 'e1', origin: 'test', priority: 1, createdAt: Date.now() };
 
@@ -68,8 +68,8 @@ describe('Human-In-The-Loop Governance', () => {
   });
   
   it('rejects execution when rejectTask is called', async () => {
-    const goal: Goal = { id: 'g2', intentId: 'i1', description: 'Test', status: 'IN_PROGRESS', priority: 1, stabilityIndex: 1, createdAt: Date.now() };
-    const plan: Plan = { id: 'p2', goalId: 'g2', steps: [{ id: 's2', action: 'wallet:transfer', status: 'PENDING', description: 'desc', payload: {} }], confidence: 1, createdAt: Date.now() };
+    const goal: Goal = { id: 'g2', intentId: 'i1', description: 'Test', status: 'IN_PROGRESS', priority: 1, stabilityIndex: 1, targetState: {}, createdAt: Date.now() };
+    const plan: Plan = { id: 'p2', goalId: 'g2', steps: [{ id: 's2', action: 'wallet:transfer', status: 'PENDING', description: 'desc', payload: {} }], status: 'APPROVED', createdAt: Date.now() };
     const scope: DelegationScope = { id: 'scope1', principalId: 'u1', allowedPermissions: [], requiresApprovalPermissions: [{ action: 'wallet:transfer' }] };
     const ctx: ExecutionContext = { executionId: 'e2', origin: 'test', priority: 1, createdAt: Date.now() };
 
@@ -89,4 +89,7 @@ describe('Human-In-The-Loop Governance', () => {
     expect((coordinator as any).scheduler.submitTask).not.toHaveBeenCalled();
   });
 });
+
+
+
 
