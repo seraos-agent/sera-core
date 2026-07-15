@@ -1,8 +1,8 @@
 import { Goal } from '../goals/types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
 export class AttentionRebalancer {
-  prioritize(goals: Goal[], memoryStore: MemoryStore): Goal[] {
+  prioritize(goals: Goal[], memoryStore: IWorkingMemory): Goal[] {
     const calibrationBeliefs = memoryStore.getBeliefsByCategory('CALIBRATION');
     
     // Pre-parse to avoid parsing repeatedly in sort loop

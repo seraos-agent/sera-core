@@ -1,8 +1,8 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GoalGraph, GoalDriftRecord, GoalTensionRecord } from './types';
 
 export class GoalDriftDetectionEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public detectStructuralDrift(baselineGraph: GoalGraph, currentGraph: GoalGraph, targetGoalId: string): void {
     console.log('[GoalDriftDetectionEngine] Detecting STRUCTURAL Drift...');

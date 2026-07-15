@@ -1,8 +1,8 @@
 import { ExecutionTrace, OutcomeRealizationPattern } from '../execution/types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
 export class OutcomeReflection {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   private getContextKey(trace: ExecutionTrace): string {
     // Determine context based on intent snapshot and current world state

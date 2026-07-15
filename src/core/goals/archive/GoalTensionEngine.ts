@@ -1,4 +1,4 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GoalGraph, GoalTensionRecord } from './types';
 
 // Mock interface for operational data passed from runtime
@@ -8,7 +8,7 @@ export interface OperationalData {
 }
 
 export class GoalTensionEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public observeTension(graph: GoalGraph, opData: OperationalData): void {
     console.log('[GoalTensionEngine] Observing operational tension dynamics...');

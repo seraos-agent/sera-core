@@ -1,12 +1,12 @@
 import { GovernanceOutcomeRecord, GovernancePattern, GovernanceDecision } from '../cognition/types';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
 export class GovernanceReflectionEngine {
   private readonly PATTERN_CRITICAL_MASS = 5;
 
-  constructor(private memoryStore: MemoryStore, private eventBus: EventEmitter) {}
+  constructor(private memoryStore: IWorkingMemory, private eventBus: EventEmitter) {}
 
   evaluate(): void {
     const allBeliefs = this.memoryStore.getAllBeliefs();

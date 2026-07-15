@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { EventEmitter } from 'events';
 import { ExecutionCoordinator } from '../src/runtime/coordinators/ExecutionCoordinator';
-import { JsonMemoryStore } from '../src/memory/adapters/JsonMemoryStore';
+import { WorkingMemory } from '../src/memory/WorkingMemory';
+import { IWorkingMemory } from '../src/core/memory/IWorkingMemory';
 import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { AuthorityService } from '../src/delegation/AuthorityService';
 import { Goal } from '../src/core/goals/types';
@@ -12,7 +13,7 @@ import { EventTypes } from '../src/core/events/types';
 
 describe('Execution Checkpointing (Suspend & Resume)', () => {
   let eventBus: EventEmitter;
-  let memoryStore: JsonMemoryStore;
+  let memoryStore: IWorkingMemory;
   let constitutionEngine: ConstitutionEngine;
   let authorityService: AuthorityService;
   let coordinator: ExecutionCoordinator;
@@ -59,7 +60,7 @@ describe('Execution Checkpointing (Suspend & Resume)', () => {
 
   beforeAll(() => {
     eventBus = new EventEmitter();
-    memoryStore = new JsonMemoryStore();
+    memoryStore = new WorkingMemory();
     constitutionEngine = new ConstitutionEngine();
     authorityService = new AuthorityService();
     

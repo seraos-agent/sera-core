@@ -1,15 +1,15 @@
-import { MemoryStore } from './MemoryStore';
-import { Belief, MemoryCategory, EpistemicStatus } from './types';
+import { WorkingMemory } from './WorkingMemory';
+import { Belief, MemoryCategory, EpistemicStatus } from '../core/memory/types';
 
 export class MemoryPolicyEngine {
-  private store: MemoryStore;
+  private store: WorkingMemory;
   
   // Configuration
   private readonly PROMOTION_THRESHOLD = 0.8;
   private readonly DEFAULT_BOOST = 0.3;
   private readonly DEFAULT_DROP = 0.4;
 
-  constructor(store: MemoryStore) {
+  constructor(store: WorkingMemory) {
     this.store = store;
   }
 

@@ -4,7 +4,8 @@ import { LiquidityDirectory } from '../src/capabilities/liquidity/LiquidityDirec
 import { LiquidityExecutor, PricingSource } from '../src/capabilities/liquidity/LiquidityExecutor';
 import { LiquidityReputationBridge } from '../src/capabilities/liquidity/LiquidityReputationBridge';
 import { LiquidityNode } from '../src/capabilities/liquidity/types';
-import { MemoryStore } from '../src/memory/MemoryStore';
+import { WorkingMemory } from '../src/memory/WorkingMemory';
+import { IWorkingMemory } from '../src/core/memory/IWorkingMemory';
 
 const flatPricing: PricingSource = {
   getUnitPrice: (asset: string, fiat?: string) => {
@@ -31,12 +32,12 @@ function makeNode(overrides: Partial<LiquidityNode> = {}): LiquidityNode {
 describe('Liquidity Capability E2E', () => {
   let eventBus: EventEmitter;
   let directory: LiquidityDirectory;
-  let memoryStore: MemoryStore;
+  let memoryStore: IWorkingMemory;
 
   beforeEach(() => {
     eventBus = new EventEmitter();
     directory = new LiquidityDirectory();
-    memoryStore = new MemoryStore(eventBus, `test-${Date.now()}-${Math.random()}`);
+    memoryStore = new WorkingMemory(eventBus);
     new LiquidityReputationBridge(eventBus, memoryStore);
   });
 

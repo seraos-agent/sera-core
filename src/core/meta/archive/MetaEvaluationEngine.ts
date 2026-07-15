@@ -1,5 +1,5 @@
 import { MetaMetrics, MetaEvaluationReport, MetaSignal } from './types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GoalEngine } from '../goals/GoalEngine';
 import { SignalArbitrator } from '../feedback/SignalArbitrator';
 import { CoherenceMonitor } from '../cognition/CoherenceMonitor';
@@ -17,7 +17,7 @@ export class MetaEvaluationEngine {
   private windowContradictions = 0;
 
   constructor(
-    private memoryStore: MemoryStore,
+    private memoryStore: IWorkingMemory,
     private goalEngine: GoalEngine,
     private arbitrator: SignalArbitrator,
     private coherenceMonitor: CoherenceMonitor,

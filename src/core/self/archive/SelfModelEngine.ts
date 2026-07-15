@@ -1,9 +1,9 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { SelfModelSnapshot } from './types';
 import { GoalGraph, GoalTensionRecord, GoalDriftRecord, GoalInterpretationRecord } from '../goals/types';
 
 export class SelfModelEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public generateSnapshot(
     graph: GoalGraph,

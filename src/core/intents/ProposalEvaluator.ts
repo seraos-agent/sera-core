@@ -1,9 +1,9 @@
 import { GoalProposal, GoalCandidate } from './types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { IntentRealizationPattern, OutcomeRealizationPattern } from '../execution/types';
 
 export class ProposalEvaluator {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   evaluate(proposal: GoalProposal): GoalProposal {
     // 1. Fetch relevant IntentRealizationPattern from memory (Acceptance)

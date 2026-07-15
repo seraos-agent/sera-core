@@ -1,4 +1,4 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GovernancePattern, MetaCognitiveRecommendation } from '../cognition/types';
 
 /**
@@ -14,7 +14,7 @@ import { GovernancePattern, MetaCognitiveRecommendation } from '../cognition/typ
  * - uncertainty disclosure
  */
 export class GovernanceCalibrationEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   calibrate(recommendations: MetaCognitiveRecommendation[]): void {
     const allBeliefs = this.memoryStore.getAllBeliefs();

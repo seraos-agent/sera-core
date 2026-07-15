@@ -4,7 +4,7 @@ import { EventTypes, StandardEvent } from '../src/core/events/types';
 import { CommunicationBridge } from '../src/capabilities/communication/CommunicationBridge';
 import { SlackAdapter } from '../src/capabilities/communication/adapters/SlackAdapter';
 import { MemoryIngress } from '../src/core/memory/MemoryIngress';
-import { JsonMemoryStore } from '../src/memory/adapters/JsonMemoryStore';
+import { WorkingMemory } from '../src/memory/WorkingMemory';
 import { MemoryStatus } from '../src/core/memory/MemoryItem';
 import { WorldStateService } from '../src/core/world-state/WorldStateService';
 
@@ -67,7 +67,7 @@ describe('Communication Simulations', () => {
   async function createEnvironment() {
     const eventBus = new EventEmitter();
     const worldStateService = new WorldStateService(eventBus);
-    const memoryStore = new JsonMemoryStore(eventBus);
+    const memoryStore = new WorkingMemory(eventBus);
     new MemoryIngress(eventBus, memoryStore as any);
 
     const mockBoltApp = new MockBoltApp();

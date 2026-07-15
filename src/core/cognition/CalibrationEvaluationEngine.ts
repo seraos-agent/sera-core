@@ -1,12 +1,12 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { Belief } from '../../memory/types';
 import { MetaCognitiveRecommendation } from './types';
 
 export class CalibrationEvaluationEngine {
-  private memoryStore: MemoryStore;
+  private memoryStore: IWorkingMemory;
   private recommendations: MetaCognitiveRecommendation[] = [];
 
-  constructor(memoryStore: MemoryStore) {
+  constructor(memoryStore: IWorkingMemory) {
     this.memoryStore = memoryStore;
   }
 

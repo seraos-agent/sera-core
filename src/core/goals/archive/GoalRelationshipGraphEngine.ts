@@ -1,8 +1,8 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GoalProfile, GoalRelationship, GoalGraph, GoalNode, GoalEdge } from './types';
 
 export class GoalRelationshipGraphEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public buildGraph(profiles: GoalProfile[], relationships: GoalRelationship[]): GoalGraph {
     console.log('[GoalRelationshipGraphEngine] Assembling Goal Relationship Graph...');

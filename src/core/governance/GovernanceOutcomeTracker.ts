@@ -1,4 +1,4 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GovernanceDecision, GovernanceOutcomeRecord } from '../cognition/types';
 import { CalibrationState } from '../execution/types';
 import { EventEmitter } from 'events';
@@ -7,7 +7,7 @@ import { EventTypes, StandardEvent } from '../events/types';
 export class GovernanceOutcomeTracker {
   private readonly OBSERVATION_WINDOW_CYCLES = 3;
 
-  constructor(private memoryStore: MemoryStore, private eventBus: EventEmitter) {}
+  constructor(private memoryStore: IWorkingMemory, private eventBus: EventEmitter) {}
 
   evaluate(): GovernanceOutcomeRecord[] {
     const outcomes: GovernanceOutcomeRecord[] = [];

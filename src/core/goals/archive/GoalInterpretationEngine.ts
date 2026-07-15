@@ -1,8 +1,8 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { GoalDriftRecord, GoalInterpretationRecord, GoalTensionRecord } from './types';
 
 export class GoalInterpretationEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public interpret(driftRecords: GoalDriftRecord[], tensionRecords: GoalTensionRecord[]): void {
     console.log('[GoalInterpretationEngine] Starting interpretation cycle (Meaning Layer)...');

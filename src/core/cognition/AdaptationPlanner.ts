@@ -1,4 +1,4 @@
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { AdaptationProposal, GovernancePattern, AdaptationTarget } from './types';
 
 export class AdaptationPlanner {
@@ -6,7 +6,7 @@ export class AdaptationPlanner {
   private generationMode: 'ACTIVE' | 'COOLDOWN' = 'ACTIVE';
   private cooldownUntil: number = 0;
 
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public registerPendingProposal(proposal: AdaptationProposal) {
     this.activeProposals.push(proposal);

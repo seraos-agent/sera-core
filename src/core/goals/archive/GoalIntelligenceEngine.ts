@@ -1,8 +1,8 @@
 import { Goal, GoalProfile, GoalRelationship, GoalRelationshipType } from './types';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
 export class GoalIntelligenceEngine {
-  constructor(private memoryStore: MemoryStore) {}
+  constructor(private memoryStore: IWorkingMemory) {}
 
   public observeGoals(goals: Goal[]): void {
     console.log('[GoalIntelligenceEngine] Observing goals and bootstrapping intelligence...');

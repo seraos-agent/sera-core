@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
 import { MemoryProposal, MemoryOperation } from './MemoryProposal';
-import { MemoryStore } from '../../memory/MemoryStore';
+import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { MemorySource } from './MemorySource';
 import { EvidenceType } from './MemoryEvidence';
 
@@ -16,7 +16,7 @@ import { EvidenceType } from './MemoryEvidence';
 export class MemoryIngress {
   constructor(
     private eventBus: EventEmitter,
-    private memoryStore: MemoryStore
+    private memoryStore: IWorkingMemory
   ) {
     this.setupListeners();
     console.log('[MemoryIngress] Initialized. Listening for domain events to propose.');
