@@ -1,4 +1,5 @@
 import { TemporalContext } from '../../core/temporal/types';
+import { EventTypes } from '../../core/events/types';
 import { Plan, PlanStep } from '../../core/planner/types';
 import { Goal } from '../../core/goals/types';
 import { WorkItem } from '../../core/work-items/types';
@@ -89,6 +90,13 @@ export class ExecutionCoordinator {
       const constitutionDecision = this.constitutionEngine.evaluate(constitutionContext);
       if (constitutionDecision.status === 'DENIED') {
         this.logger.warn(`Constitution Check DENIED for work item ${workItem.id}`);
+        this.eventBus.emit(EventTypes.SECURITY_BLOCKED_ACTION, {
+          reason: 'CONSTITUTION_DENIED',
+          goalId: goal.id,
+          workItemId: workItem.id,
+          action: workItem.action,
+          timestamp: Date.now()
+        });
         allChecksPassed = false;
         break;
       }
@@ -104,6 +112,13 @@ export class ExecutionCoordinator {
       const authDecision = this.authorityService.evaluate(authorityContext, scope);
       if (authDecision.status === 'DENIED') {
         this.logger.warn(`Authority Check DENIED for work item ${workItem.id}`);
+        this.eventBus.emit(EventTypes.SECURITY_BLOCKED_ACTION, {
+          reason: 'AUTHORITY_DENIED',
+          goalId: goal.id,
+          workItemId: workItem.id,
+          action: workItem.action,
+          timestamp: Date.now()
+        });
         allChecksPassed = false;
         break;
       }

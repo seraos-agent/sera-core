@@ -59,6 +59,10 @@ export const EventTypes = {
 
   // Memory Layer
   MEMORY_ITEM_MUTATED: 'memory.item.mutated',
+
+  // Security & Telemetry
+  SECURITY_AUTH_FAILURE: 'security.auth.failure',
+  SECURITY_BLOCKED_ACTION: 'security.blocked.action',
 } as const;
 
 export type EventType = typeof EventTypes[keyof typeof EventTypes];

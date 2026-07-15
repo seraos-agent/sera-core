@@ -3,18 +3,18 @@ import { requireAuthenticatedSession } from '../src/server/SessionGuard';
 
 describe('Socket session authorization', () => {
   it('blocks unauthenticated socket actions and informs the client', () => {
-    const socket = { data: {}, emit: vi.fn() };
+    const socket = { id: 's1', handshake: { address: '127.0.0.1' }, data: {}, emit: vi.fn() };
 
-    expect(requireAuthenticatedSession(socket)).toBe(false);
+    expect(requireAuthenticatedSession(socket, 'test')).toBe(false);
     expect(socket.emit).toHaveBeenCalledWith('auth:error', {
       message: 'Connect a valid wallet before performing this action.',
     });
   });
 
   it('allows actions only after the login handler marks the session authenticated', () => {
-    const socket = { data: { isAuthenticated: true }, emit: vi.fn() };
+    const socket = { id: 's2', handshake: { address: '127.0.0.1' }, data: { isAuthenticated: true }, emit: vi.fn() };
 
-    expect(requireAuthenticatedSession(socket)).toBe(true);
+    expect(requireAuthenticatedSession(socket, 'test')).toBe(true);
     expect(socket.emit).not.toHaveBeenCalled();
   });
 });

@@ -29,6 +29,27 @@ export class AuditLogger {
     this.eventBus.on(EventTypes.COMMUNICATION_OBSERVED, (event: any) => {
       this.writeLog('RAW_COMMUNICATION', event);
     });
+
+    this.eventBus.on(EventTypes.SECURITY_AUTH_FAILURE, (payload: any) => {
+      this.writeLog('SECURITY_VIOLATION', payload);
+    });
+
+    this.eventBus.on(EventTypes.SECURITY_BLOCKED_ACTION, (payload: any) => {
+      this.writeLog('GOVERNANCE_BLOCK', payload);
+    });
+
+    // Execution States
+    const execEvents = [
+      'system.execution.started', 'system.execution.progress', 
+      'system.execution.paused', 'system.execution.resumed', 
+      'system.execution.completed', 'system.execution.failed', 
+      'system.execution.cancelled', 'system.execution.timeout_detected'
+    ];
+    for (const e of execEvents) {
+      this.eventBus.on(e, (payload: any) => {
+        this.writeLog('EXECUTION_STATE_CHANGED', { event: e, ...payload });
+      });
+    }
   }
 
   private stripPII(payload: any): any {

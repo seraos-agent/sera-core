@@ -199,14 +199,14 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {
-    if (!requireAuthenticatedSession(socket) || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!requireAuthenticatedSession(socket, 'auth:challenge', instance?.eventBus) || payload.address.toLowerCase() !== socket.data.sessionId) return;
     const address = socket.data.sessionId;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
     socket.emit('billing:update', { periods });
   });
 
   socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
-    if (!requireAuthenticatedSession(socket) || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!requireAuthenticatedSession(socket, 'billing:topup_dev_mock', instance?.eventBus) || payload.address.toLowerCase() !== socket.data.sessionId) return;
     if (!serverConfig.allowDevFeatures) {
       socket.emit('billing:error', { message: 'Development billing is disabled.' });
       return;
@@ -224,7 +224,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:message', (message: string) => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
     if (serverConfig.allowDevFeatures && serverConfig.demoIntentCommand && message.toLowerCase().trim() === serverConfig.demoIntentCommand) {
@@ -257,7 +257,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:clear', () => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'chat:clear', instance?.eventBus)) return;
     console.log(`[Server] Clearing chat history for ${socket.data.sessionId}`);
     instance.chatHistoryStore.clear();
     instance.runtime.dialogueEngine.clearHistory();
@@ -265,7 +265,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:cancel', () => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'chat:cancel', instance?.eventBus)) return;
     console.log(`[Server] Received chat:cancel → dispatching DIALOGUE_USER_CANCELLED for ${socket.data.sessionId}`);
     const event: StandardEvent = {
       id: `evt-${Date.now()}`,
@@ -278,7 +278,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT'; candidateId?: string }) => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'chat:proposal_response', instance?.eventBus)) return;
     const { proposalId, action, candidateId } = data;
     console.log(`[Server] Received proposal response for ${proposalId}: ${action} (candidateId: ${candidateId})`);
     
@@ -305,18 +305,18 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('automations:fetch', () => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'automations:fetch', instance?.eventBus)) return;
     socket.emit('automations:update', instance.triggerStore.getAll());
   });
 
   socket.on('automations:delete', (id: string) => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'automations:delete', instance?.eventBus)) return;
     instance.triggerStore.delete(id);
     socket.emit('automations:update', instance.triggerStore.getAll());
   });
 
   socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {
-    if (!requireAuthenticatedSession(socket)) return;
+    if (!requireAuthenticatedSession(socket, 'wallet:transfer', instance?.eventBus)) return;
     console.log(`[Server] wallet:transfer requested → ${payload.amount} ${payload.asset} to ${payload.to}`);
     socket.emit('wallet:transfer:pending', { message: 'Broadcasting transaction...' });
 
