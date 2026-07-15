@@ -37,6 +37,7 @@ export interface WalletState {
   network: string;
   asset: string;
   quality: ObservationQuality;
+  syncing?: boolean;
 }
 
 export interface TemporalState {

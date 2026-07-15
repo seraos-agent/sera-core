@@ -89,8 +89,11 @@ User message: `;
  * - Emits UI_COMMAND for theme changes
  * - Has zero knowledge of HTTP, Socket.io, or transport layers
  */
+import { ModelOrchestrator } from '../../core/llm/ModelOrchestrator';
+import { ExecutionProfileBuilder } from './ExecutionProfileBuilder.js';
+
 export class DialogueEngine {
-  private llm: QwenAdapter;
+  private orchestrator: ModelOrchestrator;
   private eventBus: EventEmitter;
   // Map from requestId → resolve function, for awaiting goal results
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
@@ -133,16 +136,19 @@ export class DialogueEngine {
 
   private chatHistoryStore: ChatHistoryStore;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, private sessionId: string = 'default') {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default') {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
     this.memoryStore = memoryStore;
     this.chatHistoryStore = chatHistoryStore;
     this.episodicReader = new EpisodicMemoryReader(sessionId);
-    this.llm = new QwenAdapter();
+    this.orchestrator = orchestrator;
     const vectorStore = new VectorMemoryStore(sessionId);
-    this.memoryRetriever = new MemoryRetriever(memoryStore, this.episodicReader, vectorStore, this.llm);
+    
+    // MemoryRetriever currently needs an ILLMAdapter. We might need to refactor it later.
+    // For now, pass a dummy QwenAdapter just for embeddings.
+    this.memoryRetriever = new MemoryRetriever(memoryStore, this.episodicReader, vectorStore, new QwenAdapter('text-embedding-v3'));
 
     this.loadConsentedUsers();
 
@@ -298,10 +304,10 @@ export class DialogueEngine {
 
   private async classifyIntent(userMessage: string): Promise<{ intent: string; parameters: Record<string, any> }> {
     try {
-      const prompt = INTENT_EXTRACTION_PROMPT.replace('${new Date().toISOString()}', new Date().toISOString()) + userMessage;
-      const response = await this.llm.generate([
-        { role: 'user', content: prompt },
-      ]);
+      const response = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Execution').requiresJSON().build(), [
+        { role: 'system', content: INTENT_EXTRACTION_PROMPT },
+        { role: 'user', content: userMessage }
+      ], undefined, this.activeAbortController?.signal);
       const parsed = JSON.parse(response.text.trim());
       return parsed;
     } catch {
@@ -479,7 +485,7 @@ export class DialogueEngine {
             const messages = await this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemRejectionMsg });
 
-            const response = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
+            const response = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Execution').build(), messages, undefined, this.activeAbortController?.signal);
 
             const rawText = response.text.trim();
             // LLM messages are no longer persisted
@@ -510,7 +516,7 @@ Do NOT say that you are processing, executing, or performing the action right no
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
           const messages = await this.buildWorkingMemory(false, userMessage);
           messages.push({ role: 'system', content: systemProposalMsg });
-          const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
+          const proposalResponse = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Reasoning').build(), messages, undefined, this.activeAbortController?.signal);
 
           let summaryText = proposalResponse.text.trim();
           
@@ -563,7 +569,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           requiresApproval: false
         });
 
-        const response = await this.llm.generate(messages, availableTools, this.activeAbortController?.signal);
+        const response = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Reasoning').requiresTools().build(), messages, availableTools, this.activeAbortController?.signal);
 
         // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
         if (response.toolCalls && response.toolCalls.length > 0) {
@@ -596,7 +602,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
             messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
             
-            const summaryResponse = await this.llm.generate(messages, [], this.activeAbortController?.signal);
+            const summaryResponse = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Execution').build(), messages, [], this.activeAbortController?.signal);
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
             return;
           }
@@ -609,7 +615,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
           if (isSafe) {
             this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-              content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
+              content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c: string) => c.toUpperCase())}...`,
             });
             const result = await this.spawnGoalAndAwaitResult(toolIntent, toolParams);
             const duration = Date.now() - startTime;
@@ -632,7 +638,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
                 role: 'system', 
                 content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.` 
               });
-              const failResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
+              const failResponse = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Execution').build(), messages, undefined, this.activeAbortController?.signal);
               this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
               return;
             }
@@ -659,7 +665,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
             const messages = await this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemProposalMsg });
 
-            const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
+            const proposalResponse = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Reasoning').build(), messages, undefined, this.activeAbortController?.signal);
 
             const summaryText = proposalResponse.text.trim();
             // LLM messages are no longer persisted
@@ -741,7 +747,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
     const messages = await this.buildWorkingMemory();
     messages.push({ role: 'user', content: narratePrompt });
 
-    const narrateResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
+    const narrateResponse = await this.orchestrator.generate(ExecutionProfileBuilder.forTier('Execution').build(), messages, undefined, this.activeAbortController?.signal);
 
     const generatedText = narrateResponse.text.trim();
     // LLM messages are no longer persisted

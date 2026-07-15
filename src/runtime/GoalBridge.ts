@@ -57,6 +57,16 @@ export class GoalBridge {
       let vaultAddress = '';
       let primaryBalance = '0';
       let vaultBalance = '0';
+      
+      // EMIT SYNCING FIRST
+      if (!userAddress) {
+        primaryAddress = walletId.address;
+        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      } else {
+        primaryAddress = userAddress;
+        vaultAddress = walletId.address;
+      }
+      this.emitSyncing(primaryAddress, vaultAddress, walletId.network);
 
       if (!userAddress) {
         // --- DEV BYPASS MODE (Legacy Behavior) ---

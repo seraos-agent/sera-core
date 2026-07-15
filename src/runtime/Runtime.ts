@@ -38,6 +38,10 @@ import { IntentStore } from '../core/intents/IntentStore';
 import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 import { ExecutionDispatcher } from './ExecutionDispatcher';
 import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
+import { ModelRegistry } from '../core/llm/ModelRegistry';
+import { StaticRoutingPolicy } from '../core/llm/StaticRoutingPolicy';
+import { ModelOrchestrator } from '../core/llm/ModelOrchestrator';
+import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
@@ -238,8 +242,15 @@ export class Runtime {
       this.approveProposal(event.payload.proposalId, event.payload.candidateId);
     });
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, options?.sessionId || 'default');
-    console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
+    // Initialize Deterministic Multi-Model Orchestrator
+    const qwenFlash = new QwenAdapter('qwen-plus'); // Mapping to flash/plus depending on keys available
+    const qwenPlus = new QwenAdapter('qwen-plus');
+    const registry = new ModelRegistry([qwenFlash, qwenPlus]);
+    const routingPolicy = new StaticRoutingPolicy();
+    const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy);
+
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, modelOrchestrator, options?.sessionId || 'default');
+    console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, Orchestrator, and Cognitive Engines Initialized');
   }
 
   public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {

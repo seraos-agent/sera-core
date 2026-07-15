@@ -45,6 +45,7 @@ export class WorldStateService {
         vaultBalance: parseFloat(p.vaultBalance) || 0,
         network: p.network || 'unknown',
         asset: p.asset || 'USDC',
+        syncing: p.syncing || false,
         quality: {
           updatedAt: Date.now(),
           source: 'EventBus/DOMAIN_WALLET_STATE',

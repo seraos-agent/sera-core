@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square } from "lucide-react";
+import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
 interface ChatInputProps {
@@ -210,6 +210,7 @@ export function ChatInput({
                   <Plus size={20} />
                 </button>
                 
+
                 {/* Pop-up Menu */}
                 {showAttachMenu && (
                   <div style={{
@@ -264,9 +265,8 @@ export function ChatInput({
                   </div>
                 )}
               </div>
-            </div>
-            
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              
+              {/* Moved Bell icon to the left side, outside of menuRef */}
               <button
                 title="Observations"
                 onClick={onToggleObservations}
@@ -289,6 +289,22 @@ export function ChatInput({
                     border: `1.5px solid ${theme.surface}`
                   }} />
                 )}
+              </button>
+            </div>
+            
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <button
+                title="Voice input"
+                disabled={disabled}
+                style={{
+                  background: "transparent", border: "none", 
+                  color: theme.inkSoft, 
+                  cursor: disabled ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRadius: 8, padding: 4, transition: "all 0.2s"
+                }}
+              >
+                <Mic size={20} />
               </button>
 
               <button

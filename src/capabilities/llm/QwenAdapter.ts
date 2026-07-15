@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { SeraTool, SeraToolCall } from '../../core/cognitive/Tool';
+import { ILLMAdapter, ModelCapability } from '../../core/llm/types';
 
 const DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
 
@@ -21,15 +22,37 @@ export interface QwenResponse {
  * This class ONLY knows how to talk to the Qwen/DashScope API.
  * It has zero knowledge of Sera's cognitive architecture.
  */
-export class QwenAdapter {
+export class QwenAdapter implements ILLMAdapter {
   private apiKey: string;
   private model: string;
+  private capability: ModelCapability;
 
   constructor(model: string = 'qwen-plus') {
     const key = process.env.QWEN_API;
     if (!key) throw new Error('[QwenAdapter] QWEN_API key is not set in environment.');
     this.apiKey = key;
     this.model = model;
+    
+    // Define capability based on the exact model
+    const isFlash = model.includes('flash');
+    this.capability = {
+      provider: 'Qwen',
+      model: this.model,
+      tiers: isFlash ? ['Execution'] : ['Reasoning'],
+      supportsVision: false,
+      supportsStreaming: true,
+      supportsJSON: true,
+      supportsFunctionCalling: true,
+      supportsThinking: !isFlash, // Plus supports more complex reasoning
+      maxContext: isFlash ? 8192 : 32000,
+      priceInput: isFlash ? 0.001 : 0.004,
+      priceOutput: isFlash ? 0.002 : 0.012,
+      latencyClass: isFlash ? 'UltraFast' : 'Fast',
+    };
+  }
+
+  getCapability(): ModelCapability {
+    return this.capability;
   }
 
   async generate(messages: QwenMessage[], tools?: SeraTool[], abortSignal?: AbortSignal): Promise<QwenResponse> {

@@ -7,7 +7,7 @@ export const INITIAL_WALLET = {
   vaultBalance: "...",
   chain: "Base Mainnet",
   vaultAddress: "",
-  syncing: false,
+  syncing: true,
 };
 
 export type WalletState = typeof INITIAL_WALLET;
