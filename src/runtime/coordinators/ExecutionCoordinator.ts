@@ -30,6 +30,7 @@ export class ExecutionCoordinator {
   private workerPool: WorkerPool;
   private supervisor: ExecutionSupervisor;
   private eventBus: EventEmitter;
+  private pendingApprovalTasks: Map<string, { task: ExecutionTask, trace: ExecutionTrace }> = new Map();
 
   constructor(
     private constitutionEngine: ConstitutionEngine,
@@ -66,6 +67,7 @@ export class ExecutionCoordinator {
     
     // 1. Governance Pre-Check before Execution
     let allChecksPassed = true;
+    let requiresApproval = false;
     for (const step of plan.steps) {
       const workItem: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -121,6 +123,9 @@ export class ExecutionCoordinator {
         });
         allChecksPassed = false;
         break;
+      } else if (authDecision.status === 'REQUIRES_APPROVAL') {
+        this.logger.info(`Action requires approval: ${workItem.action}`);
+        requiresApproval = true;
       }
     }
 
@@ -180,8 +185,40 @@ export class ExecutionCoordinator {
       this.executionTraceStore.store(trace);
     }
 
-    // 6. Submit to Scheduler
-    this.scheduler.submitTask(task);
+    // 6. Handle Approval Requirement or Submit
+    if (requiresApproval) {
+      this.pendingApprovalTasks.set(task.taskId, { task, trace });
+      this.logger.info(`Task ${task.taskId} for goal ${goal.id} is WAITING_APPROVAL`);
+      this.eventBus.emit(EventTypes.GOAL_REQUIRES_APPROVAL, {
+        taskId: task.taskId,
+        goalId: goal.id,
+        planId: plan.id,
+        actions: plan.steps.map(s => s.action),
+        timestamp: Date.now()
+      });
+    } else {
+      this.scheduler.submitTask(task);
+    }
+  }
+
+  public approveTask(taskId: string): boolean {
+    const pending = this.pendingApprovalTasks.get(taskId);
+    if (!pending) return false;
+    
+    this.logger.info(`Task ${taskId} APPROVED. Submitting to scheduler.`);
+    this.pendingApprovalTasks.delete(taskId);
+    this.scheduler.submitTask(pending.task);
+    return true;
+  }
+
+  public rejectTask(taskId: string): boolean {
+    const pending = this.pendingApprovalTasks.get(taskId);
+    if (!pending) return false;
+    
+    this.logger.warn(`Task ${taskId} REJECTED by human in the loop.`);
+    this.pendingApprovalTasks.delete(taskId);
+    // You could emit a failure event here if needed
+    return true;
   }
 
   private createTrace(goal: Goal, plan: Plan, scope: DelegationScope, taskId: string): ExecutionTrace {

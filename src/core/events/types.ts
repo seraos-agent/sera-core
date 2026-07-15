@@ -63,6 +63,7 @@ export const EventTypes = {
   // Security & Telemetry
   SECURITY_AUTH_FAILURE: 'security.auth.failure',
   SECURITY_BLOCKED_ACTION: 'security.blocked.action',
+  GOAL_REQUIRES_APPROVAL: 'goal.requires.approval',
 } as const;
 
 export type EventType = typeof EventTypes[keyof typeof EventTypes];

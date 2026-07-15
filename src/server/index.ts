@@ -128,6 +128,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.on(EventTypes.UI_COMMAND, onUiCommand);
     instance.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
     instance.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+    instance.eventBus.on(EventTypes.GOAL_REQUIRES_APPROVAL, (payload: any) => socket.emit('governance:approval_needed', payload));
     instance.eventBus.on(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
     instance.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
   };
@@ -138,6 +139,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.off(EventTypes.UI_COMMAND, onUiCommand);
     instance.eventBus.off(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposalGenerated);
     instance.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+    instance.eventBus.removeAllListeners(EventTypes.GOAL_REQUIRES_APPROVAL);
     instance.eventBus.off(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
     instance.eventBus.off(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
   };
@@ -339,6 +341,20 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  socket.on('governance:approve_task', (payload: { taskId: string }) => {
+    if (!requireAuthenticatedSession(socket, 'governance:approve_task', instance?.eventBus)) return;
+    if (instance) {
+      instance.runtime.executionCoordinator.approveTask(payload.taskId);
+    }
+  });
+
+  socket.on('governance:reject_task', (payload: { taskId: string }) => {
+    if (!requireAuthenticatedSession(socket, 'governance:reject_task', instance?.eventBus)) return;
+    if (instance) {
+      instance.runtime.executionCoordinator.rejectTask(payload.taskId);
+    }
+  });
+
   socket.on('disconnect', () => {
     unbindListeners();
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
@@ -389,3 +405,4 @@ const shutdown = () => {
 
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);
+

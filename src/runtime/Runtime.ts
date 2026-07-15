@@ -86,7 +86,7 @@ export class Runtime {
   // Coordinators
   private cognitiveCoordinator: CognitiveCoordinator;
   private intentCoordinator: IntentCoordinator;
-  private executionCoordinator: ExecutionCoordinator;
+  public executionCoordinator: ExecutionCoordinator;
 
   private logger = new Logger('Runtime');
 
