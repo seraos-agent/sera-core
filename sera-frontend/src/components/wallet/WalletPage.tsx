@@ -3,7 +3,7 @@ import { ChevronLeft as CloseIcon, X, Check, Copy } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
-
+import { useDisconnect } from 'wagmi';
 
 const UsdcLogo = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 2000 2000" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -22,6 +22,7 @@ interface WalletPageProps {
 }
 
 export function WalletPage({ theme, walletState, onBack, socket, isMobileView }: WalletPageProps) {
+  const { disconnect } = useDisconnect();
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 20 : 24;
   const [amount, setAmount] = useState("");
@@ -159,8 +160,43 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             </div>
           </div>
 
-          {/* ── Scrollable Content ── */}
           <div style={{ padding: `0 ${sidePad}px ${sidePad}px`, display: "flex", flexDirection: "column" }}>
+
+            {/* ── Error Banner ── */}
+            {walletState.error && (
+              <div style={{
+                marginBottom: 20,
+                padding: "16px",
+                borderRadius: "12px",
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px"
+              }}>
+                <div style={{ color: "#ef4444", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif" }}>
+                  {walletState.error}
+                </div>
+                <button 
+                  onClick={() => disconnect()}
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: "#ef4444",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "Inter, sans-serif"
+                  }}
+                >
+                  Reconnect Wallet
+                </button>
+              </div>
+            )}
+
             {/* ── Flat Theme-Aware Card ── */}
             <div style={{
               background: theme.surface,

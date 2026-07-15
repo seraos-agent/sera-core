@@ -28,9 +28,11 @@ let msgIdCounter = Date.now();
 io.on('connection', (socket: Socket) => {
   console.log(`[Server] UI Client connected: ${socket.id}`);
   
-  // By default, connect to dev context until auth:login occurs
+  // By default, connections are unauthenticated and bound to nothing.
+  // We point them to 'dev' to prevent null reference errors, but they cannot 
+  // interact or read its state until auth:login succeeds.
   socket.data.sessionId = 'dev';
-  socket.data.isAuthenticated = !serverConfig.isProduction;
+  socket.data.isAuthenticated = false;
   let instance = agentManager.getOrCreateInstance('dev');
 
   const issueLoginChallenge = () => {
@@ -50,7 +52,9 @@ io.on('connection', (socket: Socket) => {
     socket.emit('automations:update', instance.triggerStore.getAll());
   };
 
-  sendInitialState();
+  // Do NOT send initial state or bind listeners upon raw connection!
+  // Doing so leaks 'dev' state to users who are reconnecting via Wagmi 
+  // before their auth:login completes. Wait for auth:login.
 
   // Socket-specific listener references to allow proper unbinding
   const onAgentSpeak = (event: StandardEvent) => {
@@ -144,8 +148,8 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.off(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
   };
 
-  bindListeners();
-
+  // Listeners are only bound after successful auth:login.
+  
   socket.on('auth:challenge', issueLoginChallenge);
 
   socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}` }) => {

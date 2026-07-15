@@ -144,7 +144,12 @@ function InnerApp() {
     // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
     setMessages([]);
     setObservations([]);
-    setWalletState(INITIAL_WALLET);
+    setWalletState({
+      ...INITIAL_WALLET,
+      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
+      fullAddress: address || undefined,
+      syncing: true,
+    });
     setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
 
     if (socket) {
@@ -155,6 +160,11 @@ function InnerApp() {
           socket.emit("auth:login", { address, message: data.message, signature });
         } catch {
           // The server keeps this socket unauthenticated until the user signs.
+          setWalletState(prev => ({ 
+            ...prev, 
+            syncing: false, 
+            error: "Authentication signature rejected. Please reconnect your wallet and sign the message to continue." 
+          }));
         }
       };
       const handleSubscriptionRequired = () => {
