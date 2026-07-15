@@ -196,7 +196,7 @@ export class Runtime {
 
   // Replaced by ExecutionDispatcher's direct listening
 
-  public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean }): void {
+  public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean, sessionId?: string }): void {
     this.worldStateService = new WorldStateService(globalEventBus);
     
     this.capabilityCatalog = new CapabilityCatalog();
@@ -238,7 +238,7 @@ export class Runtime {
       this.approveProposal(event.payload.proposalId, event.payload.candidateId);
     });
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore);
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, options?.sessionId || 'default');
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, and Cognitive Engines Initialized');
   }
 

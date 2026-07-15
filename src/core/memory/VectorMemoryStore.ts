@@ -17,8 +17,8 @@ export class VectorMemoryStore {
   private filePath: string;
   private records: VectorRecord[] = [];
 
-  constructor() {
-    this.filePath = path.join(process.cwd(), '.data', 'vector_memory.json');
+  constructor(sessionId: string = 'default') {
+    this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'vector_memory.json');
     this.load();
   }
 

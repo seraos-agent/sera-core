@@ -14,14 +14,14 @@ export class ExperienceBuilder {
   private llm: QwenAdapter;
   private vectorStore: VectorMemoryStore;
 
-  constructor(private eventBus: EventEmitter) {
-    const dataDir = path.join(process.cwd(), '.data');
+  constructor(private eventBus: EventEmitter, private sessionId: string = 'default') {
+    const dataDir = path.join(process.cwd(), '.data', 'sessions', sessionId);
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.logPath = path.join(dataDir, 'episodic_memory.jsonl');
     this.llm = new QwenAdapter();
-    this.vectorStore = new VectorMemoryStore();
+    this.vectorStore = new VectorMemoryStore(sessionId);
     this.setupListeners();
     console.log('[ExperienceBuilder] Initialized. Listening for episodes.');
   }

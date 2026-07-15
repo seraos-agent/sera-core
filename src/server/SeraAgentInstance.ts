@@ -165,12 +165,12 @@ export class SeraAgentInstance {
     );
 
     this.runtime.worldStateService = this.worldStateService;
-    this.runtime.setGlobalEventBus(this.eventBus);
+    this.runtime.setGlobalEventBus(this.eventBus, { sessionId: this.sessionId });
 
     this.temporalClockService = new TemporalClockService(this.eventBus, 10000);
     const cognitiveCompressor = new CognitiveCompressor(this.eventBus);
     const auditLogger = new AuditLogger(this.eventBus);
-    const experienceBuilder = new ExperienceBuilder(this.eventBus);
+    const experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId);
     const episodicSemanticBridge = new EpisodicSemanticBridge(this.eventBus, this.memoryStore);
 
     this.capabilityCatalog = new CapabilityCatalog();

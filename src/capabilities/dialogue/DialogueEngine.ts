@@ -133,15 +133,15 @@ export class DialogueEngine {
 
   private chatHistoryStore: ChatHistoryStore;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, private sessionId: string = 'default') {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
     this.memoryStore = memoryStore;
     this.chatHistoryStore = chatHistoryStore;
-    this.episodicReader = new EpisodicMemoryReader();
+    this.episodicReader = new EpisodicMemoryReader(sessionId);
     this.llm = new QwenAdapter();
-    const vectorStore = new VectorMemoryStore();
+    const vectorStore = new VectorMemoryStore(sessionId);
     this.memoryRetriever = new MemoryRetriever(memoryStore, this.episodicReader, vectorStore, this.llm);
 
     this.loadConsentedUsers();

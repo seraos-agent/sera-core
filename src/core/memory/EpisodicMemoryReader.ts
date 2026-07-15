@@ -4,8 +4,8 @@ import * as path from 'node:path';
 export class EpisodicMemoryReader {
   private filePath: string;
 
-  constructor() {
-    this.filePath = path.join(process.cwd(), '.data', 'episodic_memory.jsonl');
+  constructor(sessionId: string = 'default') {
+    this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'episodic_memory.jsonl');
   }
 
   /**
