@@ -147,7 +147,7 @@ function InnerApp() {
     setWalletState({
       ...INITIAL_WALLET,
       address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
-      fullAddress: address || undefined,
+      fullAddress: address || INITIAL_WALLET.fullAddress,
       syncing: true,
     });
     setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
