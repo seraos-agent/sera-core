@@ -63,6 +63,13 @@ export class SeraAgentInstance {
   public governanceCoordinator!: GovernanceCoordinator;
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
+  private started = false;
+  private stopped = false;
+  private readonly persistMemorySnapshot = async () => {
+    if ('getSnapshot' in this.memoryStore) {
+      await this.persistence.save((this.memoryStore as WorkingMemory).getSnapshot());
+    }
+  };
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -183,6 +190,8 @@ export class SeraAgentInstance {
   }
 
   public async start() {
+    if (this.started || this.stopped) return;
+    this.started = true;
     console.log(`[SeraAgentInstance] Starting engines for ${this.sessionId}`);
     
     // Load snapshot at start
@@ -193,12 +202,12 @@ export class SeraAgentInstance {
       }
     }
 
+    // stop() may have run while disk persistence was loading. Never start
+    // timers or listeners after an instance has been evicted.
+    if (this.stopped) return;
+
     // Subscribe to temporal tick for checkpointing
-    this.eventBus.on('temporal.tick', async () => {
-      if ('getSnapshot' in this.memoryStore) {
-         await this.persistence.save((this.memoryStore as WorkingMemory).getSnapshot());
-      }
-    });
+    this.eventBus.on('temporal.tick', this.persistMemorySnapshot);
 
     this.triggerEngine.start();
     this.temporalClockService.start();
@@ -206,7 +215,10 @@ export class SeraAgentInstance {
   }
 
   public stop() {
+    if (this.stopped) return;
+    this.stopped = true;
     console.log(`[SeraAgentInstance] Stopping engines for ${this.sessionId}`);
+    this.eventBus.off('temporal.tick', this.persistMemorySnapshot);
     this.temporalClockService.stop();
     this.triggerEngine.stop();
     this.runtime.stop();
