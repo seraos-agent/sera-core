@@ -30,8 +30,7 @@ export class WalletToolCapability {
           required: ['recipient', 'amount']
         },
         requiresApproval: true,
-        irreversible: true,
-        unsafe: true
+        irreversible: true
       },
       {
         name: 'CHECK_WALLET_BALANCE',

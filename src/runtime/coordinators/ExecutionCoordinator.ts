@@ -124,6 +124,9 @@ export class ExecutionCoordinator {
         });
         allChecksPassed = false;
         break;
+      } else if (constitutionDecision.status === 'REQUIRES_CONFIRMATION') {
+        this.logger.info(`Constitution check requires confirmation for: ${workItem.action}`);
+        requiresApproval = true;
       }
 
       // Authority Check
