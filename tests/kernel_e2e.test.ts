@@ -182,10 +182,10 @@ describe('Kernel E2E Integration', () => {
     expect(() => memoryStore.storeBelief(walletBelief)).toThrow(/rejected storage of wallet.address/);
   });
 
-  it('DialogueEngine memory injection excludes protected keys', () => {
+  it('DialogueEngine memory injection excludes protected keys', async () => {
     runtime.setGlobalEventBus(eventBus, { disableMcp: true });
     
-    const messages = (runtime.dialogueEngine as any).buildWorkingMemory();
+    const messages = await (runtime.dialogueEngine as any).buildWorkingMemory();
     const systemMsg = messages.find((m: any) => m.content.includes('[COGNITIVE STATE (WORKING MEMORY)]'));
     
     expect(systemMsg).toBeDefined();

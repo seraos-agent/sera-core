@@ -5,12 +5,14 @@ import { EventTypes, StandardEvent } from '../events/types';
 import { ExperienceRecord } from './ExperienceRecord';
 import { MemoryEvidence, EvidenceType } from './MemoryEvidence';
 import { QwenAdapter } from '../../capabilities/llm/QwenAdapter';
+import { VectorMemoryStore } from './VectorMemoryStore';
 
 export class ExperienceBuilder {
   private logPath: string;
   private currentEpisode: StandardEvent[] = [];
   private episodeTimer: NodeJS.Timeout | null = null;
   private llm: QwenAdapter;
+  private vectorStore: VectorMemoryStore;
 
   constructor(private eventBus: EventEmitter) {
     const dataDir = path.join(process.cwd(), '.data');
@@ -19,6 +21,7 @@ export class ExperienceBuilder {
     }
     this.logPath = path.join(dataDir, 'episodic_memory.jsonl');
     this.llm = new QwenAdapter();
+    this.vectorStore = new VectorMemoryStore();
     this.setupListeners();
     console.log('[ExperienceBuilder] Initialized. Listening for episodes.');
   }
@@ -83,10 +86,19 @@ export class ExperienceBuilder {
       evidence
     };
 
-    fs.appendFile(this.logPath, JSON.stringify(record) + '\n', (err) => {
+    fs.appendFile(this.logPath, JSON.stringify(record) + '\n', async (err) => {
       if (err) console.error(`[ExperienceBuilder] Failed to write record: ${err.message}`);
       else {
         console.log(`[ExperienceBuilder] Episode consolidated: ${summary}`);
+        
+        // Generate and store embedding
+        try {
+          const vector = await this.llm.embed(summary);
+          this.vectorStore.insert(record.id, vector, { summary, type: record.type, timestamp: record.timestamp });
+        } catch (embedErr) {
+          console.error('[ExperienceBuilder] Failed to generate embedding for vector store', embedErr);
+        }
+
         // Emit for downstream bridges (e.g., EpisodicSemanticBridge)
         this.eventBus.emit('system.episode.consolidated', {
           id: `evt-${Date.now()}`,

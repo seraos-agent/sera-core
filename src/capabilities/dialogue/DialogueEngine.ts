@@ -10,6 +10,8 @@ import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
 import { MemorySource } from '../../core/memory/MemorySource';
 import { EvidenceType } from '../../core/memory/MemoryEvidence';
+import { MemoryRetriever } from '../../core/memory/MemoryRetriever';
+import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -96,6 +98,7 @@ export class DialogueEngine {
   private capabilityCatalog: any;
   private memoryStore: IWorkingMemory;
   private episodicReader: EpisodicMemoryReader;
+  private memoryRetriever: MemoryRetriever;
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -138,6 +141,8 @@ export class DialogueEngine {
     this.chatHistoryStore = chatHistoryStore;
     this.episodicReader = new EpisodicMemoryReader();
     this.llm = new QwenAdapter();
+    const vectorStore = new VectorMemoryStore();
+    this.memoryRetriever = new MemoryRetriever(memoryStore, this.episodicReader, vectorStore, this.llm);
 
     this.loadConsentedUsers();
 
@@ -180,42 +185,19 @@ export class DialogueEngine {
 
   // ── Cognitive Context Builder ─────────────────────────────────────────────
 
-  private buildWorkingMemory(uiCommandExecuted?: boolean): QwenMessage[] {
+  private async buildWorkingMemory(uiCommandExecuted?: boolean, userMessage?: string): Promise<QwenMessage[]> {
     const messages: QwenMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
 
     const walletState = this.worldStateService.getWalletState();
 
-    // Fetch Known Facts from MemoryStore
-    let knownFacts: string[] = [];
-    if (this.memoryStore) {
-      const semanticBeliefs = this.memoryStore.getBeliefsByCategory('SEMANTIC');
-      knownFacts = semanticBeliefs
-        .filter(b => b.epistemicStatus === 'CONFIRMED' && (!b.key || !b.key.startsWith('wallet.')))
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 5)
-        .map(b => typeof b.content === 'string' ? b.content : JSON.stringify(b.content));
-    }
-
-    // Fetch Recent Activity
-    let recentActivity: string[] = [];
-    if (this.episodicReader) {
-      const episodes = this.episodicReader.readLastEpisodes(5);
-      recentActivity = episodes.map(ep => ep.summary || JSON.stringify(ep));
-    }
-
-    // Truncate safely to prevent prompt explosion (~1000 chars combined max)
-    let knownFactsStr = knownFacts.join('\n');
-    if (knownFactsStr.length > 500) knownFactsStr = knownFactsStr.substring(0, 500) + '...';
-    
-    let recentActivityStr = recentActivity.join('\n');
-    if (recentActivityStr.length > 500) recentActivityStr = recentActivityStr.substring(0, 500) + '...';
+    // Unified Memory Retrieval
+    const memoryContext = await this.memoryRetriever.retrieve(userMessage);
 
     const cognitiveState = {
       relevant_facts: {
         userMainWalletAddress: walletState?.address || 'Unknown'
       },
-      known_facts: knownFactsStr ? knownFactsStr.split('\n') : [],
-      recent_activity: recentActivityStr ? recentActivityStr.split('\n') : [],
+      memory_context: memoryContext,
       constraints: [
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',
@@ -494,7 +476,7 @@ export class DialogueEngine {
           if (!feasibility.feasible) {
             const systemRejectionMsg = `The user's requested operation failed the pre-flight feasibility check. Reason: ${feasibility.reason}. Respond strictly as an objective operational system agent. Explain that the request was evaluated against current world state and cannot be prepared. Do NOT apologize. Maintain an operational, matter-of-fact tone.`;
             
-            const messages = this.buildWorkingMemory();
+            const messages = await this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemRejectionMsg });
 
             const response = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
@@ -526,7 +508,7 @@ Current World State:
 CRITICAL INSTRUCTION:
 Do NOT say that you are processing, executing, or performing the action right now. The action has NOT happened yet.
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
-          const messages = this.buildWorkingMemory();
+          const messages = await this.buildWorkingMemory(false, userMessage);
           messages.push({ role: 'system', content: systemProposalMsg });
           const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
 
@@ -545,7 +527,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         }
       } else {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
-      let messages = this.buildWorkingMemory(uiCommandExecuted);
+      let messages = await this.buildWorkingMemory(uiCommandExecuted, userMessage);
 
       if (forgetMeExecuted) {
         messages.push({
@@ -645,7 +627,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             // PROPOSAL path for risky tools
             const feasibility = this.evaluateFeasibility(toolIntent, toolParams);
             if (!feasibility.feasible) {
-              const messages = this.buildWorkingMemory();
+              const messages = await this.buildWorkingMemory();
               messages.push({ 
                 role: 'system', 
                 content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.` 
@@ -674,7 +656,7 @@ CRITICAL INSTRUCTION:
 Do NOT say that you are processing, executing, or transferring the funds right now. The action has NOT happened yet.
 You MUST respond naturally to the user acknowledging that you have prepared the request and are currently WAITING for them to click "Approve" or "Reject" in the UI popup. Keep it extremely brief and professional.`;
 
-            const messages = this.buildWorkingMemory();
+            const messages = await this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemProposalMsg });
 
             const proposalResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);
@@ -756,7 +738,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
       : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
-    const messages = this.buildWorkingMemory();
+    const messages = await this.buildWorkingMemory();
     messages.push({ role: 'user', content: narratePrompt });
 
     const narrateResponse = await this.llm.generate(messages, undefined, this.activeAbortController?.signal);

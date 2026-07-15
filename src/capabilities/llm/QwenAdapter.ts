@@ -92,4 +92,32 @@ export class QwenAdapter {
       toolCalls,
     };
   }
+
+  async embed(text: string): Promise<number[]> {
+    const EMBED_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings';
+    const body = {
+      model: 'text-embedding-v3',
+      input: text
+    };
+    const response = await fetch(EMBED_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`[QwenAdapter] Embed API Error (${response.status}): ${err}`);
+    }
+
+    const data = await response.json();
+    if (!data.data || !data.data[0] || !data.data[0].embedding) {
+      throw new Error(`[QwenAdapter] Unexpected embedding response format`);
+    }
+
+    return data.data[0].embedding;
+  }
 }
