@@ -90,7 +90,7 @@ User message: `;
  * - Has zero knowledge of HTTP, Socket.io, or transport layers
  */
 import { ModelOrchestrator } from '../../core/llm/ModelOrchestrator';
-import { ExecutionProfileBuilder } from './ExecutionProfileBuilder.js';
+import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
 
 export class DialogueEngine {
   private orchestrator: ModelOrchestrator;

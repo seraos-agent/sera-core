@@ -179,25 +179,26 @@ io.on('connection', (socket: Socket) => {
       }
     }
 
+    // Switch to new context BEFORE checking entitlement so we don't leak dev state
+    unbindListeners();
+    socket.data.sessionId = address;
+    socket.data.loginMessage = undefined;
+    instance = agentManager.getOrCreateInstance(address);
+    bindListeners();
+    sendInitialState();
+
     try {
       agentManager.checkEntitlement(address);
     } catch (err) {
       if (err instanceof SubscriptionRequiredError) {
+        socket.data.isAuthenticated = false;
         socket.emit('subscription:required', { address });
         return;
       }
       throw err;
     }
     
-    // Switch to new context
-    unbindListeners();
-    socket.data.sessionId = address;
     socket.data.isAuthenticated = true;
-    socket.data.loginMessage = undefined;
-    instance = agentManager.getOrCreateInstance(address);
-    bindListeners();
-
-    sendInitialState();
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {

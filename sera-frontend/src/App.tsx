@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { THEME, FONT_LINK_ID } from "./theme";
-import { useWallet } from "./hooks/useWallet";
+import { useWallet, INITIAL_WALLET } from "./hooks/useWallet";
 import { useSocket } from "./hooks/useSocket";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { WalletPage } from "./components/wallet/WalletPage";
@@ -144,6 +144,7 @@ function InnerApp() {
     // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
     setMessages([]);
     setObservations([]);
+    setWalletState(INITIAL_WALLET);
     setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
 
     if (socket) {

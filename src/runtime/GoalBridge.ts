@@ -28,9 +28,11 @@ export class GoalBridge {
   private currentWalletId: { address: string; network: string } | null = null;
   private cachedPersonal: string = '0';
   private cachedVault: string = '0';
+  private sessionId: string;
 
   constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
     this.eventBus = eventBus;
+    this.sessionId = sessionId;
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
     // Build the wallet stack
@@ -219,11 +221,29 @@ export class GoalBridge {
     }
 
     try {
-      const walletId = await this.walletAdapter.initialize();
-      const balance = await this.walletAdapter.getBalance(walletId, 'usdc'); // Fixed to check USDC
-
-      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+      const userAddress = this.sessionId !== 'dev' ? this.sessionId : undefined;
+      const walletId = await this.walletAdapter.initialize(userAddress);
+      
+      let primaryAddress = '';
+      let vaultAddress = '';
+      let primaryBalance = '0';
       let vaultBalance = this.cachedVault || '0';
+
+      if (!userAddress) {
+        primaryAddress = walletId.address;
+        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+        try {
+          const pb = await this.walletAdapter.getBalance(walletId, 'usdc');
+          primaryBalance = pb.toString();
+        } catch (e) {
+          console.warn('[GoalBridge] Failed to get primary balance:', e);
+        }
+      } else {
+        primaryAddress = userAddress;
+        vaultAddress = walletId.address;
+        primaryBalance = '0'; // Mocking user balance as 0 for now
+      }
+
       if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
         try {
           const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
@@ -233,16 +253,16 @@ export class GoalBridge {
         }
       }
 
-      this.cachedPersonal = balance.toString();
-      this.cachedVault = vaultBalance.toString();
+      this.cachedPersonal = primaryBalance;
+      this.cachedVault = vaultBalance;
 
     this.emitResult(requestId, true, {
       asset: 'USDC',
-      personalBalance: balance.toString(),
+      personalBalance: primaryBalance,
       vaultBalance,
-      totalBalance: (balance + parseFloat(vaultBalance)).toString(),
-      network: 'Base Mainnet',
-      personalAddress: walletId.address,
+      totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalance)).toString(),
+      network: walletId.network || 'Base Mainnet',
+      personalAddress: primaryAddress,
       vaultAddress,
     });
 
@@ -251,11 +271,11 @@ export class GoalBridge {
       type: EventTypes.DOMAIN_WALLET_STATE,
       source: 'GoalBridge',
       payload: {
-        address: walletId.address,
+        address: primaryAddress,
         vaultAddress,
-        balance: balance.toString(),
+        balance: primaryBalance,
         vaultBalance,
-        network: walletId.network,
+        network: walletId.network || 'Base Mainnet',
         asset: 'USDC'
       },
       timestamp: Date.now()
