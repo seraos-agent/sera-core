@@ -129,6 +129,13 @@ export class ExecutionScheduler {
     const instance = this.activeInstances.get(taskId);
     if (!instance) return;
 
+    // A capability worker waits asynchronously while the scheduler exposes the
+    // task as WAITING_CONDITION. Once that worker receives its correlated result,
+    // resume the state machine before accepting its terminal outcome.
+    if (instance.state === ExecutionState.WAITING_CONDITION || instance.state === ExecutionState.WAITING_APPROVAL) {
+      this.transitionState(instance, ExecutionState.RUNNING);
+    }
+
     if (this.transitionState(instance, finalState)) {
       instance.completedAt = Date.now();
       // Worker is now idle, wake scheduler to assign more work

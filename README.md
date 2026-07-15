@@ -157,7 +157,7 @@ The core system only operates on universal primitives: `belief`, `goal`, `observ
 
 ## Running Locally
 
-Requirements: Node.js 18 or higher
+Requirements: Node.js 22 or higher
 
 ```bash
 npm install

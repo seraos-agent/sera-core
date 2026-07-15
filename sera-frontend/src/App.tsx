@@ -12,7 +12,7 @@ import { AccountModal } from "./components/account/AccountModal";
 import { LandingPage } from "./components/landing/LandingPage";
 import { createWeb3Modal, useWeb3ModalTheme, useWeb3Modal } from '@web3modal/wagmi/react';
 import { defaultWagmiConfig } from '@web3modal/wagmi/react/config';
-import { WagmiProvider, useAccount } from 'wagmi';
+import { WagmiProvider, useAccount, useSignMessage } from 'wagmi';
 import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
@@ -135,6 +135,7 @@ function InnerApp() {
   useEffect(() => setIsMounted(true), []);
 
   const { isConnected, address } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const { open } = useWeb3Modal();
   const [isBypassed, setIsBypassed] = useState(false);
 
@@ -145,20 +146,28 @@ function InnerApp() {
     setObservations([]);
     setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
 
-    if (socket && isConnected && address) {
-      socket.emit("auth:login", { address });
-    }
-
     if (socket) {
+      const requestChallenge = async (data: { message: string }) => {
+        if (!isConnected || !address) return;
+        try {
+          const signature = await signMessageAsync({ message: data.message });
+          socket.emit("auth:login", { address, message: data.message, signature });
+        } catch {
+          // The server keeps this socket unauthenticated until the user signs.
+        }
+      };
       const handleSubscriptionRequired = () => {
         setIsAccountModalOpen(true);
       };
+      socket.on("auth:challenge", requestChallenge);
       socket.on("subscription:required", handleSubscriptionRequired);
+      if (isConnected && address) socket.emit("auth:challenge");
       return () => {
+        socket.off("auth:challenge", requestChallenge);
         socket.off("subscription:required", handleSubscriptionRequired);
       };
     }
-  }, [socket, isConnected, address, isBypassed, setMessages, setObservations]);
+  }, [socket, isConnected, address, isBypassed, setMessages, setObservations, signMessageAsync]);
 
   if (!isMounted) return null;
 

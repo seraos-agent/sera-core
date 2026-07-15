@@ -38,3 +38,6 @@ jobs:
         SERA_SLACK_SOCKET: "xapp-mock-token"
         BRAVE_API_KEY: "mock_brave_key_for_tests"
         MASTER_ENCRYPTION_KEY: "000000000000000000000000000000000000000000000000000000000000000a"
+
+    - name: Build frontend
+      run: npm --prefix sera-frontend ci && npm --prefix sera-frontend run build

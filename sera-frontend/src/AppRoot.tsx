@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { LandingPage } from './components/landing/LandingPage';
-import App from './App';
+
+// The app shell brings in the wallet SDK and real-time client. Keep the public
+// landing page fast by downloading those dependencies only after Launch App.
+const App = lazy(() => import('./App'));
 
 export default function AppRoot() {
   const [currentView, setCurrentView] = useState<'landing' | 'app'>(() => {
@@ -25,5 +28,9 @@ export default function AppRoot() {
     return <LandingPage onLaunchApp={handleLaunchApp} />;
   }
 
-  return <App />;
+  return (
+    <Suspense fallback={<div aria-label="Loading Sera" />}>
+      <App />
+    </Suspense>
+  );
 }

@@ -4,15 +4,21 @@ dotenv.config();
 import express from 'express';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import { isAddress, verifyMessage } from 'viem';
+import { randomUUID } from 'crypto';
 import { StandardEvent, EventTypes } from '../core/events/types';
 import { App as BoltApp } from '@slack/bolt';
 import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
 import { agentManager, SubscriptionRequiredError } from './AgentManager';
+import { isAllowedOrigin, serverConfig } from './config';
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: {
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    methods: ['GET', 'POST'],
+  },
 });
 
 let msgIdCounter = Date.now();
@@ -23,7 +29,21 @@ io.on('connection', (socket: Socket) => {
   
   // By default, connect to dev context until auth:login occurs
   socket.data.sessionId = 'dev';
+  socket.data.isAuthenticated = !serverConfig.isProduction;
   let instance = agentManager.getOrCreateInstance('dev');
+
+  const issueLoginChallenge = () => {
+    const nonce = randomUUID();
+    const message = `Sign in to Sera\nNonce: ${nonce}`;
+    socket.data.loginMessage = message;
+    socket.emit('auth:challenge', { message });
+  };
+
+  const requireAuthenticatedSession = (): boolean => {
+    if (socket.data.isAuthenticated) return true;
+    socket.emit('auth:error', { message: 'Connect a valid wallet before performing this action.' });
+    return false;
+  };
 
   const sendInitialState = () => {
     const walletState = instance.worldStateService.getWalletState();
@@ -129,9 +149,38 @@ io.on('connection', (socket: Socket) => {
 
   bindListeners();
 
-  socket.on('auth:login', async (payload: { address?: string }) => {
-    const address = payload?.address || 'dev';
+  socket.on('auth:challenge', issueLoginChallenge);
+
+  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}` }) => {
+    const address = payload?.address?.toLowerCase() || 'dev';
     console.log(`[Server] Received auth:login for user: ${address}`);
+
+    if (address === 'dev' && !serverConfig.allowDevFeatures) {
+      socket.emit('auth:error', { message: 'Development login is disabled.' });
+      return;
+    }
+
+    if (address !== 'dev' && !isAddress(address)) {
+      socket.emit('auth:error', { message: 'A valid wallet address is required.' });
+      return;
+    }
+
+    if (serverConfig.isProduction && address !== 'dev') {
+      if (!payload?.message || !payload?.signature || payload.message !== socket.data.loginMessage) {
+        socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
+        return;
+      }
+
+      const isValidSignature = await verifyMessage({
+        address: address as `0x${string}`,
+        message: payload.message,
+        signature: payload.signature,
+      });
+      if (!isValidSignature) {
+        socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
+        return;
+      }
+    }
 
     try {
       agentManager.checkEntitlement(address);
@@ -146,6 +195,8 @@ io.on('connection', (socket: Socket) => {
     // Switch to new context
     unbindListeners();
     socket.data.sessionId = address;
+    socket.data.isAuthenticated = true;
+    socket.data.loginMessage = undefined;
     instance = agentManager.getOrCreateInstance(address);
     bindListeners();
 
@@ -153,12 +204,18 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {
-    const address = payload.address;
+    if (!requireAuthenticatedSession() || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    const address = socket.data.sessionId;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
     socket.emit('billing:update', { periods });
   });
 
   socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
+    if (!requireAuthenticatedSession() || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!serverConfig.allowDevFeatures) {
+      socket.emit('billing:error', { message: 'Development billing is disabled.' });
+      return;
+    }
     const address = payload.address;
     const amountUsdc = payload.amountUsdc;
     console.log(`[Server] Received mock topup for ${address} amount: ${amountUsdc} USDC`);
@@ -172,9 +229,10 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:message', (message: string) => {
+    if (!requireAuthenticatedSession()) return;
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
-    if (message.toLowerCase().trim() === 'sera, evaluasi peluang baru') {
+    if (serverConfig.allowDevFeatures && serverConfig.demoIntentCommand && message.toLowerCase().trim() === serverConfig.demoIntentCommand) {
       const intentId = `intent-${Date.now()}`;
       instance.runtime.intentStore?.registerIntent({
         id: intentId,
@@ -204,6 +262,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:clear', () => {
+    if (!requireAuthenticatedSession()) return;
     console.log(`[Server] Clearing chat history for ${socket.data.sessionId}`);
     instance.chatHistoryStore.clear();
     instance.runtime.dialogueEngine.clearHistory();
@@ -211,6 +270,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:cancel', () => {
+    if (!requireAuthenticatedSession()) return;
     console.log(`[Server] Received chat:cancel → dispatching DIALOGUE_USER_CANCELLED for ${socket.data.sessionId}`);
     const event: StandardEvent = {
       id: `evt-${Date.now()}`,
@@ -223,6 +283,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('chat:proposal_response', (data: { proposalId: string; action: 'APPROVE' | 'REJECT'; candidateId?: string }) => {
+    if (!requireAuthenticatedSession()) return;
     const { proposalId, action, candidateId } = data;
     console.log(`[Server] Received proposal response for ${proposalId}: ${action} (candidateId: ${candidateId})`);
     
@@ -249,15 +310,18 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('automations:fetch', () => {
+    if (!requireAuthenticatedSession()) return;
     socket.emit('automations:update', instance.triggerStore.getAll());
   });
 
   socket.on('automations:delete', (id: string) => {
+    if (!requireAuthenticatedSession()) return;
     instance.triggerStore.delete(id);
     socket.emit('automations:update', instance.triggerStore.getAll());
   });
 
   socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {
+    if (!requireAuthenticatedSession()) return;
     console.log(`[Server] wallet:transfer requested → ${payload.amount} ${payload.asset} to ${payload.to}`);
     socket.emit('wallet:transfer:pending', { message: 'Broadcasting transaction...' });
 
@@ -315,7 +379,18 @@ if (slackBotToken && slackSocketToken) {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
+agentManager.startBillingTick();
 httpServer.listen(PORT, () => {
   console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);
   console.log(`   Architecture: Actor Model Router (SeraAgentInstance)\n`);
 });
+
+const shutdown = () => {
+  console.log('[SERA] Shutting down gracefully.');
+  agentManager.shutdownAll();
+  io.close();
+  httpServer.close(() => process.exit(0));
+};
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
