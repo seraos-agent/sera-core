@@ -23,6 +23,8 @@ import { CapabilityExecutor } from '../../core/execution/workers/CapabilityExecu
 import { ExecutionWorker } from '../../core/execution/workers/ExecutionWorker';
 import { EventEmitter } from 'events';
 
+import { CapabilityCatalog } from '../../core/capabilities/CapabilityCatalog';
+
 export class ExecutionCoordinator {
   private logger = new Logger('ExecutionCoordinator');
   private scheduler: ExecutionScheduler;
@@ -32,11 +34,13 @@ export class ExecutionCoordinator {
   private eventBus: EventEmitter;
   private pendingApprovalTasks: Map<string, { task: ExecutionTask, trace: ExecutionTrace }> = new Map();
 
+  private capabilityCatalog?: CapabilityCatalog;
+
   constructor(
     private constitutionEngine: ConstitutionEngine,
     private authorityService: AuthorityService,
-    private feedbackPipeline: FeedbackPipeline | undefined,
-    private executionTraceStore: ExecutionTraceStore | undefined,
+    private feedbackPipeline: any | undefined,
+    private executionTraceStore: any | undefined,
     private memoryStore: IWorkingMemory,
     eventBus?: EventEmitter
   ) {
@@ -52,6 +56,10 @@ export class ExecutionCoordinator {
     this.workerPool.registerWorker(defaultWorker);
 
     this.supervisor.start();
+  }
+
+  public setCapabilityCatalog(catalog: CapabilityCatalog): void {
+    this.capabilityCatalog = catalog;
   }
 
   public async submitTask(
@@ -80,13 +88,28 @@ export class ExecutionCoordinator {
         createdAt: Date.now()
       };
 
+      // Check metadata from CapabilityCatalog
+      let irreversible = false;
+      let unsafe = false;
+      
+      if (this.capabilityCatalog) {
+        const tool = this.capabilityCatalog.getTool(workItem.action);
+        if (tool) {
+          irreversible = tool.irreversible === true;
+          unsafe = tool.unsafe === true;
+        }
+      }
+
       // Constitution Check
       const constitutionContext: ConstitutionContext = {
         principalId: scope.principalId,
         goalId: goal.id,
         workItemId: workItem.id,
         action: workItem.action,
-        metadata: {}
+        metadata: {
+          irreversible,
+          unsafe
+        }
       };
       
       const constitutionDecision = this.constitutionEngine.evaluate(constitutionContext);
@@ -251,3 +274,4 @@ export class ExecutionCoordinator {
     this.supervisor.stop();
   }
 }
+

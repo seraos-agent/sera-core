@@ -29,7 +29,9 @@ export class WalletToolCapability {
           },
           required: ['recipient', 'amount']
         },
-        requiresApproval: true
+        requiresApproval: true,
+        irreversible: true,
+        unsafe: true
       },
       {
         name: 'CHECK_WALLET_BALANCE',

@@ -19,11 +19,19 @@ contract SeraVault {
     // ─── State ────────────────────────
     address public owner;
     address public agent;
+    
+    // ─── Security Limits ──────────────
+    uint256 public dailyLimit;
+    uint256 public spentToday;
+    uint256 public lastResetDay;
+    bool public paused;
 
     // ─── Events ───────────────────────
     event AgentUpdated(address indexed newAgent);
     event FundsRouted(address indexed token, address indexed to, uint256 amount);
     event Deposited(address indexed sender, uint256 amount);
+    event PausedStateChanged(bool isPaused);
+    event DailyLimitUpdated(uint256 newLimit);
 
     // ─── Modifiers ────────────────────
     modifier onlyOwner() {
@@ -36,8 +44,15 @@ contract SeraVault {
         _;
     }
 
-    constructor() {
+    modifier whenNotPaused() {
+        require(!paused, "Contract is paused");
+        _;
+    }
+
+    constructor(uint256 _initialDailyLimit) {
         owner = msg.sender;
+        dailyLimit = _initialDailyLimit;
+        lastResetDay = block.timestamp / 1 days;
     }
 
     // Allows the vault to receive native ETH directly
@@ -54,13 +69,40 @@ contract SeraVault {
     }
 
     /**
+     * @dev Sets the global daily limit for transactions
+     */
+    function setDailyLimit(uint256 _limit) external onlyOwner {
+        dailyLimit = _limit;
+        emit DailyLimitUpdated(_limit);
+    }
+
+    /**
+     * @dev Toggles the emergency pause state
+     */
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+        emit PausedStateChanged(_paused);
+    }
+
+    /**
      * @dev Executes a transfer from the Vault to a recipient.
      * @param token Address of the token (use address(0) for Native ETH)
      * @param to Recipient address
      * @param amount Amount to send
      */
-    function executeTransfer(address token, address to, uint256 amount) external onlyAgentOrOwner {
+    function executeTransfer(address token, address to, uint256 amount) external onlyAgentOrOwner whenNotPaused {
         require(to != address(0), "Invalid recipient");
+        
+        // Enforce Daily Limit (for Agent only, Owner bypasses limit)
+        if (msg.sender == agent) {
+            uint256 currentDay = block.timestamp / 1 days;
+            if (currentDay > lastResetDay) {
+                spentToday = 0;
+                lastResetDay = currentDay;
+            }
+            require(spentToday + amount <= dailyLimit, "Daily limit exceeded");
+            spentToday += amount;
+        }
         
         if (token == address(0)) {
             // Native ETH transfer

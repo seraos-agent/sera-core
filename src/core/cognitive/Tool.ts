@@ -29,6 +29,16 @@ export interface SeraTool {
    * If true, the system will intercept the tool call and generate a UI Proposal.
    */
   requiresApproval?: boolean;
+
+  /**
+   * Indicates if the action is permanent or cannot be undone (e.g. transferring funds on-chain).
+   */
+  irreversible?: boolean;
+
+  /**
+   * Indicates if the action poses a severe risk to the user's setup or financial safety.
+   */
+  unsafe?: boolean;
 }
 
 export interface SeraToolCall {

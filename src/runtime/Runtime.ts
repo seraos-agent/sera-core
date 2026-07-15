@@ -204,6 +204,8 @@ export class Runtime {
     const commCap = new CommunicationToolCapability();
     this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools()]);
     
+    this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
+    
     // Initialize MCP Memory Server for testing/capabilities
     // Using npx -y @modelcontextprotocol/server-memory
     if (!options?.disableMcp) {

@@ -9,23 +9,23 @@ export class GoalSynthesizer {
       {
         id: `cand-${Date.now()}-aligned`,
         category: 'ALIGNED',
-        title: 'Wait for market correction',
-        rationale: `Current maxBTCPrice is ${worldState.maxBTCPrice || 'high'}. Historical preference indicates waiting is preferred.`,
-        strategyMetadata: { targetMaxPrice: 100000 }
+        title: 'Wait for optimal conditions',
+        rationale: `Current conditions suggest waiting is preferred based on historical preference.`,
+        strategyMetadata: { action: 'WAIT' }
       },
       {
         id: `cand-${Date.now()}-objective`,
         category: 'OBJECTIVE',
-        title: 'DCA Weekly',
-        rationale: 'Mathematically optimal to ignore short-term volatility and accumulate progressively.',
-        strategyMetadata: { weeklyAllocation: 1000 }
+        title: 'Execute baseline strategy',
+        rationale: 'Execute standard objective regardless of short-term volatility.',
+        strategyMetadata: { action: 'PROCEED' }
       },
       {
         id: `cand-${Date.now()}-exploratory`,
         category: 'EXPLORATORY',
-        title: 'Accumulate Alternative Asset (ETH)',
-        rationale: 'BTC is overvalued. Exploring ETH as a proxy for crypto exposure.',
-        strategyMetadata: { targetAsset: 'ETH' }
+        title: 'Explore alternatives',
+        rationale: 'Primary target conditions not met. Exploring safe alternatives.',
+        strategyMetadata: { action: 'EXPLORE' }
       }
     ];
 
