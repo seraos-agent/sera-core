@@ -150,7 +150,7 @@ function InnerApp() {
       const requestChallenge = async (data: { message: string }) => {
         if (!isConnected || !address) return;
         try {
-          const signature = await signMessageAsync({ message: data.message });
+          const signature = await signMessageAsync({ account: address, message: data.message });
           socket.emit("auth:login", { address, message: data.message, signature });
         } catch {
           // The server keeps this socket unauthenticated until the user signs.

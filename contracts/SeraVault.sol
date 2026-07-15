@@ -21,9 +21,9 @@ contract SeraVault {
     address public agent;
     
     // ─── Security Limits ──────────────
-    uint256 public dailyLimit;
-    uint256 public spentToday;
-    uint256 public lastResetDay;
+    mapping(address => uint256) public dailyLimits;
+    mapping(address => uint256) public spentToday;
+    mapping(address => uint256) public lastResetDay;
     bool public paused;
 
     // ─── Events ───────────────────────
@@ -31,7 +31,7 @@ contract SeraVault {
     event FundsRouted(address indexed token, address indexed to, uint256 amount);
     event Deposited(address indexed sender, uint256 amount);
     event PausedStateChanged(bool isPaused);
-    event DailyLimitUpdated(uint256 newLimit);
+    event DailyLimitUpdated(address indexed token, uint256 newLimit);
 
     // ─── Modifiers ────────────────────
     modifier onlyOwner() {
@@ -49,10 +49,8 @@ contract SeraVault {
         _;
     }
 
-    constructor(uint256 _initialDailyLimit) {
+    constructor() {
         owner = msg.sender;
-        dailyLimit = _initialDailyLimit;
-        lastResetDay = block.timestamp / 1 days;
     }
 
     // Allows the vault to receive native ETH directly
@@ -69,11 +67,11 @@ contract SeraVault {
     }
 
     /**
-     * @dev Sets the global daily limit for transactions
+     * @dev Sets the daily limit for a specific token (address(0) for ETH)
      */
-    function setDailyLimit(uint256 _limit) external onlyOwner {
-        dailyLimit = _limit;
-        emit DailyLimitUpdated(_limit);
+    function setDailyLimit(address token, uint256 _limit) external onlyOwner {
+        dailyLimits[token] = _limit;
+        emit DailyLimitUpdated(token, _limit);
     }
 
     /**
@@ -96,12 +94,12 @@ contract SeraVault {
         // Enforce Daily Limit (for Agent only, Owner bypasses limit)
         if (msg.sender == agent) {
             uint256 currentDay = block.timestamp / 1 days;
-            if (currentDay > lastResetDay) {
-                spentToday = 0;
-                lastResetDay = currentDay;
+            if (currentDay > lastResetDay[token]) {
+                spentToday[token] = 0;
+                lastResetDay[token] = currentDay;
             }
-            require(spentToday + amount <= dailyLimit, "Daily limit exceeded");
-            spentToday += amount;
+            require(spentToday[token] + amount <= dailyLimits[token], "Daily limit exceeded");
+            spentToday[token] += amount;
         }
         
         if (token == address(0)) {
