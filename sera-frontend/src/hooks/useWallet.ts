@@ -9,6 +9,7 @@ export const INITIAL_WALLET = {
   vaultAddress: "",
   syncing: true,
   error: "",
+  tier: "",
 };
 
 export type WalletState = typeof INITIAL_WALLET;

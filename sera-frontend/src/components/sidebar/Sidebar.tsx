@@ -167,7 +167,16 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
             {open && (
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
                 <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, fontWeight: 600, whiteSpace: "nowrap" }}>{shortAddress}</span>
-                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, background: theme.accentSoft, color: theme.accent, padding: "2px 5px", borderRadius: 4, letterSpacing: 0.5, flexShrink: 0 }}>PRO</span>
+                {walletState?.tier && (
+                  <span style={{ 
+                    fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, 
+                    background: walletState?.tier === "WHALE" ? "rgba(168, 85, 247, 0.15)" : (walletState?.tier === "PRO" ? theme.accentSoft : theme.surface2), 
+                    color: walletState?.tier === "WHALE" ? "#a855f7" : (walletState?.tier === "PRO" ? theme.accent : theme.inkSoft), 
+                    padding: "2px 5px", borderRadius: 4, letterSpacing: 0.5, flexShrink: 0 
+                  }}>
+                    {walletState?.tier}
+                  </span>
+                )}
               </div>
             )}
           </div>

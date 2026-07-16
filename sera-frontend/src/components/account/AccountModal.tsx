@@ -142,12 +142,12 @@ export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDi
             <div style={{ fontSize: 14, color: textSecondary, marginBottom: 24, minHeight: 40 }}>Research, automate, and build</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <UsdcIcon size={32} />
-              <div style={{ fontSize: 32, fontWeight: 600, color: textPrimary, lineHeight: 1 }}>20</div>
+              <div style={{ fontSize: 32, fontWeight: 600, color: textPrimary, lineHeight: 1 }}>19</div>
             </div>
             <div style={{ fontSize: 12, color: textSecondary, marginBottom: 24 }}>Billed monthly</div>
 
             <button
-              onClick={() => handleTopUp(20)}
+              onClick={() => handleTopUp(19)}
               style={{
                 width: "100%", padding: "12px 0", borderRadius: 8, border: "none",
                 background: buttonPrimaryBg, color: buttonPrimaryText, fontWeight: 500, cursor: "pointer",
@@ -170,21 +170,21 @@ export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDi
             </div>
           </div>
 
-          {/* ELITE TIER */}
+          {/* WHALE TIER */}
           <div style={{
             background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 16, padding: "28px 24px",
             display: "flex", flexDirection: "column"
           }}>
-            <div style={{ color: textPrimary, fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Elite</div>
+            <div style={{ color: textPrimary, fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Whale</div>
             <div style={{ fontSize: 14, color: textSecondary, marginBottom: 24, minHeight: 40 }}>Higher limits, priority access</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <UsdcIcon size={32} />
-              <div style={{ fontSize: 32, fontWeight: 600, color: textPrimary, lineHeight: 1 }}>300</div>
+              <div style={{ fontSize: 32, fontWeight: 600, color: textPrimary, lineHeight: 1 }}>295</div>
             </div>
             <div style={{ fontSize: 12, color: textSecondary, marginBottom: 24 }}>Billed monthly</div>
 
             <button
-              onClick={() => handleTopUp(300)}
+              onClick={() => handleTopUp(295)}
               style={{
                 width: "100%", padding: "12px 0", borderRadius: 8, border: "none",
                 background: buttonPrimaryBg, color: buttonPrimaryText, fontWeight: 500, cursor: "pointer",
@@ -193,7 +193,7 @@ export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDi
               onMouseEnter={e => (e.currentTarget.style.opacity = "0.9")}
               onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
             >
-              Get Elite plan
+              Get Whale plan
             </button>
 
             <div style={{ fontSize: 13, color: textSecondary, marginBottom: 12 }}>Includes:</div>

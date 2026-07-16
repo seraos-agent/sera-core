@@ -12,6 +12,29 @@ import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapte
 import { agentManager, SubscriptionRequiredError } from './AgentManager';
 import { isAllowedOrigin, serverConfig } from './config';
 import { requireAuthenticatedSession } from './SessionGuard';
+import { createHmac, randomBytes } from 'crypto';
+
+const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
+
+function generateSessionToken(address: string): string {
+  const expiry = Date.now() + 1000 * 60 * 60 * 24 * 7; // 7 days
+  const payload = `${address}:${expiry}`;
+  const signature = createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return `${payload}:${signature}`;
+}
+
+function verifySessionToken(token: string): string | null {
+  try {
+    const [address, expiryStr, signature] = token.split(':');
+    if (!address || !expiryStr || !signature) return null;
+    if (Date.now() > parseInt(expiryStr)) return null;
+    const expectedSig = createHmac('sha256', SESSION_SECRET).update(`${address}:${expiryStr}`).digest('hex');
+    if (signature === expectedSig) return address;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -152,36 +175,53 @@ io.on('connection', (socket: Socket) => {
   
   socket.on('auth:challenge', issueLoginChallenge);
 
-  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}` }) => {
-    const address = payload?.address?.toLowerCase() || 'dev';
-    console.log(`[Server] Received auth:login for user: ${address}`);
+  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string }) => {
+    let address = payload?.address?.toLowerCase();
+    
+    // Check token authentication
+    if (payload.token) {
+      const recoveredAddress = verifySessionToken(payload.token);
+      if (recoveredAddress && (!address || recoveredAddress === address)) {
+        address = recoveredAddress;
+      } else {
+        socket.emit('auth:error', { message: 'Session expired or invalid. Please sign in again.', code: 'INVALID_TOKEN' });
+        return;
+      }
+    } else {
+      address = address || 'dev';
+      console.log(`[Server] Received auth:login via signature for user: ${address}`);
 
-    if (address === 'dev' && !serverConfig.allowDevFeatures) {
-      socket.emit('auth:error', { message: 'Development login is disabled.' });
-      return;
-    }
-
-    if (address !== 'dev' && !isAddress(address)) {
-      socket.emit('auth:error', { message: 'A valid wallet address is required.' });
-      return;
-    }
-
-    if (serverConfig.isProduction && address !== 'dev') {
-      if (!payload?.message || !payload?.signature || payload.message !== socket.data.loginMessage) {
-        socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
+      if (address === 'dev' && !serverConfig.allowDevFeatures) {
+        socket.emit('auth:error', { message: 'Development login is disabled.' });
         return;
       }
 
-      const isValidSignature = await verifyMessage({
-        address: address as `0x${string}`,
-        message: payload.message,
-        signature: payload.signature,
-      });
-      if (!isValidSignature) {
-        socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
+      if (address !== 'dev' && !isAddress(address)) {
+        socket.emit('auth:error', { message: 'A valid wallet address is required.' });
         return;
       }
+
+      if (serverConfig.isProduction && address !== 'dev') {
+        if (!payload?.message || !payload?.signature || payload.message !== socket.data.loginMessage) {
+          socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
+          return;
+        }
+
+        const isValidSignature = await verifyMessage({
+          address: address as `0x${string}`,
+          message: payload.message,
+          signature: payload.signature,
+        });
+        if (!isValidSignature) {
+          socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
+          return;
+        }
+      }
     }
+
+    // Now emit the success token to the client so they can save it
+    const newToken = generateSessionToken(address);
+    socket.emit('auth:success', { token: newToken });
 
     // Switch to new context BEFORE checking entitlement so we don't leak dev state
     unbindListeners();
@@ -206,14 +246,14 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {
-    if (!requireAuthenticatedSession(socket, 'auth:challenge', instance?.eventBus) || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!socket.data.sessionId || payload.address.toLowerCase() !== socket.data.sessionId) return;
     const address = socket.data.sessionId;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
     socket.emit('billing:update', { periods });
   });
 
   socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
-    if (!requireAuthenticatedSession(socket, 'billing:topup_dev_mock', instance?.eventBus) || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!socket.data.sessionId || payload.address.toLowerCase() !== socket.data.sessionId) return;
     if (!serverConfig.allowDevFeatures) {
       socket.emit('billing:error', { message: 'Development billing is disabled.' });
       return;
@@ -225,6 +265,15 @@ io.on('connection', (socket: Socket) => {
       agentManager.getSubscriptionService().recordTopUp(address, amountUsdc);
       const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
       socket.emit('billing:update', { periods });
+      
+      // Attempt to re-verify entitlement after topup
+      try {
+        agentManager.checkEntitlement(address);
+        socket.data.isAuthenticated = true;
+        socket.emit('auth:success', { token: generateSessionToken(address) });
+      } catch (err) {
+        // Still not enough
+      }
     } catch (e) {
       console.error(e);
     }

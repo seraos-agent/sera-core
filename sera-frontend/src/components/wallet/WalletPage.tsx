@@ -177,23 +177,40 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 <div style={{ color: "#ef4444", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif" }}>
                   {walletState.error}
                 </div>
-                <button 
-                  onClick={() => disconnect()}
-                  style={{
-                    alignSelf: "flex-start",
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: "#ef4444",
-                    color: "#fff",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "Inter, sans-serif"
-                  }}
-                >
-                  Reconnect Wallet
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={() => socket?.emit("auth:challenge")}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#ef4444",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "Inter, sans-serif"
+                    }}
+                  >
+                    Sign Message
+                  </button>
+                  <button 
+                    onClick={() => disconnect()}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      border: "1px solid rgba(239, 68, 68, 0.4)",
+                      background: "transparent",
+                      color: "#ef4444",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "Inter, sans-serif"
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </div>
             )}
 

@@ -8,7 +8,7 @@ const DEV_SESSION_ID = 'dev';
  * periods; DEFAULT_PRICE_PER_PERIOD_USDC is only the fallback used when a
  * caller doesn't specify one explicitly.
  */
-const DEFAULT_PRICE_PER_PERIOD_USDC = 20;
+const DEFAULT_PRICE_PER_PERIOD_USDC = 19;
 
 export class SubscriptionService {
   constructor(private ledger: SubscriptionLedger = new SubscriptionLedger()) {}

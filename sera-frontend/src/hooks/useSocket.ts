@@ -101,6 +101,13 @@ export function useSocket(
       }
     });
 
+    newSocket.on("billing:update", (data: { periods: number }) => {
+      setWalletState(prev => ({
+        ...prev,
+        tier: data.periods >= 15 ? "WHALE" : (data.periods > 0 ? "PRO" : "FREE")
+      }));
+    });
+
     return () => { newSocket.close(); };
   }, [streamReply, setWalletState, setMode]);
 

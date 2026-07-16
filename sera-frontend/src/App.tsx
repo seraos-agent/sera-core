@@ -155,6 +155,16 @@ function InnerApp() {
     if (socket) {
       const requestChallenge = async (data: { message: string }) => {
         if (!isConnected || !address) return;
+        setWalletState(prev => ({ ...prev, error: "" })); // Clear previous error
+
+        const tokenKey = `sera_auth_token_${address.toLowerCase()}`;
+        const savedToken = localStorage.getItem(tokenKey);
+
+        if (savedToken) {
+          socket.emit("auth:login", { address, token: savedToken });
+          return;
+        }
+
         try {
           const signature = await signMessageAsync({ account: address, message: data.message });
           socket.emit("auth:login", { address, message: data.message, signature });
@@ -163,22 +173,50 @@ function InnerApp() {
           setWalletState(prev => ({ 
             ...prev, 
             syncing: false, 
-            error: "Authentication signature rejected. Please reconnect your wallet and sign the message to continue." 
+            error: "Authentication signature rejected. Please sign the message to authenticate your session." 
           }));
         }
       };
-      const handleSubscriptionRequired = () => {
-        setIsAccountModalOpen(true);
+      
+      const handleAuthSuccess = (data: { token: string }) => {
+        if (address) {
+          localStorage.setItem(`sera_auth_token_${address.toLowerCase()}`, data.token);
+          socket.emit("billing:fetch", { address: address.toLowerCase() });
+        }
       };
+
+      const handleAuthError = (err: any) => {
+        if (err.code === 'INVALID_TOKEN' && address) {
+          localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
+          socket.emit('auth:challenge'); // Retry with fresh challenge
+        } else {
+           setWalletState(prev => ({ 
+             ...prev, 
+             syncing: false, 
+             error: err.message || "Authentication failed." 
+           }));
+        }
+      };
+
+      const handleSubscriptionRequired = () => {
+        if (address) socket.emit("billing:fetch", { address: address.toLowerCase() });
+      };
+      
       socket.on("auth:challenge", requestChallenge);
+      socket.on("auth:success", handleAuthSuccess);
+      socket.on("auth:error", handleAuthError);
       socket.on("subscription:required", handleSubscriptionRequired);
+      
       if (isConnected && address) socket.emit("auth:challenge");
+      
       return () => {
         socket.off("auth:challenge", requestChallenge);
+        socket.off("auth:success", handleAuthSuccess);
+        socket.off("auth:error", handleAuthError);
         socket.off("subscription:required", handleSubscriptionRequired);
       };
     }
-  }, [socket, isConnected, address, isBypassed, setMessages, setObservations, signMessageAsync]);
+  }, [socket, isConnected, address, isBypassed, setMessages, setObservations, signMessageAsync, setWalletState]);
 
   if (!isMounted) return null;
 
