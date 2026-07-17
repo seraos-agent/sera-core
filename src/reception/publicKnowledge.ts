@@ -79,7 +79,7 @@ const topics: TopicKnowledge[] = [
   },
   {
     topic: 'automation',
-    triggers: ['automation', 'automasi', 'schedule', 'recurring', 'transfer'],
+    triggers: ['automation', 'automasi', 'schedule', 'recurring', 'transfer', 'proposal', 'approve', 'reject', 'persetujuan', 'setujui', 'menolak', 'ditolak'],
     facts: [
       'Automation in SERA is proposal-led: a recurring request first becomes a visible action plan for review.',
       'A proposal makes the action, schedule, affected system, and approval status clear before execution is considered.',

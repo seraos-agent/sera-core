@@ -21,7 +21,7 @@ const clientUsage = new Map<string, ClientUsage>();
 const publicReplyCache = new Map<string, CachedReply>();
 let globalDay = '';
 let globalRequests = 0;
-const receptionKnowledgeRevision = '2026-07-18-metadata-safe-copy';
+const receptionKnowledgeRevision = '2026-07-18-operating-copy-and-suggestions';
 
 type ReceptionPayload = { message?: unknown; history?: unknown };
 type ReceptionTurn = { role: 'user' | 'assistant'; content: string };
@@ -124,6 +124,8 @@ CONVERSATION STYLE:
 - Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be in the visitor's language, move the conversation forward, and never repeat or paraphrase the question that was just answered. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
 - If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal Operational Partner, and do not include suggestedQuestions.
 - If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create a personal Operational Partner. Describe the two equally valid paths plainly: newcomers can continue with email, Google, or a supported social account without already owning a wallet; crypto-native users may instead connect an existing wallet during onboarding. Never say that a visitor “does not need to connect a wallet” without also explaining that they may connect one if they choose. In Indonesian, prefer “tidak perlu memiliki dompet sebelumnya” over “tidak perlu menghubungkan dompet.” Briefly explain that setup provides the necessary wallet layer without asking for a seed phrase. Set visual to "start" and do not lead with wallet warnings unless wallet access is the actual question.
+- If the visitor asks for an example of a proposal, approval, rejection, transfer, or automation, set visual to "automation" so the interface can show the proposal demonstration. Keep the explanation grounded and make clear that the card is a demonstration, not a live action.
+- When the visitor asks how SERA works, do not reintroduce or define SERA. Start directly with the operating sequence (for example, “It works by…” in English or “SERA bekerja dengan…” in Indonesian), then explain context, proposal, and approval.
 
 Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with the visitor-language equivalent of: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets, seed phrases, or private keys, and do not provide financial advice.
 When answering “What is SERA?”, use this exact conversational structure: first explain SERA as an operational system; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not mention chatbots or compare SERA to them. Its suggestedQuestions must explore the next step, such as the operating model, starting without crypto knowledge, or approval flow—never “What is SERA?” again. Express every suggestion naturally in the visitor’s language.
@@ -140,8 +142,22 @@ function fallbackReply(): ReceptionReply {
   };
 }
 
-function cleanResponse(response: string, suggestedQuestions: string[]): string {
-  return response.split('\n').filter((line) => {
+function normaliseQuestion(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFKD')
+    .replace(/[\p{P}\p{S}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isOperatingQuestion(message: string): boolean {
+  const input = message.toLowerCase();
+  return input.includes('how does sera work') || input.includes('how it works') || input.includes('cara kerja sera');
+}
+
+function cleanResponse(response: string, suggestedQuestions: string[], message: string): string {
+  const withoutMetadata = response.split('\n').filter((line) => {
     const normalized = line.replace(/\*\*/g, '').trim().toLowerCase();
     if (normalized === 'sera reception' || normalized.startsWith('label:') || normalized.startsWith('visual:') || normalized.startsWith('suggestedquestions:')) return false;
     return !suggestedQuestions.some((suggestion) => {
@@ -149,6 +165,14 @@ function cleanResponse(response: string, suggestedQuestions: string[]): string {
       return Boolean(question) && normalized.includes(question) && normalized.endsWith('?');
     });
   }).join('\n').replace(/^\s*\n+/, '').trim();
+
+  if (!isOperatingQuestion(message)) return withoutMetadata;
+  return withoutMetadata
+    .replace(/^\s*\*\*SERA is a Universal Agent OS[—-]an AI Operational Partner\.\*\*\s*/i, '')
+    .replace(/^\s*SERA is a Universal Agent OS[—-]an AI Operational Partner\.\s*/i, '')
+    .replace(/^\s*\*\*SERA adalah OS Agen Universal[—-]Mitra Operasional AI\.\*\*\s*/i, '')
+    .replace(/^\s*SERA adalah OS Agen Universal[—-]Mitra Operasional AI\.\s*/i, '')
+    .trim();
 }
 
 function normaliseReply(value: unknown, message: string): ReceptionReply {
@@ -159,14 +183,14 @@ function normaliseReply(value: unknown, message: string): ReceptionReply {
     ? candidate.suggestedQuestions.filter((item): item is string => typeof item === 'string').slice(0, 3)
     : [];
   const seenSuggestions = new Set<string>();
-  const questionKey = message.trim().toLocaleLowerCase();
+  const questionKey = normaliseQuestion(message);
   const suggestedQuestions = modelSuggestions.filter((suggestion) => {
-    const suggestionKey = suggestion.trim().toLocaleLowerCase();
+    const suggestionKey = normaliseQuestion(suggestion);
     if (!suggestionKey || suggestionKey === questionKey || seenSuggestions.has(suggestionKey)) return false;
     seenSuggestions.add(suggestionKey);
     return true;
   });
-  const response = cleanResponse(candidate.response.slice(0, 1200), suggestedQuestions);
+  const response = cleanResponse(candidate.response.slice(0, 1200), suggestedQuestions, message);
   return {
     visual: typeof candidate.visual === 'string' && allowedVisuals.has(candidate.visual) ? candidate.visual : 'general',
     label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : '',
@@ -217,8 +241,8 @@ function visualForPublicQuestion(message: string, fallback: string): string {
   const input = message.toLowerCase();
   if (isLaunchRequest(input) || input.includes('masuk ke aplikasi') || input.includes('masuk ke sera') || input.includes('akses aplikasi')) return 'start';
   if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
+  if (input.includes('proposal') || input.includes('approve') || input.includes('reject') || input.includes('approval') || input.includes('persetujuan') || input.includes('setujui') || input.includes('menolak') || input.includes('ditolak') || input.includes('automation') || input.includes('automasi') || input.includes('schedule') || input.includes('transfer')) return 'automation';
   if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
-  if (input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
   if (input.includes('wallet') || input.includes('portfolio')) return 'crypto';
   return fallback;
 }
