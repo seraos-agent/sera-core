@@ -21,6 +21,7 @@ const clientUsage = new Map<string, ClientUsage>();
 const publicReplyCache = new Map<string, CachedReply>();
 let globalDay = '';
 let globalRequests = 0;
+const receptionKnowledgeRevision = '2026-07-18-capsule-only-followups';
 
 type ReceptionPayload = { message?: unknown };
 
@@ -79,10 +80,11 @@ const receptionSystemPrompt = `You are SERA Reception, the public, read-only int
 SERA PRODUCT FACTS — use these as the only source of truth:
 - SERA is a Universal Agent OS and an AI Operational Partner. It is not a blockchain protocol, a privacy coin, a zero-knowledge platform, or a decentralized application platform.
 - SERA helps people understand context, plan considered next steps, prepare reviewable proposals, and act across the systems that matter.
-- Its scope includes built-in wallet intelligence, financial systems, trading context, automation, services, tools, and custom connectors.
+- Its scope includes wallet intelligence, financial context, automation, services, tools, and connectors. Do not imply that every connector or action is already available.
 - SERA begins with context and intent. Meaningful actions are proposal-led: it observes, reasons, presents a proposal, and waits for user approval before execution.
-- A user has a personal Operational Partner after sign-up. SERA has a built-in wallet layer; the public landing must never ask a visitor to connect a wallet or reveal a seed phrase.
-- Safeguards include scoped permissions, reviewable proposals, explicit human approval, and clear execution records.
+- A user has a personal Operational Partner after sign-up. Newcomers can sign up with email, Google, or a supported social account. Crypto-native users can choose to connect an existing wallet during onboarding.
+- Explain the wallet model plainly when relevant: the user's personal wallet context is distinct from SERA's operational wallet layer. Connecting a wallet does not give SERA unrestricted control. SERA never asks for a seed phrase or personal private key. For supported managed-wallet onboarding, key management is handled by the wallet provider.
+- Safeguards include scoped permissions, reviewable proposals, explicit human approval, and execution records.
 - SERA is an early product. Do not invent integrations, performance claims, technical architecture, regulatory claims, token information, or capabilities not stated above.
 
 CONVERSATION STYLE:
@@ -95,12 +97,14 @@ CONVERSATION STYLE:
 - Sound like an intelligent host who is already thinking one step ahead: clarify the likely intent behind the question, then offer the most relevant path forward. The final question should invite a meaningful choice, not merely ask whether the visitor needs help.
 - Use calm, precise language. Prefer concrete examples grounded in the product facts; never invent details.
 - Write the response in clean Markdown: short paragraphs, **bold** only for key concepts, and a short bullet list only when it improves clarity. Do not use headings, emojis, tables, or more than 110 words.
-- End response with one natural, short question that helps the visitor choose what to explore next. Do not format it as a heading or a list.
-- Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
+- The interface renders the label separately. Never write “LABEL”, “SERA RECEPTION”, a title that repeats the label, or other metadata inside response.
+- End response with a clear declarative sentence. Never write a follow-up question inside response; the interface renders every next question as a separate capsule.
+- Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be in the visitor's language, move the conversation forward, and never repeat or paraphrase the question that was just answered. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
 - If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal Operational Partner, and do not include suggestedQuestions.
+- If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create a personal Operational Partner. Explain that newcomers can use email, Google, or a supported social account, while crypto-native users may connect an existing wallet. Briefly explain that setup provides the operational wallet layer without asking for a seed phrase. Set visual to "start" and do not lead with wallet warnings unless wallet access is the actual question.
 
-Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets or seed phrases, and do not provide financial advice.
-When answering “What is SERA?”, use this exact conversational structure: first distinguish SERA from a chatbot; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not reduce this answer to a one-paragraph definition.
+Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets, seed phrases, or private keys, and do not provide financial advice.
+When answering “What is SERA?”, use this exact conversational structure: first explain SERA as an operational system; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not mention chatbots or compare SERA to them. Its suggestedQuestions must explore the next step, such as the operating model, starting without crypto knowledge, or approval flow—never “What is SERA?” again. Express every suggestion naturally in the visitor’s language.
 Return only valid JSON using this schema:
 {"visual":"introduction|capabilities|operating|ecosystem|crypto|automation|security|general|start","label":"UPPERCASE SHORT LABEL","response":"Markdown answer","suggestedQuestions":["question","question","question"]}
 Choose a visual only from the list. Keep response under 160 words.`;
@@ -114,28 +118,44 @@ function fallbackReply(): ReceptionReply {
   };
 }
 
-function normaliseReply(value: unknown): ReceptionReply {
+function cleanResponse(response: string, suggestedQuestions: string[]): string {
+  return response.split('\n').filter((line) => {
+    const normalized = line.replace(/\*\*/g, '').trim().toLowerCase();
+    if (normalized === 'sera reception' || normalized.startsWith('label:')) return false;
+    return !suggestedQuestions.some((suggestion) => {
+      const question = suggestion.replace(/\*\*/g, '').trim().toLowerCase();
+      return Boolean(question) && normalized.includes(question) && normalized.endsWith('?');
+    });
+  }).join('\n').replace(/^\s*\n+/, '').trim();
+}
+
+function normaliseReply(value: unknown, message: string): ReceptionReply {
   if (!value || typeof value !== 'object') return fallbackReply();
   const candidate = value as Partial<ReceptionReply>;
   if (!candidate.response || typeof candidate.response !== 'string') return fallbackReply();
-  const suggestedQuestions = Array.isArray(candidate.suggestedQuestions)
+  const modelSuggestions = Array.isArray(candidate.suggestedQuestions)
     ? candidate.suggestedQuestions.filter((item): item is string => typeof item === 'string').slice(0, 3)
     : [];
-  const response = candidate.response.slice(0, 1200).trim();
-  const responseWithPrompt = !response.includes('?') && suggestedQuestions[0]
-    ? `${response}\n\nWould you like to explore **${suggestedQuestions[0]}**`
-    : response;
+  const seenSuggestions = new Set<string>();
+  const questionKey = message.trim().toLocaleLowerCase();
+  const suggestedQuestions = modelSuggestions.filter((suggestion) => {
+    const suggestionKey = suggestion.trim().toLocaleLowerCase();
+    if (!suggestionKey || suggestionKey === questionKey || seenSuggestions.has(suggestionKey)) return false;
+    seenSuggestions.add(suggestionKey);
+    return true;
+  });
+  const response = cleanResponse(candidate.response.slice(0, 1200), suggestedQuestions);
   return {
     visual: typeof candidate.visual === 'string' && allowedVisuals.has(candidate.visual) ? candidate.visual : 'general',
     label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : 'SERA RECEPTION',
-    response: responseWithPrompt,
+    response,
     suggestedQuestions,
   };
 }
 
 function visualForPublicQuestion(message: string, fallback: string): string {
   const input = message.toLowerCase();
-  if (input.includes('launch sera') || input.includes('i want to start') || input.includes('ready to start') || input.includes('saya ingin mulai') || input.includes('saya siap') || input.includes('mulai sekarang')) return 'start';
+  if (input.includes('launch sera') || input.includes('i want to start') || input.includes('ready to start') || input.includes('how do i access sera') || input.includes('how can i access sera') || input.includes('how to sign up') || input.includes('saya ingin mulai') || input.includes('saya siap') || input.includes('mulai sekarang') || input.includes('bagaimana saya mengakses sera') || input.includes('cara akses sera') || input.includes('cara mendaftar') || input.includes('bagaimana cara mendaftar')) return 'start';
   if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
   if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
   if (input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
@@ -164,13 +184,14 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
     }
 
     const normalizedMessage = message.trim().replace(/\s+/g, ' ');
-    const cacheKey = normalizedMessage.toLowerCase();
+    const questionKey = normalizedMessage.toLowerCase();
+    const cacheKey = `${receptionKnowledgeRevision}:${questionKey}`;
     const admission = acquireRequest(req.ip || req.socket.remoteAddress || 'unknown');
     if (!admission.ok) {
       res.setHeader('Retry-After', String(admission.retryAfterSeconds));
       return res.status(429).json({ error: 'SERA Reception is receiving many requests. Please try again shortly.' });
     }
-    const cached = cacheableQuestions.has(cacheKey) ? publicReplyCache.get(cacheKey) : undefined;
+    const cached = cacheableQuestions.has(questionKey) ? publicReplyCache.get(cacheKey) : undefined;
     if (cached && cached.expiresAt > Date.now()) {
       globalRequests = Math.max(0, globalRequests - 1);
       admission.release();
@@ -206,9 +227,9 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
       if (!raw) return res.status(502).json({ error: 'Reception provider returned no answer.' });
 
       try {
-        const reply = normaliseReply(JSON.parse(raw));
+        const reply = normaliseReply(JSON.parse(raw), normalizedMessage);
         reply.visual = visualForPublicQuestion(normalizedMessage, reply.visual);
-        if (cacheableQuestions.has(cacheKey)) publicReplyCache.set(cacheKey, { reply, expiresAt: Date.now() + publicCacheTtlMs });
+        if (cacheableQuestions.has(questionKey)) publicReplyCache.set(cacheKey, { reply, expiresAt: Date.now() + publicCacheTtlMs });
         return res.json(reply);
       } catch {
         return res.json({ ...fallbackReply(), response: raw.slice(0, 1200) });

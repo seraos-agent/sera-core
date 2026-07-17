@@ -37,7 +37,9 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const [content, setContent] = useState<ReceptionReply | null>(null);
   const [streamedResponse, setStreamedResponse] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [remaining, setRemaining] = useState(60);
+  const [activeVisual, setActiveVisual] = useState<{ scene: Scene; id: number } | null>(null);
+  const [isVisualTransitioning, setIsVisualTransitioning] = useState(false);
+  const [remaining, setRemaining] = useState(45);
   const [inputPromptIndex, setInputPromptIndex] = useState(0);
   const responseTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -50,7 +52,9 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     setContent(null);
     setStreamedResponse('');
     setIsThinking(false);
-    setRemaining(60);
+    setActiveVisual(null);
+    setIsVisualTransitioning(false);
+    setRemaining(45);
   };
 
   const send = async (value: string) => {
@@ -62,14 +66,15 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     setContent(null);
     setStreamedResponse('');
     setIsThinking(true);
+    setIsVisualTransitioning(false);
     setScene('general');
-    setRemaining(60);
+    setRemaining(45);
     const result = await getReceptionReply(next);
     setScene(result.visual);
     responseTimer.current = window.setTimeout(() => {
       setContent(result);
       setIsThinking(false);
-      setRemaining(60);
+      setRemaining(45);
     }, 520);
   };
 
@@ -112,6 +117,18 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     return () => window.clearInterval(stream);
   }, [content]);
 
+  useEffect(() => {
+    if (!content || streamedResponse.length < content.response.length) return;
+    const nextScene: Scene = visualScenes.has(scene) ? scene : 'general';
+    if (activeVisual?.scene === nextScene) return;
+    setIsVisualTransitioning(true);
+    const transition = window.setTimeout(() => {
+      setActiveVisual({ scene: nextScene, id: Date.now() });
+      setIsVisualTransitioning(false);
+    }, 260);
+    return () => window.clearTimeout(transition);
+  }, [content, streamedResponse, scene, activeVisual?.scene]);
+
   const isClosing = remaining <= 10;
 
   return (
@@ -129,22 +146,23 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} onSuggestion={send} onLaunchApp={onLaunchApp} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={onLaunchApp} />}
       </section>
 
       {scene !== 'reception' && !isThinking && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
         <span className="session-pulse" />
         <span>{isClosing ? `Returning to reception in ${remaining}s` : `Session active · Return in ${remaining}s`}</span>
-        {isClosing && <button onClick={() => setRemaining(60)}>Stay here</button>}
+        {isClosing && <button onClick={() => setRemaining(45)}>Stay here</button>}
         <button onClick={endSession}>{isClosing ? 'End now' : 'End session'}</button>
       </div>}
 
       {scene === 'reception' && <footer className="landing-footer" aria-label="SERA information">
-        <span>SERA OS · 2026</span>
-        <div className="landing-footer-social" aria-label="Follow SERA on X">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" />
-          </svg>
+        <div className="landing-footer-identity"><span>SERA OS · 2026</span><span className="landing-footer-trust">Public reception · Read-only</span></div>
+        <div className="landing-footer-links">
+          <a className="landing-footer-social" href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer" aria-label="Follow SERA on X">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" /></svg>
+          </a>
+          <a className="landing-footer-email" href="mailto:seraos.agent@gmail.com" aria-label="Email SERA"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 6.75A2.25 2.25 0 0 1 6 4.5h12a2.25 2.25 0 0 1 2.25 2.25v10.5A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25V6.75Z" /><path d="m4.5 6 7.5 5.25L19.5 6" /></svg></a>
         </div>
       </footer>}
 
@@ -217,8 +235,8 @@ function GlobeAccent() {
 }
 
 const ecosystemTokens = [
-  { key: 'wallets', label: '500+ Wallets', icon: Wallet },
-  { key: 'trading', label: 'Trading', icon: Activity },
+  { key: 'wallets', label: 'Wallet Access', icon: Wallet },
+  { key: 'trading', label: 'Market Context', icon: Activity },
   { key: 'finance', label: 'Financial Systems', icon: Database },
   { key: 'automation', label: 'Automation', icon: Terminal },
   { key: 'tools', label: 'Connectors', icon: Plug },
@@ -251,13 +269,14 @@ function IdleScene() {
   );
 }
 
-function IntentScene({ scene, question, content, streamedResponse, isThinking, onSuggestion, onLaunchApp }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; onSuggestion: (prompt: string) => void; onLaunchApp: () => void }) {
+function IntentScene({ scene, question, content, streamedResponse, isThinking, activeVisual, isVisualTransitioning, onSuggestion, onLaunchApp }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; activeVisual: { scene: Scene; id: number } | null; isVisualTransitioning: boolean; onSuggestion: (prompt: string) => void; onLaunchApp: () => void }) {
   const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
   const hasVisual = visualScenes.has(scene);
+  const activeHasCard = Boolean(activeVisual && visualScenes.has(activeVisual.scene));
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual ? <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div> : <div className="ambient-visual-space">{isResponseComplete && <AmbientDiagram key={question} scene={scene} />}</div>}</div>;
+  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && hasVisual && <div className="mobile-inline-visual" aria-label="SERA explanation visual"><div className="mobile-inline-scale"><ExplanationAnimation key={`${question}-mobile`} scene={scene} /></div></div>}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{activeHasCard ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}><ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} /></div> : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>{activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}</div>}</div>;
 }
 
 function AmbientDiagram({ scene }: { scene: Scene }) {
@@ -291,7 +310,7 @@ function ExplanationAnimation({ scene }: { scene: Scene }) {
   if (scene === 'operating') return <OperatingModelCard />;
   if (scene === 'ecosystem') return <EcosystemCard />;
   if (scene === 'automation') return <ProposalCard />;
-  if (scene === 'crypto') return <div className="motion-card wallet-motion"><div className="motion-topline"><span className="motion-orb" /> WALLET INTELLIGENCE <small>LIVE DEMO</small></div><p className="wallet-label">OBSERVING CONTEXT</p><strong>$24,860<span>.20</span></strong><div className="motion-chart"><i /><i /><i /><i /><i /><i /><i /></div><div className="motion-check"><i>✓</i> Proposal required for action</div></div>;
+  if (scene === 'crypto') return <div className="motion-card wallet-motion"><div className="motion-topline"><span className="motion-orb" /> WALLET INTELLIGENCE <small>CONTEXT READY</small></div><div className="wallet-context-heading"><p>WALLET LAYER</p><strong>Ready to understand</strong><span>Clarity before any action.</span></div><div className="wallet-context-grid"><div><i>01</i><b>Portfolio context</b><small>Read for clarity</small></div><div><i>02</i><b>Permission scope</b><small>Defined by you</small></div></div><div className="motion-check"><i>✓</i> Proposal required for action</div></div>;
   if (scene === 'security') return <SafeguardsCard />;
   if (scene === 'general') return <ReceptionCard />;
   return <ProposalCard />;
@@ -329,7 +348,7 @@ function CapabilitiesCard() {
 
 function OperatingModelCard() {
   return <div className="motion-card operating-system-card">
-    <div className="motion-topline"><span className="motion-orb" /> SERA OPERATING MODEL <small>REVIEWABLE</small></div>
+    <div className="motion-topline"><span className="motion-orb" /> SERA OPERATING MODEL <small>HUMAN-IN-LOOP</small></div>
     <div className="operating-canvas" aria-hidden="true">
       <span className="operating-path operating-path-one" /><span className="operating-path operating-path-two" />
       <span className="operating-pulse operating-pulse-one" /><span className="operating-pulse operating-pulse-two" />
@@ -337,13 +356,13 @@ function OperatingModelCard() {
       <div className="operating-core"><span><img src={seraLogo} alt="" /></span><b>Reasoning</b></div>
       <div className="operating-node operating-node-proposal"><i>03</i><b>Proposal</b><small>Ready to review</small></div>
     </div>
-    <div className="operating-review"><span>✓</span><p>Nothing proceeds without your approval.</p><i>Review</i></div>
+    <div className="operating-review"><span>✓</span><p>A proposal makes the next action reviewable.</p><i>Approval required</i></div>
   </div>;
 }
 
 function SafeguardsCard() {
   return <div className="motion-card safeguard-system-card">
-    <div className="motion-topline"><span className="motion-orb" /> SAFEGUARD LAYER <small>ACTIVE</small></div>
+    <div className="motion-topline"><span className="motion-orb" /> SAFEGUARD LAYER <small>AUTHORIZATION</small></div>
     <div className="safeguard-canvas" aria-hidden="true">
       <div className="safeguard-context"><span>Context</span><i>Read</i></div>
       <span className="safeguard-rail safeguard-rail-one" /><span className="safeguard-rail safeguard-rail-two" />
@@ -361,11 +380,11 @@ function EcosystemCard() {
     <div className="ecosystem-map" aria-hidden="true">
       <span className="ecosystem-line ecosystem-line-one" /><span className="ecosystem-line ecosystem-line-two" /><span className="ecosystem-line ecosystem-line-three" />
       <span className="ecosystem-core"><img src={seraLogo} alt="" /></span>
-      <span className="ecosystem-node ecosystem-node-wallet">500+ Wallets</span>
+      <span className="ecosystem-node ecosystem-node-wallet">500+ Wallet options</span>
       <span className="ecosystem-node ecosystem-node-finance">Financial systems</span>
       <span className="ecosystem-node ecosystem-node-connectors">Connectors</span>
     </div>
-    <p className="ecosystem-caption">Bring the systems that matter into one considered view.</p>
+    <p className="ecosystem-caption">Bring only the systems you choose into one considered view.</p>
   </div>;
 }
 
@@ -403,17 +422,17 @@ function ProposalCard() {
 
   return <div className="proposal-sequence" key={cycle}>
     <div className={`motion-card automation-motion proposal-card proposal-card-one ${approvePressed ? 'is-pressing' : ''}`}>
-      <div className="motion-topline"><span className="motion-orb" /> SERA PROPOSAL <small>{showSecondCard ? 'APPROVED' : 'REVIEW REQUIRED'}</small></div>
+      <div className="motion-topline"><span className="motion-orb" /> SERA PROPOSAL <small>REVIEW REQUIRED</small></div>
       <h3>Recurring USDC transfer</h3>
       <div className="proposal-copy"><span>DESCRIPTION</span><p>SERA prepared this automation from your request. Review the details before allowing execution.</p></div>
       <div className="proposal-action"><span>ACTION</span><strong>Transfer 250.00 USDC</strong><p>To Treasury wallet · Every Friday, 08:00</p></div>
-      <div className="proposal-outcome"><span>APPROVED</span><p>{showSecondCard ? 'Ready to execute' : 'Awaiting a decision'}</p></div>
+      <div className="proposal-outcome"><span>APPROVAL GATE</span><p>Waiting for explicit review</p></div>
       <div className="demo-actions" aria-hidden="true"><span className="demo-button demo-primary is-target">Approve</span><span className="demo-button demo-reject">Reject</span></div>
     </div>
     {showSecondCard && !removeSecondCard && <div className={`motion-card automation-motion proposal-card proposal-card-two ${rejectPressed ? 'is-pressing' : ''} ${isCrumbling ? 'is-crumbling' : ''}`}>
       <div className="motion-topline"><span className="motion-orb" /> NEW PROPOSAL <small>REVIEW REQUIRED</small></div>
       <h3>Transfer policy update</h3>
-      <div className="proposal-copy"><span>DESCRIPTION</span><p>SERA surfaced a separate request for review. It will not proceed without a decision.</p></div>
+      <div className="proposal-copy"><span>DESCRIPTION</span><p>A separate scope needs its own review. Approval does not carry over.</p></div>
       <div className="proposal-action"><span>ACTION</span><strong>Transfer 1,200.00 USDC</strong><p>To Operations wallet · One-time action</p></div>
       <div className="proposal-outcome"><span>REVIEW</span><p>Awaiting a decision</p></div>
       <div className="demo-actions" aria-hidden="true"><span className="demo-button demo-primary">Approve</span><span className="demo-button demo-reject is-target">Reject</span></div>
