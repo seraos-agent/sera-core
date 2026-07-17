@@ -21,9 +21,10 @@ const clientUsage = new Map<string, ClientUsage>();
 const publicReplyCache = new Map<string, CachedReply>();
 let globalDay = '';
 let globalRequests = 0;
-const receptionKnowledgeRevision = '2026-07-18-capsule-only-followups';
+const receptionKnowledgeRevision = '2026-07-18-metadata-safe-copy';
 
-type ReceptionPayload = { message?: unknown };
+type ReceptionPayload = { message?: unknown; history?: unknown };
+type ReceptionTurn = { role: 'user' | 'assistant'; content: string };
 
 type ReceptionReply = {
   visual: string;
@@ -31,6 +32,26 @@ type ReceptionReply = {
   response: string;
   suggestedQuestions: string[];
 };
+
+type DetectedLanguage = 'indonesian' | 'arabic' | 'english' | 'auto';
+
+function detectLatestMessageLanguage(message: string): DetectedLanguage {
+  if (/\p{Script=Arabic}/u.test(message)) return 'arabic';
+  if (/\b(apa|yang|dan|untuk|dengan|saya|kami|anda|tolong|bisa|dapat|ingin|mau|berikan|buatkan|bagaimana|cara|mulai|daftar|dompet|keamanan)\b/i.test(message)) return 'indonesian';
+  if (/\b(the|what|how|can|does|please|i|my|wallet|start|launch|give|show)\b/i.test(message)) return 'english';
+  return 'auto';
+}
+
+function latestLanguageInstruction(message: string): string {
+  const language = detectLatestMessageLanguage(message);
+  const name = language === 'indonesian' ? 'Indonesian' : language === 'arabic' ? 'Arabic' : language === 'english' ? 'English' : 'the language used in the latest visitor message';
+  return `LATEST MESSAGE RULE: The newest visitor message is authoritative. Reply entirely in ${name}, including suggestedQuestions. Never inherit the response language from earlier assistant messages or prior transcript turns.`;
+}
+
+function isLaunchRequest(message: string): boolean {
+  const input = message.toLowerCase();
+  return input.includes('launch sera') || input.includes('i want to start') || input.includes('ready to start') || input.includes('how do i access sera') || input.includes('how can i access sera') || input.includes('how to sign up') || input.includes('saya ingin mulai') || input.includes('saya siap') || input.includes('mulai sekarang') || input.includes('bagaimana saya mengakses sera') || input.includes('cara akses sera') || input.includes('cara mendaftar') || input.includes('bagaimana cara mendaftar');
+}
 
 function utcDay(now = new Date()): string {
   return now.toISOString().slice(0, 10);
@@ -86,9 +107,10 @@ SERA PRODUCT FACTS — use these as the only source of truth:
 - Explain the wallet model plainly when relevant: the user's personal wallet context is distinct from SERA's operational wallet layer. Connecting a wallet does not give SERA unrestricted control. SERA never asks for a seed phrase or personal private key. For supported managed-wallet onboarding, key management is handled by the wallet provider.
 - Safeguards include scoped permissions, reviewable proposals, explicit human approval, and execution records.
 - SERA is an early product. Do not invent integrations, performance claims, technical architecture, regulatory claims, token information, or capabilities not stated above.
+- When a temporary session transcript is supplied, use it only to resolve the visitor's current references and follow-up questions. It is not long-term memory, does not represent account data, and must not be mentioned unless the visitor asks.
 
 CONVERSATION STYLE:
-- Detect the visitor's dominant language and reply entirely in that same language. This includes response and suggestedQuestions. Support multilingual input, including Indonesian, English, Arabic, and other languages. If the input is mixed, use the language of the main question; do not translate unless asked.
+- Detect the language of the newest visitor message and reply entirely in that same language. This includes response and suggestedQuestions. Support multilingual input, including Indonesian, English, Arabic, and other languages. If the input is mixed, use the language of the main question; do not translate unless asked. Never inherit English merely because an earlier turn was in English.
 - Be a thoughtful operational partner, not a generic support chatbot or a sales page.
 - Answer the visitor's actual question in the first sentence. Then add the most useful context they are likely to need next.
 - Be proactive by identifying the natural next consideration, trade-off, or safeguard. Do not use vague filler such as “How can I help?” or repeat the question back.
@@ -97,23 +119,23 @@ CONVERSATION STYLE:
 - Sound like an intelligent host who is already thinking one step ahead: clarify the likely intent behind the question, then offer the most relevant path forward. The final question should invite a meaningful choice, not merely ask whether the visitor needs help.
 - Use calm, precise language. Prefer concrete examples grounded in the product facts; never invent details.
 - Write the response in clean Markdown: short paragraphs, **bold** only for key concepts, and a short bullet list only when it improves clarity. Do not use headings, emojis, tables, or more than 110 words.
-- The interface renders the label separately. Never write “LABEL”, “SERA RECEPTION”, a title that repeats the label, or other metadata inside response.
+- The interface presents SERA's words directly. Never write “LABEL”, “SERA RECEPTION”, “visual”, metadata, headings, or a title that repeats the question inside response.
 - End response with a clear declarative sentence. Never write a follow-up question inside response; the interface renders every next question as a separate capsule.
 - Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be in the visitor's language, move the conversation forward, and never repeat or paraphrase the question that was just answered. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
 - If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal Operational Partner, and do not include suggestedQuestions.
-- If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create a personal Operational Partner. Explain that newcomers can use email, Google, or a supported social account, while crypto-native users may connect an existing wallet. Briefly explain that setup provides the operational wallet layer without asking for a seed phrase. Set visual to "start" and do not lead with wallet warnings unless wallet access is the actual question.
+- If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create a personal Operational Partner. Describe the two equally valid paths plainly: newcomers can continue with email, Google, or a supported social account without already owning a wallet; crypto-native users may instead connect an existing wallet during onboarding. Never say that a visitor “does not need to connect a wallet” without also explaining that they may connect one if they choose. In Indonesian, prefer “tidak perlu memiliki dompet sebelumnya” over “tidak perlu menghubungkan dompet.” Briefly explain that setup provides the necessary wallet layer without asking for a seed phrase. Set visual to "start" and do not lead with wallet warnings unless wallet access is the actual question.
 
-Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets, seed phrases, or private keys, and do not provide financial advice.
+Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with the visitor-language equivalent of: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets, seed phrases, or private keys, and do not provide financial advice.
 When answering “What is SERA?”, use this exact conversational structure: first explain SERA as an operational system; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not mention chatbots or compare SERA to them. Its suggestedQuestions must explore the next step, such as the operating model, starting without crypto knowledge, or approval flow—never “What is SERA?” again. Express every suggestion naturally in the visitor’s language.
 Return only valid JSON using this schema:
-{"visual":"introduction|capabilities|operating|ecosystem|crypto|automation|security|general|start","label":"UPPERCASE SHORT LABEL","response":"Markdown answer","suggestedQuestions":["question","question","question"]}
+{"visual":"introduction|capabilities|operating|ecosystem|crypto|automation|security|general|start","response":"Markdown answer","suggestedQuestions":["question","question","question"]}
 Choose a visual only from the list. Keep response under 160 words.`;
 
 function fallbackReply(): ReceptionReply {
   return {
     visual: 'general',
-    label: 'SERA RECEPTION',
-    response: 'I can introduce SERA, explain how it works, explore safeguards, or show the systems it can understand. What would you like to explore?',
+    label: '',
+    response: 'SERA can introduce its operating model, safeguards, and the systems it can understand.',
     suggestedQuestions: ['What is SERA?', 'How does SERA work?', 'How does SERA stay safe?'],
   };
 }
@@ -121,7 +143,7 @@ function fallbackReply(): ReceptionReply {
 function cleanResponse(response: string, suggestedQuestions: string[]): string {
   return response.split('\n').filter((line) => {
     const normalized = line.replace(/\*\*/g, '').trim().toLowerCase();
-    if (normalized === 'sera reception' || normalized.startsWith('label:')) return false;
+    if (normalized === 'sera reception' || normalized.startsWith('label:') || normalized.startsWith('visual:') || normalized.startsWith('suggestedquestions:')) return false;
     return !suggestedQuestions.some((suggestion) => {
       const question = suggestion.replace(/\*\*/g, '').trim().toLowerCase();
       return Boolean(question) && normalized.includes(question) && normalized.endsWith('?');
@@ -147,20 +169,69 @@ function normaliseReply(value: unknown, message: string): ReceptionReply {
   const response = cleanResponse(candidate.response.slice(0, 1200), suggestedQuestions);
   return {
     visual: typeof candidate.visual === 'string' && allowedVisuals.has(candidate.visual) ? candidate.visual : 'general',
-    label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : 'SERA RECEPTION',
+    label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : '',
     response,
     suggestedQuestions,
   };
 }
 
+function parseReceptionReply(raw: string, message: string): ReceptionReply {
+  const jsonPayload = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return normaliseReply(JSON.parse(jsonPayload), message);
+  } catch {
+    // Models occasionally return the requested fields as Markdown instead of JSON.
+    // Recover the visitor-facing answer, but never expose transport metadata in the UI.
+    const lines = jsonPayload.split('\n');
+    let visual = 'general';
+    let label = '';
+    let suggestedQuestions: string[] = [];
+    const responseLines: string[] = [];
+
+    for (const line of lines) {
+      const plain = line.replace(/\*\*/g, '').trim();
+      const field = plain.match(/^(visual|label|suggestedQuestions)\s*:\s*(.*)$/i);
+      if (!field) {
+        responseLines.push(line);
+        continue;
+      }
+
+      const [, name, value] = field;
+      if (name.toLowerCase() === 'visual') visual = value.trim();
+      if (name.toLowerCase() === 'label') label = value.trim();
+      if (name.toLowerCase() === 'suggestedquestions') {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) suggestedQuestions = parsed.filter((item): item is string => typeof item === 'string');
+        } catch {
+          suggestedQuestions = Array.from(value.matchAll(/"([^"]+)"/g), (match) => match[1]);
+        }
+      }
+    }
+
+    return normaliseReply({ visual, label, response: responseLines.join('\n').trim(), suggestedQuestions }, message);
+  }
+}
+
 function visualForPublicQuestion(message: string, fallback: string): string {
   const input = message.toLowerCase();
-  if (input.includes('launch sera') || input.includes('i want to start') || input.includes('ready to start') || input.includes('how do i access sera') || input.includes('how can i access sera') || input.includes('how to sign up') || input.includes('saya ingin mulai') || input.includes('saya siap') || input.includes('mulai sekarang') || input.includes('bagaimana saya mengakses sera') || input.includes('cara akses sera') || input.includes('cara mendaftar') || input.includes('bagaimana cara mendaftar')) return 'start';
+  if (isLaunchRequest(input) || input.includes('masuk ke aplikasi') || input.includes('masuk ke sera') || input.includes('akses aplikasi')) return 'start';
   if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
   if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
   if (input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
   if (input.includes('wallet') || input.includes('portfolio')) return 'crypto';
   return fallback;
+}
+
+function temporarySessionHistory(value: unknown): ReceptionTurn[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((turn): turn is { role?: unknown; content?: unknown } => Boolean(turn) && typeof turn === 'object')
+    .filter((turn): turn is { role: 'user' | 'assistant'; content: string } =>
+      (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string' && Boolean(turn.content.trim()),
+    )
+    .slice(-4)
+    .map((turn) => ({ role: turn.role, content: turn.content.trim().slice(0, 900) }));
 }
 
 export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | undefined) => boolean): Router {
@@ -178,20 +249,22 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
   });
 
   router.post('/chat', async (req, res) => {
-    const { message } = req.body as ReceptionPayload;
+    const { message, history } = req.body as ReceptionPayload;
     if (typeof message !== 'string' || !message.trim() || message.length > 1200) {
       return res.status(400).json({ error: 'A message up to 1200 characters is required.' });
     }
 
     const normalizedMessage = message.trim().replace(/\s+/g, ' ');
+    const sessionHistory = temporarySessionHistory(history);
     const questionKey = normalizedMessage.toLowerCase();
     const cacheKey = `${receptionKnowledgeRevision}:${questionKey}`;
+    const canUseCache = sessionHistory.length === 0 && cacheableQuestions.has(questionKey);
     const admission = acquireRequest(req.ip || req.socket.remoteAddress || 'unknown');
     if (!admission.ok) {
       res.setHeader('Retry-After', String(admission.retryAfterSeconds));
       return res.status(429).json({ error: 'SERA Reception is receiving many requests. Please try again shortly.' });
     }
-    const cached = cacheableQuestions.has(questionKey) ? publicReplyCache.get(cacheKey) : undefined;
+    const cached = canUseCache ? publicReplyCache.get(cacheKey) : undefined;
     if (cached && cached.expiresAt > Date.now()) {
       globalRequests = Math.max(0, globalRequests - 1);
       admission.release();
@@ -214,6 +287,8 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
             messages: [
               { role: 'system', content: receptionSystemPrompt },
               { role: 'system', content: publicTopicContext(normalizedMessage) },
+              ...sessionHistory,
+              { role: 'system', content: latestLanguageInstruction(normalizedMessage) },
               { role: 'user', content: normalizedMessage },
             ],
           },
@@ -227,12 +302,12 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
       if (!raw) return res.status(502).json({ error: 'Reception provider returned no answer.' });
 
       try {
-        const reply = normaliseReply(JSON.parse(raw), normalizedMessage);
+        const reply = parseReceptionReply(raw, normalizedMessage);
         reply.visual = visualForPublicQuestion(normalizedMessage, reply.visual);
-        if (cacheableQuestions.has(questionKey)) publicReplyCache.set(cacheKey, { reply, expiresAt: Date.now() + publicCacheTtlMs });
+        if (canUseCache) publicReplyCache.set(cacheKey, { reply, expiresAt: Date.now() + publicCacheTtlMs });
         return res.json(reply);
       } catch {
-        return res.json({ ...fallbackReply(), response: raw.slice(0, 1200) });
+        return res.json(fallbackReply());
       }
     } catch {
       return res.status(502).json({ error: 'Reception provider unavailable.' });

@@ -16,15 +16,33 @@ export type ReceptionReply = {
   suggestedQuestions: string[];
 };
 
+export type ReceptionTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 const endpoint = import.meta.env.VITE_RECEPTION_API_URL ?? '/api/reception/chat';
 
+function removeReceptionMetadata(response: string): string {
+  return response
+    .split('\n')
+    .filter((line) => !/^[\s>*`]*(?:\*\*|`)?\s*(?:visual|label|suggestedQuestions)\s*(?:\*\*|`)?\s*:/i.test(line))
+    .filter((line) => !/^\s*```(?:json)?\s*$/i.test(line))
+    .join('\n')
+    .trim();
+}
+
+function cleanReply(reply: ReceptionReply): ReceptionReply {
+  return { ...reply, label: '', response: removeReceptionMetadata(reply.response) };
+}
+
 /** Public Reception only. This client never connects to the authenticated Core socket. */
-export async function getReceptionReply(message: string): Promise<ReceptionReply> {
+export async function getReceptionReply(message: string, history: ReceptionTurn[] = []): Promise<ReceptionReply> {
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history: history.slice(-4) }),
     });
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { error?: string } | null;
@@ -35,7 +53,7 @@ export async function getReceptionReply(message: string): Promise<ReceptionReply
         suggestedQuestions: [],
       };
     }
-    return await response.json() as ReceptionReply;
+    return cleanReply(await response.json() as ReceptionReply);
   } catch {
     return {
       visual: 'general',

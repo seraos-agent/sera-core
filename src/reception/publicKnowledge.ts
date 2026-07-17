@@ -22,11 +22,11 @@ const topics: TopicKnowledge[] = [
   },
   {
     topic: 'access',
-    triggers: ['how do i access sera', 'how can i access sera', 'how do i start', 'how to sign up', 'bagaimana saya mengakses sera', 'cara akses sera', 'cara mendaftar', 'bagaimana cara mendaftar'],
+    triggers: ['how do i access sera', 'how can i access sera', 'how do i start', 'how to sign up', 'bagaimana saya mengakses sera', 'cara akses sera', 'cara mendaftar', 'bagaimana cara mendaftar', 'masuk ke aplikasi', 'masuk ke sera', 'akses aplikasi'],
     facts: [
       'A visitor starts from the public landing by choosing Launch SERA.',
-      'A newcomer can sign up with email, Google, or a supported social account. Setup creates the personal account and the operational wallet layer needed for SERA.',
-      'A crypto-native user can instead connect an existing wallet during onboarding. Both paths lead to a personal Operational Partner shaped around context, permissions, and goals.',
+      'A newcomer who does not already have a wallet can sign up with email, Google, or a supported social account. Setup creates the personal account and the wallet layer needed for SERA.',
+      'A crypto-native user can instead connect an existing wallet during onboarding. Both paths are valid and lead to a personal Operational Partner shaped around context, permissions, and goals.',
       'SERA never asks the visitor to share a seed phrase or personal private key. Connecting a wallet does not give SERA unrestricted control over it.',
     ],
     example: 'The public Reception explains the platform first; Launch SERA then begins the personal setup experience.',

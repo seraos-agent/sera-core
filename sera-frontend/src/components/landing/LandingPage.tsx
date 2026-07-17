@@ -9,6 +9,7 @@ import seraLogo from '../../assets/sera-logo.png';
 import globeMapSrc from '../../assets/globe-map.png';
 import { getReceptionReply } from '../../services/reception/receptionClient';
 import type { ReceptionReply, ReceptionVisual } from '../../services/reception/receptionClient';
+import type { ReceptionTurn } from '../../services/reception/receptionClient';
 
 type Scene = 'reception' | ReceptionVisual;
 
@@ -36,6 +37,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const [question, setQuestion] = useState('');
   const [content, setContent] = useState<ReceptionReply | null>(null);
   const [streamedResponse, setStreamedResponse] = useState('');
+  const [conversationHistory, setConversationHistory] = useState<ReceptionTurn[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [activeVisual, setActiveVisual] = useState<{ scene: Scene; id: number } | null>(null);
   const [isVisualTransitioning, setIsVisualTransitioning] = useState(false);
@@ -51,6 +53,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     setQuestion('');
     setContent(null);
     setStreamedResponse('');
+    setConversationHistory([]);
     setIsThinking(false);
     setActiveVisual(null);
     setIsVisualTransitioning(false);
@@ -69,7 +72,8 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     setIsVisualTransitioning(false);
     setScene('general');
     setRemaining(45);
-    const result = await getReceptionReply(next);
+    const result = await getReceptionReply(next, conversationHistory);
+    setConversationHistory(previous => [...previous, { role: 'user' as const, content: next }, { role: 'assistant' as const, content: result.response }].slice(-4));
     setScene(result.visual);
     responseTimer.current = window.setTimeout(() => {
       setContent(result);
@@ -255,10 +259,10 @@ function IdleScene() {
         Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
       </p>
 
-      <div className="idle-ecosystem" aria-label="Supported networks">
+      <div className="idle-ecosystem" aria-label="SERA capability areas">
         <div className="idle-token-row">
           {ecosystemTokens.map((token) => (
-            <div key={token.key} className="idle-token" title={token.label}>
+            <div key={token.key} className="idle-token">
               <div className="idle-token-icon"><token.icon strokeWidth={1.65} /></div>
               <span>{token.label}</span>
             </div>
@@ -276,7 +280,7 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && hasVisual && <div className="mobile-inline-visual" aria-label="SERA explanation visual"><div className="mobile-inline-scale"><ExplanationAnimation key={`${question}-mobile`} scene={scene} /></div></div>}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{activeHasCard ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}><ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} /></div> : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>{activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}</div>}</div>;
+  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message">{response}{isResponseComplete && hasVisual && <div className="mobile-inline-visual" aria-label="SERA explanation visual"><div className="mobile-inline-scale"><ExplanationAnimation key={`${question}-mobile`} scene={scene} /></div></div>}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{activeHasCard ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}><ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} /></div> : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>{activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}</div>}</div>;
 }
 
 function AmbientDiagram({ scene }: { scene: Scene }) {
@@ -423,7 +427,7 @@ function ProposalCard() {
   return <div className="proposal-sequence" key={cycle}>
     <div className={`motion-card automation-motion proposal-card proposal-card-one ${approvePressed ? 'is-pressing' : ''}`}>
       <div className="motion-topline"><span className="motion-orb" /> SERA PROPOSAL <small>REVIEW REQUIRED</small></div>
-      <h3>Recurring USDC transfer</h3>
+      <h3>Weekly transfer</h3>
       <div className="proposal-copy"><span>DESCRIPTION</span><p>SERA prepared this automation from your request. Review the details before allowing execution.</p></div>
       <div className="proposal-action"><span>ACTION</span><strong>Transfer 250.00 USDC</strong><p>To Treasury wallet · Every Friday, 08:00</p></div>
       <div className="proposal-outcome"><span>APPROVAL GATE</span><p>Waiting for explicit review</p></div>
