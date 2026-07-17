@@ -1,58 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Activity, Box, Database, Terminal, Wallet } from 'lucide-react';
+import { Activity, Database, Plug, Terminal, Wallet } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './LandingPage.css';
 import './PremiumPalette.css';
 import seraLogo from '../../assets/sera-logo.png';
 import globeMapSrc from '../../assets/globe-map.png';
+import { getReceptionReply } from '../../services/reception/receptionClient';
+import type { ReceptionReply, ReceptionVisual } from '../../services/reception/receptionClient';
 
-type Scene = 'reception' | 'crypto' | 'automation' | 'security' | 'general' | 'start';
-
-type SceneContent = { title: string; response: string; label: string };
+type Scene = 'reception' | ReceptionVisual;
 
 const headerPrompts = [
-  { label: 'Show automation', prompt: 'Show me a safe automation.' },
-  { label: 'Review my wallet', prompt: 'Can SERA help me understand my wallet?' },
-  { label: 'Plan a workflow', prompt: 'Help me plan a recurring action.' },
-  { label: 'Explore safeguards', prompt: 'How does SERA stay in control?' },
-  { label: 'Connect a system', prompt: 'How can I connect a wallet or tool?' },
+  { label: 'Introduction', prompt: 'What is SERA?' },
+  { label: 'Capabilities', prompt: 'What can SERA help me accomplish?' },
+  { label: 'How it works', prompt: 'How does SERA work?' },
+  { label: 'Safeguards', prompt: 'How does SERA stay safe?' },
+  { label: 'Ecosystem', prompt: 'What can SERA connect to?' },
 ];
 
-const mobilePrompts = [
-  'Try: Show a safe automation',
-  'Try: Review my wallet',
-  'Try: Plan a workflow',
-  'Try: Explore safeguards',
-  'Try: Connect a system',
+const inputPrompts = [
+  'What is SERA?',
+  'What can SERA help me accomplish?',
+  'How does SERA work?',
+  'How does SERA stay safe?',
+  'What can SERA connect to?',
 ];
 
-function interpret(message: string): { scene: Exclude<Scene, 'reception'>; content: SceneContent } {
-  const input = message.toLowerCase();
-  if (input.includes('crypto') || input.includes('wallet') || input.includes('base') || input.includes('portfolio')) {
-    return { scene: 'crypto', content: { label: 'WALLET INTELLIGENCE', title: 'Crypto, with a clearer next step.', response: 'SERA observes your wallet context, explains the available options, and presents a proposal before any action can move forward.' } };
-  }
-  if (input.includes('automation') || input.includes('schedule') || input.includes('transfer') || input.includes('recurring')) {
-    return { scene: 'automation', content: { label: 'AUTOMATION', title: 'Intent becomes a proposal.', response: 'SERA turns a recurring request into a clear action plan. You decide when it is ready to execute.' } };
-  }
-  if (input.includes('safe') || input.includes('security') || input.includes('approval') || input.includes('risk')) {
-    return { scene: 'security', content: { label: 'GOVERNANCE', title: 'Power, with boundaries.', response: 'SERA keeps observation, reasoning, approval, and execution separate—so you always know what is happening and why.' } };
-  }
-  if (input.includes('start') || input.includes('launch') || input.includes('create')) {
-    return { scene: 'start', content: { label: 'YOUR WORKSPACE', title: 'You are ready.', response: "Let's create a personal Operational Partner shaped around your context, permissions, and goals." } };
-  }
-  return { scene: 'general', content: { label: 'SERA', title: '', response: 'SERA learns context, plans with constraints, and helps you act across the systems that matter—without losing human judgment.' } };
-}
+const visualScenes = new Set<Scene>(['operating', 'security', 'automation', 'crypto']);
 
 export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const [scene, setScene] = useState<Scene>('reception');
   const [message, setMessage] = useState('');
   const [question, setQuestion] = useState('');
-  const [content, setContent] = useState<SceneContent | null>(null);
+  const [content, setContent] = useState<ReceptionReply | null>(null);
   const [streamedResponse, setStreamedResponse] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [remaining, setRemaining] = useState(60);
-  const [mobilePromptIndex, setMobilePromptIndex] = useState(0);
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches);
+  const [inputPromptIndex, setInputPromptIndex] = useState(0);
   const responseTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -67,18 +53,19 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     setRemaining(60);
   };
 
-  const send = (value: string) => {
+  const send = async (value: string) => {
     const next = value.trim();
     if (!next || isThinking) return;
-    const result = interpret(next);
     if (responseTimer.current) window.clearTimeout(responseTimer.current);
     setQuestion(next);
     setMessage('');
     setIsThinking(true);
-    setScene(result.scene);
+    setScene('general');
     setRemaining(60);
+    const result = await getReceptionReply(next);
+    setScene(result.visual);
     responseTimer.current = window.setTimeout(() => {
-      setContent(result.content);
+      setContent(result);
       setIsThinking(false);
       setRemaining(60);
     }, 520);
@@ -106,17 +93,10 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   useEffect(() => () => { if (responseTimer.current) window.clearTimeout(responseTimer.current); }, []);
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 760px)');
-    const update = () => setIsMobile(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobile || scene !== 'reception') { setMobilePromptIndex(0); return; }
-    const interval = window.setInterval(() => setMobilePromptIndex(index => (index + 1) % mobilePrompts.length), 3800);
+    if (scene !== 'reception') { setInputPromptIndex(0); return; }
+    const interval = window.setInterval(() => setInputPromptIndex(index => (index + 1) % inputPrompts.length), 3800);
     return () => window.clearInterval(interval);
-  }, [isMobile, scene]);
+  }, [scene]);
 
   useEffect(() => {
     if (!content) { setStreamedResponse(''); return; }
@@ -147,7 +127,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} onSuggestion={send} />}
       </section>
 
       {scene !== 'reception' && !isThinking && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
@@ -157,8 +137,17 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
         <button onClick={endSession}>{isClosing ? 'End now' : 'Selesai'}</button>
       </div>}
 
+      {scene === 'reception' && <footer className="landing-footer" aria-label="SERA information">
+        <span>SERA OS · 2026</span>
+        <div className="landing-footer-social" aria-label="Follow SERA on X">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" />
+          </svg>
+        </div>
+      </footer>}
+
       <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
-        <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? (isMobile ? mobilePrompts[mobilePromptIndex] : 'What would you like to accomplish today?') : 'Continue the conversation…'} aria-label="Message SERA" />
+        <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
         <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
       </form>
     </main>
@@ -230,7 +219,7 @@ const ecosystemTokens = [
   { key: 'trading', label: 'Trading', icon: Activity },
   { key: 'finance', label: 'Financial Systems', icon: Database },
   { key: 'automation', label: 'Automation', icon: Terminal },
-  { key: 'tools', label: 'APIs & Tools', icon: Box },
+  { key: 'tools', label: 'Connectors', icon: Plug },
 ];
 
 function IdleScene() {
@@ -260,16 +249,98 @@ function IdleScene() {
   );
 }
 
-function IntentScene({ scene, question, content, streamedResponse, isThinking }: { scene: Scene; question: string; content: SceneContent | null; streamedResponse: string; isThinking: boolean }) {
+function IntentScene({ scene, question, content, streamedResponse, isThinking, onSuggestion }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; onSuggestion: (prompt: string) => void }) {
   const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
-  return <div className="intent-scene"><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span>S</span><p>SERA is considering your request<i /><i /><i /></p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p><p className="streamed-copy">{streamedResponse}<b className={streamedResponse.length < content.response.length ? 'stream-cursor' : 'stream-cursor is-hidden'} /></p></div>}</div><div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div></div>;
+  const hasVisual = visualScenes.has(scene);
+  const response = !content ? null : isResponseComplete
+    ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
+    : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
+  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual && <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div>}</div>;
 }
 
 function ExplanationAnimation({ scene }: { scene: Scene }) {
+  if (scene === 'introduction') return <SeraIntroductionCard />;
+  if (scene === 'capabilities') return <CapabilitiesCard />;
+  if (scene === 'operating') return <OperatingModelCard />;
+  if (scene === 'ecosystem') return <EcosystemCard />;
   if (scene === 'automation') return <ProposalCard />;
   if (scene === 'crypto') return <div className="motion-card wallet-motion"><div className="motion-topline"><span className="motion-orb" /> WALLET INTELLIGENCE <small>LIVE DEMO</small></div><p className="wallet-label">OBSERVING CONTEXT</p><strong>$24,860<span>.20</span></strong><div className="motion-chart"><i /><i /><i /><i /><i /><i /><i /></div><div className="motion-check"><i>✓</i> Proposal required for action</div></div>;
-  if (scene === 'security') return <div className="motion-card security-motion"><div className="motion-topline"><span className="motion-orb" /> EXECUTION BOUNDARY</div><div className="motion-flow"><span>Observe</span><i>→</i><span>Evaluate</span><i>→</i><span>Approve</span><i>→</i><b>Act</b></div><p>Every critical action is evaluated before it can proceed.</p><div className="motion-check"><i>✓</i> Human approval required</div></div>;
+  if (scene === 'security') return <SafeguardsCard />;
+  if (scene === 'general') return <ReceptionCard />;
   return <ProposalCard />;
+}
+
+function SeraIntroductionCard() {
+  return <div className="motion-card sera-introduction-card">
+    <div className="motion-topline"><span className="motion-orb" /> SERA / UNIVERSAL AGENT OS <small>LIVE MODEL</small></div>
+    <div className="sera-system-visual" aria-hidden="true">
+      <span className="sera-orbit sera-orbit-one" /><span className="sera-orbit sera-orbit-two" />
+      <span className="sera-link sera-link-one" /><span className="sera-link sera-link-two" /><span className="sera-link sera-link-three" />
+      <span className="sera-core">S</span>
+      <span className="sera-node sera-node-context">Context</span>
+      <span className="sera-node sera-node-plan">Plan</span>
+      <span className="sera-node sera-node-action">Action</span>
+    </div>
+    <p className="sera-card-caption">One intelligence that turns context into considered action.</p>
+  </div>;
+}
+
+function CapabilitiesCard() {
+  return <div className="motion-card capabilities-card">
+    <div className="motion-topline"><span className="motion-orb" /> SERA CAPABILITIES <small>ONE CONTEXT</small></div>
+    <div className="capability-map" aria-hidden="true">
+      <span className="capability-ring capability-ring-one" /><span className="capability-ring capability-ring-two" />
+      <span className="capability-core">S</span>
+      <span className="capability-node capability-wallets">Wallets</span>
+      <span className="capability-node capability-finance">Finance</span>
+      <span className="capability-node capability-automation">Automation</span>
+      <span className="capability-node capability-tools">Tools</span>
+    </div>
+    <div className="capability-summary"><span>OBSERVE</span><i>→</i><span>REASON</span><i>→</i><b>PROPOSE</b></div>
+  </div>;
+}
+
+function OperatingModelCard() {
+  return <div className="motion-card operating-model-card">
+    <div className="motion-topline"><span className="motion-orb" /> SERA OPERATING MODEL <small>REVIEWABLE</small></div>
+    <div className="operating-track" aria-hidden="true">
+      <div><span>01</span><b>Context</b><p>Signals become clear.</p></div>
+      <i /><div><span>02</span><b>Reasoning</b><p>Intent meets constraints.</p></div>
+      <i /><div><span>03</span><b>Proposal</b><p>You decide what proceeds.</p></div>
+    </div>
+    <div className="operating-approval"><span>✓</span><p>Approval remains with you.</p></div>
+  </div>;
+}
+
+function SafeguardsCard() {
+  return <div className="motion-card safeguards-card">
+    <div className="motion-topline"><span className="motion-orb" /> SAFEGUARD LAYER <small>ACTIVE</small></div>
+    <div className="safeguard-lock" aria-hidden="true"><span>✓</span><b>Approval required</b><small>Before execution</small></div>
+    <div className="safeguard-rules"><p><i>✓</i> Scoped permissions</p><p><i>✓</i> Reviewable proposals</p><p><i>✓</i> Clear execution record</p></div>
+  </div>;
+}
+
+function EcosystemCard() {
+  return <div className="motion-card ecosystem-card">
+    <div className="motion-topline"><span className="motion-orb" /> SERA ECOSYSTEM <small>YOUR CHOICE</small></div>
+    <div className="ecosystem-map" aria-hidden="true">
+      <span className="ecosystem-line ecosystem-line-one" /><span className="ecosystem-line ecosystem-line-two" /><span className="ecosystem-line ecosystem-line-three" />
+      <span className="ecosystem-core">S</span>
+      <span className="ecosystem-node ecosystem-node-wallet">500+ Wallets</span>
+      <span className="ecosystem-node ecosystem-node-finance">Financial systems</span>
+      <span className="ecosystem-node ecosystem-node-connectors">Connectors</span>
+    </div>
+    <p className="ecosystem-caption">Bring the systems that matter into one considered view.</p>
+  </div>;
+}
+
+function ReceptionCard() {
+  return <div className="motion-card reception-card">
+    <div className="motion-topline"><span className="motion-orb" /> SERA RECEPTION <small>READY</small></div>
+    <div className="reception-card-mark">S</div>
+    <p>Ask about SERA, its operating model, safeguards, or the systems it can understand.</p>
+    <div className="reception-card-topics"><span>Introduction</span><span>Capabilities</span><span>Safeguards</span></div>
+  </div>;
 }
 
 function ProposalCard() {
