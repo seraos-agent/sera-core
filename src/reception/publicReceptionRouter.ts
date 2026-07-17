@@ -131,6 +131,15 @@ function normaliseReply(value: unknown): ReceptionReply {
   };
 }
 
+function visualForPublicQuestion(message: string, fallback: string): string {
+  const input = message.toLowerCase();
+  if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
+  if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
+  if (input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
+  if (input.includes('wallet') || input.includes('portfolio')) return 'crypto';
+  return fallback;
+}
+
 export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | undefined) => boolean): Router {
   const router = Router();
 
@@ -189,6 +198,7 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
 
       try {
         const reply = normaliseReply(JSON.parse(raw));
+        reply.visual = visualForPublicQuestion(normalizedMessage, reply.visual);
         if (cacheableQuestions.has(cacheKey)) publicReplyCache.set(cacheKey, { reply, expiresAt: Date.now() + publicCacheTtlMs });
         return res.json(reply);
       } catch {

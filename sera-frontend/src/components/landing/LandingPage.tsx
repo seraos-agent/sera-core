@@ -59,6 +59,8 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
     if (responseTimer.current) window.clearTimeout(responseTimer.current);
     setQuestion(next);
     setMessage('');
+    setContent(null);
+    setStreamedResponse('');
     setIsThinking(true);
     setScene('general');
     setRemaining(60);
@@ -134,7 +136,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
         <span className="session-pulse" />
         <span>{isClosing ? `Returning to reception in ${remaining}s` : `Session active · Return in ${remaining}s`}</span>
         {isClosing && <button onClick={() => setRemaining(60)}>Stay here</button>}
-        <button onClick={endSession}>{isClosing ? 'End now' : 'Selesai'}</button>
+        <button onClick={endSession}>{isClosing ? 'End now' : 'End session'}</button>
       </div>}
 
       {scene === 'reception' && <footer className="landing-footer" aria-label="SERA information">
@@ -255,7 +257,32 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, o
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual && <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div>}</div>;
+  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual ? <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div> : <div className="ambient-visual-space">{isResponseComplete && <AmbientDiagram key={question} scene={scene} />}</div>}</div>;
+}
+
+function AmbientDiagram({ scene }: { scene: Scene }) {
+  const diagram = scene === 'capabilities'
+    ? { inputs: ['Wallets', 'Finance', 'Tools'], outputs: ['Insight', 'Automation', 'Review'] }
+    : scene === 'ecosystem'
+      ? { inputs: ['Wallet layer', 'Financial systems', 'Connectors'], outputs: ['One context', 'Policies', 'Actions'] }
+      : scene === 'introduction'
+        ? { inputs: ['Context', 'Intent', 'Systems'], outputs: ['Clarity', 'Proposal', 'Action'] }
+        : { inputs: ['Signals', 'Intent', 'Constraints'], outputs: ['Clarity', 'Plan', 'Approval'] };
+
+  return <div className={`ambient-diagram ambient-${scene}`} aria-hidden="true">
+    <span className="ambient-field" /><span className="ambient-halo ambient-halo-one" /><span className="ambient-halo ambient-halo-two" /><span className="ambient-halo ambient-halo-three" />
+    <svg className="ambient-network" viewBox="0 0 360 270" fill="none" preserveAspectRatio="none">
+      <path className="ambient-link" d="M104 55 C128 55 136 103 159 119" /><path className="ambient-link" d="M104 135 C128 135 136 135 159 135" /><path className="ambient-link" d="M104 215 C128 215 136 167 159 151" />
+      <path className="ambient-link ambient-link-output" d="M201 119 C224 103 232 55 256 55" /><path className="ambient-link ambient-link-output" d="M201 135 C224 135 232 135 256 135" /><path className="ambient-link ambient-link-output" d="M201 151 C224 167 232 215 256 215" />
+      <path className="ambient-flow" d="M104 55 C128 55 136 103 159 119" /><path className="ambient-flow" d="M104 135 C128 135 136 135 159 135" /><path className="ambient-flow" d="M104 215 C128 215 136 167 159 151" />
+      <path className="ambient-flow ambient-flow-output" d="M201 119 C224 103 232 55 256 55" /><path className="ambient-flow ambient-flow-output" d="M201 135 C224 135 232 135 256 135" /><path className="ambient-flow ambient-flow-output" d="M201 151 C224 167 232 215 256 215" />
+    </svg>
+    <span className="ambient-core"><img src={seraLogo} alt="" /></span>
+    <span className="ambient-core-label">SERA</span>
+    {diagram.inputs.map((node, index) => <span className={`ambient-node ambient-input ambient-input-${index + 1}`} key={node}>{node}</span>)}
+    {diagram.outputs.map((node, index) => <span className={`ambient-node ambient-output ambient-output-${index + 1}`} key={node}>{node}</span>)}
+    <p>Context becomes considered action</p>
+  </div>;
 }
 
 function ExplanationAnimation({ scene }: { scene: Scene }) {
@@ -276,7 +303,7 @@ function SeraIntroductionCard() {
     <div className="sera-system-visual" aria-hidden="true">
       <span className="sera-orbit sera-orbit-one" /><span className="sera-orbit sera-orbit-two" />
       <span className="sera-link sera-link-one" /><span className="sera-link sera-link-two" /><span className="sera-link sera-link-three" />
-      <span className="sera-core">S</span>
+      <span className="sera-core"><img src={seraLogo} alt="" /></span>
       <span className="sera-node sera-node-context">Context</span>
       <span className="sera-node sera-node-plan">Plan</span>
       <span className="sera-node sera-node-action">Action</span>
@@ -290,7 +317,7 @@ function CapabilitiesCard() {
     <div className="motion-topline"><span className="motion-orb" /> SERA CAPABILITIES <small>ONE CONTEXT</small></div>
     <div className="capability-map" aria-hidden="true">
       <span className="capability-ring capability-ring-one" /><span className="capability-ring capability-ring-two" />
-      <span className="capability-core">S</span>
+      <span className="capability-core"><img src={seraLogo} alt="" /></span>
       <span className="capability-node capability-wallets">Wallets</span>
       <span className="capability-node capability-finance">Finance</span>
       <span className="capability-node capability-automation">Automation</span>
@@ -301,22 +328,30 @@ function CapabilitiesCard() {
 }
 
 function OperatingModelCard() {
-  return <div className="motion-card operating-model-card">
+  return <div className="motion-card operating-system-card">
     <div className="motion-topline"><span className="motion-orb" /> SERA OPERATING MODEL <small>REVIEWABLE</small></div>
-    <div className="operating-track" aria-hidden="true">
-      <div><span>01</span><b>Context</b><p>Signals become clear.</p></div>
-      <i /><div><span>02</span><b>Reasoning</b><p>Intent meets constraints.</p></div>
-      <i /><div><span>03</span><b>Proposal</b><p>You decide what proceeds.</p></div>
+    <div className="operating-canvas" aria-hidden="true">
+      <span className="operating-path operating-path-one" /><span className="operating-path operating-path-two" />
+      <span className="operating-pulse operating-pulse-one" /><span className="operating-pulse operating-pulse-two" />
+      <div className="operating-node operating-node-context"><i>01</i><b>Context</b><small>Signals aligned</small></div>
+      <div className="operating-core"><span><img src={seraLogo} alt="" /></span><b>Reasoning</b></div>
+      <div className="operating-node operating-node-proposal"><i>03</i><b>Proposal</b><small>Ready to review</small></div>
     </div>
-    <div className="operating-approval"><span>✓</span><p>Approval remains with you.</p></div>
+    <div className="operating-review"><span>✓</span><p>Nothing proceeds without your approval.</p><i>Review</i></div>
   </div>;
 }
 
 function SafeguardsCard() {
-  return <div className="motion-card safeguards-card">
+  return <div className="motion-card safeguard-system-card">
     <div className="motion-topline"><span className="motion-orb" /> SAFEGUARD LAYER <small>ACTIVE</small></div>
-    <div className="safeguard-lock" aria-hidden="true"><span>✓</span><b>Approval required</b><small>Before execution</small></div>
-    <div className="safeguard-rules"><p><i>✓</i> Scoped permissions</p><p><i>✓</i> Reviewable proposals</p><p><i>✓</i> Clear execution record</p></div>
+    <div className="safeguard-canvas" aria-hidden="true">
+      <div className="safeguard-context"><span>Context</span><i>Read</i></div>
+      <span className="safeguard-rail safeguard-rail-one" /><span className="safeguard-rail safeguard-rail-two" />
+      <span className="safeguard-pulse" />
+      <div className="safeguard-gate"><span>✓</span><b>Approval</b><small>Required</small></div>
+      <div className="safeguard-action"><span>Action</span><i>Only if approved</i></div>
+    </div>
+    <div className="safeguard-status"><span><i>✓</i> Scoped access</span><span><i>✓</i> Review record</span><span><i>✓</i> Human control</span></div>
   </div>;
 }
 
@@ -325,7 +360,7 @@ function EcosystemCard() {
     <div className="motion-topline"><span className="motion-orb" /> SERA ECOSYSTEM <small>YOUR CHOICE</small></div>
     <div className="ecosystem-map" aria-hidden="true">
       <span className="ecosystem-line ecosystem-line-one" /><span className="ecosystem-line ecosystem-line-two" /><span className="ecosystem-line ecosystem-line-three" />
-      <span className="ecosystem-core">S</span>
+      <span className="ecosystem-core"><img src={seraLogo} alt="" /></span>
       <span className="ecosystem-node ecosystem-node-wallet">500+ Wallets</span>
       <span className="ecosystem-node ecosystem-node-finance">Financial systems</span>
       <span className="ecosystem-node ecosystem-node-connectors">Connectors</span>
@@ -337,7 +372,7 @@ function EcosystemCard() {
 function ReceptionCard() {
   return <div className="motion-card reception-card">
     <div className="motion-topline"><span className="motion-orb" /> SERA RECEPTION <small>READY</small></div>
-    <div className="reception-card-mark">S</div>
+    <div className="reception-card-mark"><img src={seraLogo} alt="" /></div>
     <p>Ask about SERA, its operating model, safeguards, or the systems it can understand.</p>
     <div className="reception-card-topics"><span>Introduction</span><span>Capabilities</span><span>Safeguards</span></div>
   </div>;
@@ -349,17 +384,24 @@ function ProposalCard() {
   const [rejectPressed, setRejectPressed] = useState(false);
   const [isCrumbling, setIsCrumbling] = useState(false);
   const [removeSecondCard, setRemoveSecondCard] = useState(false);
+  const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
+    setApprovePressed(false);
+    setShowSecondCard(false);
+    setRejectPressed(false);
+    setIsCrumbling(false);
+    setRemoveSecondCard(false);
     const pressApprove = window.setTimeout(() => setApprovePressed(true), 1200);
     const showSecond = window.setTimeout(() => setShowSecondCard(true), 2300);
     const pressReject = window.setTimeout(() => setRejectPressed(true), 4600);
     const crumble = window.setTimeout(() => setIsCrumbling(true), 5300);
     const remove = window.setTimeout(() => setRemoveSecondCard(true), 6200);
-    return () => [pressApprove, showSecond, pressReject, crumble, remove].forEach(window.clearTimeout);
-  }, []);
+    const restart = window.setTimeout(() => setCycle(value => value + 1), 7100);
+    return () => [pressApprove, showSecond, pressReject, crumble, remove, restart].forEach(window.clearTimeout);
+  }, [cycle]);
 
-  return <div className="proposal-sequence">
+  return <div className="proposal-sequence" key={cycle}>
     <div className={`motion-card automation-motion proposal-card proposal-card-one ${approvePressed ? 'is-pressing' : ''}`}>
       <div className="motion-topline"><span className="motion-orb" /> SERA PROPOSAL <small>{showSecondCard ? 'APPROVED' : 'REVIEW REQUIRED'}</small></div>
       <h3>Recurring USDC transfer</h3>
