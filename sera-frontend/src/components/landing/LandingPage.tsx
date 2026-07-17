@@ -1,19 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Activity, Box, Database, Terminal, Wallet } from 'lucide-react';
 import './LandingPage.css';
 import './PremiumPalette.css';
 import seraLogo from '../../assets/sera-logo.png';
+import globeMapSrc from '../../assets/globe-map.png';
 
 type Scene = 'reception' | 'crypto' | 'automation' | 'security' | 'general' | 'start';
 
 type SceneContent = { title: string; response: string; label: string };
 
 const headerPrompts = [
-  { label: 'Explore automation', prompt: 'Show me a safe automation.' },
-  { label: 'Understand your wallet', prompt: 'Can SERA help me understand my wallet?' },
-  { label: 'Plan an action', prompt: 'Help me plan a recurring action.' },
-  { label: 'Review permissions', prompt: 'How does SERA stay in control?' },
+  { label: 'Show automation', prompt: 'Show me a safe automation.' },
+  { label: 'Review my wallet', prompt: 'Can SERA help me understand my wallet?' },
+  { label: 'Plan a workflow', prompt: 'Help me plan a recurring action.' },
+  { label: 'Explore safeguards', prompt: 'How does SERA stay in control?' },
   { label: 'Connect a system', prompt: 'How can I connect a wallet or tool?' },
+];
+
+const mobilePrompts = [
+  'Try: Show a safe automation',
+  'Try: Review my wallet',
+  'Try: Plan a workflow',
+  'Try: Explore safeguards',
+  'Try: Connect a system',
 ];
 
 function interpret(message: string): { scene: Exclude<Scene, 'reception'>; content: SceneContent } {
@@ -41,6 +51,8 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const [streamedResponse, setStreamedResponse] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [remaining, setRemaining] = useState(60);
+  const [mobilePromptIndex, setMobilePromptIndex] = useState(0);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches);
   const responseTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -94,6 +106,19 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   useEffect(() => () => { if (responseTimer.current) window.clearTimeout(responseTimer.current); }, []);
 
   useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)');
+    const update = () => setIsMobile(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile || scene !== 'reception') { setMobilePromptIndex(0); return; }
+    const interval = window.setInterval(() => setMobilePromptIndex(index => (index + 1) % mobilePrompts.length), 3800);
+    return () => window.clearInterval(interval);
+  }, [isMobile, scene]);
+
+  useEffect(() => {
     if (!content) { setStreamedResponse(''); return; }
     let cursor = 0;
     setStreamedResponse('');
@@ -110,11 +135,12 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   return (
     <main className={`sera-room scene-${scene}`}>
       <div className="room-glow room-glow-one" /><div className="room-glow room-glow-two" />
+      {scene === 'reception' && <GlobeAccent />}
       <header className="room-header">
         <a href="#reception" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
         <div className="header-prompt-rail" aria-label="Explore SERA">
           <div className="header-prompt-track">
-            {[...headerPrompts, ...headerPrompts].map((item, index) => <button type="button" key={`${item.label}-${index}`} onClick={() => chooseHeaderPrompt(item.prompt)}>{item.label}</button>)}
+            {headerPrompts.map(item => <button type="button" key={item.label} onClick={() => chooseHeaderPrompt(item.prompt)}>{item.label}</button>)}
           </div>
         </div>
         <button className="header-launch" onClick={onLaunchApp}>Launch SERA</button>
@@ -132,15 +158,106 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       </div>}
 
       <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
-        <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? 'What would you like to accomplish today?' : 'Continue the conversation…'} aria-label="Message SERA" />
+        <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? (isMobile ? mobilePrompts[mobilePromptIndex] : 'What would you like to accomplish today?') : 'Continue the conversation…'} aria-label="Message SERA" />
         <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
       </form>
     </main>
   );
 }
 
+
+function GlobeAccent() {
+  const rotationRef = useRef<SVGAnimateTransformElement | null>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => rotationRef.current?.beginElement());
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <div className="globe-accent" aria-hidden="true">
+      <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="globe-clip">
+            <circle cx="250" cy="250" r="248" />
+          </clipPath>
+          <radialGradient id="pixel-globe-sphere" cx="38%" cy="30%" r="68%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
+            <stop offset="60%" stopColor="#7889ca" stopOpacity="0.06" />
+            <stop offset="100%" stopColor="#4056ab" stopOpacity="0.16" />
+          </radialGradient>
+          <radialGradient id="pixel-globe-vignette" cx="50%" cy="50%" r="50%">
+            <stop offset="68%" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#5266ba" stopOpacity="0.28" />
+          </radialGradient>
+          <pattern id="pixel-globe-base-grid" width="6" height="6" patternUnits="userSpaceOnUse">
+            <circle cx="3" cy="3" r="1.05" fill="#7182c8" />
+          </pattern>
+          <pattern id="pixel-globe-land-grid" width="6" height="6" patternUnits="userSpaceOnUse">
+            <circle cx="3" cy="3" r="1.25" fill="#4d60b5" />
+          </pattern>
+          <filter id="pixel-globe-contrast" colorInterpolationFilters="sRGB">
+            <feColorMatrix type="saturate" values="0" />
+            <feComponentTransfer>
+              <feFuncR type="discrete" tableValues="0 0 0 1 1" />
+              <feFuncG type="discrete" tableValues="0 0 0 1 1" />
+              <feFuncB type="discrete" tableValues="0 0 0 1 1" />
+            </feComponentTransfer>
+          </filter>
+          <mask id="pixel-globe-land-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="500" height="500">
+            <rect width="500" height="500" fill="#000" />
+            <g filter="url(#pixel-globe-contrast)">
+              <animateTransform ref={rotationRef} attributeName="transform" type="translate" from="0 0" to="-996 0" dur="40s" begin="indefinite" repeatCount="indefinite" />
+              <image href={globeMapSrc} x="-248" y="0" width="996" height="500" preserveAspectRatio="none" />
+              <image href={globeMapSrc} x="718" y="0" width="996" height="500" preserveAspectRatio="none" />
+            </g>
+          </mask>
+        </defs>
+
+        <g clipPath="url(#globe-clip)">
+          <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-sphere)" />
+          <rect width="500" height="500" fill="url(#pixel-globe-base-grid)" opacity=".48" />
+          <rect width="500" height="500" fill="url(#pixel-globe-land-grid)" mask="url(#pixel-globe-land-mask)" opacity=".88" />
+          <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-vignette)" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+const ecosystemTokens = [
+  { key: 'wallets', label: '500+ Wallets', icon: Wallet },
+  { key: 'trading', label: 'Trading', icon: Activity },
+  { key: 'finance', label: 'Financial Systems', icon: Database },
+  { key: 'automation', label: 'Automation', icon: Terminal },
+  { key: 'tools', label: 'APIs & Tools', icon: Box },
+];
+
 function IdleScene() {
-  return null;
+  return (
+    <div className="idle-scene">
+      <p className="idle-kicker">The Universal Agent OS</p>
+
+      <h1 className="idle-headline">
+        <span className="idle-word idle-word-1">An intelligence for every system</span>
+      </h1>
+
+      <p className="idle-sub">
+        Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
+      </p>
+
+      <div className="idle-ecosystem" aria-label="Supported networks">
+        <div className="idle-token-row">
+          {ecosystemTokens.map((token) => (
+            <div key={token.key} className="idle-token" title={token.label}>
+              <div className="idle-token-icon"><token.icon strokeWidth={1.65} /></div>
+              <span>{token.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function IntentScene({ scene, question, content, streamedResponse, isThinking }: { scene: Scene; question: string; content: SceneContent | null; streamedResponse: string; isThinking: boolean }) {
