@@ -13,7 +13,6 @@ import { agentManager, SubscriptionRequiredError } from './AgentManager';
 import { isAllowedOrigin, serverConfig } from './config';
 import { requireAuthenticatedSession } from './SessionGuard';
 import { createHmac, randomBytes } from 'crypto';
-import { createPublicReceptionRouter } from '../reception/publicReceptionRouter';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 
@@ -38,9 +37,6 @@ function verifySessionToken(token: string): string | null {
 }
 
 const app = express();
-app.set('trust proxy', 1);
-app.use(express.json({ limit: '16kb' }));
-app.use('/api/reception', createPublicReceptionRouter(isAllowedOrigin));
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {

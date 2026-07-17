@@ -290,6 +290,22 @@
   color: #171510;
 }
 
+.conversation-launch {
+  min-height: 40px;
+  margin-top: 20px;
+  padding: 0 17px;
+  border: 0;
+  border-radius: 999px;
+  background: #596ec5;
+  color: #f8f5ee;
+  box-shadow: 0 10px 22px rgba(75, 91, 174, .16);
+  cursor: pointer;
+  font: 700 11px Manrope, sans-serif;
+  transition: background .18s ease, transform .18s ease;
+}
+
+.conversation-launch:hover { background: #4d61b5; transform: translateY(-1px); }
+
 .stream-cursor {
   display: inline-block;
   width: 7px;

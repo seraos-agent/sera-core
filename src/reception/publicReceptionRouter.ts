@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createHash } from 'crypto';
+import { publicTopicContext } from './publicKnowledge';
 
 const DASH_SCOPE_URL = 'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
 const allowedVisuals = new Set(['introduction', 'capabilities', 'operating', 'ecosystem', 'crypto', 'automation', 'security', 'general', 'start']);
@@ -96,6 +97,7 @@ CONVERSATION STYLE:
 - Write the response in clean Markdown: short paragraphs, **bold** only for key concepts, and a short bullet list only when it improves clarity. Do not use headings, emojis, tables, or more than 110 words.
 - End response with one natural, short question that helps the visitor choose what to explore next. Do not format it as a heading or a list.
 - Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
+- If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal Operational Partner, and do not include suggestedQuestions.
 
 Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets or seed phrases, and do not provide financial advice.
 When answering “What is SERA?”, use this exact conversational structure: first distinguish SERA from a chatbot; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not reduce this answer to a one-paragraph definition.
@@ -133,6 +135,7 @@ function normaliseReply(value: unknown): ReceptionReply {
 
 function visualForPublicQuestion(message: string, fallback: string): string {
   const input = message.toLowerCase();
+  if (input.includes('launch sera') || input.includes('i want to start') || input.includes('ready to start') || input.includes('saya ingin mulai') || input.includes('saya siap') || input.includes('mulai sekarang')) return 'start';
   if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
   if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
   if (input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
@@ -186,7 +189,13 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'qwen-turbo',
-          input: { messages: [{ role: 'system', content: receptionSystemPrompt }, { role: 'user', content: normalizedMessage }] },
+          input: {
+            messages: [
+              { role: 'system', content: receptionSystemPrompt },
+              { role: 'system', content: publicTopicContext(normalizedMessage) },
+              { role: 'user', content: normalizedMessage },
+            ],
+          },
           parameters: { result_format: 'message', max_tokens: 320, enable_thinking: false },
         }),
       });

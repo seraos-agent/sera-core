@@ -11,6 +11,7 @@
     "test:coverage": "vitest run --coverage",
     "start": "ts-node src/server/index.ts",
     "start:server": "ts-node src/server/index.ts",
+    "start:reception": "npm --prefix sera-reception run start",
     "build": "tsc"
   },
   "author": "",

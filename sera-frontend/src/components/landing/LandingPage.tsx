@@ -129,7 +129,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} onSuggestion={send} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} onSuggestion={send} onLaunchApp={onLaunchApp} />}
       </section>
 
       {scene !== 'reception' && !isThinking && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
@@ -251,13 +251,13 @@ function IdleScene() {
   );
 }
 
-function IntentScene({ scene, question, content, streamedResponse, isThinking, onSuggestion }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; onSuggestion: (prompt: string) => void }) {
+function IntentScene({ scene, question, content, streamedResponse, isThinking, onSuggestion, onLaunchApp }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; onSuggestion: (prompt: string) => void; onLaunchApp: () => void }) {
   const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
   const hasVisual = visualScenes.has(scene);
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual ? <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div> : <div className="ambient-visual-space">{isResponseComplete && <AmbientDiagram key={question} scene={scene} />}</div>}</div>;
+  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message"><p className="room-kicker">{content.label}</p>{response}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{hasVisual ? <div className="intent-visual-space">{isResponseComplete && <ExplanationAnimation key={question} scene={scene} />}</div> : <div className="ambient-visual-space">{isResponseComplete && <AmbientDiagram key={question} scene={scene} />}</div>}</div>;
 }
 
 function AmbientDiagram({ scene }: { scene: Scene }) {
