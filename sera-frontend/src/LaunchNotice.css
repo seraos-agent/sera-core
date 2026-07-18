@@ -31,15 +31,12 @@
 }
 
 .launch-notice-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 14px;
-  background: rgba(85, 103, 196, .10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.launch-notice-mark img { width: 27px; height: 27px; object-fit: contain; }
+.launch-notice-mark img { width: 31px; height: 31px; object-fit: contain; }
 
 .launch-notice-kicker {
   margin: 0;
