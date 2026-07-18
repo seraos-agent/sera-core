@@ -40,6 +40,8 @@ import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { TemporalClockService } from '../core/temporal/TemporalClockService';
 import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 import { AuditLogger } from '../core/telemetry/AuditLogger';
+import { MetricsAggregator } from '../core/telemetry/MetricsAggregator';
+import { InMemoryMetricsStore } from '../core/telemetry/MetricsStore';
 import { ExperienceBuilder } from '../core/memory/ExperienceBuilder';
 import { EpisodicSemanticBridge } from '../core/memory/EpisodicSemanticBridge';
 import { MemoryIngress } from '../core/memory/MemoryIngress';
@@ -64,7 +66,9 @@ export class SeraAgentInstance {
   public governanceCoordinator!: GovernanceCoordinator;
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
+  public metricsStore!: InMemoryMetricsStore;
   private memoryIngress!: MemoryIngress;
+  private metricsAggregator!: MetricsAggregator;
   private started = false;
   private stopped = false;
   private readonly persistMemorySnapshot = async () => {
@@ -86,6 +90,8 @@ export class SeraAgentInstance {
     this.observationStore = new ObservationStore(100);
     this.memoryStore = new WorkingMemory(this.eventBus);
     this.memoryIngress = new MemoryIngress(this.eventBus, this.memoryStore);
+    this.metricsStore = new InMemoryMetricsStore();
+    this.metricsAggregator = new MetricsAggregator(this.eventBus, this.metricsStore);
     
     // Derived key mock for this scope (32-bytes hex) based on "sign-to-unlock" pattern discussed.
     const mockDerivedWalletKey = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';

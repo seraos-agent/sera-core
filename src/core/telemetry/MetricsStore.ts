@@ -30,6 +30,13 @@ export interface SystemMetrics {
     totalExecuted: number;
     avgLatencyMs: number;
   };
+  llm: {
+    requests: number;
+    failures: number;
+    fallbacks: number;
+    avgLatencyMs: number;
+    estimatedCost: number;
+  };
 }
 
 export interface MetricsStore {
@@ -39,6 +46,7 @@ export interface MetricsStore {
   updateGovernance(metrics: Partial<SystemMetrics['governance']>): void;
   updateWorker(metrics: Partial<SystemMetrics['worker']>): void;
   updateExecution(metrics: Partial<SystemMetrics['execution']>): void;
+  updateLlm(metrics: Partial<SystemMetrics['llm']>): void;
 }
 
 export class InMemoryMetricsStore implements MetricsStore {
@@ -74,6 +82,13 @@ export class InMemoryMetricsStore implements MetricsStore {
       totalExecuted: 0,
       avgLatencyMs: 0,
     },
+    llm: {
+      requests: 0,
+      failures: 0,
+      fallbacks: 0,
+      avgLatencyMs: 0,
+      estimatedCost: 0,
+    },
   };
 
   getMetrics(): SystemMetrics {
@@ -99,5 +114,9 @@ export class InMemoryMetricsStore implements MetricsStore {
 
   updateExecution(metrics: Partial<SystemMetrics['execution']>): void {
     this.metrics.execution = { ...this.metrics.execution, ...metrics };
+  }
+
+  updateLlm(metrics: Partial<SystemMetrics['llm']>): void {
+    this.metrics.llm = { ...this.metrics.llm, ...metrics };
   }
 }

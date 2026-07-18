@@ -39,7 +39,7 @@ import { ProposalGovernance } from '../core/intents/ProposalGovernance';
 import { ExecutionDispatcher } from './ExecutionDispatcher';
 import { DialogueEngine } from '../capabilities/dialogue/DialogueEngine';
 import { ModelRegistry } from '../core/llm/ModelRegistry';
-import { StaticRoutingPolicy } from '../core/llm/StaticRoutingPolicy';
+import { CapabilityRoutingPolicy } from '../core/llm/CapabilityRoutingPolicy';
 import { ModelOrchestrator } from '../core/llm/ModelOrchestrator';
 import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
@@ -243,11 +243,13 @@ export class Runtime {
     });
 
     // Initialize Deterministic Multi-Model Orchestrator
-    const qwenFlash = new QwenAdapter('qwen-plus'); // Mapping to flash/plus depending on keys available
+    // The current deployment has one provisioned backend model. The routing
+    // layer remains capable of multi-model fallback when another adapter is
+    // explicitly configured, but must not assume provider entitlement.
     const qwenPlus = new QwenAdapter('qwen-plus');
-    const registry = new ModelRegistry([qwenFlash, qwenPlus]);
-    const routingPolicy = new StaticRoutingPolicy();
-    const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy);
+    const registry = new ModelRegistry([qwenPlus]);
+    const routingPolicy = new CapabilityRoutingPolicy();
+    const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy, globalEventBus);
 
     this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, modelOrchestrator, options?.sessionId || 'default');
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, Orchestrator, and Cognitive Engines Initialized');

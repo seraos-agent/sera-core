@@ -34,6 +34,16 @@ export class ExecutionProfileBuilder {
     return this;
   }
 
+  public requiresLongContext(): this {
+    this.profile.constraints.requiresLongContext = true;
+    return this;
+  }
+
+  public withEstimatedInputTokens(tokens: number): this {
+    this.profile.estimatedInputTokens = Math.max(0, Math.floor(tokens));
+    return this;
+  }
+
   public build(): ExecutionProfile {
     return this.profile;
   }

@@ -61,6 +61,10 @@ export const EventTypes = {
   MEMORY_PROPOSAL_REQUESTED: 'memory.proposal.requested',
   MEMORY_ITEM_MUTATED: 'memory.item.mutated',
 
+  // Model Layer
+  LLM_MODEL_COMPLETED: 'llm.model.completed',
+  LLM_MODEL_FAILED: 'llm.model.failed',
+
   // Security & Telemetry
   SECURITY_AUTH_FAILURE: 'security.auth.failure',
   SECURITY_BLOCKED_ACTION: 'security.blocked.action',
@@ -135,4 +139,17 @@ export interface MemoryItemMutatedPayload {
   newStatus: string;
   source: string;
   confidence: number;
+}
+
+export interface LlmModelExecutionPayload {
+  provider: string;
+  model: string;
+  tier: string;
+  attempt: number;
+  latencyMs: number;
+  fallbackUsed: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCost: number;
+  errorMessage?: string;
 }

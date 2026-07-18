@@ -14,6 +14,7 @@ export interface ExecutionProfileConstraints {
 export interface ExecutionProfile {
   tier: ExecutionTier;
   constraints: ExecutionProfileConstraints;
+  estimatedInputTokens?: number;
 }
 
 export interface ModelCapability {
@@ -41,5 +42,19 @@ export interface ILLMAdapter {
 }
 
 export interface RoutingPolicy {
+  rankModels(profile: ExecutionProfile, registry: ReadonlyArray<ILLMAdapter>): ILLMAdapter[];
   selectModel(profile: ExecutionProfile, registry: ReadonlyArray<ILLMAdapter>): ILLMAdapter | null;
+}
+
+export interface ModelExecutionTelemetry {
+  provider: string;
+  model: string;
+  tier: ExecutionTier;
+  attempt: number;
+  latencyMs: number;
+  fallbackUsed: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCost: number;
+  errorMessage?: string;
 }

@@ -38,7 +38,7 @@ export class QwenAdapter implements ILLMAdapter {
     this.capability = {
       provider: 'Qwen',
       model: this.model,
-      tiers: isFlash ? ['Execution'] : ['Reasoning'],
+      tiers: isFlash ? ['Execution', 'Social'] : ['Reasoning', 'Coding'],
       supportsVision: false,
       supportsStreaming: true,
       supportsJSON: true,

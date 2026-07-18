@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { EventTypes, StandardEvent, MemoryItemMutatedPayload, GoalResultPayload } from '../events/types';
+import { EventTypes, StandardEvent, MemoryItemMutatedPayload, GoalResultPayload, LlmModelExecutionPayload } from '../events/types';
 import { ExecutionEvent } from '../execution/aios_types';
 import { MetricsStore } from './MetricsStore';
 import { MemoryStatus } from '../memory/MemoryItem';
@@ -115,6 +115,28 @@ export class MetricsAggregator {
       }
       
       this.store.updateExecution({ totalExecuted, avgLatencyMs });
+    });
+
+    // 7. LLM routing telemetry
+    this.eventBus.on(EventTypes.LLM_MODEL_COMPLETED, (event: StandardEvent<LlmModelExecutionPayload>) => {
+      const metrics = this.store.getMetrics().llm;
+      const requests = metrics.requests + 1;
+      const fallbacks = metrics.fallbacks + (event.payload.fallbackUsed ? 1 : 0);
+      const avgLatencyMs = ((metrics.avgLatencyMs * (requests - 1)) + event.payload.latencyMs) / requests;
+      this.store.updateLlm({
+        requests,
+        fallbacks,
+        avgLatencyMs,
+        estimatedCost: metrics.estimatedCost + event.payload.estimatedCost
+      });
+    });
+
+    this.eventBus.on(EventTypes.LLM_MODEL_FAILED, (event: StandardEvent<LlmModelExecutionPayload>) => {
+      const metrics = this.store.getMetrics().llm;
+      this.store.updateLlm({
+        failures: metrics.failures + 1,
+        fallbacks: metrics.fallbacks + (event.payload.fallbackUsed ? 1 : 0)
+      });
     });
   }
 }
