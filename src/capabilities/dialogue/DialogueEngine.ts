@@ -15,6 +15,7 @@ import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 import { ConversationContextCompressor } from './ConversationContextCompressor';
 import { WorkClassificationPolicy } from '../../core/work-classification/WorkClassificationPolicy';
 import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
+import { MessageIntakePolicy } from './MessageIntakePolicy';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -44,6 +45,7 @@ CRITICAL — COMMUNICATION STYLE:
 - NEVER list your own capabilities as a response. Saying "I can do X, Y, Z" is FORBIDDEN unless the user explicitly asks what you can do.
 - NEVER end a response with an open offer like "let me know if you need anything", "just ask", or "I'm ready whenever you are".
 - When asking for clarification, ask ONE short plain question. Do NOT use bullet points, numbered lists, or structured formatting just to ask a simple question.
+- If the message has no reliable meaning or request, do not classify it as a command, a typo, a test, or a named category. Ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
 
 CRITICAL — PLATFORM AWARENESS:
 - When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
@@ -108,6 +110,7 @@ export class DialogueEngine {
   private readonly conversationContextCompressor = new ConversationContextCompressor();
   private readonly workClassificationPolicy = new WorkClassificationPolicy();
   private readonly workerRegistry = new WorkerCapabilityRegistry();
+  private readonly messageIntakePolicy = new MessageIntakePolicy();
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -446,6 +449,12 @@ export class DialogueEngine {
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +
       (this._activeResponseContext ? ` [routing context: platform=${this._activeResponseContext.platform}]` : ''));
 
+    if (this.messageIntakePolicy.requiresClarification(userMessage)) {
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Could you clarify?' });
+      this._activeResponseContext = undefined;
+      return;
+    }
+
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
     try {
@@ -772,6 +781,10 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
+    if (result.success && result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY') {
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderReadOnlyHyperliquidResult(result.data) });
+      return;
+    }
     let sanitizedDataStr = JSON.stringify(result.data || {});
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultAddress"/g, '"agentAddress"');
@@ -779,8 +792,12 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
     sanitizedDataStr = sanitizedDataStr.replace(/"personalAddress"/g, '"userAddress"');
     sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
 
+    const isReadOnlyMarketData = result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY';
+    const marketEvidencePolicy = isReadOnlyMarketData
+      ? ` MARKET EVIDENCE POLICY: Use only fields present in the retrieved data. State observations and limitations separately. Do NOT claim historical changes, breakout levels, institutional participation, support/resistance, causation, ETF flows, macro yields, price targets, future direction, or alerts. Order-book depth is a cancellable snapshot, not proof of buying/selling pressure. Funding and open interest are not standalone trade signals. If asked for unavailable analysis, say it requires the future research worker and historical validation.`
+      : '';
     const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.`
+      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.${marketEvidencePolicy}`
       : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
     const messages = await this.buildWorkingMemory();
@@ -798,5 +815,12 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
     }
 
     this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText, actionLinks });
+  }
+
+  private renderReadOnlyHyperliquidResult(data: Record<string, any>): string {
+    if (data.latest) {
+      return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. Data ini belum merupakan analisis arah harga atau sinyal trading.`;
+    }
+    return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; volume notional 24 jam ${data.dayNotionalVolume ?? 'n/a'}. Ini adalah snapshot pasar; order book, funding, dan open interest tidak cukup untuk menyimpulkan arah harga, breakout, atau sinyal trading.`;
   }
 }

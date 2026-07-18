@@ -9,7 +9,7 @@ import { UniversalAgenticWallet } from '../capabilities/wallet/UniversalAgenticW
 import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
-import { formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
+import { analyzeHyperliquidMarketSnapshot, formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -191,7 +191,7 @@ export class GoalBridge {
     const coin = String(parameters.coin || '').toUpperCase();
     const [mids, book, asset] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin), this.hyperliquid.getAssetContext(coin)]);
     const data = { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, funding: asset.funding, openInterest: asset.openInterest, markPrice: asset.markPrice, oraclePrice: asset.oraclePrice, dayNotionalVolume: asset.dayNotionalVolume, timestamp: book.timestamp };
-    this.emitResult(requestId, true, { ...data, summary: formatHyperliquidMarketSummary(data) });
+    this.emitResult(requestId, true, { ...data, summary: formatHyperliquidMarketSummary(data), analysis: analyzeHyperliquidMarketSnapshot(data) });
   }
 
   private async handleHyperliquidCandles(requestId: string, parameters: Record<string, any>): Promise<void> {
