@@ -77,4 +77,20 @@ describe('ModelOrchestrator', () => {
     expect(completed.mock.calls[0][0].payload.fallbackUsed).toBe(true);
     expect(metricsStore.getMetrics().llm).toMatchObject({ requests: 1, failures: 1, fallbacks: 1 });
   });
+
+  it('never falls back to a cheaper model that cannot satisfy a tool contract', async () => {
+    const noTools = adapter(capability({ model: 'cheap-no-tools', supportsFunctionCalling: false, priceInput: 0.0001 }));
+    const toolModel = adapter(capability({ model: 'tool-model', supportsFunctionCalling: true, priceInput: 0.01 }));
+    const orchestrator = new ModelOrchestrator(new ModelRegistry([noTools, toolModel]), new CapabilityRoutingPolicy());
+
+    const result = await orchestrator.generate(
+      { tier: 'Execution', constraints: { requiresTools: true, maxCost: 'Lowest' } },
+      [{ role: 'user', content: 'read market' }],
+      [{ name: 'read_only_market' }]
+    );
+
+    expect(result.text).toBe('tool-model response');
+    expect((noTools.generate as any)).not.toHaveBeenCalled();
+    expect((toolModel.generate as any)).toHaveBeenCalledOnce();
+  });
 });

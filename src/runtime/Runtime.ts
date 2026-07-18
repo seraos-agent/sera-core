@@ -50,6 +50,8 @@ import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
+import { DomainProductContractRegistry } from '../core/products/DomainProductContractRegistry';
+import { HyperliquidTradingProductContract } from '../capabilities/hyperliquid/HyperliquidTradingProductContract';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';
@@ -62,6 +64,7 @@ export class Runtime {
   public proposalManager!: ProposalManager;
   public memoryStore: IWorkingMemory;
   public chatHistoryStore: any;
+  public readonly productContracts = new DomainProductContractRegistry();
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
   private feedbackPipeline?: FeedbackPipeline;
@@ -130,6 +133,7 @@ export class Runtime {
     swarmCoordinator?: SwarmCoordinator
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
+    this.productContracts.register(HyperliquidTradingProductContract);
     this.authorityService = new AuthorityService();
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;
@@ -211,6 +215,10 @@ export class Runtime {
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
     const hyperliquidCap = new HyperliquidMarketDataCapability();
+    this.productContracts.assertCapabilitiesAvailable(
+      HyperliquidTradingProductContract.id,
+      hyperliquidCap.getTools().map(tool => tool.name)
+    );
     this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools()]);
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
@@ -247,12 +255,12 @@ export class Runtime {
       this.approveProposal(event.payload.proposalId, event.payload.candidateId);
     });
 
-    // Initialize Deterministic Multi-Model Orchestrator
-    // The current deployment has one provisioned backend model. The routing
-    // layer remains capable of multi-model fallback when another adapter is
-    // explicitly configured, but must not assume provider entitlement.
-    const qwenPlus = new QwenAdapter('qwen-plus');
-    const registry = new ModelRegistry([qwenPlus]);
+    // Both models use the already-authorized Qwen provider. The light model
+    // serves routine interaction; the max model is reserved for reasoning,
+    // coding, and high-risk proposal review. Neither model grants execution.
+    const qwenFlash = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
+    const qwenMax = new QwenAdapter(process.env.QWEN_HIGH_RISK_MODEL || 'qwen3.7-max');
+    const registry = new ModelRegistry([qwenFlash, qwenMax]);
     const routingPolicy = new CapabilityRoutingPolicy();
     const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy, globalEventBus);
 

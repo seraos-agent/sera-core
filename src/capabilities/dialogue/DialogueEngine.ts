@@ -618,7 +618,13 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           requiresApproval: false
         });
 
-        const response = await this.orchestrator.generate(this.profileFor('Reasoning', messages, { requiresTools: true }), messages, availableTools, this.activeAbortController?.signal);
+        const toolTier = workRoute.workClass === 'HIGH_RISK' || workRoute.workClass === 'COMPLEX' ? 'Reasoning' : 'Execution';
+        const response = await this.orchestrator.generate(
+          this.profileFor(toolTier, messages, { requiresTools: true, requiresThinking: toolTier === 'Reasoning' }),
+          messages,
+          availableTools,
+          this.activeAbortController?.signal
+        );
 
         // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
         if (response.toolCalls && response.toolCalls.length > 0) {

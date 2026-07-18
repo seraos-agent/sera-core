@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { SeraTool, SeraToolCall } from '../../core/cognitive/Tool';
 import { ILLMAdapter, ModelCapability } from '../../core/llm/types';
 
-const DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
+const DEFAULT_DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
 
 export interface QwenMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -26,29 +26,17 @@ export class QwenAdapter implements ILLMAdapter {
   private apiKey: string;
   private model: string;
   private capability: ModelCapability;
+  private readonly endpoint: string;
+  private readonly enableThinking: boolean | undefined;
 
   constructor(model: string = 'qwen-plus') {
     const key = process.env.QWEN_API;
     if (!key) throw new Error('[QwenAdapter] QWEN_API key is not set in environment.');
     this.apiKey = key;
     this.model = model;
-    
-    // Define capability based on the exact model
-    const isFlash = model.includes('flash');
-    this.capability = {
-      provider: 'Qwen',
-      model: this.model,
-      tiers: isFlash ? ['Execution', 'Social'] : ['Reasoning', 'Coding'],
-      supportsVision: false,
-      supportsStreaming: true,
-      supportsJSON: true,
-      supportsFunctionCalling: true,
-      supportsThinking: !isFlash, // Plus supports more complex reasoning
-      maxContext: isFlash ? 8192 : 32000,
-      priceInput: isFlash ? 0.001 : 0.004,
-      priceOutput: isFlash ? 0.002 : 0.012,
-      latencyClass: isFlash ? 'UltraFast' : 'Fast',
-    };
+    this.endpoint = process.env.QWEN_BASE_URL || DEFAULT_DASHSCOPE_URL;
+    this.enableThinking = model === 'qwen3.5-flash' ? false : model === 'qwen3.7-max' ? true : undefined;
+    this.capability = this.capabilityFor(model);
   }
 
   getCapability(): ModelCapability {
@@ -70,11 +58,15 @@ export class QwenAdapter implements ILLMAdapter {
       messages: messages,
     };
 
+    // Qwen 3.5/3.7 are hybrid-thinking models. Keep the light lane cheap and
+    // deterministic; reserve reasoning tokens for the explicitly strong lane.
+    if (this.enableThinking !== undefined) body.enable_thinking = this.enableThinking;
+
     if (dashScopeTools && dashScopeTools.length > 0) {
       body.tools = dashScopeTools;
     }
 
-    const response = await fetch(DASHSCOPE_URL, {
+    const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
@@ -117,7 +109,7 @@ export class QwenAdapter implements ILLMAdapter {
   }
 
   async embed(text: string): Promise<number[]> {
-    const EMBED_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings';
+    const EMBED_URL = this.endpoint.replace(/\/chat\/completions$/, '/embeddings');
     const body = {
       model: 'text-embedding-v3',
       input: text
@@ -142,5 +134,30 @@ export class QwenAdapter implements ILLMAdapter {
     }
 
     return data.data[0].embedding;
+  }
+
+  private capabilityFor(model: string): ModelCapability {
+    if (model === 'qwen3.5-flash') {
+      return {
+        provider: 'Qwen', model,
+        tiers: ['Execution', 'Social'],
+        supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
+        maxContext: 128_000, priceInput: 0.001, priceOutput: 0.002, latencyClass: 'UltraFast'
+      };
+    }
+    if (model === 'qwen3.7-max') {
+      return {
+        provider: 'Qwen', model,
+        tiers: ['Reasoning', 'Coding'],
+        supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
+        maxContext: 1_000_000, priceInput: 0.012, priceOutput: 0.036, latencyClass: 'Standard'
+      };
+    }
+    return {
+      provider: 'Qwen', model,
+      tiers: ['Reasoning', 'Coding'],
+      supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
+      maxContext: 32_000, priceInput: 0.004, priceOutput: 0.012, latencyClass: 'Fast'
+    };
   }
 }
