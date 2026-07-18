@@ -8,6 +8,7 @@ import { MetaGovernanceReview } from './MetaGovernanceReview';
 
 export class GovernanceCoordinator {
   private tickCount = 0;
+  private started = false;
   private readonly CYCLES_PER_GOVERNANCE_REVIEW = 5;
 
   constructor(
@@ -19,14 +20,24 @@ export class GovernanceCoordinator {
     private metaGovernanceReview: MetaGovernanceReview
   ) {}
 
-  start() {
-    this.eventBus.on(EventTypes.TEMPORAL_TICK, (event: StandardEvent) => {
+  private readonly onTemporalTick = (_event: StandardEvent) => {
       this.tickCount++;
       if (this.tickCount % this.CYCLES_PER_GOVERNANCE_REVIEW === 0) {
         this.runGovernanceCycle();
       }
-    });
+    };
+
+  start() {
+    if (this.started) return;
+    this.started = true;
+    this.eventBus.on(EventTypes.TEMPORAL_TICK, this.onTemporalTick);
     console.log('[GovernanceCoordinator] Started. Listening to TEMPORAL_TICK.');
+  }
+
+  stop() {
+    if (!this.started) return;
+    this.started = false;
+    this.eventBus.off(EventTypes.TEMPORAL_TICK, this.onTemporalTick);
   }
 
   private runGovernanceCycle() {

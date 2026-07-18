@@ -74,11 +74,24 @@ export class SeraAgentInstance {
   private experienceBuilder!: ExperienceBuilder;
   private started = false;
   private stopped = false;
+  private memoryDirty = false;
+  private checkpointInFlight = false;
+  private checkpointQueued = false;
   private readonly persistMemorySnapshot = async () => {
-    if ('getSnapshot' in this.memoryStore) {
-      await this.persistence.save((this.memoryStore as WorkingMemory).getSnapshot());
+    if (!this.memoryDirty || !('getSnapshot' in this.memoryStore)) return;
+    if (this.checkpointInFlight) { this.checkpointQueued = true; return; }
+    this.checkpointInFlight = true;
+    this.checkpointQueued = false;
+    const snapshot = (this.memoryStore as WorkingMemory).getSnapshot();
+    this.memoryDirty = false;
+    try { await this.persistence.save(snapshot); }
+    catch { this.memoryDirty = true; }
+    finally {
+      this.checkpointInFlight = false;
+      if (this.memoryDirty || this.checkpointQueued) void this.persistMemorySnapshot();
     }
   };
+  private readonly markMemoryDirty = () => { this.memoryDirty = true; };
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -240,6 +253,7 @@ export class SeraAgentInstance {
 
     // Subscribe to temporal tick for checkpointing
     this.eventBus.on('temporal.tick', this.persistMemorySnapshot);
+    this.eventBus.on(EventTypes.MEMORY_ITEM_MUTATED, this.markMemoryDirty);
 
     this.triggerEngine.start();
     this.temporalClockService.start();
@@ -251,8 +265,11 @@ export class SeraAgentInstance {
     this.stopped = true;
     console.log(`[SeraAgentInstance] Stopping engines for ${this.sessionId}`);
     this.eventBus.off('temporal.tick', this.persistMemorySnapshot);
+    this.eventBus.off(EventTypes.MEMORY_ITEM_MUTATED, this.markMemoryDirty);
+    void this.persistMemorySnapshot();
     this.temporalClockService.stop();
     this.triggerEngine.stop();
+    this.governanceCoordinator.stop();
     this.cognitiveCompressor.stop();
     this.experienceBuilder.stop();
     this.runtime.stop();

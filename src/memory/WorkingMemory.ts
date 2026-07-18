@@ -147,6 +147,13 @@ export class WorkingMemory implements IWorkingMemory {
 
     this._addBeliefToIndex(belief);
     this.prune();
+    this.eventBus?.emit(EventTypes.MEMORY_ITEM_MUTATED, {
+      id: `evt-mem-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      type: EventTypes.MEMORY_ITEM_MUTATED,
+      source: 'MemoryStore',
+      timestamp: Date.now(),
+      payload: { key: belief.key || belief.id, newStatus: String(belief.status || MemoryStatus.ACTIVE), source: String(belief.source || 'DIRECT'), confidence: belief.confidence }
+    } as StandardEvent<MemoryItemMutatedPayload>);
   }
 
   public proposeBelief(proposal: MemoryProposal): void {
