@@ -9,4 +9,10 @@ describe('HyperliquidMarketDataAdapter', () => {
     expect(candles[0]).toMatchObject({ coin: 'BTC', close: '1.5', trades: 3 });
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ type: 'candleSnapshot' });
   });
+
+  it('maps perpetual funding and open interest by asset metadata index', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([{ universe: [{ name: 'ETH' }, { name: 'BTC' }] }, [{}, { funding: '0.0001', openInterest: '123', markPx: '100', oraclePx: '99', dayNtlVlm: '456' }]]), { status: 200 }));
+    const context = await new HyperliquidMarketDataAdapter(fetchMock as any).getAssetContext('BTC');
+    expect(context).toMatchObject({ coin: 'BTC', funding: '0.0001', openInterest: '123', markPrice: '100' });
+  });
 });

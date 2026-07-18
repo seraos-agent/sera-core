@@ -9,6 +9,7 @@ import { UniversalAgenticWallet } from '../capabilities/wallet/UniversalAgenticW
 import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
+import { formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -173,6 +174,9 @@ export class GoalBridge {
         case 'HYPERLIQUID_MARKET_SUMMARY':
           await this.handleHyperliquidMarketSummary(requestId, actionPayload);
           break;
+        case 'HYPERLIQUID_CANDLES':
+          await this.handleHyperliquidCandles(requestId, actionPayload);
+          break;
 
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
@@ -185,8 +189,18 @@ export class GoalBridge {
 
   private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
     const coin = String(parameters.coin || '').toUpperCase();
-    const [mids, book] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin)]);
-    this.emitResult(requestId, true, { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, timestamp: book.timestamp });
+    const [mids, book, asset] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin), this.hyperliquid.getAssetContext(coin)]);
+    const data = { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, funding: asset.funding, openInterest: asset.openInterest, markPrice: asset.markPrice, oraclePrice: asset.oraclePrice, dayNotionalVolume: asset.dayNotionalVolume, timestamp: book.timestamp };
+    this.emitResult(requestId, true, { ...data, summary: formatHyperliquidMarketSummary(data) });
+  }
+
+  private async handleHyperliquidCandles(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || '').toUpperCase();
+    const interval = parameters.interval || '1h';
+    const hours = Math.min(720, Math.max(1, Number(parameters.hours || 24)));
+    const candles = await this.hyperliquid.getCandles(coin, interval, Date.now() - hours * 3_600_000, Date.now());
+    const latest = candles.at(-1);
+    this.emitResult(requestId, true, { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, interval, hours, count: candles.length, latest, summary: latest ? `${coin} ${interval}: close ${latest.close}, high ${latest.high}, low ${latest.low}, volume ${latest.volume}.` : 'No candles returned.' });
   }
 
   private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {

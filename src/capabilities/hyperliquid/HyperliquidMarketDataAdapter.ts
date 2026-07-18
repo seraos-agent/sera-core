@@ -15,6 +15,7 @@ export interface HyperliquidCandle {
 
 export interface HyperliquidBookLevel { price: string; size: string; orderCount: number; }
 export interface HyperliquidOrderBook { coin: string; timestamp: number; bids: HyperliquidBookLevel[]; asks: HyperliquidBookLevel[]; }
+export interface HyperliquidAssetContext { coin: string; funding: string; openInterest: string; markPrice: string; oraclePrice: string; dayNotionalVolume: string; }
 
 type FetchLike = typeof fetch;
 
@@ -22,7 +23,8 @@ type FetchLike = typeof fetch;
 export class HyperliquidMarketDataAdapter {
   constructor(
     private readonly fetchImpl: FetchLike = fetch,
-    private readonly infoUrl = 'https://api.hyperliquid.xyz/info'
+    private readonly infoUrl = 'https://api.hyperliquid.xyz/info',
+    private readonly timeoutMs = 10_000
   ) {}
 
   async getAllMids(): Promise<Record<string, string>> {
@@ -43,10 +45,30 @@ export class HyperliquidMarketDataAdapter {
     return { coin: data.coin, timestamp: data.time, bids: toLevels(data.levels?.[0] || []), asks: toLevels(data.levels?.[1] || []) };
   }
 
+  async getAssetContext(coin: string): Promise<HyperliquidAssetContext> {
+    this.assertCoin(coin);
+    const data = await this.info({ type: 'metaAndAssetCtxs' }) as [any, any[]];
+    const index = data[0]?.universe?.findIndex((asset: any) => asset.name === coin);
+    if (index === undefined || index < 0 || !data[1]?.[index]) throw new Error(`Hyperliquid perpetual asset not found: ${coin}.`);
+    const context = data[1][index];
+    return { coin, funding: context.funding, openInterest: context.openInterest, markPrice: context.markPx, oraclePrice: context.oraclePx, dayNotionalVolume: context.dayNtlVlm };
+  }
+
   private async info(body: Record<string, unknown>): Promise<unknown> {
-    const response = await this.fetchImpl(this.infoUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!response.ok) throw new Error(`Hyperliquid info request failed (${response.status}).`);
-    return response.json();
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      try {
+        const response = await this.fetchImpl(this.infoUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+        if (response.ok) return response.json();
+        if (response.status < 500 && response.status !== 429) throw new Error(`Hyperliquid info request failed (${response.status}).`);
+        lastError = new Error(`Hyperliquid info request failed (${response.status}).`);
+      } catch (error) {
+        lastError = error;
+      } finally { clearTimeout(timer); }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Hyperliquid info request failed.');
   }
 
   private assertCoin(coin: string): void {
