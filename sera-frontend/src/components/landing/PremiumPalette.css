@@ -83,18 +83,17 @@
 
 .landing-footer-links { display: flex; align-items: center; gap: 11px; pointer-events: auto; }
 
-.landing-footer-email {
+.landing-footer-gmail {
   display: grid;
   width: 16px;
   height: 16px;
   place-items: center;
-  color: #6878bb;
   text-decoration: none;
-  transition: color .18s ease, transform .18s ease;
+  transition: transform .18s ease;
 }
 
-.landing-footer-email svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.55; }
-.landing-footer-email:hover { color: #4459aa; transform: translateY(-1px); }
+.landing-footer-gmail svg { width: 14px; height: 14px; display: block; }
+.landing-footer-gmail:hover { transform: translateY(-1px); }
 
 .landing-footer-identity { display: flex; align-items: center; gap: 12px; }
 

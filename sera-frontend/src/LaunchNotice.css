@@ -1,0 +1,113 @@
+.launch-notice-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(43, 39, 32, .28);
+  backdrop-filter: blur(12px);
+  animation: launchNoticeBackdrop .28s ease both;
+}
+
+.launch-notice {
+  width: min(480px, 100%);
+  padding: 42px;
+  border: 1px solid rgba(71, 63, 53, .13);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(111, 126, 208, .13), transparent 36%),
+    rgba(249, 246, 239, .96);
+  box-shadow: 0 30px 90px rgba(50, 42, 32, .22), inset 0 1px 0 rgba(255, 255, 255, .74);
+  color: #2b2823;
+  animation: launchNoticeCard .42s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.launch-notice-status {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 28px;
+}
+
+.launch-notice-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(85, 103, 196, .10);
+}
+
+.launch-notice-mark img { width: 27px; height: 27px; object-fit: contain; }
+
+.launch-notice-kicker {
+  margin: 0;
+  color: #6676bc;
+  font: 700 9px/1.2 'DM Mono', 'SFMono-Regular', monospace;
+  letter-spacing: .12em;
+}
+
+.launch-notice h1 {
+  max-width: 370px;
+  margin: 0;
+  color: #292620;
+  font: 700 clamp(28px, 5vw, 37px)/1.05 Inter, sans-serif;
+  letter-spacing: -.055em;
+}
+
+.launch-notice > p:not(.launch-notice-kicker) {
+  max-width: 380px;
+  margin: 18px 0 30px;
+  color: #716a60;
+  font: 500 13px/1.7 Inter, sans-serif;
+}
+
+.launch-notice-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.launch-notice-actions button {
+  min-height: 42px;
+  padding: 0 17px;
+  border-radius: 999px;
+  font: 600 12px Inter, sans-serif;
+  text-decoration: none;
+  transition: transform .18s ease, background .18s ease, color .18s ease;
+}
+
+.launch-notice-actions button {
+  border: 1px solid rgba(65, 58, 48, .13);
+  background: rgba(255, 253, 248, .6);
+  color: #514b43;
+}
+
+.launch-notice-actions button:hover { transform: translateY(-1px); }
+.launch-notice-actions button:hover { background: #fffdf8; color: #292620; }
+
+.launch-notice-contacts { display: flex; align-items: center; gap: 10px; }
+
+.launch-notice-contacts a {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(65, 58, 48, .1);
+  border-radius: 50%;
+  background: rgba(255, 253, 248, .58);
+  text-decoration: none;
+  transition: transform .18s ease, background .18s ease;
+}
+
+.launch-notice-contacts a:hover { transform: translateY(-1px); background: #fffdf8; }
+.launch-notice-contacts svg { width: 14px; height: 14px; display: block; }
+.launch-notice-contacts .launch-notice-x svg { width: 12px; height: 12px; fill: #5366c7; }
+.launch-notice-contacts .launch-notice-telegram svg { width: 13px; height: 13px; fill: #5b8fc9; }
+
+@keyframes launchNoticeBackdrop { from { opacity: 0; } to { opacity: 1; } }
+@keyframes launchNoticeCard { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 520px) {
+  .launch-notice-backdrop { padding: 16px; }
+  .launch-notice { padding: 30px 25px; border-radius: 24px; }
+  .launch-notice-status { margin-bottom: 22px; }
+  .launch-notice-actions button { flex: 1; }
+}
