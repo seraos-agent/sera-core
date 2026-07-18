@@ -13,6 +13,7 @@ import { GoalEngine } from '../src/core/goals/GoalEngine';
 import { AttentionEngine } from '../src/core/attention/AttentionEngine';
 import { ExperienceBuilder } from '../src/core/memory/ExperienceBuilder';
 import { EpisodicSemanticBridge } from '../src/core/memory/EpisodicSemanticBridge';
+import { MemoryIngress } from '../src/core/memory/MemoryIngress';
 import { Goal } from '../src/core/goals/types';
 
 describe('Kernel E2E Integration', () => {
@@ -27,6 +28,7 @@ describe('Kernel E2E Integration', () => {
   let runtime: Runtime;
   let expBuilder: ExperienceBuilder;
   let semanticBridge: EpisodicSemanticBridge;
+  let memoryIngress: MemoryIngress;
 
   const testGoal: Goal = {
     id: 'goal-test-1',
@@ -43,6 +45,7 @@ describe('Kernel E2E Integration', () => {
   beforeAll(() => {
     eventBus = new EventEmitter();
     memoryStore = new WorkingMemory(eventBus);
+    memoryIngress = new MemoryIngress(eventBus, memoryStore);
     planner = new Planner();
     strategyStore = new StrategyStore();
     strategyEngine = new StrategyEngine(strategyStore);

@@ -42,6 +42,7 @@ import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 import { AuditLogger } from '../core/telemetry/AuditLogger';
 import { ExperienceBuilder } from '../core/memory/ExperienceBuilder';
 import { EpisodicSemanticBridge } from '../core/memory/EpisodicSemanticBridge';
+import { MemoryIngress } from '../core/memory/MemoryIngress';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { SeraTool } from '../core/cognitive/Tool';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
@@ -63,6 +64,7 @@ export class SeraAgentInstance {
   public governanceCoordinator!: GovernanceCoordinator;
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
+  private memoryIngress!: MemoryIngress;
   private started = false;
   private stopped = false;
   private readonly persistMemorySnapshot = async () => {
@@ -83,6 +85,7 @@ export class SeraAgentInstance {
     this.chatHistoryStore = new ChatHistoryStore(this.sessionId);
     this.observationStore = new ObservationStore(100);
     this.memoryStore = new WorkingMemory(this.eventBus);
+    this.memoryIngress = new MemoryIngress(this.eventBus, this.memoryStore);
     
     // Derived key mock for this scope (32-bytes hex) based on "sign-to-unlock" pattern discussed.
     const mockDerivedWalletKey = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
@@ -133,8 +136,8 @@ export class SeraAgentInstance {
     constitutionEngine.register(new UnsafeActionRule());
 
     const signalArbitrator = new SignalArbitrator();
-    const epistemicPolicyEngine = new EpistemicPolicyEngine(this.memoryStore);
-    const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyEngine as any, goalEngine, coherenceMonitor);
+    const epistemicPolicyEngine = new EpistemicPolicyEngine(this.memoryStore, this.eventBus);
+    const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyEngine as any, goalEngine, coherenceMonitor, this.eventBus);
 
     this.runtime = new Runtime(
       constitutionEngine,

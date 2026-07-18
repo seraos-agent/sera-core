@@ -6,6 +6,7 @@ import { LiquidityReputationBridge } from '../src/capabilities/liquidity/Liquidi
 import { LiquidityNode } from '../src/capabilities/liquidity/types';
 import { WorkingMemory } from '../src/memory/WorkingMemory';
 import { IWorkingMemory } from '../src/core/memory/IWorkingMemory';
+import { MemoryIngress } from '../src/core/memory/MemoryIngress';
 
 const flatPricing: PricingSource = {
   getUnitPrice: (asset: string, fiat?: string) => {
@@ -38,6 +39,7 @@ describe('Liquidity Capability E2E', () => {
     eventBus = new EventEmitter();
     directory = new LiquidityDirectory();
     memoryStore = new WorkingMemory(eventBus);
+    new MemoryIngress(eventBus, memoryStore);
     new LiquidityReputationBridge(eventBus, memoryStore);
   });
 
@@ -67,6 +69,8 @@ describe('Liquidity Capability E2E', () => {
 
     const belief = memoryStore.getBeliefByKey('reputation:node-a');
     expect(belief, 'reputation belief should exist after a completed execution').toBeDefined();
+    expect(belief?.epistemicStatus).toBe('CONFIRMED');
+    expect(belief?.evidenceIds).toContain(receipt.executionId);
     const record = JSON.parse(belief!.content);
     expect(record.successCount).toBe(1);
     expect(record.failureCount).toBe(0);

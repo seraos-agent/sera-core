@@ -5,6 +5,7 @@ import { MemoryPolicyEngine } from '../../memory/MemoryPolicyEngine';
 import { GoalEngine } from '../goals/GoalEngine';
 import { CoherenceMonitor } from '../cognition/CoherenceMonitor';
 import { ProposalReflection } from './ProposalReflection';
+import { EventEmitter } from 'events';
 
 import { OutcomeReflection } from './OutcomeReflection';
 
@@ -17,9 +18,10 @@ export class FeedbackPipeline {
     private arbitrator: SignalArbitrator,
     private memoryEngine: MemoryPolicyEngine,
     private goalEngine: GoalEngine,
-    private coherenceMonitor: CoherenceMonitor
+    private coherenceMonitor: CoherenceMonitor,
+    eventBus: EventEmitter
   ) {
-    this.outcomeReflection = new OutcomeReflection((memoryEngine as any)['store']);
+    this.outcomeReflection = new OutcomeReflection((memoryEngine as any)['store'], eventBus);
   }
 
   processTrace(trace: ExecutionTrace): void {

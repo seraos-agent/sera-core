@@ -1,6 +1,9 @@
 import { EventEmitter } from 'events';
 import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
-import { Belief } from '../../core/memory/types';
+import { EventTypes, StandardEvent } from '../../core/events/types';
+import { MemoryOperation, MemoryProposal } from '../../core/memory/MemoryProposal';
+import { MemorySource } from '../../core/memory/MemorySource';
+import { EvidenceType } from '../../core/memory/MemoryEvidence';
 import { LiquidityExecutionReceipt } from './types';
 
 interface ReputationRecord {
@@ -23,15 +26,15 @@ interface ReputationRecord {
  */
 export class LiquidityReputationBridge {
   constructor(private eventBus: EventEmitter, private memoryStore: IWorkingMemory) {
-    this.eventBus.on('liquidity.execution.completed', (e: { payload: LiquidityExecutionReceipt }) =>
-      this.record(e.payload.nodeId, 'SUCCESS')
+    this.eventBus.on('liquidity.execution.completed', (e: { id?: string; timestamp?: number; payload: LiquidityExecutionReceipt }) =>
+      this.record(e.payload.nodeId, 'SUCCESS', e.payload.executionId || e.id || `liquidity-${Date.now()}`, e.timestamp || Date.now())
     );
-    this.eventBus.on('liquidity.execution.failed', (e: { payload: LiquidityExecutionReceipt }) =>
-      this.record(e.payload.nodeId, 'FAILED')
+    this.eventBus.on('liquidity.execution.failed', (e: { id?: string; timestamp?: number; payload: LiquidityExecutionReceipt }) =>
+      this.record(e.payload.nodeId, 'FAILED', e.payload.executionId || e.id || `liquidity-${Date.now()}`, e.timestamp || Date.now())
     );
   }
 
-  private record(nodeId: string, outcome: 'SUCCESS' | 'FAILED'): void {
+  private record(nodeId: string, outcome: 'SUCCESS' | 'FAILED', executionId: string, timestamp: number): void {
     if (!nodeId) return;
 
     const key = `reputation:${nodeId}`;
@@ -49,19 +52,22 @@ export class LiquidityReputationBridge {
     record.lastOutcome = outcome;
     record.lastUpdatedAt = Date.now();
 
-    const belief: Belief = {
-      id: existing?.id || `belief-reputation-${nodeId}`,
-      category: 'REPUTATION',
+    const proposal: MemoryProposal = {
+      operation: existing ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
       key,
-      content: JSON.stringify(record),
-      epistemicStatus: 'CONFIRMED',
+      value: JSON.stringify(record),
+      source: MemorySource.SYSTEM_EVENT,
       confidence: 1.0,
-      evidenceIds: [],
-      contradictionIds: [],
-      createdAt: existing?.createdAt || Date.now(),
-      updatedAt: Date.now(),
+      category: 'REPUTATION',
+      evidence: { type: EvidenceType.EXECUTION_TRACE, referenceId: executionId, timestamp }
     };
 
-    this.memoryStore.storeBelief(belief);
+    this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, {
+      id: `evt-liquidity-reputation-${executionId}`,
+      type: EventTypes.MEMORY_PROPOSAL_REQUESTED,
+      source: 'LiquidityReputationBridge',
+      timestamp,
+      payload: proposal
+    } as StandardEvent<MemoryProposal>);
   }
 }

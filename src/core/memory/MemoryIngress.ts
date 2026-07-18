@@ -23,6 +23,10 @@ export class MemoryIngress {
   }
 
   private setupListeners() {
+    this.eventBus.on(EventTypes.MEMORY_PROPOSAL_REQUESTED, (event: StandardEvent<MemoryProposal>) => {
+      this.submit(event.payload, event.source);
+    });
+
     this.eventBus.on(EventTypes.GOVERNANCE_DECISION_RECORDED, (event: StandardEvent) => {
       const proposal: MemoryProposal = {
         operation: MemoryOperation.CREATE,
@@ -33,7 +37,7 @@ export class MemoryIngress {
         confidence: 1.0, // Objective fact that this decision occurred
         category: 'GOVERNANCE_DECISION_RECORD'
       };
-      this.memoryStore.proposeBelief(proposal);
+      this.submit(proposal, event.source);
     });
 
     this.eventBus.on(EventTypes.GOVERNANCE_OUTCOME_RECORDED, (event: StandardEvent) => {
@@ -46,7 +50,7 @@ export class MemoryIngress {
         confidence: event.payload.confidence || 0.85,
         category: 'GOVERNANCE_OUTCOME_RECORD'
       };
-      this.memoryStore.proposeBelief(proposal);
+      this.submit(proposal, event.source);
     });
 
     this.eventBus.on(EventTypes.GOVERNANCE_PATTERN_RECORDED, (event: StandardEvent) => {
@@ -60,7 +64,7 @@ export class MemoryIngress {
         confidence: event.payload.confidence || 1.0,
         category: 'GOVERNANCE_PATTERN_RECORD'
       };
-      this.memoryStore.proposeBelief(proposal);
+      this.submit(proposal, event.source);
     });
 
     this.eventBus.on(EventTypes.COMMUNICATION_OBSERVED, (event: StandardEvent) => {
@@ -80,8 +84,16 @@ export class MemoryIngress {
           confidence: 0.5, // Unverified claim
           category: 'SEMANTIC'
         };
-        this.memoryStore.proposeBelief(proposal);
+        this.submit(proposal, event.source);
       }
     });
+  }
+
+  private submit(proposal: MemoryProposal, source: string): void {
+    try {
+      this.memoryStore.proposeBelief(proposal);
+    } catch (error: any) {
+      console.warn(`[MemoryIngress] Rejected proposal from ${source} for ${proposal.key}: ${error.message}`);
+    }
   }
 }

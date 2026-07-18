@@ -3,6 +3,11 @@ import { IWorkingMemory } from '../memory/IWorkingMemory';
 import { Belief } from '../../memory/types';
 import { ExecutionPolicy } from '../execution/aios_types';
 import { Logger } from '../logging/Logger';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent } from '../events/types';
+import { MemoryOperation, MemoryProposal } from '../memory/MemoryProposal';
+import { MemorySource } from '../memory/MemorySource';
+import { EvidenceType } from '../memory/MemoryEvidence';
 
 export class ExecutionReflectionEngine {
   private logger = new Logger('ExecutionReflectionEngine');
@@ -11,8 +16,19 @@ export class ExecutionReflectionEngine {
 
   constructor(
     private traceStore: ExecutionTraceStore,
-    private memoryStore: IWorkingMemory
+    private memoryStore: IWorkingMemory,
+    private eventBus: EventEmitter
   ) {}
+
+  private requestMemory(proposal: MemoryProposal): void {
+    this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, {
+      id: `evt-execution-reflection-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: EventTypes.MEMORY_PROPOSAL_REQUESTED,
+      source: 'ExecutionReflectionEngine',
+      timestamp: Date.now(),
+      payload: proposal
+    } as StandardEvent<MemoryProposal>);
+  }
 
   public evaluate(): void {
     this.logger.debug('Evaluating Execution Traces for Adaptive Execution...');
@@ -88,20 +104,25 @@ export class ExecutionReflectionEngine {
       return; // Already adapted
     }
 
-    const belief: Belief = {
-      id: `adapt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      category: 'EXECUTION_POLICY_ADAPTATION',
-      key: `adaptation:${toolId}`,
-      content: adaptationContent,
-      epistemicStatus: 'CONFIRMED',
-      confidence: 1.0,
-      evidenceIds: [],
-      contradictionIds: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+    const supportingTraceIds = this.traceStore.getAll()
+      .filter(trace => trace.toolCalls.includes(toolId))
+      .map(trace => trace.id)
+      .sort()
+      .join(',');
 
-    this.memoryStore.storeBelief(belief);
+    this.requestMemory({
+      operation: existing ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
+      key: `adaptation:${toolId}`,
+      value: adaptationContent,
+      source: MemorySource.REFLECTION_INFERENCE,
+      confidence: 1.0,
+      category: 'EXECUTION_POLICY_ADAPTATION',
+      evidence: {
+        type: EvidenceType.EXECUTION_TRACE,
+        referenceId: `execution-reflection:${toolId}:${supportingTraceIds}`,
+        timestamp: Date.now()
+      }
+    });
     this.logger.info(`Formulated Execution Policy Adaptation for ${toolId}: ${reason}`);
   }
 }

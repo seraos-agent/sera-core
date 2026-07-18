@@ -94,7 +94,12 @@ export class ExperienceBuilder {
         // Generate and store embedding
         try {
           const vector = await this.llm.embed(summary);
-          this.vectorStore.insert(record.id, vector, { summary, type: record.type, timestamp: record.timestamp });
+          this.vectorStore.insert(record.id, vector, {
+            summary,
+            type: record.type,
+            timestamp: record.timestamp,
+            evidenceIds: record.evidence.map(evidence => evidence.referenceId)
+          });
         } catch (embedErr) {
           console.error('[ExperienceBuilder] Failed to generate embedding for vector store', embedErr);
         }

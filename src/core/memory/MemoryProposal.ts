@@ -1,6 +1,6 @@
 import { MemorySource } from './MemorySource';
 import { MemoryEvidence } from './MemoryEvidence';
-import { MemoryCategory } from '../../memory/types';
+import { MemoryCategory } from './types';
 
 export enum MemoryOperation {
   CREATE = 'CREATE',
@@ -15,6 +15,7 @@ export interface MemoryProposal {
   key: string;
   value: any;
   evidence: MemoryEvidence;
+  contradictionId?: string;
   confidence: number;
   source: MemorySource;
   category?: MemoryCategory;

@@ -1,8 +1,27 @@
 import { ExecutionTrace, OutcomeRealizationPattern } from '../execution/types';
+import { EventEmitter } from 'events';
+import { EventTypes, StandardEvent } from '../events/types';
 import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
+import { MemoryOperation, MemoryProposal } from '../memory/MemoryProposal';
+import { MemorySource } from '../memory/MemorySource';
+import { EvidenceType } from '../memory/MemoryEvidence';
 
 export class OutcomeReflection {
-  constructor(private memoryStore: IWorkingMemory) {}
+  constructor(private memoryStore: IWorkingMemory, private eventBus: EventEmitter) {}
+
+  private requestMemory(proposal: MemoryProposal): void {
+    this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, {
+      id: `evt-outcome-memory-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: EventTypes.MEMORY_PROPOSAL_REQUESTED,
+      source: 'OutcomeReflection',
+      timestamp: Date.now(),
+      payload: proposal
+    } as StandardEvent<MemoryProposal>);
+  }
+
+  private keyPart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
+  }
 
   private getContextKey(trace: ExecutionTrace): string {
     // Determine context based on intent snapshot and current world state
@@ -25,10 +44,10 @@ export class OutcomeReflection {
     // For now, we'll map SUCCESS to 1.0, FAILED to 0.0, and partially completed could be in between.
     const intentProgress = isSuccess ? 1.0 : 0.0; 
 
-    this.updatePattern(intentId, contextKey, category, isSuccess, intentProgress, prediction);
+    this.updatePattern(intentId, contextKey, category, isSuccess, intentProgress, prediction, trace.id);
   }
 
-  private updatePattern(intentId: string, contextKey: string, category: string, isSuccess: boolean, intentProgress: number, prediction: any): void {
+  private updatePattern(intentId: string, contextKey: string, category: string, isSuccess: boolean, intentProgress: number, prediction: any, traceId: string): void {
     // Fetch the existing pattern if any
     const existingBeliefs = this.memoryStore.getBeliefsByCategory('OUTCOME_REALIZATION');
     let patternBelief = existingBeliefs.find(b => {
@@ -118,10 +137,12 @@ export class OutcomeReflection {
       }
 
       // Explicit CALIBRATION Belief formation (Phase 4.6 doctrine: Passive Calibration Profile)
-      this.memoryStore.storeBelief({
-        id: `belief-calibration-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,
+      const calibrationKey = `calibration.${this.keyPart(intentId)}.${this.keyPart(category)}.${this.keyPart(traceId)}`;
+      this.requestMemory({
+        operation: this.memoryStore.getBeliefByKey(calibrationKey) ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
+        key: calibrationKey,
         category: 'CALIBRATION',
-        content: JSON.stringify({
+        value: JSON.stringify({
           intentType: intentId,
           category,
           sampleSize: stats.sampleSize,
@@ -130,12 +151,9 @@ export class OutcomeReflection {
           calibrationState: stats.calibrationState,
           timestamp: Date.now()
         }),
-        epistemicStatus: 'CONFIRMED',
+        source: MemorySource.SYSTEM_EVENT,
         confidence: prediction.confidence || 0.8,
-        evidenceIds: [],
-        contradictionIds: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        evidence: { type: EvidenceType.EXECUTION_TRACE, referenceId: traceId, timestamp: Date.now() }
       });
       console.log(`[OutcomeReflection] Generated CALIBRATION Profile. State: ${stats.calibrationState}, AvgSuccessError: ${stats.avgSuccessPredictionError.toFixed(2)}`);
     }
@@ -144,27 +162,16 @@ export class OutcomeReflection {
     stats.confidence = Math.min(1.0, 0.5 + (stats.sampleSize * 0.05));
     stats.evidenceStrength = Math.min(1.0, stats.sampleSize * 0.1);
 
-    if (patternBelief) {
-      patternBelief.content = JSON.stringify(pattern);
-      patternBelief.updatedAt = Date.now();
-      patternBelief.confidence = stats.confidence;
-      if (stats.confidence > 0.8) {
-         patternBelief.epistemicStatus = 'CONFIRMED';
-      }
-      this.memoryStore.updateBelief(patternBelief);
-    } else {
-      this.memoryStore.storeBelief({
-        id: `belief-outcome-${Date.now()}`,
-        category: 'OUTCOME_REALIZATION',
-        content: JSON.stringify(pattern),
-        epistemicStatus: stats.confidence > 0.8 ? 'CONFIRMED' : 'HYPOTHESIS',
-        confidence: stats.confidence,
-        evidenceIds: [],
-        contradictionIds: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-    }
+    const patternKey = patternBelief?.key || `outcome.pattern.${this.keyPart(intentId)}`;
+    this.requestMemory({
+      operation: patternBelief ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
+      key: patternKey,
+      value: JSON.stringify(pattern),
+      source: MemorySource.SYSTEM_EVENT,
+      confidence: stats.confidence,
+      category: 'OUTCOME_REALIZATION',
+      evidence: { type: EvidenceType.EXECUTION_TRACE, referenceId: traceId, timestamp: Date.now() }
+    });
 
     console.log(`[OutcomeReflection] Updated pattern for Intent: ${intentId}, Category: ${category}`);
     console.log(`  -> Success Rate: ${(stats.goalSuccessRate * 100).toFixed(1)}%, Intent Score: ${(stats.intentOutcomeScore * 100).toFixed(1)}%`);

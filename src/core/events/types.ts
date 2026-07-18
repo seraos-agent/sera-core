@@ -58,6 +58,7 @@ export const EventTypes = {
   GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
 
   // Memory Layer
+  MEMORY_PROPOSAL_REQUESTED: 'memory.proposal.requested',
   MEMORY_ITEM_MUTATED: 'memory.item.mutated',
 
   // Security & Telemetry

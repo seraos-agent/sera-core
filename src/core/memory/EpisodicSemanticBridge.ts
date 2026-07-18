@@ -1,9 +1,13 @@
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 import { StandardEvent } from '../events/types';
 import { IWorkingMemory } from './IWorkingMemory';
 import { ExperienceRecord } from './ExperienceRecord';
-import { Belief } from './types';
+import { EventTypes } from '../events/types';
 import { QwenAdapter } from '../../capabilities/llm/QwenAdapter';
+import { MemoryOperation, MemoryProposal } from './MemoryProposal';
+import { MemorySource } from './MemorySource';
+import { EvidenceType } from './MemoryEvidence';
 
 export class EpisodicSemanticBridge {
   private llm: QwenAdapter;
@@ -20,6 +24,21 @@ export class EpisodicSemanticBridge {
     });
   }
 
+  private submitProposal(proposal: MemoryProposal): void {
+    this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, {
+      id: `evt-memory-proposal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: EventTypes.MEMORY_PROPOSAL_REQUESTED,
+      source: 'EpisodicSemanticBridge',
+      timestamp: Date.now(),
+      payload: proposal
+    } as StandardEvent<MemoryProposal>);
+  }
+
+  private semanticFactKey(content: string): string {
+    const digest = createHash('sha256').update(content.trim().toLowerCase()).digest('hex').slice(0, 24);
+    return `semantic.derived.${digest}`;
+  }
+
   private async handleEpisodeConsolidated(record: ExperienceRecord) {
     if (!record || !record.summary) return;
 
@@ -34,32 +53,21 @@ export class EpisodicSemanticBridge {
 
       if (toolName !== 'unknown-tool') {
         const content = `Tool '${toolName}' failed consistently during execution.`;
-        const existing = this.memoryStore.getBeliefsByCategory('SEMANTIC').find(b => b.content === content);
+        const key = `semantic.tool-failure.${toolName.replace(/[^a-z0-9_-]/gi, '-').toLowerCase()}`;
+        const existing = this.memoryStore.getBeliefByKey(key) || this.memoryStore.getBeliefsByCategory('SEMANTIC').find(b => b.content === content);
         
         const count = existing ? existing.evidenceIds.length + 1 : 1;
-        const isConfirmed = count >= 3;
-        
-        if (existing) {
-           existing.epistemicStatus = isConfirmed ? 'CONFIRMED' : 'HYPOTHESIS';
-           existing.confidence = Math.min(0.3 + (count * 0.2), 0.95);
-           existing.evidenceIds.push(record.id);
-           this.memoryStore.updateBelief(existing);
-           console.log(`[EpisodicSemanticBridge] Updated semantic failure belief for tool: ${toolName} to ${existing.epistemicStatus} (Count: ${count})`);
-        } else {
-           const semanticBelief: Belief = {
-             id: `belief-semantic-fail-${Date.now()}`,
-             category: 'SEMANTIC',
-             content,
-             epistemicStatus: isConfirmed ? 'CONFIRMED' : 'HYPOTHESIS',
-             confidence: Math.min(0.3 + (count * 0.2), 0.95),
-             evidenceIds: [record.id],
-             contradictionIds: [],
-             createdAt: Date.now(),
-             updatedAt: Date.now()
-           };
-           this.memoryStore.storeBelief(semanticBelief);
-           console.log(`[EpisodicSemanticBridge] Distilled new semantic failure belief for tool: ${toolName} as ${semanticBelief.epistemicStatus}`);
-        }
+
+        this.submitProposal({
+          operation: existing ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
+          key,
+          value: content,
+          source: MemorySource.REFLECTION_INFERENCE,
+          evidence: { type: EvidenceType.REFLECTION_PATTERN, referenceId: record.id, timestamp: record.timestamp },
+          confidence: Math.min(0.3 + (count * 0.2), 0.95),
+          category: 'SEMANTIC'
+        });
+        console.log(`[EpisodicSemanticBridge] Proposed semantic failure belief for tool: ${toolName} (Evidence count: ${count})`);
       }
     }
 
@@ -89,27 +97,18 @@ Rules:
           const content = fact.trim();
           if (!content) continue;
 
-          const existing = this.memoryStore.getBeliefsByCategory('SEMANTIC').find(b => b.content === content);
-          if (existing) {
-             existing.evidenceIds.push(record.id);
-             existing.epistemicStatus = 'CONFIRMED';
-             this.memoryStore.updateBelief(existing);
-             console.log(`[EpisodicSemanticBridge] Reinforced semantic belief: ${content}`);
-          } else {
-             const semanticBelief: Belief = {
-               id: `belief-semantic-pref-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-               category: 'SEMANTIC',
-               content,
-               epistemicStatus: 'CONFIRMED',
-               confidence: 0.8,
-               evidenceIds: [record.id],
-               contradictionIds: [],
-               createdAt: Date.now(),
-               updatedAt: Date.now()
-             };
-             this.memoryStore.storeBelief(semanticBelief);
-             console.log(`[EpisodicSemanticBridge] Extracted new semantic belief: ${content}`);
-          }
+          const key = this.semanticFactKey(content);
+          const existing = this.memoryStore.getBeliefByKey(key);
+          this.submitProposal({
+            operation: existing ? MemoryOperation.UPDATE : MemoryOperation.CREATE,
+            key,
+            value: content,
+            source: MemorySource.REFLECTION_INFERENCE,
+            evidence: { type: EvidenceType.REFLECTION_PATTERN, referenceId: record.id, timestamp: record.timestamp },
+            confidence: 0.8,
+            category: 'SEMANTIC'
+          });
+          console.log(`[EpisodicSemanticBridge] Proposed derived semantic belief: ${content}`);
         }
       }
     } catch (llmErr) {

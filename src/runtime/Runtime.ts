@@ -186,7 +186,7 @@ export class Runtime {
     );
 
     if (this.executionTraceStore) {
-      this.executionReflectionEngine = new ExecutionReflectionEngine(this.executionTraceStore, this.memoryStore);
+      this.executionReflectionEngine = new ExecutionReflectionEngine(this.executionTraceStore, this.memoryStore, this.eventBus || new EventEmitter());
     }
   }
 

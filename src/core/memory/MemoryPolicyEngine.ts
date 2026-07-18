@@ -4,6 +4,7 @@ import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
 import { MemorySource } from './MemorySource';
 import { IWorkingMemory } from './IWorkingMemory';
+import { EpistemicStatus } from './types';
 
 export class MemoryPolicyEngine {
   private memoryService: IWorkingMemory;
@@ -61,7 +62,9 @@ export class MemoryPolicyEngine {
     const existing = this.memoryService.getBeliefByKey(proposal.key);
     
     let proposedVerification = VerificationLevel.UNVERIFIED;
-    if (proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION) proposedVerification = VerificationLevel.SYSTEM_OBSERVED;
+    if (proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION || proposal.source === MemorySource.SYSTEM_EVENT) {
+      proposedVerification = VerificationLevel.SYSTEM_OBSERVED;
+    }
     else if (proposal.source === MemorySource.USER_STATEMENT || proposal.source === MemorySource.USER_DIRECT_INSTRUCTION) proposedVerification = VerificationLevel.USER_CONFIRMED;
 
     let newStatus = MemoryStatus.ACTIVE;
@@ -89,8 +92,19 @@ export class MemoryPolicyEngine {
       newStatus = MemoryStatus.PENDING; // Needs manual confirmation via Dialogue
     }
 
-    // 5. Execute Mutation securely
-    this.memoryService.__mutate_protected(proposal, newStatus, proposedVerification);
+    // 5. Epistemic status is decided by policy, never by the event producer.
+    // Reflection output remains a hypothesis until it is independently supported.
+    const evidenceIds = new Set(existing?.evidenceIds || []);
+    evidenceIds.add(proposal.evidence.referenceId);
+    const epistemicStatus = this.resolveEpistemicStatus(
+      proposal,
+      newStatus,
+      proposedVerification,
+      evidenceIds.size
+    );
+
+    // 6. Execute Mutation securely
+    this.memoryService.__mutate_protected(proposal, newStatus, proposedVerification, epistemicStatus);
 
     return { approved: true };
   }
@@ -103,5 +117,46 @@ export class MemoryPolicyEngine {
       case VerificationLevel.UNVERIFIED: return 10;
       default: return 0;
     }
+  }
+
+  private resolveEpistemicStatus(
+    proposal: MemoryProposal,
+    status: MemoryStatus,
+    verification: VerificationLevel,
+    evidenceCount: number
+  ): EpistemicStatus {
+    if (status === MemoryStatus.PENDING) return 'HYPOTHESIS';
+
+    const categoryIsRecordedFact = [
+      'GOVERNANCE_DECISION_RECORD',
+      'GOVERNANCE_OUTCOME_RECORD',
+      'GOVERNANCE_PATTERN_RECORD'
+    ].includes(proposal.category || '');
+
+    if (proposal.key.startsWith('wallet.') && verification === VerificationLevel.SYSTEM_OBSERVED) {
+      return 'VERIFIED_SENSITIVE';
+    }
+
+    if (
+      proposal.source === MemorySource.BLOCKCHAIN_OBSERVATION ||
+      proposal.source === MemorySource.SYSTEM_EVENT ||
+      categoryIsRecordedFact
+    ) {
+      return 'CONFIRMED';
+    }
+
+    if (proposal.source === MemorySource.USER_DIRECT_INSTRUCTION && proposal.confidence >= 0.7) {
+      return 'CONFIRMED';
+    }
+
+    if (
+      proposal.source === MemorySource.REFLECTION_INFERENCE &&
+      evidenceCount >= 3 &&
+      proposal.confidence >= 0.7
+    ) {
+      return 'CONFIRMED';
+    }
+
+    return 'HYPOTHESIS';
   }
 }

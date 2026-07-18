@@ -6,11 +6,11 @@ import { ChatHistoryStore } from './ChatHistoryStore';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload, DialogueUserObservedPayload } from '../../core/events/types';
 import { WorldStateService } from '../../core/world-state/WorldStateService';
 import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
-import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
 import { MemorySource } from '../../core/memory/MemorySource';
 import { EvidenceType } from '../../core/memory/MemoryEvidence';
-import { MemoryRetriever } from '../../core/memory/MemoryRetriever';
+import { MemoryQueryService } from '../../core/memory/MemoryQueryService';
+import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 
 // Re-export for server bootstrap convenience
@@ -100,8 +100,7 @@ export class DialogueEngine {
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
   private memoryStore: IWorkingMemory;
-  private episodicReader: EpisodicMemoryReader;
-  private memoryRetriever: MemoryRetriever;
+  private memoryQueryService: MemoryQueryService;
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -142,13 +141,14 @@ export class DialogueEngine {
     this.capabilityCatalog = capabilityCatalog;
     this.memoryStore = memoryStore;
     this.chatHistoryStore = chatHistoryStore;
-    this.episodicReader = new EpisodicMemoryReader(sessionId);
     this.orchestrator = orchestrator;
     const vectorStore = new VectorMemoryStore(sessionId);
-    
-    // MemoryRetriever currently needs an ILLMAdapter. We might need to refactor it later.
-    // For now, pass a dummy QwenAdapter just for embeddings.
-    this.memoryRetriever = new MemoryRetriever(memoryStore, this.episodicReader, vectorStore, new QwenAdapter('text-embedding-v3'));
+    this.memoryQueryService = new MemoryQueryService(
+      memoryStore,
+      new EpisodicMemoryReader(sessionId),
+      vectorStore,
+      new QwenAdapter('text-embedding-v3')
+    );
 
     this.loadConsentedUsers();
 
@@ -197,13 +197,13 @@ export class DialogueEngine {
     const walletState = this.worldStateService.getWalletState();
 
     // Unified Memory Retrieval
-    const memoryContext = await this.memoryRetriever.retrieve(userMessage);
+    const memoryAttention = await this.memoryQueryService.query(userMessage);
 
     const cognitiveState = {
       relevant_facts: {
         userMainWalletAddress: walletState?.address || 'Unknown'
       },
-      memory_context: memoryContext,
+      memory_attention: memoryAttention,
       constraints: [
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',
@@ -597,7 +597,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
               confidence: 1.0,
               category: 'SEMANTIC'
             };
-            this.memoryStore.proposeBelief(proposal);
+            this.emitEvent(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
             
             messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
             messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });

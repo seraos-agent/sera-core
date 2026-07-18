@@ -1,5 +1,5 @@
 import { Event } from '../events/types';
-import { Belief, MemoryCategory } from './types';
+import { Belief, EpistemicStatus, MemoryCategory } from './types';
 import { MemoryProposal } from './MemoryProposal';
 import { MemoryStatus } from './MemoryItem';
 import { VerificationLevel } from './VerificationLevel';
@@ -17,5 +17,10 @@ export interface IWorkingMemory {
   getBeliefsByCategory(category: MemoryCategory): Belief[];
   getBeliefByKey(key: string): Belief | undefined;
   
-  __mutate_protected(proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel): any;
+  __mutate_protected(
+    proposal: MemoryProposal,
+    newStatus: MemoryStatus,
+    verification: VerificationLevel,
+    epistemicStatus?: EpistemicStatus
+  ): any;
 }

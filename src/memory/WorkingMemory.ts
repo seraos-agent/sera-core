@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Event, EventTypes, StandardEvent, MemoryItemMutatedPayload } from '../core/events/types';
-import { Belief, MemoryCategory } from '../core/memory/types';
+import { Belief, EpistemicStatus, MemoryCategory } from '../core/memory/types';
 import { MemoryProposal, MemoryOperation } from '../core/memory/MemoryProposal';
 import { MemoryPolicyEngine } from '../core/memory/MemoryPolicyEngine';
 import { MemoryStatus } from '../core/memory/MemoryItem';
@@ -25,8 +25,8 @@ export class WorkingMemory implements IWorkingMemory {
     // Inject self into MemoryPolicyEngine via an adapter so it can call __mutate_protected
     this.policyEngine = new MemoryPolicyEngine({
       getBeliefByKey: (key: string) => this.keyIndex.get(key) as any,
-      __mutate_protected: (proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel) => {
-        return this.__mutate_protected(proposal, newStatus, verification);
+      __mutate_protected: (proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel, epistemicStatus?: EpistemicStatus) => {
+        return this.__mutate_protected(proposal, newStatus, verification, epistemicStatus);
       }
     } as any);
   }
@@ -98,6 +98,22 @@ export class WorkingMemory implements IWorkingMemory {
     }
   }
 
+  private _removeBeliefFromIndex(belief: Belief): void {
+    this.beliefs.delete(belief.id);
+
+    const categoryBeliefs = this.categoryIndex.get(belief.category);
+    if (categoryBeliefs) {
+      this.categoryIndex.set(
+        belief.category,
+        categoryBeliefs.filter(indexedBelief => indexedBelief.id !== belief.id)
+      );
+    }
+
+    if (belief.key && this.keyIndex.get(belief.key)?.id === belief.id) {
+      this.keyIndex.delete(belief.key);
+    }
+  }
+
   // --- API ---
 
   store(event: Event): void {
@@ -164,31 +180,43 @@ export class WorkingMemory implements IWorkingMemory {
 
   // --- Internal Policy Engine Bridge ---
 
-  public __mutate_protected(proposal: MemoryProposal, newStatus: MemoryStatus, verification: VerificationLevel): any {
+  public __mutate_protected(
+    proposal: MemoryProposal,
+    newStatus: MemoryStatus,
+    verification: VerificationLevel,
+    epistemicStatus: EpistemicStatus = 'HYPOTHESIS'
+  ): any {
     const existing = this.keyIndex.get(proposal.key);
     
     if (existing && newStatus === MemoryStatus.ACTIVE) {
       existing.status = MemoryStatus.SUPERSEDED;
     }
 
+    const content = typeof proposal.value === 'string' ? proposal.value : JSON.stringify(proposal.value);
+    const keepsExistingEvidence = existing?.content === content;
+    const evidenceIds = new Set(keepsExistingEvidence ? existing.evidenceIds : []);
+    evidenceIds.add(proposal.evidence.referenceId);
+    const contradictionIds = new Set(keepsExistingEvidence ? existing.contradictionIds : []);
+    if (proposal.contradictionId) contradictionIds.add(proposal.contradictionId);
+
     const newItem: Belief = {
       id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       category: proposal.category || 'SEMANTIC',
       key: proposal.key,
-      content: typeof proposal.value === 'string' ? proposal.value : JSON.stringify(proposal.value), // store in content
+      content,
       status: newStatus,
       source: proposal.source,
       verificationLevel: verification,
-      epistemicStatus: 'CONFIRMED',
+      epistemicStatus,
       confidence: proposal.confidence,
-      evidenceIds: proposal.evidence ? [proposal.evidence.referenceId] : [],
-      contradictionIds: [],
+      evidenceIds: Array.from(evidenceIds),
+      contradictionIds: Array.from(contradictionIds),
       createdAt: existing ? existing.createdAt : Date.now(),
       updatedAt: Date.now()
     };
 
     if (existing) {
-      this.beliefs.delete(existing.id);
+      this._removeBeliefFromIndex(existing);
     }
     this._addBeliefToIndex(newItem);
     this.prune();

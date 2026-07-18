@@ -38,7 +38,7 @@ Nothing writes to memory directly. All domain events governance decisions, outco
 - **Episodic memory** (`ExperienceBuilder`) the agent's execution episodes are summarized and appended to a durable log.
 - **Semantic memory** durable facts and learned patterns, each carrying an epistemic status (`HYPOTHESIS` → `CONFIRMED`) rather than being asserted as true on first observation.
 - **`EpisodicSemanticBridge`** distills recurring episodic patterns (e.g. a tool failing repeatedly) into semantic beliefs, requiring repeated evidence before a belief is promoted to `CONFIRMED`.
-- Confirmed, non-protected facts are surfaced into the agent's conversational working memory wallet-related keys are explicitly excluded from this exposure regardless of their confirmation status.
+- Confirmed, non-protected facts are surfaced into the agent's conversational working memory through `MemoryQueryService`. It builds a token-bounded attention pack by reranking semantic beliefs, vector-matched episodes, and recent episodes; every selected item retains source evidence and protected wallet keys are excluded regardless of status.
 
 ### Constitution
 Every executed action is evaluated by **`ConstitutionEngine`** against a registered set of rules (`IrreversibleActionRule`, `DestructiveActionRule`, `UnsafeActionRule`) before it is allowed to proceed. This is an enforcement point, not a passive log.
@@ -105,7 +105,7 @@ Documented deliberately, so they are addressed by design rather than rediscovere
 
 - `GoalSynthesizer` generates candidate strategies using placeholder logic today. The pipeline that carries them through synthesis, human review, and execution is real; the reasoning quality of the candidates themselves is a separate, future improvement.
 - The governance reflection loop cannot close autonomously in production until a human-review trigger is built it currently requires simulation to exercise fully.
-- Memory retrieval into conversation is recency- and confirmation-based, not similarity/embedding-based. There is no vector search in this system today.
+- Memory retrieval is hybrid across confirmed semantic beliefs, vector-matched episodes, and recent episodes. It is currently an in-process JSON vector store suitable for small sessions; graph retrieval, metadata filtering at scale, and a production vector backend remain future work.
 
 ## Technology Stack
 
