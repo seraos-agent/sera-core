@@ -223,7 +223,11 @@ function InnerApp() {
   if (!isConnected && !isBypassed) {
     return (
       <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
-        <LandingPage onLaunchApp={() => open()} />
+        <LandingPage onLaunchApp={(landingMode) => {
+          setMode(landingMode);
+          setThemeMode(landingMode);
+          window.requestAnimationFrame(() => open());
+        }} />
         
         {/* Tombol Bypass khusus Localhost */}
         {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (

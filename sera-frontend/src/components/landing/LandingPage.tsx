@@ -31,7 +31,7 @@ const inputPrompts = [
 
 const visualScenes = new Set<Scene>(['operating', 'security', 'automation', 'crypto']);
 
-export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
+export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'dark') => void }) {
   const [scene, setScene] = useState<Scene>('reception');
   const [isDark, setIsDark] = useState(false);
   const [message, setMessage] = useState('');
@@ -135,6 +135,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   }, [content, streamedResponse, scene, activeVisual?.scene]);
 
   const isClosing = remaining <= 10;
+  const launchApp = () => onLaunchApp(isDark ? 'dark' : 'light');
 
   return (
     <main className={`sera-room scene-${scene} ${isDark ? 'is-dark' : ''}`}>
@@ -147,11 +148,11 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
             {headerPrompts.map(item => <button type="button" key={item.label} onClick={() => chooseHeaderPrompt(item.prompt)}>{item.label}</button>)}
           </div>
         </div>
-        <button className="header-launch" onClick={onLaunchApp}>Launch SERA</button>
+        <button className="header-launch" onClick={launchApp}>Launch SERA</button>
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={onLaunchApp} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
       </section>
 
       {scene !== 'reception' && !isThinking && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>

@@ -17,7 +17,8 @@ export default function AppRoot() {
     localStorage.setItem("sera_app_root_view", currentView);
   }, [currentView]);
 
-  const handleLaunchApp = () => {
+  const handleLaunchApp = (theme: 'light' | 'dark') => {
+    localStorage.setItem('sera_theme', theme);
     if (import.meta.env.DEV) {
       // Jika berjalan di komputer lokal (npm run dev), izinkan masuk ke aplikasi
       setCurrentView('app');
