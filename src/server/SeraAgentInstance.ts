@@ -48,6 +48,7 @@ import { MemoryIngress } from '../core/memory/MemoryIngress';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { SeraTool } from '../core/cognitive/Tool';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
+import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 
 export class SeraAgentInstance {
   public sessionId: string;
@@ -119,6 +120,18 @@ export class SeraAgentInstance {
     const intentEngine = new IntentEngine(intentStore, goalEngine);
     const goalSynthesizer = new GoalSynthesizer();
     const proposalGovernance = new ProposalGovernance();
+    const swarmWorker = ({ task, role, blackboard }: { task: { id: string; title: string }; role: string; blackboard: readonly unknown[] }) => ({
+      taskId: task.id,
+      role,
+      note: `Completed proposal-only review step: ${task.title}`,
+      priorReviewCount: blackboard.length
+    });
+    const swarmCoordinator = new SwarmCoordinator({
+      RESEARCHER: swarmWorker,
+      PLANNER: swarmWorker,
+      CRITIC: swarmWorker,
+      SYNTHESIZER: swarmWorker
+    }, proposalGovernance, this.eventBus);
 
     const executionTraceStore = new ExecutionTraceStore(this.eventBus);
     const coherenceMonitor = new CoherenceMonitor();
@@ -179,7 +192,8 @@ export class SeraAgentInstance {
       this.eventBus,
       executionDispatcher,
       this.memoryStore,
-      this.chatHistoryStore
+      this.chatHistoryStore,
+      swarmCoordinator
     );
 
     this.runtime.worldStateService = this.worldStateService;

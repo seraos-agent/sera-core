@@ -1,4 +1,4 @@
-import { CandidatePlanStep, CandidateCategory, GoalProposal } from './types';
+import { CandidatePlanStep, CandidateCategory, CandidateStrategy, GoalProposal } from './types';
 
 export interface ProposalGovernancePolicy {
   id: string;
@@ -40,18 +40,7 @@ export class ProposalGovernance {
     }
 
     for (const candidate of proposal.candidates) {
-      if (!candidate.strategy || candidate.strategy.requiresHumanApproval !== true) {
-        reasons.push(`Candidate ${candidate.id} is missing a human-approved strategy boundary.`);
-        continue;
-      }
-      if (candidate.strategy.requiredCapabilities.length > 0) {
-        reasons.push(`Candidate ${candidate.id} declares capabilities before capability validation is available.`);
-      }
-      if (candidate.strategy.steps.length === 0) {
-        reasons.push(`Candidate ${candidate.id} has no reviewable plan steps.`);
-      } else if (!this.isValidDag(candidate.strategy.steps)) {
-        reasons.push(`Candidate ${candidate.id} has invalid or cyclic plan dependencies.`);
-      }
+      reasons.push(...this.evaluateStrategy(candidate.strategy).map(reason => `Candidate ${candidate.id} ${reason}`));
     }
 
     const valid = reasons.length === 0;
@@ -68,6 +57,23 @@ export class ProposalGovernance {
   recordExpiration() { this.metrics.proposalsExpired++; }
   recordSupercession() { this.metrics.proposalsSuperseded++; }
   getMetrics() { return { ...this.metrics }; }
+
+  /** Reusable boundary check for any component that consumes a candidate strategy. */
+  public evaluateStrategy(strategy: CandidateStrategy | undefined): string[] {
+    if (!strategy || strategy.requiresHumanApproval !== true) {
+      return ['is missing a human-approved strategy boundary.'];
+    }
+    if (strategy.requiredCapabilities.length > 0) {
+      return ['declares capabilities before capability validation is available.'];
+    }
+    if (strategy.steps.length === 0) {
+      return ['has no reviewable plan steps.'];
+    }
+    if (!this.isValidDag(strategy.steps)) {
+      return ['has invalid or cyclic plan dependencies.'];
+    }
+    return [];
+  }
 
   private isValidDag(steps: CandidatePlanStep[]): boolean {
     const byId = new Map(steps.map(step => [step.id, step]));

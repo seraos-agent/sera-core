@@ -57,11 +57,14 @@ export class MetricsAggregator {
       const metrics = this.store.getMetrics().governance;
       let { falsePositive, falseNegative } = metrics;
       
-      // If a decision was approved but outcome was HARMFUL -> False Positive
-      // If a decision was denied but would have been BENEFICIAL -> False Negative (Hard to observe, but structurally possible)
-      // For now we track known harmful outcomes as false positives
-      if (event.payload.outcomeAssessment === 'HARMFUL') {
+      // Attribution matters: a harmful result after approval is a false positive;
+      // a beneficial result after rejection is a false negative. Inconclusive or
+      // unattributed outcomes must not distort either metric.
+      if (event.payload.governanceDecision === 'APPROVED' && event.payload.outcomeAssessment === 'HARMFUL') {
         falsePositive++;
+      }
+      if (event.payload.governanceDecision === 'REJECTED' && event.payload.outcomeAssessment === 'BENEFICIAL') {
+        falseNegative++;
       }
       
       this.store.updateGovernance({ falsePositive, falseNegative });

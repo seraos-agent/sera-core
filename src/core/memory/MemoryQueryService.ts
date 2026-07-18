@@ -36,6 +36,18 @@ export interface MemoryAttentionPack {
   truncated: boolean;
 }
 
+/** Compact, policy-aware representation intended for the LLM prompt. */
+export interface MemoryPromptContext {
+  note: string;
+  items: Array<{
+    source: AttentionSource;
+    content: string;
+    confidence?: number;
+    epistemicStatus?: string;
+  }>;
+  truncated: boolean;
+}
+
 export interface MemoryQueryOptions {
   maxItems?: number;
   tokenBudget?: number;
@@ -139,6 +151,24 @@ export class MemoryQueryService {
     }
 
     return this.buildAttentionPack(query, candidates, maxItems, tokenBudget);
+  }
+
+  /**
+   * Keep retrieval provenance in MemoryAttentionPack for observability while
+   * omitting IDs, timestamps, scoring internals, and evidence references from
+   * the prompt. Those fields consume context without improving model judgment.
+   */
+  public toPromptContext(pack: MemoryAttentionPack): MemoryPromptContext {
+    return {
+      note: 'Confirmed semantic items are durable beliefs. Episodic items are context, not proof; do not present them as verified facts.',
+      items: pack.items.map(item => ({
+        source: item.source,
+        content: item.content,
+        ...(item.confidence === undefined ? {} : { confidence: item.confidence }),
+        ...(item.epistemicStatus === undefined ? {} : { epistemicStatus: item.epistemicStatus })
+      })),
+      truncated: pack.truncated
+    };
   }
 
   private buildAttentionPack(query: string | undefined, candidates: Candidate[], maxItems: number, tokenBudget: number): MemoryAttentionPack {

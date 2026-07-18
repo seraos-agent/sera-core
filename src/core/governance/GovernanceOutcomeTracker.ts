@@ -62,6 +62,7 @@ export class GovernanceOutcomeTracker {
           id: `gov-outcome-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           recommendationId: decision.recommendationId,
           governanceDecisionId: decision.id,
+          governanceDecision: decision.decision,
           baselineCalibrationState: preDecision.calibrationState,
           postDecisionCalibrationState: postDecision.calibrationState,
           baselinePredictionError: preDecision.avgSuccessError,

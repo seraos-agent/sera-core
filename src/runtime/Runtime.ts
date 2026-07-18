@@ -48,6 +48,7 @@ import { CommunicationToolCapability } from '../capabilities/communication/Commu
 import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
+import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';
@@ -124,7 +125,8 @@ export class Runtime {
     eventBus?: EventEmitter,
     dispatcher?: ExecutionDispatcher,
     memoryStore?: IWorkingMemory,
-    chatHistoryStore?: any
+    chatHistoryStore?: any,
+    swarmCoordinator?: SwarmCoordinator
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
     this.authorityService = new AuthorityService();
@@ -173,7 +175,8 @@ export class Runtime {
       this.proposalEvaluator,
       this.eventBus,
       this.feedbackPipeline,
-      this.memoryStore
+      this.memoryStore,
+      swarmCoordinator
     );
 
     this.executionCoordinator = new ExecutionCoordinator(
@@ -287,7 +290,7 @@ export class Runtime {
     };
     
     // 1. Intent & Proposal Pipeline (managed by IntentCoordinator)
-    this.intentCoordinator.runCycle(temporalContext, this.getWorldState());
+    await this.intentCoordinator.runCycle(temporalContext, this.getWorldState());
 
     // 2. Cognitive Cycle: Allocation, Goal Selection, Planning (managed by CognitiveCoordinator)
     const { goal, plan } = this.cognitiveCoordinator.runCycle(temporalContext, this.getWorldState(), targetGoalId);

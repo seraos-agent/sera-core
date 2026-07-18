@@ -89,6 +89,11 @@ describe('MemoryQueryService', () => {
     expect(pack.items.filter(item => item.id === 'episode-vector')).toHaveLength(1);
     expect(pack.items.find(item => item.id === 'episode-vector')?.evidenceIds).toEqual(['trace-1']);
     expect(pack.items.some(item => item.id === 'semantic-unrelated')).toBe(false);
+
+    const promptContext = service.toPromptContext(pack);
+    expect(promptContext.items.some(item => 'evidenceIds' in item)).toBe(false);
+    expect(promptContext.items.some(item => item.content.includes('sensitive-wallet-value'))).toBe(false);
+    expect(promptContext.items.find(item => item.source === 'SEMANTIC')?.epistemicStatus).toBe('CONFIRMED');
   });
 
   it('enforces its token budget even when the highest-ranked memory is oversized', async () => {

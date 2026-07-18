@@ -50,6 +50,8 @@ export interface GovernanceOutcomeRecord {
   id: string;
   recommendationId: string;
   governanceDecisionId: string;
+  /** Decision attribution is required to distinguish false positives from false negatives. */
+  governanceDecision?: GovernanceDecision['decision'];
 
   baselineCalibrationState: CalibrationState;
   postDecisionCalibrationState: CalibrationState;

@@ -12,6 +12,7 @@ import { EvidenceType } from '../../core/memory/MemoryEvidence';
 import { MemoryQueryService } from '../../core/memory/MemoryQueryService';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
+import { ConversationContextCompressor } from './ConversationContextCompressor';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -102,6 +103,7 @@ export class DialogueEngine {
   private capabilityCatalog: any;
   private memoryStore: IWorkingMemory;
   private memoryQueryService: MemoryQueryService;
+  private readonly conversationContextCompressor = new ConversationContextCompressor();
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -198,13 +200,13 @@ export class DialogueEngine {
     const walletState = this.worldStateService.getWalletState();
 
     // Unified Memory Retrieval
-    const memoryAttention = await this.memoryQueryService.query(userMessage);
+    const memoryAttention = await this.memoryQueryService.query(userMessage, { tokenBudget: 700 });
 
     const cognitiveState = {
       relevant_facts: {
         userMainWalletAddress: walletState?.address || 'Unknown'
       },
-      memory_attention: memoryAttention,
+      memory_attention: this.memoryQueryService.toPromptContext(memoryAttention),
       constraints: [
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',
@@ -235,14 +237,13 @@ export class DialogueEngine {
       // UI/Socket.io origin: include recent web chat history as conversation context
       const recentUi = this.chatHistoryStore.getUiMessages()
         .filter(m => m.type !== 'activity' && m.content)
-        .slice(-5);
+        .map(m => ({ role: m.role === 'agent' ? 'assistant' as const : 'user' as const, content: m.content! }));
+      const context = this.conversationContextCompressor.compress(recentUi, {
+        tokenBudget: 700,
+        maxRecentTurns: 5
+      });
 
-      for (const msg of recentUi) {
-        messages.push({
-          role: msg.role === 'agent' ? 'assistant' : 'user',
-          content: msg.content!
-        });
-      }
+      messages.push(...context.messages);
     } else {
       // External platform origin: inject platform context + conversation history
       const ctxKey = `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}`;
@@ -256,13 +257,15 @@ export class DialogueEngine {
       // Inject platform-specific conversation history so SERA has conversational
       // continuity within a Slack thread. Without this, every message is stateless.
       if (history.length > 0) {
+        const context = this.conversationContextCompressor.compress(history, {
+          tokenBudget: 700,
+          maxRecentTurns: this.PLATFORM_HISTORY_MAX_TURNS
+        });
         messages.push({
           role: 'system',
-          content: `[CONVERSATION HISTORY - last ${history.length} turns in this channel]`
+          content: `[CONVERSATION HISTORY - selective context from ${history.length} turns in this channel]`
         });
-        for (const turn of history) {
-          messages.push({ role: turn.role, content: turn.content });
-        }
+        messages.push(...context.messages);
       }
     }
 

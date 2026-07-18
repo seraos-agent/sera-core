@@ -65,6 +65,12 @@ export const EventTypes = {
   LLM_MODEL_COMPLETED: 'llm.model.completed',
   LLM_MODEL_FAILED: 'llm.model.failed',
 
+  // Swarm Planning Layer — proposal-only, never a capability execution signal
+  SWARM_TASK_STARTED: 'swarm.task.started',
+  SWARM_TASK_COMPLETED: 'swarm.task.completed',
+  SWARM_TASK_FAILED: 'swarm.task.failed',
+  SWARM_RUN_COMPLETED: 'swarm.run.completed',
+
   // Security & Telemetry
   SECURITY_AUTH_FAILURE: 'security.auth.failure',
   SECURITY_BLOCKED_ACTION: 'security.blocked.action',
@@ -152,4 +158,21 @@ export interface LlmModelExecutionPayload {
   outputTokens?: number;
   estimatedCost: number;
   errorMessage?: string;
+}
+
+export interface SwarmTaskEventPayload {
+  runId: string;
+  taskId: string;
+  role: string;
+  status: string;
+  errorMessage?: string;
+}
+
+export interface SwarmRunEventPayload {
+  runId: string;
+  status: 'COMPLETED' | 'PARTIAL';
+  completedTaskCount: number;
+  failedTaskCount: number;
+  blockedTaskCount: number;
+  requiresHumanApproval: true;
 }

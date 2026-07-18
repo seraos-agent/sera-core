@@ -7,6 +7,7 @@ import { ProposalGovernance } from '../../core/intents/ProposalGovernance';
 import { EventEmitter } from 'events';
 import { StandardEvent, EventTypes } from '../../core/events/types';
 import { Logger } from '../../core/logging/Logger';
+import { SwarmCoordinator } from '../../core/swarm/SwarmCoordinator';
 
 import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 
@@ -22,13 +23,14 @@ export class IntentCoordinator {
     private proposalEvaluator: any | undefined,
     private eventBus: EventEmitter | undefined,
     private feedbackPipeline: any | undefined,
-    private memoryStore?: IWorkingMemory
+    private memoryStore?: IWorkingMemory,
+    private swarmCoordinator?: SwarmCoordinator
   ) {}
 
-  public runCycle(temporalContext: TemporalContext, worldState: any): void {
+  public async runCycle(temporalContext: TemporalContext, worldState: any): Promise<void> {
     this.logger.debug(`Running intent coordination cycle ${temporalContext.cognitiveCycleId}`);
     this.governProposals(temporalContext, worldState);
-    this.runProposalPipeline(temporalContext, worldState);
+    await this.runProposalPipeline(temporalContext, worldState);
   }
 
   private governProposals(temporalContext: TemporalContext, worldState: any): void {
@@ -51,7 +53,7 @@ export class IntentCoordinator {
     }
   }
 
-  private runProposalPipeline(temporalContext: TemporalContext, worldState: any): void {
+  private async runProposalPipeline(temporalContext: TemporalContext, worldState: any): Promise<void> {
     if (process.env.ENABLE_COMPLEX_AUTONOMY !== 'true') {
       this.logger.debug('Complex autonomy disabled by feature flag. Skipping ProposalPipeline.');
       return;
@@ -76,6 +78,26 @@ export class IntentCoordinator {
         }
 
         let proposal = this.goalSynthesizer.generateProposal(intent, gap, worldState);
+
+        // Swarm review is opt-in and strictly proposal-only. It never receives
+        // capabilities or an execution path, and never bypasses proposal governance.
+        if (process.env.ENABLE_SWARM_PLANNING === 'true' && this.swarmCoordinator) {
+          for (const candidate of proposal.candidates) {
+            const review = await this.swarmCoordinator.run(candidate.strategy);
+            candidate.swarmReview = {
+              runId: review.runId,
+              status: review.status,
+              taskStatuses: review.tasks.map(task => ({
+                taskId: task.taskId,
+                role: task.role,
+                status: task.status,
+                ...(task.errorMessage ? { errorMessage: task.errorMessage } : {})
+              })),
+              completedAt: Date.now(),
+              requiresHumanApproval: true
+            };
+          }
+        }
         
         if (this.proposalEvaluator) {
           proposal = this.proposalEvaluator.evaluate(proposal);
