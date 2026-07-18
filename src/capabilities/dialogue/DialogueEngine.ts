@@ -13,6 +13,8 @@ import { MemoryQueryService } from '../../core/memory/MemoryQueryService';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 import { ConversationContextCompressor } from './ConversationContextCompressor';
+import { WorkClassificationPolicy } from '../../core/work-classification/WorkClassificationPolicy';
+import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -104,6 +106,8 @@ export class DialogueEngine {
   private memoryStore: IWorkingMemory;
   private memoryQueryService: MemoryQueryService;
   private readonly conversationContextCompressor = new ConversationContextCompressor();
+  private readonly workClassificationPolicy = new WorkClassificationPolicy();
+  private readonly workerRegistry = new WorkerCapabilityRegistry();
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -145,6 +149,8 @@ export class DialogueEngine {
     this.memoryStore = memoryStore;
     this.chatHistoryStore = chatHistoryStore;
     this.orchestrator = orchestrator;
+    this.workerRegistry.register({ id: 'dialogue-ui', lane: 'DETERMINISTIC_UI', supportedWorkClasses: ['INSTANT_UI'] });
+    this.workerRegistry.register({ id: 'dialogue-model', lane: 'DIALOGUE', supportedWorkClasses: ['CONVERSATION'] });
     const vectorStore = new VectorMemoryStore(sessionId);
     this.memoryQueryService = new MemoryQueryService(
       memoryStore,
@@ -444,7 +450,11 @@ export class DialogueEngine {
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
-      let { intent, parameters } = await this.classifyIntent(userMessage);
+      const deterministicUiCommand = this.workClassificationPolicy.uiCommand(userMessage);
+      if (deterministicUiCommand) this.workerRegistry.require('INSTANT_UI', 'DETERMINISTIC_UI');
+      let { intent, parameters } = deterministicUiCommand
+        ? { intent: 'EXECUTE_UI_COMMAND', parameters: { uiCommand: deterministicUiCommand } }
+        : await this.classifyIntent(userMessage);
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
 
       // ── Step 2: Clarification Validation ───────────────────────────────────────
