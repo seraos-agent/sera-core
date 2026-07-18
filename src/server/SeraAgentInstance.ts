@@ -69,6 +69,8 @@ export class SeraAgentInstance {
   public metricsStore!: InMemoryMetricsStore;
   private memoryIngress!: MemoryIngress;
   private metricsAggregator!: MetricsAggregator;
+  private cognitiveCompressor!: CognitiveCompressor;
+  private experienceBuilder!: ExperienceBuilder;
   private started = false;
   private stopped = false;
   private readonly persistMemorySnapshot = async () => {
@@ -184,9 +186,9 @@ export class SeraAgentInstance {
     this.runtime.setGlobalEventBus(this.eventBus, { sessionId: this.sessionId });
 
     this.temporalClockService = new TemporalClockService(this.eventBus, 10000);
-    const cognitiveCompressor = new CognitiveCompressor(this.eventBus);
+    this.cognitiveCompressor = new CognitiveCompressor(this.eventBus);
     const auditLogger = new AuditLogger(this.eventBus);
-    const experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId);
+    this.experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId);
     const episodicSemanticBridge = new EpisodicSemanticBridge(this.eventBus, this.memoryStore);
 
     this.capabilityCatalog = new CapabilityCatalog();
@@ -237,6 +239,8 @@ export class SeraAgentInstance {
     this.eventBus.off('temporal.tick', this.persistMemorySnapshot);
     this.temporalClockService.stop();
     this.triggerEngine.stop();
+    this.cognitiveCompressor.stop();
+    this.experienceBuilder.stop();
     this.runtime.stop();
   }
 }

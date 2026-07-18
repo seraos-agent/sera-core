@@ -23,12 +23,32 @@ export interface CandidateEvaluationVector {
   diversityContribution: number;
 }
 
+export type CandidatePlanStepKind = 'OBSERVE' | 'ANALYZE' | 'COMPARE' | 'PROPOSE';
+
+export interface CandidatePlanStep {
+  id: string;
+  kind: CandidatePlanStepKind;
+  title: string;
+  dependsOn: string[];
+}
+
+export interface CandidateStrategy {
+  objective: string;
+  assumptions: string[];
+  risks: string[];
+  steps: CandidatePlanStep[];
+  requiredCapabilities: string[];
+  requiresHumanApproval: true;
+  worldStateDomains: string[];
+}
+
 export interface GoalCandidate {
   id: string;
   category: CandidateCategory;
   title: string;
   rationale: string;
   evaluationVector?: CandidateEvaluationVector;
+  strategy: CandidateStrategy;
   strategyMetadata?: Record<string, any>;
 }
 

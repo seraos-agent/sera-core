@@ -11,8 +11,19 @@ export class ExperienceBuilder {
   private logPath: string;
   private currentEpisode: StandardEvent[] = [];
   private episodeTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
   private llm: QwenAdapter;
   private vectorStore: VectorMemoryStore;
+  private readonly episodeEventTypes = [
+    EventTypes.DIALOGUE_USER_OBSERVED,
+    EventTypes.DIALOGUE_PROPOSAL_GENERATED,
+    EventTypes.DIALOGUE_PROPOSAL_APPROVED,
+    EventTypes.DIALOGUE_PROPOSAL_REJECTED,
+    EventTypes.DOMAIN_GOAL_SPAWNED,
+    EventTypes.DOMAIN_GOAL_RESULT,
+    EventTypes.DIALOGUE_AGENT_SPEAK
+  ];
+  private readonly handleEpisodeEvent = (event: StandardEvent) => this.handleEvent(event);
 
   constructor(private eventBus: EventEmitter, private sessionId: string = 'default') {
     const dataDir = path.join(process.cwd(), '.data', 'sessions', sessionId);
@@ -27,24 +38,13 @@ export class ExperienceBuilder {
   }
 
   private setupListeners() {
-    const eventsToListen = [
-      EventTypes.DIALOGUE_USER_OBSERVED,
-      EventTypes.DIALOGUE_PROPOSAL_GENERATED,
-      EventTypes.DIALOGUE_PROPOSAL_APPROVED,
-      EventTypes.DIALOGUE_PROPOSAL_REJECTED,
-      EventTypes.DOMAIN_GOAL_SPAWNED,
-      EventTypes.DOMAIN_GOAL_RESULT,
-      EventTypes.DIALOGUE_AGENT_SPEAK
-    ];
-
-    for (const type of eventsToListen) {
-      this.eventBus.on(type, (event: StandardEvent) => {
-        this.handleEvent(event);
-      });
+    for (const type of this.episodeEventTypes) {
+      this.eventBus.on(type, this.handleEpisodeEvent);
     }
   }
 
   private handleEvent(event: StandardEvent) {
+    if (this.stopped) return;
     this.currentEpisode.push(event);
 
     // Flush episode 3 seconds after the last event in the cluster
@@ -53,6 +53,8 @@ export class ExperienceBuilder {
   }
 
   private async consolidateEpisode() {
+    this.episodeTimer = null;
+    if (this.stopped) return;
     if (this.currentEpisode.length === 0) return;
 
     const events = [...this.currentEpisode];
@@ -77,6 +79,8 @@ export class ExperienceBuilder {
     } catch (e) {
       console.error('[ExperienceBuilder] Failed to generate summary', e);
     }
+
+    if (this.stopped) return;
 
     const record: ExperienceRecord = {
       id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -114,5 +118,19 @@ export class ExperienceBuilder {
         } as StandardEvent);
       }
     });
+  }
+
+  /** Stop delayed consolidation and detach from the session event bus. */
+  public stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.episodeTimer) {
+      clearTimeout(this.episodeTimer);
+      this.episodeTimer = null;
+    }
+    this.currentEpisode = [];
+    for (const type of this.episodeEventTypes) {
+      this.eventBus.off(type, this.handleEpisodeEvent);
+    }
   }
 }

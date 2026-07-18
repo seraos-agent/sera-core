@@ -5,6 +5,8 @@ import cronParser from 'cron-parser';
 
 export class TriggerEngine {
   private cycleCount = 0;
+  private started = false;
+  private readonly temporalTickListener = (event: StandardEvent<TemporalTickPayload>) => this.handleTemporalTick(event);
 
   constructor(
     private store: TriggerStore,
@@ -15,13 +17,17 @@ export class TriggerEngine {
    * Starts the evaluation engine by listening to TemporalClockService ticks.
    */
   start(): void {
+    if (this.started) return;
+    this.started = true;
     console.log(`[TriggerEngine] Brain of "WHEN" started. Subscribing to temporal.tick...`);
-    this.eventBus.on(EventTypes.TEMPORAL_TICK, this.handleTemporalTick.bind(this));
+    this.eventBus.on(EventTypes.TEMPORAL_TICK, this.temporalTickListener);
   }
 
   stop(): void {
+    if (!this.started) return;
+    this.started = false;
     console.log(`[TriggerEngine] Stopped.`);
-    // In a full implementation, we'd unsubscribe from the event bus here
+    this.eventBus.off(EventTypes.TEMPORAL_TICK, this.temporalTickListener);
   }
 
   /**

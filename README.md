@@ -91,7 +91,7 @@ This table reflects verified behavior, not planned scope.
 | Episodic → Semantic Memory Bridge | Live, verified |
 | Constitution Enforcement | Live, verified |
 | Simple Action Pipeline (`ProposalManager`) | Live |
-| Complex Goal Pipeline (Intent → Synthesis → Human Approval) | Live, verified candidate reasoning currently uses placeholder logic, not full strategic reasoning |
+| Complex Goal Pipeline (Intent → Synthesis → Human Approval) | Live, verified. Candidates contain diverse, non-executable strategy DAGs and require human approval; LLM-assisted candidate generation remains a future enhancement. |
 | Feedback & Calibration Loop (task execution) | Live, verified |
 | Governance Reflection Loop | Mechanically verified end-to-end; missing a production trigger for the human review step |
 | Internal Telemetry | Live (internal only) |
@@ -103,7 +103,7 @@ This table reflects verified behavior, not planned scope.
 
 Documented deliberately, so they are addressed by design rather than rediscovered by accident:
 
-- `GoalSynthesizer` generates candidate strategies using placeholder logic today. The pipeline that carries them through synthesis, human review, and execution is real; the reasoning quality of the candidates themselves is a separate, future improvement.
+- `GoalSynthesizer` produces deterministic, domain-agnostic strategy DAGs today. It does not yet use an LLM to generate or critique bespoke strategies, so LLM-assisted strategic creativity remains a future improvement.
 - The governance reflection loop cannot close autonomously in production until a human-review trigger is built it currently requires simulation to exercise fully.
 - Memory retrieval is hybrid across confirmed semantic beliefs, vector-matched episodes, and recent episodes. It is currently an in-process JSON vector store suitable for small sessions; graph retrieval, metadata filtering at scale, and a production vector backend remain future work.
 

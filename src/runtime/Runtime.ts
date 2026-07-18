@@ -372,7 +372,13 @@ export class Runtime {
       intentId: proposal.parentIntentId,
       originCandidateCategory: candidate.category,
       description: candidate.title,
-      targetState: candidate.strategyMetadata || {}, // Simplified mapping
+      // Preserve the reviewed strategy as goal context.  Its steps are
+      // deliberately proposal-only; the normal planner still governs any
+      // later capability or execution decision.
+      targetState: {
+        ...(candidate.strategyMetadata || {}),
+        strategy: candidate.strategy
+      },
       status: 'PENDING',
       priority: 0.8,
       stabilityIndex: 1.0,

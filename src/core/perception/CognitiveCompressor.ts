@@ -17,6 +17,12 @@ export class CognitiveCompressor {
   // Cognitive Budget
   private lastLlmReflectionTime = 0;
   private readonly LLM_COOLDOWN_MS = 60000; // Max 1 reflection per minute
+  private readonly observedEventTypes = [
+    EventTypes.DOMAIN_WALLET_STATE,
+    EventTypes.DOMAIN_GOAL_RESULT,
+    EventTypes.SYSTEM_BOOT
+  ];
+  private readonly handleObservedEvent = (event: StandardEvent) => this.ingestEvent(event);
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -24,10 +30,9 @@ export class CognitiveCompressor {
   }
 
   private bindListeners() {
-    this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (e) => this.ingestEvent(e));
-    this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, (e) => this.ingestEvent(e));
-    this.eventBus.on(EventTypes.SYSTEM_BOOT, (e) => this.ingestEvent(e));
-    // Additional domain events...
+    for (const type of this.observedEventTypes) {
+      this.eventBus.on(type, this.handleObservedEvent);
+    }
   }
 
   /**
@@ -45,6 +50,18 @@ export class CognitiveCompressor {
     } else if (!this.windowTimer) {
       // Start the compression window if not already running
       this.windowTimer = setTimeout(() => this.compressWindow(), this.WINDOW_MS);
+    }
+  }
+
+  /** Release the buffering timer and event subscriptions during agent shutdown. */
+  public stop(): void {
+    if (this.windowTimer) {
+      clearTimeout(this.windowTimer);
+      this.windowTimer = null;
+    }
+    this.eventBuffer = [];
+    for (const type of this.observedEventTypes) {
+      this.eventBus.off(type, this.handleObservedEvent);
     }
   }
 

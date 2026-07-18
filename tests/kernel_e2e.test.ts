@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { EventEmitter } from 'events';
 import { ConstitutionEngine } from '../src/constitution/ConstitutionEngine';
 import { Runtime } from '../src/runtime/Runtime';
@@ -88,6 +88,11 @@ describe('Kernel E2E Integration', () => {
         });
       }, 10);
     });
+  });
+
+  afterAll(() => {
+    expBuilder.stop();
+    runtime.stop();
   });
 
   it('creates and confirms semantic belief from episodes', async () => {
