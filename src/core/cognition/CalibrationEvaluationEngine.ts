@@ -1,5 +1,4 @@
 import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
-import { Belief } from '../../memory/types';
 import { MetaCognitiveRecommendation } from './types';
 
 export class CalibrationEvaluationEngine {

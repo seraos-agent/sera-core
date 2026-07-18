@@ -1,6 +1,5 @@
 import { ExecutionTraceStore } from '../execution/ExecutionTraceStore';
 import { IWorkingMemory } from '../memory/IWorkingMemory';
-import { Belief } from '../../memory/types';
 import { ExecutionPolicy } from '../execution/aios_types';
 import { Logger } from '../logging/Logger';
 import { EventEmitter } from 'events';

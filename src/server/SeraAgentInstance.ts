@@ -137,7 +137,14 @@ export class SeraAgentInstance {
 
     const signalArbitrator = new SignalArbitrator();
     const epistemicPolicyEngine = new EpistemicPolicyEngine(this.memoryStore, this.eventBus);
-    const feedbackPipeline = new FeedbackPipeline(signalArbitrator, epistemicPolicyEngine as any, goalEngine, coherenceMonitor, this.eventBus);
+    const feedbackPipeline = new FeedbackPipeline(
+      signalArbitrator,
+      epistemicPolicyEngine,
+      this.memoryStore,
+      goalEngine,
+      coherenceMonitor,
+      this.eventBus
+    );
 
     this.runtime = new Runtime(
       constitutionEngine,

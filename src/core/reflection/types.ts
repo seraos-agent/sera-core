@@ -1,4 +1,4 @@
-import { MemoryCategory } from '../../memory/types';
+import { MemoryCategory } from '../memory/types';
 
 export interface ReflectionPattern {
   id: string;

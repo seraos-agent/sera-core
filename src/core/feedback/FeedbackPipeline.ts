@@ -1,7 +1,8 @@
 import { ExecutionTrace, ProposalTrace } from '../execution/types';
 import { SignalGenerator } from '../signals/SignalGenerator';
 import { SignalArbitrator } from './SignalArbitrator';
-import { MemoryPolicyEngine } from '../../memory/MemoryPolicyEngine';
+import { EpistemicPolicyEngine } from '../memory/EpistemicPolicyEngine';
+import { IWorkingMemory } from '../memory/IWorkingMemory';
 import { GoalEngine } from '../goals/GoalEngine';
 import { CoherenceMonitor } from '../cognition/CoherenceMonitor';
 import { ProposalReflection } from './ProposalReflection';
@@ -16,12 +17,13 @@ export class FeedbackPipeline {
   
   constructor(
     private arbitrator: SignalArbitrator,
-    private memoryEngine: MemoryPolicyEngine,
+    private memoryEngine: EpistemicPolicyEngine,
+    memoryStore: IWorkingMemory,
     private goalEngine: GoalEngine,
     private coherenceMonitor: CoherenceMonitor,
     eventBus: EventEmitter
   ) {
-    this.outcomeReflection = new OutcomeReflection((memoryEngine as any)['store'], eventBus);
+    this.outcomeReflection = new OutcomeReflection(memoryStore, eventBus);
   }
 
   processTrace(trace: ExecutionTrace): void {

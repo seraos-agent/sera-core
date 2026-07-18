@@ -1,7 +1,5 @@
 import { Goal, IntentInvalidationError } from '../goals/types';
 import { Plan, PlanStep } from './types';
-import { Belief } from '../../memory/types';
-
 import { StrategyProfile } from '../strategy/types';
 import { TemporalContext } from '../temporal/types';
 

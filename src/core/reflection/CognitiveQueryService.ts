@@ -2,7 +2,7 @@ import { IWorkingMemory } from '../../core/memory/IWorkingMemory';
 import { ExecutionTraceStore } from '../execution/ExecutionTraceStore';
 import { MetaEvaluationHistory } from '../meta/MetaEvaluationHistory';
 import { ExecutionTrace } from '../execution/types';
-import { Belief, MemoryCategory } from '../memory/types';
+import { Belief } from '../memory/types';
 import { MetaEvaluationReport } from '../meta/types';
 
 export class CognitiveQueryService {
