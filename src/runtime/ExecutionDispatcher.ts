@@ -22,7 +22,7 @@ export class ExecutionDispatcher {
   private handleGoalSpawned(event: StandardEvent): void {
     const { intent, parameters, requestId } = event.payload;
     // Normalize intent from DialogueEngine
-    this.dispatch(intent, parameters, { triggerId: requestId });
+    this.dispatch(intent, parameters, { triggerId: requestId, workClass: parameters?._seraWorkClass });
   }
 
   private handleTriggerFired(event: StandardEvent): void {

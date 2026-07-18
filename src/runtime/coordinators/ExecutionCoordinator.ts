@@ -24,6 +24,7 @@ import { ExecutionWorker } from '../../core/execution/workers/ExecutionWorker';
 import { EventEmitter } from 'events';
 
 import { CapabilityCatalog } from '../../core/capabilities/CapabilityCatalog';
+import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
 
 export class ExecutionCoordinator {
   private logger = new Logger('ExecutionCoordinator');
@@ -35,6 +36,7 @@ export class ExecutionCoordinator {
   private pendingApprovalTasks: Map<string, { task: ExecutionTask, trace: ExecutionTrace }> = new Map();
 
   private capabilityCatalog?: CapabilityCatalog;
+  private readonly workerRegistry = new WorkerCapabilityRegistry();
 
   constructor(
     private constitutionEngine: ConstitutionEngine,
@@ -54,6 +56,8 @@ export class ExecutionCoordinator {
     const capExecutor = new CapabilityExecutor(this.eventBus, this.checkpointStore);
     const defaultWorker = new ExecutionWorker('worker-default-1', capExecutor);
     this.workerPool.registerWorker(defaultWorker);
+    this.workerRegistry.register({ id: 'execution-operational', lane: 'TOOL_EXECUTION', supportedWorkClasses: ['OPERATIONAL'] });
+    this.workerRegistry.register({ id: 'execution-governed', lane: 'GOVERNED_EXECUTION', supportedWorkClasses: ['HIGH_RISK'] });
 
     this.supervisor.start();
   }
@@ -69,13 +73,24 @@ export class ExecutionCoordinator {
     executionContext: ExecutionContext
   ): Promise<void> {
     this.logger.debug(`Submitting task for goal ${goal.id} to ExecutionScheduler`);
+    const workClass = executionContext.workClass || 'OPERATIONAL';
+    if (workClass === 'COMPLEX') {
+      throw new Error('WORK-CLASS-BLOCKED: COMPLEX work must use the proposal/swarm review lane, not CapabilityExecutor.');
+    }
+    if (workClass === 'INSTANT_UI' || workClass === 'CONVERSATION') {
+      throw new Error(`WORK-CLASS-BLOCKED: ${workClass} work has no capability execution lane.`);
+    }
+    const workerLane = workClass === 'HIGH_RISK' ? 'GOVERNED_EXECUTION' : 'TOOL_EXECUTION';
+    const worker = this.workerRegistry.require(workClass, workerLane);
+    this.eventBus.emit(EventTypes.WORK_CLASSIFIED, { workClass, lane: worker.lane, workerId: worker.id });
+    this.eventBus.emit(EventTypes.WORKER_LANE_SELECTED, { workClass, lane: worker.lane, workerId: worker.id });
     
 
     const temporalContext: TemporalContext = { physicalTime: Date.now(), cognitiveCycleId: 0 };
     
     // 1. Governance Pre-Check before Execution
     let allChecksPassed = true;
-    let requiresApproval = false;
+    let requiresApproval = workClass === 'HIGH_RISK';
     for (const step of plan.steps) {
       const workItem: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -200,7 +215,7 @@ export class ExecutionCoordinator {
     // 4. Create Immutable Task Definition
     const task: ExecutionTask = {
       taskId: `task-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      context: executionContext,
+      context: { ...executionContext, workClass },
       policySnapshot,
       checkpointId
     };

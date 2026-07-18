@@ -47,6 +47,7 @@ export interface ExecutionContext {
   cancellationToken?: ExecutionCancellationToken;
   responseContext?: ResponseContext;
   createdAt: number;
+  workClass?: import('../work-classification/WorkClassificationPolicy').WorkClass;
 }
 
 export interface RetryPolicy {

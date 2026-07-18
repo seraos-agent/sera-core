@@ -45,6 +45,7 @@ import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
+import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
 import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
@@ -209,7 +210,8 @@ export class Runtime {
     this.capabilityCatalog = new CapabilityCatalog();
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
-    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools()]);
+    const hyperliquidCap = new HyperliquidMarketDataCapability();
+    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools()]);
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
     
@@ -311,7 +313,8 @@ export class Runtime {
           goalId: goal.id,
           triggerSource: 'SYSTEM' as any,
           priority: 1, // NORMAL
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          workClass: goal.targetState.workClass || (goal as any).workClass
         };
 
         this.executionCoordinator.submitTask(goal, plan, defaultScope, executionContext as any);
@@ -380,7 +383,8 @@ export class Runtime {
       // later capability or execution decision.
       targetState: {
         ...(candidate.strategyMetadata || {}),
-        strategy: candidate.strategy
+        strategy: candidate.strategy,
+        workClass: 'COMPLEX'
       },
       status: 'PENDING',
       priority: 0.8,

@@ -8,6 +8,7 @@ import { SecretManager } from '../core/secrets/SecretManager';
 import { UniversalAgenticWallet } from '../capabilities/wallet/UniversalAgenticWallet';
 import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
+import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -29,6 +30,7 @@ export class GoalBridge {
   private cachedPersonal: string = '0';
   private cachedVault: string = '0';
   private sessionId: string;
+  private hyperliquid = new HyperliquidMarketDataAdapter();
 
   constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
     this.eventBus = eventBus;
@@ -168,6 +170,9 @@ export class GoalBridge {
         case 'SCHEDULE_GOAL':
           await this.handleScheduleGoal(requestId, actionPayload);
           break;
+        case 'HYPERLIQUID_MARKET_SUMMARY':
+          await this.handleHyperliquidMarketSummary(requestId, actionPayload);
+          break;
 
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
@@ -176,6 +181,12 @@ export class GoalBridge {
       console.error(`[GoalBridge] Error handling action ${actionType}:`, error.message);
       this.emitResult(requestId, false, {}, error.message);
     }
+  }
+
+  private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || '').toUpperCase();
+    const [mids, book] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin)]);
+    this.emitResult(requestId, true, { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, timestamp: book.timestamp });
   }
 
   private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {

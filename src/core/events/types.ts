@@ -71,6 +71,9 @@ export const EventTypes = {
   SWARM_TASK_FAILED: 'swarm.task.failed',
   SWARM_RUN_COMPLETED: 'swarm.run.completed',
 
+  WORK_CLASSIFIED: 'work.classified',
+  WORKER_LANE_SELECTED: 'worker.lane.selected',
+
   // Security & Telemetry
   SECURITY_AUTH_FAILURE: 'security.auth.failure',
   SECURITY_BLOCKED_ACTION: 'security.blocked.action',
@@ -175,4 +178,10 @@ export interface SwarmRunEventPayload {
   failedTaskCount: number;
   blockedTaskCount: number;
   requiresHumanApproval: true;
+}
+
+export interface WorkRoutingEventPayload {
+  workClass: string;
+  lane: string;
+  workerId: string;
 }

@@ -451,10 +451,16 @@ export class DialogueEngine {
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
       const deterministicUiCommand = this.workClassificationPolicy.uiCommand(userMessage);
-      if (deterministicUiCommand) this.workerRegistry.require('INSTANT_UI', 'DETERMINISTIC_UI');
+      if (deterministicUiCommand) {
+        const worker = this.workerRegistry.require('INSTANT_UI', 'DETERMINISTIC_UI');
+        this.emitEvent(EventTypes.WORK_CLASSIFIED, { workClass: 'INSTANT_UI', lane: worker.lane, workerId: worker.id });
+        this.emitEvent(EventTypes.WORKER_LANE_SELECTED, { workClass: 'INSTANT_UI', lane: worker.lane, workerId: worker.id });
+      }
       let { intent, parameters } = deterministicUiCommand
         ? { intent: 'EXECUTE_UI_COMMAND', parameters: { uiCommand: deterministicUiCommand } }
         : await this.classifyIntent(userMessage);
+      const workRoute = this.workClassificationPolicy.classify(userMessage);
+      parameters = { ...parameters, _seraWorkClass: workRoute.workClass };
       console.log(`[DialogueEngine] Classified intent: ${intent}`);
 
       // ── Step 2: Clarification Validation ───────────────────────────────────────
