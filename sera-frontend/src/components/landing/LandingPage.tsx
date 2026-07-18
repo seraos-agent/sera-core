@@ -33,6 +33,7 @@ const visualScenes = new Set<Scene>(['operating', 'security', 'automation', 'cry
 
 export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const [scene, setScene] = useState<Scene>('reception');
+  const [isDark, setIsDark] = useState(false);
   const [message, setMessage] = useState('');
   const [question, setQuestion] = useState('');
   const [content, setContent] = useState<ReceptionReply | null>(null);
@@ -136,9 +137,9 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
   const isClosing = remaining <= 10;
 
   return (
-    <main className={`sera-room scene-${scene}`}>
+    <main className={`sera-room scene-${scene} ${isDark ? 'is-dark' : ''}`}>
       <div className="room-glow room-glow-one" /><div className="room-glow room-glow-two" />
-      {scene === 'reception' && <GlobeAccent />}
+      {scene === 'reception' && <GlobeAccent isDark={isDark} onToggle={() => setIsDark(value => !value)} />}
       <header className="room-header">
         <a href="#reception" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
         <div className="header-prompt-rail" aria-label="Explore SERA">
@@ -184,17 +185,47 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: () => void }) {
 }
 
 
-function GlobeAccent() {
+function GlobeAccent({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   const rotationRef = useRef<SVGAnimateTransformElement | null>(null);
+  const modeToggleRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => rotationRef.current?.beginElement());
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    const orbitDuration = 20_000;
+    const startedAt = performance.now();
+    let frame = 0;
+
+    const renderOrbit = (now: number) => {
+      const button = modeToggleRef.current;
+      if (button) {
+        const progress = ((now - startedAt) % orbitDuration) / orbitDuration;
+        const angle = Math.PI + progress * Math.PI * 2;
+        const xRadius = Math.min(window.innerWidth * .46, 520);
+        const x = Math.cos(angle) * xRadius;
+        const y = -300 + Math.sin(angle) * 50;
+        const behindGlobe = Math.sin(angle) < 0;
+        const centralBehindGlobe = behindGlobe ? Math.max(0, 1 - Math.abs(x) / (xRadius * .6)) : 0;
+        const edgeDistance = Math.min(1, Math.abs(x) / xRadius);
+        const scale = (1 - edgeDistance * .3) * (behindGlobe ? .78 : 1);
+
+        button.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        button.style.opacity = String(1 - centralBehindGlobe);
+      }
+      frame = window.requestAnimationFrame(renderOrbit);
+    };
+
+    frame = window.requestAnimationFrame(renderOrbit);
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   return (
-    <div className="globe-accent" aria-hidden="true">
-      <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+    <>
+    <div className="globe-accent">
+      <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <defs>
           <clipPath id="globe-clip">
             <circle cx="250" cy="250" r="248" />
@@ -240,6 +271,14 @@ function GlobeAccent() {
         </g>
       </svg>
     </div>
+    <div className="globe-mode-orbit">
+      <button ref={modeToggleRef} type="button" className={`globe-mode-toggle ${isDark ? 'is-dark' : 'is-light'}`} onClick={onToggle} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+        {isDark
+          ? <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 15.1A8.25 8.25 0 0 1 8.9 3.8 8.25 8.25 0 1 0 20.2 15.1Z" fill="currentColor" /></svg>
+          : <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.1" fill="currentColor" /><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.72 5.28l-1.42 1.42M6.7 17.3l-1.42 1.42M18.72 18.72 17.3 17.3M6.7 6.7 5.28 5.28" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" /></svg>}
+      </button>
+    </div>
+    </>
   );
 }
 
