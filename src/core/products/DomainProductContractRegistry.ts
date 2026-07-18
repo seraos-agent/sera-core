@@ -5,7 +5,7 @@ export interface DomainProductContract {
   capabilities: readonly string[];
   intentRoutes: Readonly<Record<string, WorkClass>>;
   liveTradingEnabled: boolean;
-  requiresHumanApproval?: Readonly<Record<string, boolean>>;
+  requiresExplicitAuthority?: Readonly<Record<string, boolean>>;
 }
 
 const workClasses: readonly WorkClass[] = ['INSTANT_UI', 'CONVERSATION', 'OPERATIONAL', 'COMPLEX', 'HIGH_RISK'];
@@ -30,13 +30,13 @@ export class DomainProductContractRegistry {
     }
     for (const [intent, workClass] of Object.entries(contract.intentRoutes)) {
       if (!workClasses.includes(workClass)) throw new Error(`Product contract ${contract.id} has invalid work class for ${intent}.`);
-      if (workClass === 'HIGH_RISK' && !contract.requiresHumanApproval?.[intent]) {
-        throw new Error(`High-risk intent ${intent} in ${contract.id} must require human approval.`);
+      if (workClass === 'HIGH_RISK' && !contract.requiresExplicitAuthority?.[intent]) {
+        throw new Error(`High-risk intent ${intent} in ${contract.id} must require explicit authority.`);
       }
     }
     if (contract.liveTradingEnabled) {
       const hasProtectedHighRiskIntent = Object.entries(contract.intentRoutes).some(([intent, workClass]) =>
-        workClass === 'HIGH_RISK' && contract.requiresHumanApproval?.[intent]
+        workClass === 'HIGH_RISK' && contract.requiresExplicitAuthority?.[intent]
       );
       if (!hasProtectedHighRiskIntent) throw new Error(`Live product ${contract.id} needs a human-approved high-risk intent.`);
     }

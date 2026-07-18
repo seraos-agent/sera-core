@@ -49,6 +49,7 @@ import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { SeraTool } from '../core/cognitive/Tool';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
+import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 
 export class SeraAgentInstance {
   public sessionId: string;
@@ -68,6 +69,7 @@ export class SeraAgentInstance {
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
   public metricsStore!: InMemoryMetricsStore;
+  public readonly autonomyAgreementStore = new AutonomyAgreementStore();
   private memoryIngress!: MemoryIngress;
   private metricsAggregator!: MetricsAggregator;
   private cognitiveCompressor!: CognitiveCompressor;
@@ -119,7 +121,7 @@ export class SeraAgentInstance {
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
     (globalThis as any).__triggerEngine = this.triggerEngine;
     
-    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId);
+    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.autonomyAgreementStore);
 
     const executionDispatcher = new ExecutionDispatcher(this.eventBus);
     const planner = new Planner();
@@ -206,7 +208,8 @@ export class SeraAgentInstance {
       executionDispatcher,
       this.memoryStore,
       this.chatHistoryStore,
-      swarmCoordinator
+      swarmCoordinator,
+      this.autonomyAgreementStore
     );
 
     this.runtime.worldStateService = this.worldStateService;

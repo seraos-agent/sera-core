@@ -7,6 +7,9 @@ export type PermissionAction =
   | 'invoke_tool'
   | string;
 
+/** The only autonomy choices surfaced to a SERA user. */
+export type AutonomyMode = 'ASSISTANT' | 'FULL_ACCESS';
+
 export interface Permission {
   action: PermissionAction;
 }
@@ -17,6 +20,9 @@ export interface DelegationScope {
   allowedPermissions: Permission[];
   requiresApprovalPermissions: Permission[];
   expiresAt?: number;
+  autonomyMode?: AutonomyMode;
+  /** A one-time approved Operating Agreement backing Full Access. */
+  agreementId?: string;
 }
 
 export interface AuthorityContext {

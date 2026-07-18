@@ -16,6 +16,7 @@ import { ConversationContextCompressor } from './ConversationContextCompressor';
 import { WorkClassificationPolicy } from '../../core/work-classification/WorkClassificationPolicy';
 import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
 import { MessageIntakePolicy } from './MessageIntakePolicy';
+import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementStore';
 
 // Re-export for server bootstrap convenience
 export { EventTypes as SERA_EVENTS };
@@ -146,7 +147,7 @@ export class DialogueEngine {
 
   private chatHistoryStore: ChatHistoryStore;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default') {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
@@ -666,7 +667,8 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
           // Determine safety dynamically via CapabilityCatalog
           const toolMeta = this.capabilityCatalog?.getTool(toolIntent);
-          const isSafe = toolMeta ? !toolMeta.requiresApproval : true;
+          const isAuthorizedByAgreement = this.autonomyAgreementStore?.hasFullAccessFor(toolIntent) === true;
+          const isSafe = toolMeta ? (!toolMeta.requiresApproval || isAuthorizedByAgreement) : true;
 
           if (isSafe) {
             this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
@@ -792,6 +794,10 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderReadOnlyHyperliquidResult(result.data) });
       return;
     }
+    if (result.success && result.data?.provider === 'SERA Paper Trading' && result.data?.mode === 'PAPER') {
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderPaperTradeResult(result.data) });
+      return;
+    }
     let sanitizedDataStr = JSON.stringify(result.data || {});
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultAddress"/g, '"agentAddress"');
@@ -829,5 +835,9 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. Data ini belum merupakan analisis arah harga atau sinyal trading.`;
     }
     return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; volume notional 24 jam ${data.dayNotionalVolume ?? 'n/a'}. Ini adalah snapshot pasar; order book, funding, dan open interest tidak cukup untuk menyimpulkan arah harga, breakout, atau sinyal trading.`;
+  }
+
+  private renderPaperTradeResult(data: Record<string, any>): string {
+    return `Paper trade ${data.side} ${data.quantity} ${data.coin}: reference ${data.referencePrice}, simulated fill ${data.fillPrice}, fee ${data.fee}, slippage cost ${data.slippageCost}. No order was sent and no real balance changed.`;
   }
 }

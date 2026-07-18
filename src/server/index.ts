@@ -73,6 +73,7 @@ io.on('connection', (socket: Socket) => {
     socket.emit('chat:history', instance.chatHistoryStore.getUiMessages());
     socket.emit('observations:history', instance.observationStore.getAll());
     socket.emit('automations:update', instance.triggerStore.getAll());
+    socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
   };
 
   // Do NOT send initial state or bind listeners upon raw connection!
@@ -149,6 +150,10 @@ io.on('connection', (socket: Socket) => {
     socket.emit('wallet:update', event.payload);
   };
 
+  const onAutonomyAgreementChanged = () => {
+    socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
+  };
+
   const bindListeners = () => {
     instance.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
     instance.eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
@@ -158,6 +163,8 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.on(EventTypes.GOAL_REQUIRES_APPROVAL, (payload: any) => socket.emit('governance:approval_needed', payload));
     instance.eventBus.on(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
     instance.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
+    instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
+    instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
   };
 
   const unbindListeners = () => {
@@ -169,6 +176,8 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.removeAllListeners(EventTypes.GOAL_REQUIRES_APPROVAL);
     instance.eventBus.off(EventTypes.COGNITIVE_OBSERVATION, onCognitiveObservation);
     instance.eventBus.off(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
+    instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
+    instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
   };
 
   // Listeners are only bound after successful auth:login.
@@ -369,6 +378,28 @@ io.on('connection', (socket: Socket) => {
     if (!requireAuthenticatedSession(socket, 'automations:delete', instance?.eventBus)) return;
     instance.triggerStore.delete(id);
     socket.emit('automations:update', instance.triggerStore.getAll());
+  });
+
+  socket.on('autonomy-agreements:fetch', () => {
+    if (!requireAuthenticatedSession(socket, 'autonomy-agreements:fetch', instance?.eventBus)) return;
+    socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
+  });
+
+  socket.on('autonomy-agreements:revoke', (id: string) => {
+    if (!requireAuthenticatedSession(socket, 'autonomy-agreements:revoke', instance?.eventBus)) return;
+    try {
+      const agreement = instance.autonomyAgreementStore.revoke(id);
+      instance.eventBus.emit(EventTypes.AUTONOMY_AGREEMENT_REVOKED, {
+        id: `evt-${Date.now()}`,
+        type: EventTypes.AUTONOMY_AGREEMENT_REVOKED,
+        source: 'SocketServer',
+        timestamp: Date.now(),
+        payload: { agreementId: agreement.id, principalId: agreement.principalId }
+      } as StandardEvent);
+      socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
+    } catch (error) {
+      socket.emit('autonomy-agreements:error', { message: error instanceof Error ? error.message : 'Unable to revoke agreement.' });
+    }
   });
 
   socket.on('wallet:transfer', async (payload: { to: string; amount: string; asset: string }) => {

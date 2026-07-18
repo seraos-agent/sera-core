@@ -10,6 +10,8 @@ import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAd
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
 import { analyzeHyperliquidMarketSnapshot, formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
+import { PaperTradingSimulator, PaperSide } from '../core/paper-trading/PaperTradingSimulator';
+import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -32,8 +34,9 @@ export class GoalBridge {
   private cachedVault: string = '0';
   private sessionId: string;
   private hyperliquid = new HyperliquidMarketDataAdapter();
+  private readonly paperTrading = new PaperTradingSimulator();
 
-  constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
+  constructor(eventBus: EventEmitter, sessionId: string = 'dev', private readonly autonomyAgreementStore?: AutonomyAgreementStore) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
@@ -177,6 +180,12 @@ export class GoalBridge {
         case 'HYPERLIQUID_CANDLES':
           await this.handleHyperliquidCandles(requestId, actionPayload);
           break;
+        case 'PAPER_TRADE':
+          await this.handlePaperTrade(requestId, actionPayload);
+          break;
+        case 'ACTIVATE_AUTONOMY_AGREEMENT':
+          this.handleActivateAutonomyAgreement(requestId, actionPayload);
+          break;
 
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
@@ -201,6 +210,47 @@ export class GoalBridge {
     const candles = await this.hyperliquid.getCandles(coin, interval, Date.now() - hours * 3_600_000, Date.now());
     const latest = candles.at(-1);
     this.emitResult(requestId, true, { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, interval, hours, count: candles.length, latest, summary: latest ? `${coin} ${interval}: close ${latest.close}, high ${latest.high}, low ${latest.low}, volume ${latest.volume}.` : 'No candles returned.' });
+  }
+
+  private async handlePaperTrade(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || '').toUpperCase();
+    const side = String(parameters.side || '').toUpperCase() as PaperSide;
+    const quantity = Number(parameters.quantity);
+    if (side !== 'BUY' && side !== 'SELL') throw new Error('Paper trade side must be BUY or SELL.');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Paper trade quantity must be positive.');
+    const mids = await this.hyperliquid.getAllMids();
+    const referencePrice = Number(mids[coin]);
+    if (!Number.isFinite(referencePrice) || referencePrice <= 0) throw new Error(`Hyperliquid perpetual asset not found: ${coin}.`);
+    const fill = this.paperTrading.fill({ id: `paper-${requestId}`, side, quantity, referencePrice });
+    this.emitResult(requestId, true, {
+      provider: 'SERA Paper Trading', mode: 'PAPER', coin, side, quantity, referencePrice,
+      ...fill,
+      disclaimer: 'Local simulation only. No order was sent and no real balance changed.'
+    });
+  }
+
+  private handleActivateAutonomyAgreement(requestId: string, parameters: Record<string, any>): void {
+    if (!this.autonomyAgreementStore) throw new Error('Autonomy Agreement store is not initialized.');
+    const mode = parameters.mode === 'FULL_ACCESS' ? 'FULL_ACCESS' : 'ASSISTANT';
+    const permissions = Array.isArray(parameters.permissions)
+      ? parameters.permissions.filter((permission): permission is string => typeof permission === 'string' && permission.length > 0)
+      : [];
+    const agreement = this.autonomyAgreementStore.activate({
+      principalId: this.sessionId,
+      title: String(parameters.title || '').trim(),
+      intent: String(parameters.intent || '').trim(),
+      mode,
+      permissions,
+      nextActionSummary: typeof parameters.nextActionSummary === 'string' ? parameters.nextActionSummary : undefined
+    });
+    this.eventBus.emit(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, {
+      id: `evt-agreement-${Date.now()}`,
+      type: EventTypes.AUTONOMY_AGREEMENT_ACTIVATED,
+      source: 'GoalBridge',
+      timestamp: Date.now(),
+      payload: { agreement }
+    } as StandardEvent);
+    this.emitResult(requestId, true, { agreement, message: 'Operating Agreement is active.' });
   }
 
   private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {

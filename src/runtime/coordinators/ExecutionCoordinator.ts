@@ -90,7 +90,7 @@ export class ExecutionCoordinator {
     
     // 1. Governance Pre-Check before Execution
     let allChecksPassed = true;
-    let requiresApproval = workClass === 'HIGH_RISK';
+    let requiresApproval = workClass === 'HIGH_RISK' && scope.autonomyMode !== 'FULL_ACCESS';
     for (const step of plan.steps) {
       const workItem: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -139,7 +139,7 @@ export class ExecutionCoordinator {
         });
         allChecksPassed = false;
         break;
-      } else if (constitutionDecision.status === 'REQUIRES_CONFIRMATION') {
+      } else if (constitutionDecision.status === 'REQUIRES_CONFIRMATION' && scope.autonomyMode !== 'FULL_ACCESS') {
         this.logger.info(`Constitution check requires confirmation for: ${workItem.action}`);
         requiresApproval = true;
       }

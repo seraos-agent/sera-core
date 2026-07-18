@@ -13,6 +13,7 @@ interface AutomationsPageProps {
 
 export function AutomationsPage({ theme, socket, onBack, isMobileView }: AutomationsPageProps) {
   const [triggers, setTriggers] = useState<any[]>([]);
+  const [agreements, setAgreements] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'COMPLETED'>('ACTIVE');
   
   const sidePad = isMobileView ? 16 : 32;
@@ -24,14 +25,23 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
     const handleUpdate = (data: any[]) => {
       setTriggers(data);
     };
+    const handleAgreementUpdate = (data: any[]) => setAgreements(data);
 
     socket.on('automations:update', handleUpdate);
+    socket.on('autonomy-agreements:update', handleAgreementUpdate);
     socket.emit('automations:fetch');
+    socket.emit('autonomy-agreements:fetch');
 
     return () => {
       socket.off('automations:update', handleUpdate);
+      socket.off('autonomy-agreements:update', handleAgreementUpdate);
     };
   }, [socket]);
+
+  const activeAgreements = agreements.filter(agreement => agreement.status === 'ACTIVE');
+  const inactiveAgreements = agreements.filter(agreement => agreement.status !== 'ACTIVE');
+  const visibleTriggers = activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE');
+  const visibleAgreements = activeTab === 'ACTIVE' ? activeAgreements : inactiveAgreements;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, position: "relative", minWidth: 0, minHeight: 0 }}>
@@ -74,7 +84,7 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
             color: activeTab === 'ACTIVE' ? theme.ink : theme.inkSoft,
             transition: 'all 0.2s'
           }}>
-          Active ({triggers.filter(t => t.state === 'ACTIVE').length})
+          Active ({triggers.filter(t => t.state === 'ACTIVE').length + activeAgreements.length})
         </button>
         <button 
           onClick={() => setActiveTab('COMPLETED')}
@@ -85,12 +95,12 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
             color: activeTab === 'COMPLETED' ? theme.ink : theme.inkSoft,
             transition: 'all 0.2s'
           }}>
-          Completed ({triggers.filter(t => t.state !== 'ACTIVE').length})
+          Completed ({triggers.filter(t => t.state !== 'ACTIVE').length + inactiveAgreements.length})
         </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: `0 ${sidePad}px ${sidePad}px` }}>
-        {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE')).length === 0 ? (
+        {visibleTriggers.length + visibleAgreements.length === 0 ? (
           <div style={{ 
             padding: "48px 40px", textAlign: "center", border: `1px dashed ${theme.border}`, 
             borderRadius: 16, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
@@ -115,13 +125,47 @@ export function AutomationsPage({ theme, socket, onBack, isMobileView }: Automat
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: activeTab === 'COMPLETED' ? 0.7 : 1 }}>
-            {(activeTab === 'ACTIVE' ? triggers.filter(t => t.state === 'ACTIVE') : triggers.filter(t => t.state !== 'ACTIVE'))
+            {visibleAgreements
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .map(agreement => renderAgreementCard(agreement, theme, socket))}
+            {visibleTriggers
               .sort((a, b) => (b.lastFiredAt || b.createdAt || 0) - (a.lastFiredAt || a.createdAt || 0))
               .map(t => renderTriggerCard(t, theme, socket))}
           </div>
         )}
       </div>
     </div>
+    </div>
+  );
+}
+
+function renderAgreementCard(agreement: any, theme: any, socket: Socket | null) {
+  const active = agreement.status === 'ACTIVE';
+  return (
+    <div key={agreement.id} style={{
+      background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20,
+      display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'Inter, sans-serif'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: theme.ink }}>{agreement.title}</div>
+          <div style={{ marginTop: 4, fontSize: 13, color: theme.inkSoft }}>{agreement.intent}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            background: active ? theme.statusSoft : theme.surface2, color: active ? theme.status : theme.inkSoft,
+            padding: '6px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600
+          }}>{active ? agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant' : agreement.status}</span>
+          {active && <button onClick={() => {
+            if (window.confirm('Cancel this active intent? Sera will stop starting new actions immediately.')) socket?.emit('autonomy-agreements:revoke', agreement.id);
+          }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.inkFaint, padding: 6 }} title="Cancel active intent"><Trash2 size={16} /></button>}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 8, fontSize: 13, color: theme.inkSoft }}>
+        {agreement.lastActionSummary && <div><strong style={{ color: theme.ink }}>Last action: </strong>{agreement.lastActionSummary}</div>}
+        {agreement.nextActionSummary && <div><strong style={{ color: theme.ink }}>Monitoring: </strong>{agreement.nextActionSummary}</div>}
+        <div><strong style={{ color: theme.ink }}>Agreement: </strong>{new Date(agreement.createdAt).toLocaleString()}</div>
+      </div>
     </div>
   );
 }

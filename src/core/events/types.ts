@@ -57,6 +57,10 @@ export const EventTypes = {
   GOVERNANCE_OUTCOME_RECORDED: 'governance.outcome.recorded',
   GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
 
+  // Autonomy Domain
+  AUTONOMY_AGREEMENT_ACTIVATED: 'autonomy.agreement.activated',
+  AUTONOMY_AGREEMENT_REVOKED: 'autonomy.agreement.revoked',
+
   // Memory Layer
   MEMORY_PROPOSAL_REQUESTED: 'memory.proposal.requested',
   MEMORY_ITEM_MUTATED: 'memory.item.mutated',

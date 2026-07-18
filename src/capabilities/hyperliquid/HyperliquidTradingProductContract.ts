@@ -2,13 +2,14 @@ import { DomainProductContract } from '../../core/products/DomainProductContract
 
 export const HyperliquidTradingProductContract: DomainProductContract = {
   id: 'hyperliquid-trading',
-  capabilities: ['HYPERLIQUID_MARKET_SUMMARY', 'HYPERLIQUID_CANDLES'],
+  capabilities: ['HYPERLIQUID_MARKET_SUMMARY', 'HYPERLIQUID_CANDLES', 'PAPER_TRADE'],
   intentRoutes: {
     HYPERLIQUID_MARKET_SUMMARY: 'OPERATIONAL',
     HYPERLIQUID_CANDLES: 'OPERATIONAL',
+    PAPER_TRADE: 'OPERATIONAL',
     HYPERLIQUID_RESEARCH: 'COMPLEX',
     HYPERLIQUID_PLACE_ORDER: 'HIGH_RISK'
   },
   liveTradingEnabled: false,
-  requiresHumanApproval: { HYPERLIQUID_PLACE_ORDER: true }
+  requiresExplicitAuthority: { HYPERLIQUID_PLACE_ORDER: true }
 };

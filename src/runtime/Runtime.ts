@@ -46,12 +46,15 @@ import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
+import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
+import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { DomainProductContractRegistry } from '../core/products/DomainProductContractRegistry';
 import { HyperliquidTradingProductContract } from '../capabilities/hyperliquid/HyperliquidTradingProductContract';
+import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';
@@ -130,7 +133,8 @@ export class Runtime {
     dispatcher?: ExecutionDispatcher,
     memoryStore?: IWorkingMemory,
     chatHistoryStore?: any,
-    swarmCoordinator?: SwarmCoordinator
+    swarmCoordinator?: SwarmCoordinator,
+    private readonly autonomyAgreementStore?: AutonomyAgreementStore
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
     this.productContracts.register(HyperliquidTradingProductContract);
@@ -215,11 +219,13 @@ export class Runtime {
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
     const hyperliquidCap = new HyperliquidMarketDataCapability();
+    const paperTradingCap = new PaperTradingCapability();
+    const autonomyAgreementCap = new AutonomyAgreementCapability();
     this.productContracts.assertCapabilitiesAvailable(
       HyperliquidTradingProductContract.id,
-      hyperliquidCap.getTools().map(tool => tool.name)
+      [...hyperliquidCap.getTools(), ...paperTradingCap.getTools()].map(tool => tool.name)
     );
-    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools()]);
+    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools(), ...paperTradingCap.getTools(), ...autonomyAgreementCap.getTools()]);
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
     
@@ -264,7 +270,7 @@ export class Runtime {
     const routingPolicy = new CapabilityRoutingPolicy();
     const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy, globalEventBus);
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, modelOrchestrator, options?.sessionId || 'default');
+    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, modelOrchestrator, options?.sessionId || 'default', this.autonomyAgreementStore);
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, Orchestrator, and Cognitive Engines Initialized');
   }
 
