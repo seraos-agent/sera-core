@@ -3,8 +3,10 @@ import * as path from 'node:path';
 
 export class EpisodicMemoryReader {
   private filePath: string;
+  private readonly persistLocally: boolean;
 
-  constructor(sessionId: string = 'default') {
+  constructor(sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'episodic_memory.jsonl');
   }
 
@@ -13,6 +15,7 @@ export class EpisodicMemoryReader {
    * If the file doesn't exist or is empty, returns an empty array.
    */
   public readLastEpisodes(count: number): any[] {
+    if (!this.persistLocally) return [];
     if (!fs.existsSync(this.filePath)) {
       return [];
     }

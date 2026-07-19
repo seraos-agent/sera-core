@@ -10,9 +10,11 @@ export class WorldStateService {
   private basePath: string;
   private persistPath: string;
   private eventBus: EventEmitter;
+  private readonly persistLocally: boolean;
 
-  constructor(eventBus: EventEmitter, sessionId: string = 'dev') {
+  constructor(eventBus: EventEmitter, sessionId: string = 'dev', options: { persistLocally?: boolean } = {}) {
     this.eventBus = eventBus;
+    this.persistLocally = options.persistLocally ?? true;
     this.state = this.getDefaultState();
     
     this.basePath = path.join(process.cwd(), '.data');
@@ -77,6 +79,7 @@ export class WorldStateService {
   }
 
   private loadPersistedData() {
+    if (!this.persistLocally) return;
     try {
       if (fs.existsSync(this.persistPath)) {
         const data = fs.readFileSync(this.persistPath, 'utf8');
@@ -98,6 +101,7 @@ export class WorldStateService {
   }
 
   private savePersistedData() {
+    if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.persistPath);
       if (!fs.existsSync(dir)) {

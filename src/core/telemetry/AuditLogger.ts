@@ -6,15 +6,17 @@ import { EventTypes } from '../events/types';
 export class AuditLogger {
   private logPath: string;
   private readonly RETENTION_DAYS = 30;
+  private readonly persistLocally: boolean;
 
-  constructor(private eventBus: EventEmitter) {
+  constructor(private eventBus: EventEmitter, options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     const dataDir = path.join(process.cwd(), '.data');
-    if (!fs.existsSync(dataDir)) {
+    if (this.persistLocally && !fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.logPath = path.join(dataDir, 'audit.log');
     this.setupListeners();
-    this.cleanupOldLogs();
+    if (this.persistLocally) this.cleanupOldLogs();
   }
 
   private setupListeners() {
@@ -67,6 +69,7 @@ export class AuditLogger {
   }
 
   private writeLog(type: string, payload: any) {
+    if (!this.persistLocally) return;
     const sanitizedPayload = this.stripPII(payload);
     const logEntry = {
       timestamp: new Date().toISOString(),

@@ -4,7 +4,9 @@ import { WorldStateService } from '../core/world-state/WorldStateService';
 import { EventTypes } from '../core/events/types';
 import { IWorkingMemory } from '../core/memory/IWorkingMemory';
 import { WorkingMemory } from '../memory/WorkingMemory';
-import { FileMemoryPersistence } from '../memory/persistence/FileMemoryPersistence';
+import { IMemoryPersistence } from '../core/memory/IMemoryPersistence';
+import { MemoryVaultDescriptor } from '../core/memory/MemoryVault';
+import { createMemoryPersistence } from '../memory/persistence/MemoryPersistenceFactory';
 import { GoalBridge } from '../runtime/GoalBridge';
 import { ChatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { ObservationStore } from '../core/perception/ObservationStore';
@@ -51,6 +53,7 @@ import { CommunicationBridge } from '../capabilities/communication/Communication
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { SeraUserContext } from '../core/identity/types';
+import { serverConfig } from './config';
 
 export class SeraAgentInstance {
   public sessionId: string;
@@ -61,7 +64,8 @@ export class SeraAgentInstance {
   public chatHistoryStore!: ChatHistoryStore;
   public observationStore!: ObservationStore;
   public memoryStore!: IWorkingMemory;
-  public persistence!: FileMemoryPersistence;
+  public persistence!: IMemoryPersistence;
+  public memoryVault!: MemoryVaultDescriptor;
   public worldStateService!: WorldStateService;
   public triggerStore!: InMemoryTriggerStore;
   public triggerEngine!: TriggerEngine;
@@ -108,20 +112,28 @@ export class SeraAgentInstance {
   private initialize() {
     console.log(`[SeraAgentInstance] Initializing Agent OS for sessionId: ${this.sessionId}`);
 
-    this.chatHistoryStore = new ChatHistoryStore(this.sessionId);
     this.observationStore = new ObservationStore(100);
     this.memoryStore = new WorkingMemory(this.eventBus);
     this.memoryIngress = new MemoryIngress(this.eventBus, this.memoryStore);
     this.metricsStore = new InMemoryMetricsStore();
     this.metricsAggregator = new MetricsAggregator(this.eventBus, this.metricsStore);
     
-    // Derived key mock for this scope (32-bytes hex) based on "sign-to-unlock" pattern discussed.
-    const mockDerivedWalletKey = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
-    this.persistence = new FileMemoryPersistence(this.sessionId, mockDerivedWalletKey);
+    // The fixed key remains available only to support isolated local-development
+    // fixtures. Production defaults to runtime-only memory and never uses it.
+    const developmentFixtureKey = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    const memorySelection = createMemoryPersistence({
+      sessionId: this.sessionId,
+      environment: serverConfig.environment,
+      mode: serverConfig.memoryPersistenceMode,
+      developmentEncryptionKey: developmentFixtureKey,
+    });
+    this.persistence = memorySelection.persistence;
+    this.memoryVault = memorySelection.vault;
+    const persistLocally = this.memoryVault.mode === 'LOCAL_DEVELOPMENT';
 
-    this.worldStateService = new WorldStateService(this.eventBus, this.sessionId);
+    this.chatHistoryStore = new ChatHistoryStore(this.sessionId, { persistLocally });
     
-    this.triggerStore = new InMemoryTriggerStore(this.sessionId);
+    this.triggerStore = new InMemoryTriggerStore(this.sessionId, { persistLocally });
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
     (globalThis as any).__triggerEngine = this.triggerEngine;
     
@@ -213,16 +225,24 @@ export class SeraAgentInstance {
       this.memoryStore,
       this.chatHistoryStore,
       swarmCoordinator,
-      this.autonomyAgreementStore
+      this.autonomyAgreementStore,
+      persistLocally
     );
 
-    this.runtime.worldStateService = this.worldStateService;
-    this.runtime.setGlobalEventBus(this.eventBus, { sessionId: this.sessionId });
+    this.runtime.setGlobalEventBus(this.eventBus, {
+      sessionId: this.sessionId,
+      persistUserData: persistLocally,
+      // MCP child processes are integration infrastructure, not part of an
+      // isolated kernel test. Keeping them out of tests prevents orphaned npx
+      // processes and makes shutdown deterministic.
+      disableMcp: process.env.NODE_ENV === 'test',
+    });
+    this.worldStateService = this.runtime.worldStateService;
 
     this.temporalClockService = new TemporalClockService(this.eventBus, 10000);
     this.cognitiveCompressor = new CognitiveCompressor(this.eventBus);
-    const auditLogger = new AuditLogger(this.eventBus);
-    this.experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId);
+    const auditLogger = new AuditLogger(this.eventBus, { persistLocally });
+    this.experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId, { persistLocally });
     const episodicSemanticBridge = new EpisodicSemanticBridge(this.eventBus, this.memoryStore);
 
     this.capabilityCatalog = new CapabilityCatalog();

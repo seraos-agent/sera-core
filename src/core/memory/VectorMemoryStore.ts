@@ -16,13 +16,19 @@ export interface SearchResult {
 export class VectorMemoryStore {
   private filePath: string;
   private records: VectorRecord[] = [];
+  private readonly persistLocally: boolean;
 
-  constructor(sessionId: string = 'default') {
+  constructor(sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'vector_memory.json');
     this.load();
   }
 
   private load(): void {
+    if (!this.persistLocally) {
+      this.records = [];
+      return;
+    }
     if (!fs.existsSync(this.filePath)) {
       this.records = [];
       return;
@@ -37,6 +43,7 @@ export class VectorMemoryStore {
   }
 
   private save(): void {
+    if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

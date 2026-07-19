@@ -1,16 +1,54 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import type { WalletState } from "./useWallet";
 import type { CognitiveObservationPayload } from "../../../src/core/events/types";
+import type { MemoryVaultDescriptor } from "../../../src/core/memory/MemoryVault";
+import { deviceMemoryVault, deviceVaultDescriptor, type DeviceVaultDescriptor } from '../storage/DeviceMemoryVault';
 
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
-  setMode: (mode: "light" | "dark") => void
+  setMode: (mode: "light" | "dark") => void,
+  deviceScope: string = 'anonymous'
 ) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [observations, setObservations] = useState<CognitiveObservationPayload[]>([]);
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
+  const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
+  const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
+  const initialServerHistoryReceived = useRef(false);
+  const deviceVaultWriteQueue = useRef(Promise.resolve());
+  const skipNextDeviceVaultWrite = useRef(false);
+
+  const localChatKey = `chat-history:${deviceScope}`;
+
+  useEffect(() => {
+    let active = true;
+    setDeviceVault(deviceVaultDescriptor('CHECKING'));
+    void deviceMemoryVault.get<any[]>(localChatKey)
+      .then((history) => {
+        if (!active) return;
+        setMessages((previous) => previous.length > 0 ? previous : (history ?? []));
+        setDeviceVault(deviceVaultDescriptor('ACTIVE'));
+      })
+      .catch(() => {
+        if (active) setDeviceVault(deviceVaultDescriptor('UNAVAILABLE'));
+      });
+    return () => { active = false; };
+  }, [localChatKey]);
+
+  useEffect(() => {
+    if (deviceVault.status !== 'ACTIVE') return;
+    if (skipNextDeviceVaultWrite.current) {
+      skipNextDeviceVaultWrite.current = false;
+      return;
+    }
+    const durableMessages = messages.filter((message) => message.type !== 'activity' && !message.streaming);
+    deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
+      .catch(() => undefined)
+      .then(() => deviceMemoryVault.set(localChatKey, durableMessages))
+      .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
+  }, [messages, localChatKey, deviceVault.status]);
 
   const streamReply = useCallback((fullText: string, id: number, actionLinks?: any[]) => {
     setCurrentActivity(null); // Clear activity when starting to stream reply
@@ -31,6 +69,17 @@ export function useSocket(
     }
   }, [socket]);
 
+  const deleteDeviceMemory = useCallback(() => {
+    // Do not immediately recreate an empty local record after deleting it.
+    skipNextDeviceVaultWrite.current = true;
+    setMessages([]);
+    deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
+      .catch(() => undefined)
+      .then(() => deviceMemoryVault.delete(localChatKey))
+      .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
+    socket?.emit('chat:clear');
+  }, [socket, localChatKey]);
+
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
@@ -38,10 +87,19 @@ export function useSocket(
         : window.location.origin.replace(/^http/, 'ws'));
     
     const newSocket = io(wsUrl);
+    initialServerHistoryReceived.current = false;
     setSocket(newSocket);
 
     newSocket.on("chat:history", (history: any[]) => {
-      setMessages(history);
+      const isInitialHistory = !initialServerHistoryReceived.current;
+      initialServerHistoryReceived.current = true;
+      setMessages((previous) => isInitialHistory && previous.length > 0 ? previous : history);
+      if (!isInitialHistory && history.length === 0) {
+        deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
+          .catch(() => undefined)
+          .then(() => deviceMemoryVault.delete(localChatKey))
+          .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
+      }
     });
 
     newSocket.on("observations:history", (history: any[]) => {
@@ -108,8 +166,15 @@ export function useSocket(
       }));
     });
 
-    return () => { newSocket.close(); };
-  }, [streamReply, setWalletState, setMode]);
+    newSocket.on('memory:vault_status', (data: MemoryVaultDescriptor) => {
+      setMemoryVault(data);
+    });
+
+    return () => {
+      newSocket.off('memory:vault_status');
+      newSocket.close();
+    };
+  }, [streamReply, setWalletState, setMode, localChatKey]);
 
   return {
     socket,
@@ -119,6 +184,9 @@ export function useSocket(
     setObservations,
     streamReply,
     currentActivity,
-    cancelChat
+    cancelChat,
+    memoryVault,
+    deviceVault,
+    deleteDeviceMemory,
   };
 }

@@ -134,7 +134,8 @@ export class Runtime {
     memoryStore?: IWorkingMemory,
     chatHistoryStore?: any,
     swarmCoordinator?: SwarmCoordinator,
-    private readonly autonomyAgreementStore?: AutonomyAgreementStore
+    private readonly autonomyAgreementStore?: AutonomyAgreementStore,
+    private readonly persistUserData: boolean = true
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
     this.productContracts.register(HyperliquidTradingProductContract);
@@ -194,7 +195,8 @@ export class Runtime {
       this.feedbackPipeline,
       this.executionTraceStore,
       this.memoryStore,
-      this.eventBus
+      this.eventBus,
+      this.persistUserData
     );
 
     if (this.executionTraceStore) {
@@ -212,8 +214,9 @@ export class Runtime {
 
   // Replaced by ExecutionDispatcher's direct listening
 
-  public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean, sessionId?: string }): void {
-    this.worldStateService = new WorldStateService(globalEventBus);
+  public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean, sessionId?: string, persistUserData?: boolean }): void {
+    const persistUserData = options?.persistUserData ?? this.persistUserData;
+    this.worldStateService = new WorldStateService(globalEventBus, options?.sessionId || 'default', { persistLocally: persistUserData });
     
     this.capabilityCatalog = new CapabilityCatalog();
     const walletCap = new WalletToolCapability();
@@ -270,7 +273,17 @@ export class Runtime {
     const routingPolicy = new CapabilityRoutingPolicy();
     const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy, globalEventBus);
 
-    this.dialogueEngine = new DialogueEngine(globalEventBus, this.worldStateService, this.capabilityCatalog, this.memoryStore, this.chatHistoryStore, modelOrchestrator, options?.sessionId || 'default', this.autonomyAgreementStore);
+    this.dialogueEngine = new DialogueEngine(
+      globalEventBus,
+      this.worldStateService,
+      this.capabilityCatalog,
+      this.memoryStore,
+      this.chatHistoryStore,
+      modelOrchestrator,
+      options?.sessionId || 'default',
+      this.autonomyAgreementStore,
+      { persistLocally: persistUserData }
+    );
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, Orchestrator, and Cognitive Engines Initialized');
   }
 

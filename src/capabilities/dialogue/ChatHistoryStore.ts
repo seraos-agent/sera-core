@@ -19,8 +19,10 @@ export class ChatHistoryStore {
   private basePath: string;
   private filePath: string;
   private state: ChatHistoryState;
+  private readonly persistLocally: boolean;
 
-  constructor(sessionId: string) {
+  constructor(sessionId: string, options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     this.basePath = path.join(process.cwd(), '.data');
     const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
     this.filePath = path.join(this.basePath, `chat_history_${safeId}.json`);
@@ -28,6 +30,7 @@ export class ChatHistoryStore {
   }
 
   private load(): ChatHistoryState {
+    if (!this.persistLocally) return { uiMessages: [] };
     try {
       if (fs.existsSync(this.filePath)) {
         const data = fs.readFileSync(this.filePath, 'utf-8');
@@ -47,6 +50,7 @@ export class ChatHistoryStore {
   }
 
   private save(): void {
+    if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {

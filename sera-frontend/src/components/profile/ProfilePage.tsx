@@ -1,7 +1,9 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { ArrowLeft, BadgeCheck, CircleUserRound, CreditCard, Link2, Palette, ShieldCheck, Wallet } from 'lucide-react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { ArrowLeft, BadgeCheck, CircleUserRound, Cloud, CreditCard, HardDrive, Link2, Palette, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
+import type { MemoryVaultDescriptor } from '../../../../src/core/memory/MemoryVault';
+import type { DeviceVaultDescriptor } from '../../storage/DeviceMemoryVault';
 
 interface ProfilePageProps {
   theme: ThemeType;
@@ -14,6 +16,9 @@ interface ProfilePageProps {
   onLinkWallet?: () => void;
   isLinkingWallet?: boolean;
   onUpgradePlan?: (amountUsdc: number) => void;
+  memoryVault?: MemoryVaultDescriptor | null;
+  deviceVault?: DeviceVaultDescriptor;
+  onDeleteDeviceMemory?: () => void;
   isMobileView?: boolean;
 }
 
@@ -45,8 +50,12 @@ export function ProfilePage({
   onLinkWallet,
   isLinkingWallet,
   onUpgradePlan,
+  memoryVault,
+  deviceVault,
+  onDeleteDeviceMemory,
   isMobileView,
 }: ProfilePageProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const pad = isMobileView ? 20 : 40;
   const connectedAddress = walletState.fullAddress;
   const agentAddress = walletState.vaultAddress;
@@ -143,6 +152,71 @@ export function ProfilePage({
             </div>
           </Section>
 
+          <Section title="Memory & data ownership" description="Your cognitive memory follows the storage mode shown here; SERA does not silently copy it to a server vault.">
+            <div style={{ ...cardStyle, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', maxWidth: 540 }}>
+                <ShieldCheck size={18} color={memoryVault?.status === 'ACTIVE' ? theme.status : theme.inkSoft} style={{ marginTop: 1, flexShrink: 0 }} />
+                <div>
+                  <div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>{memoryVault?.storageLabel || 'Checking memory ownership…'}</div>
+                  <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 4 }}>{memoryVault?.retentionLabel || 'Waiting for Core status'}</div>
+                  {memoryVault?.detail && <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.5, margin: '10px 0 0' }}>{memoryVault.detail}</p>}
+                </div>
+              </div>
+              <span style={{ color: memoryVault?.autonomyReady ? theme.status : theme.inkSoft, background: memoryVault?.autonomyReady ? theme.statusSoft : theme.surface, border: `1px solid ${theme.border}`, borderRadius: 999, padding: '5px 8px', fontSize: 10, fontWeight: 700 }}>
+                {memoryVault?.autonomyReady ? 'OFFLINE AUTONOMY READY' : 'OFFLINE MEMORY NOT AVAILABLE'}
+              </span>
+            </div>
+            {memoryVault?.mode === 'USER_CLOUD' && memoryVault.status === 'CONNECTION_REQUIRED' && (
+              <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.5, margin: 0 }}>Connect a supported user-owned cloud vault before allowing an autonomous agent to retain long-term memory while your device is offline.</p>
+            )}
+            <div style={{ ...cardStyle, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', maxWidth: 540 }}>
+                <HardDrive size={18} color={deviceVault?.status === 'ACTIVE' ? theme.status : theme.inkSoft} style={{ marginTop: 1, flexShrink: 0 }} />
+                <div>
+                  <div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>{deviceVault?.label || 'Checking local chat continuity…'}</div>
+                  <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.5, margin: '6px 0 0' }}>{deviceVault?.detail || 'Verifying encrypted browser storage.'}</p>
+                </div>
+              </div>
+              <span style={{ color: deviceVault?.status === 'ACTIVE' ? theme.status : theme.inkSoft, background: deviceVault?.status === 'ACTIVE' ? theme.statusSoft : theme.surface, border: `1px solid ${theme.border}`, borderRadius: 999, padding: '5px 8px', fontSize: 10, fontWeight: 700 }}>
+                {deviceVault?.status === 'ACTIVE' ? 'THIS DEVICE' : 'NOT AVAILABLE'}
+              </span>
+            </div>
+            <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>What is stored on this device</div>
+                <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>Only encrypted chat continuity. Raw messages do not become SERA memory automatically; validated episodic and semantic memory are not stored here yet.</div>
+              </div>
+              <button
+                onClick={() => setIsDeleteDialogOpen(true)}
+                disabled={!onDeleteDeviceMemory || deviceVault?.status !== 'ACTIVE'}
+                style={{ ...secondaryButton, color: '#D04646', borderColor: theme.isDark ? '#6D3434' : '#F0CACA', opacity: deviceVault?.status === 'ACTIVE' ? 1 : 0.55, cursor: deviceVault?.status === 'ACTIVE' ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <Trash2 size={15} /> Delete local chat
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileView ? '1fr' : '1fr 1fr', gap: 12 }}>
+              <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: theme.accentSoft, color: theme.accent }}><HardDrive size={17} /></div>
+                    <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>Google Drive</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Future user-owned memory vault</div></div>
+                  </div>
+                  <span style={{ color: theme.inkSoft, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 999, padding: '5px 8px', fontSize: 10, fontWeight: 700 }}>COMING SOON</span>
+                </div>
+                <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>When enabled, you will authorize your own Google account. SERA will store only validated memory projections in a dedicated application vault, with access you can revoke.</p>
+                <button disabled title="Google Drive connection is not available yet" style={{ ...secondaryButton, width: 'fit-content', opacity: 0.58, cursor: 'not-allowed' }}>Connect Google Drive</button>
+              </div>
+              <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: theme.surface, color: theme.inkSoft }}><Cloud size={17} /></div>
+                  <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>More user-owned clouds</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Provider choice remains yours</div></div>
+                </div>
+                <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>Additional options such as S3-compatible storage, R2, or a private Supabase project will be added through the same revocable-vault contract.</p>
+                <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 'auto' }}>No provider is connected yet.</div>
+              </div>
+            </div>
+          </Section>
+
           <Section title="Preferences">
             <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -196,6 +270,23 @@ export function ProfilePage({
           </Section>
         </div>
       </main>
+
+      {isDeleteDialogOpen && (
+        <div role="presentation" onMouseDown={() => setIsDeleteDialogOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(10, 13, 18, 0.5)', display: 'grid', placeItems: 'center', padding: 20 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-local-memory-title" onMouseDown={(event) => event.stopPropagation()} style={{ width: 'min(100%, 440px)', border: `1px solid ${theme.border}`, borderRadius: 18, background: theme.surface2, boxShadow: theme.shellShadow, padding: isMobileView ? 20 : 24, color: theme.ink }}>
+            <div style={{ width: 42, height: 42, borderRadius: 13, display: 'grid', placeItems: 'center', color: '#D04646', background: theme.isDark ? '#3B2222' : '#FFF0F0' }}><Trash2 size={20} /></div>
+            <h2 id="delete-local-memory-title" style={{ margin: '16px 0 0', fontSize: 20, letterSpacing: -0.3 }}>Delete local chat?</h2>
+            <p style={{ color: theme.inkSoft, fontSize: 13, lineHeight: 1.6, margin: '9px 0 0' }}>This removes chat continuity for this account from this browser and clears the current runtime chat. It does not delete cognitive memory because raw chat is not stored as SERA memory.</p>
+            <div style={{ marginTop: 16, padding: '12px 13px', borderRadius: 11, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.inkSoft, fontSize: 12, lineHeight: 1.55 }}>
+              Your personal wallet, SERA Agent Wallet, account identity, and any future cloud vault are not affected.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 22, flexWrap: 'wrap' }}>
+              <button onClick={() => setIsDeleteDialogOpen(false)} style={secondaryButton}>Keep memory</button>
+              <button onClick={() => { onDeleteDeviceMemory?.(); setIsDeleteDialogOpen(false); }} style={{ border: 'none', borderRadius: 9, padding: '9px 12px', background: '#C83D3D', color: '#FFF', fontSize: 13, fontWeight: 650, cursor: 'pointer' }}>Delete local chat</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

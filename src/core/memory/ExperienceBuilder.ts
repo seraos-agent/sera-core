@@ -14,6 +14,7 @@ export class ExperienceBuilder {
   private stopped = false;
   private llm: QwenAdapter;
   private vectorStore: VectorMemoryStore;
+  private readonly persistLocally: boolean;
   private readonly episodeEventTypes = [
     EventTypes.DIALOGUE_USER_OBSERVED,
     EventTypes.DIALOGUE_PROPOSAL_GENERATED,
@@ -25,14 +26,15 @@ export class ExperienceBuilder {
   ];
   private readonly handleEpisodeEvent = (event: StandardEvent) => this.handleEvent(event);
 
-  constructor(private eventBus: EventEmitter, private sessionId: string = 'default') {
+  constructor(private eventBus: EventEmitter, private sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     const dataDir = path.join(process.cwd(), '.data', 'sessions', sessionId);
-    if (!fs.existsSync(dataDir)) {
+    if (this.persistLocally && !fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.logPath = path.join(dataDir, 'episodic_memory.jsonl');
     this.llm = new QwenAdapter();
-    this.vectorStore = new VectorMemoryStore(sessionId);
+    this.vectorStore = new VectorMemoryStore(sessionId, { persistLocally: this.persistLocally });
     this.setupListeners();
     console.log('[ExperienceBuilder] Initialized. Listening for episodes.');
   }
@@ -90,34 +92,38 @@ export class ExperienceBuilder {
       evidence
     };
 
-    fs.appendFile(this.logPath, JSON.stringify(record) + '\n', async (err) => {
-      if (err) console.error(`[ExperienceBuilder] Failed to write record: ${err.message}`);
-      else {
-        console.log(`[ExperienceBuilder] Episode consolidated: ${summary}`);
-        
-        // Generate and store embedding
-        try {
-          const vector = await this.llm.embed(summary);
-          this.vectorStore.insert(record.id, vector, {
-            summary,
-            type: record.type,
-            timestamp: record.timestamp,
-            evidenceIds: record.evidence.map(evidence => evidence.referenceId)
-          });
-        } catch (embedErr) {
-          console.error('[ExperienceBuilder] Failed to generate embedding for vector store', embedErr);
-        }
+    if (!this.persistLocally) {
+      void this.completeConsolidatedRecord(record);
+      return;
+    }
 
-        // Emit for downstream bridges (e.g., EpisodicSemanticBridge)
-        this.eventBus.emit('system.episode.consolidated', {
-          id: `evt-${Date.now()}`,
-          type: 'system.episode.consolidated',
-          source: 'ExperienceBuilder',
-          payload: record,
-          timestamp: Date.now()
-        } as StandardEvent);
-      }
+    fs.appendFile(this.logPath, JSON.stringify(record) + '\n', (err) => {
+      if (err) console.error(`[ExperienceBuilder] Failed to write record: ${err.message}`);
+      else void this.completeConsolidatedRecord(record);
     });
+  }
+
+  private async completeConsolidatedRecord(record: ExperienceRecord): Promise<void> {
+    console.log(`[ExperienceBuilder] Episode consolidated: ${record.summary}`);
+    try {
+      const vector = await this.llm.embed(record.summary);
+      this.vectorStore.insert(record.id, vector, {
+        summary: record.summary,
+        type: record.type,
+        timestamp: record.timestamp,
+        evidenceIds: record.evidence.map(evidence => evidence.referenceId)
+      });
+    } catch (embedErr) {
+      console.error('[ExperienceBuilder] Failed to generate embedding for vector store', embedErr);
+    }
+
+    this.eventBus.emit('system.episode.consolidated', {
+      id: `evt-${Date.now()}`,
+      type: 'system.episode.consolidated',
+      source: 'ExperienceBuilder',
+      payload: record,
+      timestamp: Date.now()
+    } as StandardEvent);
   }
 
   /** Stop delayed consolidation and detach from the session event bus. */

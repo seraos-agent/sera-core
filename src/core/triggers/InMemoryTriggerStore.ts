@@ -6,8 +6,10 @@ export class InMemoryTriggerStore implements TriggerStore {
   private triggers: Map<string, Trigger> = new Map();
   private basePath: string;
   private filePath: string;
+  private readonly persistLocally: boolean;
 
-  constructor(sessionId: string = 'dev') {
+  constructor(sessionId: string = 'dev', options: { persistLocally?: boolean } = {}) {
+    this.persistLocally = options.persistLocally ?? true;
     this.basePath = path.join(process.cwd(), '.data');
     const safeId = sessionId.toLowerCase().replace(/[^a-z0-9]/g, '');
     this.filePath = path.join(this.basePath, `triggers_${safeId}.json`);
@@ -15,6 +17,7 @@ export class InMemoryTriggerStore implements TriggerStore {
   }
 
   private load(): void {
+    if (!this.persistLocally) return;
     try {
       if (fs.existsSync(this.filePath)) {
         const data = fs.readFileSync(this.filePath, 'utf-8');
@@ -27,6 +30,7 @@ export class InMemoryTriggerStore implements TriggerStore {
   }
 
   private persist(): void {
+    if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

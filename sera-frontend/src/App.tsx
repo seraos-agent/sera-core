@@ -86,7 +86,12 @@ function InnerApp() {
   const [lastViewedCount, setLastViewedCount] = useState(0);
 
   const { walletState, setWalletState } = useWallet();
-  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
+  const { isConnected, address } = useAccount();
+  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory } = useSocket(
+    setWalletState,
+    setMode,
+    address?.toLowerCase() ?? 'anonymous',
+  );
 
   const theme = THEME[mode];
 
@@ -138,7 +143,6 @@ function InnerApp() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const { isConnected, address } = useAccount();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { open } = useWeb3Modal();
@@ -359,6 +363,9 @@ function InnerApp() {
               onUpgradePlan={(amountUsdc) => {
                 if (socket && address) socket.emit('billing:topup_dev_mock', { address: address.toLowerCase(), amountUsdc });
               }}
+              memoryVault={memoryVault}
+              deviceVault={deviceVault}
+              onDeleteDeviceMemory={deleteDeviceMemory}
             /> : currentView === "wallet" ? (
               <WalletPage
                 theme={theme}

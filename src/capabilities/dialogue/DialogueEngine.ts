@@ -149,22 +149,24 @@ export class DialogueEngine {
   
   private consentedUsers: Set<string> = new Set();
   private readonly CONSENT_FILE_PATH = path.join(process.cwd(), '.data', 'consented_users.json');
+  private readonly persistLocally: boolean;
 
   private chatHistoryStore: ChatHistoryStore;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore, options: { persistLocally?: boolean } = {}) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
     this.memoryStore = memoryStore;
     this.chatHistoryStore = chatHistoryStore;
     this.orchestrator = orchestrator;
+    this.persistLocally = options.persistLocally ?? true;
     this.workerRegistry.register({ id: 'dialogue-ui', lane: 'DETERMINISTIC_UI', supportedWorkClasses: ['INSTANT_UI'] });
     this.workerRegistry.register({ id: 'dialogue-model', lane: 'DIALOGUE', supportedWorkClasses: ['CONVERSATION'] });
-    const vectorStore = new VectorMemoryStore(sessionId);
+    const vectorStore = new VectorMemoryStore(sessionId, { persistLocally: this.persistLocally });
     this.memoryQueryService = new MemoryQueryService(
       memoryStore,
-      new EpisodicMemoryReader(sessionId),
+      new EpisodicMemoryReader(sessionId, { persistLocally: this.persistLocally }),
       vectorStore,
       new QwenAdapter('text-embedding-v3')
     );
@@ -186,6 +188,7 @@ export class DialogueEngine {
   }
 
   private loadConsentedUsers(): void {
+    if (!this.persistLocally) return;
     try {
       if (fs.existsSync(this.CONSENT_FILE_PATH)) {
         const data = fs.readFileSync(this.CONSENT_FILE_PATH, 'utf-8');
@@ -200,6 +203,7 @@ export class DialogueEngine {
   }
 
   private saveConsentedUsers(): void {
+    if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.CONSENT_FILE_PATH);
       if (!fs.existsSync(dir)) {

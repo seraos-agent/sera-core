@@ -94,8 +94,9 @@ io.on('connection', (socket: Socket) => {
   const sendInitialState = () => {
     const walletState = instance.worldStateService.getWalletState();
     if (walletState && walletState.address) {
-      socket.emit('wallet:update', walletState);
+    socket.emit('wallet:update', walletState);
     }
+    socket.emit('memory:vault_status', instance.memoryVault);
     socket.emit('chat:history', instance.chatHistoryStore.getUiMessages());
     socket.emit('observations:history', instance.observationStore.getAll());
     socket.emit('automations:update', instance.triggerStore.getAll());

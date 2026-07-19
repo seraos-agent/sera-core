@@ -44,12 +44,13 @@ export class ExecutionCoordinator {
     private feedbackPipeline: any | undefined,
     private executionTraceStore: any | undefined,
     private memoryStore: IWorkingMemory,
-    eventBus?: EventEmitter
+    eventBus?: EventEmitter,
+    persistLocally: boolean = true
   ) {
     this.eventBus = eventBus || new EventEmitter();
     this.workerPool = new WorkerPool();
     this.scheduler = new ExecutionScheduler(this.workerPool, this.eventBus);
-    this.checkpointStore = new CheckpointStore();
+    this.checkpointStore = new CheckpointStore({ persistLocally });
     this.supervisor = new ExecutionSupervisor(this.eventBus, this.workerPool, this.scheduler.getActiveInstances());
     
     // Register Default Worker
