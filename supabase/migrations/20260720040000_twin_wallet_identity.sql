@@ -1,6 +1,6 @@
 -- SERA Twin Wallet Identity foundation. Execute through Supabase migrations.
--- The Auth user ID is the only stable internal primary key; wallet addresses
--- remain verified public identities and can be replaced or added over time.
+-- SERA owns the stable internal user ID; provider subjects and wallet addresses
+-- remain verified identities that can be replaced or added over time.
 
 create table if not exists public.sera_users (
   id uuid primary key references auth.users(id) on delete cascade,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ReownWalletIdentityService } from '../src/core/identity/ReownWalletIdentityService';
+import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../src/core/identity/ReownWalletIdentityService';
 import { SupabaseRestClient } from '../src/core/persistence/SupabaseRestClient';
 
 describe('ReownWalletIdentityService', () => {
@@ -37,5 +37,35 @@ describe('ReownWalletIdentityService', () => {
     expect(first).toEqual(second);
     expect(first.personalWalletAddress).toBe('0xabc');
     expect(requests.filter(request => request.includes('/rest/v1/wallet_accounts')).length).toBe(6);
+  });
+
+  it('links a separately proven wallet only to the authenticated SERA user', async () => {
+    const identities: Array<{ user_id: string; subject: string }> = [
+      { user_id: 'sera-user-1', subject: '0xprimary' },
+    ];
+    const fetchMock: typeof fetch = async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes('auth_identities?provider=')) {
+        const identity = identities.find(entry => requestUrl.includes(encodeURIComponent(entry.subject)));
+        return new Response(JSON.stringify(identity ? [{
+          id: `identity-${identity.subject}`,
+          ...identity,
+          kind: 'EXTERNAL_WALLET',
+          provider: 'reown_wallet',
+          verified_at: new Date().toISOString(),
+        }] : []), { status: 200 });
+      }
+      if (requestUrl.includes('/rest/v1/auth_identities')) {
+        const body = JSON.parse(String(init?.body));
+        identities.push({ user_id: body.user_id, subject: body.subject });
+      }
+      return new Response('', { status: 201 });
+    };
+    const service = new ReownWalletIdentityService(new SupabaseRestClient('https://example.supabase.co', 'server-key', fetchMock));
+
+    const linked = await service.linkVerifiedWallet('sera-user-1', '0xSecondary');
+
+    expect(linked).toMatchObject({ userId: 'sera-user-1', subject: '0xsecondary' });
+    await expect(service.linkVerifiedWallet('sera-user-2', '0xSecondary')).rejects.toBeInstanceOf(WalletAlreadyLinkedError);
   });
 });

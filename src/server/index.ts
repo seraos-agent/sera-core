@@ -4,7 +4,7 @@ dotenv.config();
 import express from 'express';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
-import { isAddress, verifyMessage } from 'viem';
+import { isAddress } from 'viem';
 import { randomUUID } from 'crypto';
 import { StandardEvent, EventTypes } from '../core/events/types';
 import { App as BoltApp } from '@slack/bolt';
@@ -16,7 +16,8 @@ import { createHmac, randomBytes } from 'crypto';
 import { SeraUserContext } from '../core/identity/types';
 import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityResolver';
 import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
-import { ReownWalletIdentityService } from '../core/identity/ReownWalletIdentityService';
+import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/identity/ReownWalletIdentityService';
+import { verifyWalletSignature } from './WalletSignatureVerifier';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -26,6 +27,12 @@ interface SessionTokenPrincipal {
   userId: string;
   personalWalletAddress?: string;
   expiry: number;
+}
+
+interface WalletLinkChallenge {
+  address: string;
+  message: string;
+  expiresAt: number;
 }
 
 function generateSessionToken(principal: Omit<SessionTokenPrincipal, 'expiry'>): string {
@@ -75,6 +82,7 @@ io.on('connection', (socket: Socket) => {
   socket.data.sessionId = 'dev';
   socket.data.isAuthenticated = false;
   let instance = agentManager.getOrCreateInstance('dev');
+  let walletLinkChallenge: WalletLinkChallenge | undefined;
 
   const issueLoginChallenge = () => {
     const nonce = randomUUID();
@@ -251,11 +259,11 @@ io.on('connection', (socket: Socket) => {
           return;
         }
 
-        const isValidSignature = await verifyMessage({
-          address: address as `0x${string}`,
-          message: payload.message,
-          signature: payload.signature,
-        });
+        const isValidSignature = await verifyWalletSignature(
+          address as `0x${string}`,
+          payload.message,
+          payload.signature,
+        );
         if (!isValidSignature) {
           socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
           return;
@@ -304,6 +312,69 @@ io.on('connection', (socket: Socket) => {
     }
     
     socket.data.isAuthenticated = true;
+  });
+
+  socket.on('identity:link_wallet_challenge', (payload: { address?: string }) => {
+    if (!requireAuthenticatedSession(socket, 'identity:link_wallet_challenge', instance?.eventBus)) return;
+    if (!serverConfig.isProduction || !reownWalletIdentityService) {
+      socket.emit('identity:link_error', {
+        code: 'IDENTITY_LINKING_UNAVAILABLE',
+        message: 'Wallet linking is available after the production identity service is configured.',
+      });
+      return;
+    }
+
+    const address = payload?.address?.toLowerCase();
+    if (!address || !isAddress(address)) {
+      socket.emit('identity:link_error', { code: 'INVALID_WALLET', message: 'A valid wallet address is required.' });
+      return;
+    }
+
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    const message = `Link this wallet to your SERA account\nNonce: ${randomUUID()}\nExpires: ${new Date(expiresAt).toISOString()}`;
+    walletLinkChallenge = { address, message, expiresAt };
+    socket.emit('identity:link_wallet_challenge', { address, message, expiresAt });
+  });
+
+  socket.on('identity:link_wallet', async (payload: { address?: string; message?: string; signature?: `0x${string}` }) => {
+    if (!requireAuthenticatedSession(socket, 'identity:link_wallet', instance?.eventBus)) return;
+    if (!serverConfig.isProduction || !reownWalletIdentityService) {
+      socket.emit('identity:link_error', {
+        code: 'IDENTITY_LINKING_UNAVAILABLE',
+        message: 'Wallet linking is available after the production identity service is configured.',
+      });
+      return;
+    }
+
+    const address = payload?.address?.toLowerCase();
+    const challenge = walletLinkChallenge;
+    walletLinkChallenge = undefined; // Single-use, regardless of outcome.
+    if (!challenge || Date.now() > challenge.expiresAt || address !== challenge.address || payload.message !== challenge.message || !payload.signature) {
+      socket.emit('identity:link_error', { code: 'INVALID_LINK_PROOF', message: 'The wallet-linking request expired or is invalid. Please try again.' });
+      return;
+    }
+
+    const isValidSignature = await verifyWalletSignature(
+      address as `0x${string}`,
+      challenge.message,
+      payload.signature,
+    );
+    if (!isValidSignature) {
+      socket.emit('identity:link_error', { code: 'INVALID_LINK_PROOF', message: 'Wallet ownership could not be verified.' });
+      return;
+    }
+
+    try {
+      const identity = await reownWalletIdentityService.linkVerifiedWallet(socket.data.sessionId!, address);
+      socket.emit('identity:link_success', { address: identity.subject, kind: identity.kind });
+    } catch (error) {
+      if (error instanceof WalletAlreadyLinkedError) {
+        socket.emit('identity:link_error', { code: 'WALLET_ALREADY_LINKED', message: error.message });
+        return;
+      }
+      console.error('[Server] Wallet identity linking failed:', error);
+      socket.emit('identity:link_error', { code: 'IDENTITY_LINK_FAILED', message: 'The wallet could not be linked. Please try again.' });
+    }
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {

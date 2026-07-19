@@ -37,6 +37,10 @@ createWeb3Modal({
   wagmiConfig,
   projectId,
   themeMode: 'light',
+  // Wallet connection is infrastructure only. Asset conversion must be a
+  // governed SERA capability, never an untracked provider-modal action.
+  enableSwaps: false,
+  enableOnramp: false,
 });
 
 function useFonts() {
@@ -138,19 +142,34 @@ function InnerApp() {
   const { signMessageAsync } = useSignMessage();
   const { open } = useWeb3Modal();
   const [isBypassed, setIsBypassed] = useState(false);
+  const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
+
+  const startWalletLink = () => {
+    if (!socket || !address || isBypassed) return;
+    setWalletLinkSourceAddress(address.toLowerCase());
+    setIsAccountModalOpen(false);
+    open();
+  };
 
   useEffect(() => {
+    const normalizedAddress = address?.toLowerCase();
+    const isAwaitingLinkedWallet = Boolean(
+      walletLinkSourceAddress && normalizedAddress && normalizedAddress !== walletLinkSourceAddress,
+    );
+
     // Kapan pun address/isBypassed berubah, langsung bersihkan state UI secara lokal (Optimistic Clear)
     // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
-    setMessages([]);
-    setObservations([]);
-    setWalletState({
-      ...INITIAL_WALLET,
-      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
-      fullAddress: address || INITIAL_WALLET.fullAddress,
-      syncing: true,
-    });
-    setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
+    if (!isAwaitingLinkedWallet) {
+      setMessages([]);
+      setObservations([]);
+      setWalletState({
+        ...INITIAL_WALLET,
+        address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
+        fullAddress: address || INITIAL_WALLET.fullAddress,
+        syncing: true,
+      });
+      setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
+    }
 
     if (socket) {
       const requestChallenge = async (data: { message: string }) => {
@@ -201,22 +220,54 @@ function InnerApp() {
       const handleSubscriptionRequired = () => {
         if (address) socket.emit("billing:fetch", { address: address.toLowerCase() });
       };
+
+      const signWalletLinkChallenge = async (data: { address: string; message: string }) => {
+        if (!isAwaitingLinkedWallet || !address || data.address !== address.toLowerCase()) return;
+        try {
+          const signature = await signMessageAsync({ account: address, message: data.message });
+          socket.emit('identity:link_wallet', { address, message: data.message, signature });
+        } catch {
+          setWalletLinkSourceAddress(null);
+          setWalletState(prev => ({ ...prev, syncing: false, error: 'Wallet linking was cancelled before ownership could be verified.' }));
+        }
+      };
+
+      const handleWalletLinkSuccess = () => {
+        setWalletLinkSourceAddress(null);
+      };
+
+      const handleWalletLinkError = (error: { message?: string }) => {
+        setWalletLinkSourceAddress(null);
+        setWalletState(prev => ({ ...prev, syncing: false, error: error.message || 'The wallet could not be linked.' }));
+      };
       
       socket.on("auth:challenge", requestChallenge);
       socket.on("auth:success", handleAuthSuccess);
       socket.on("auth:error", handleAuthError);
       socket.on("subscription:required", handleSubscriptionRequired);
+      socket.on('identity:link_wallet_challenge', signWalletLinkChallenge);
+      socket.on('identity:link_success', handleWalletLinkSuccess);
+      socket.on('identity:link_error', handleWalletLinkError);
       
-      if (isConnected && address) socket.emit("auth:challenge");
+      if (isConnected && address) {
+        if (walletLinkSourceAddress) {
+          if (isAwaitingLinkedWallet) socket.emit('identity:link_wallet_challenge', { address });
+        } else {
+          socket.emit("auth:challenge");
+        }
+      }
       
       return () => {
         socket.off("auth:challenge", requestChallenge);
         socket.off("auth:success", handleAuthSuccess);
         socket.off("auth:error", handleAuthError);
         socket.off("subscription:required", handleSubscriptionRequired);
+        socket.off('identity:link_wallet_challenge', signWalletLinkChallenge);
+        socket.off('identity:link_success', handleWalletLinkSuccess);
+        socket.off('identity:link_error', handleWalletLinkError);
       };
     }
-  }, [socket, isConnected, address, isBypassed, setMessages, setObservations, signMessageAsync, setWalletState]);
+  }, [socket, isConnected, address, isBypassed, walletLinkSourceAddress, setMessages, setObservations, signMessageAsync, setWalletState]);
 
   if (!isMounted) return null;
 
@@ -297,6 +348,8 @@ function InnerApp() {
               walletState={walletState}
               socket={socket}
               isMobileView={isMobileView}
+              onLinkWallet={isBypassed ? undefined : startWalletLink}
+              isLinkingWallet={Boolean(walletLinkSourceAddress)}
               onDisconnect={() => {
                 setIsAccountModalOpen(false);
                 if (isConnected) {

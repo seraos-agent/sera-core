@@ -1,55 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
-import { TwinWalletRegistry, WalletAccountRepository } from './TwinWalletRegistry';
-import { SeraUserContext, VerifiedIdentity, WalletAccount, WalletKind } from './types';
-
-interface WalletRow {
-  id: string;
-  user_id: string;
-  kind: WalletKind;
-  provider: WalletAccount['provider'];
-  provider_wallet_id?: string;
-  chain: string;
-  address?: string;
-  status: WalletAccount['status'];
-  created_at: string;
-  updated_at: string;
-}
-
-class SupabaseWalletAccountRepository implements WalletAccountRepository {
-  constructor(private readonly client: SupabaseRestClient) {}
-
-  async getByUserAndKind(userId: string, kind: WalletKind): Promise<WalletAccount | null> {
-    const rows = await this.client.select<WalletRow>('wallet_accounts', `user_id=eq.${encodeURIComponent(userId)}&kind=eq.${kind}&limit=1`);
-    return rows[0] ? {
-      id: rows[0].id,
-      userId: rows[0].user_id,
-      kind: rows[0].kind,
-      provider: rows[0].provider,
-      providerWalletId: rows[0].provider_wallet_id,
-      chain: rows[0].chain,
-      address: rows[0].address,
-      status: rows[0].status,
-      createdAt: Date.parse(rows[0].created_at),
-      updatedAt: Date.parse(rows[0].updated_at),
-    } : null;
-  }
-
-  async save(wallet: WalletAccount): Promise<void> {
-    await this.client.upsert('wallet_accounts', {
-      id: wallet.id,
-      user_id: wallet.userId,
-      kind: wallet.kind,
-      provider: wallet.provider,
-      provider_wallet_id: wallet.providerWalletId ?? null,
-      chain: wallet.chain,
-      address: wallet.address ?? null,
-      status: wallet.status,
-      created_at: new Date(wallet.createdAt).toISOString(),
-      updated_at: new Date(wallet.updatedAt).toISOString(),
-    }, 'id');
-  }
-}
+import { TwinWalletRegistry } from './TwinWalletRegistry';
+import { SeraUserContext, VerifiedIdentity } from './types';
+import { SupabaseWalletAccountRepository } from './SupabaseWalletAccountRepository';
 
 interface IdentityRow {
   id: string;
@@ -96,6 +49,37 @@ export class ReownWalletIdentityService {
     return { userId, personalWalletAddress };
   }
 
+  /**
+   * Adds a wallet that has been proven by a fresh signature to an already
+   * authenticated SERA account. A wallet can never be silently moved from a
+   * different user: the unique provider/subject constraint is checked first.
+   */
+  async linkVerifiedWallet(userId: string, address: string): Promise<VerifiedIdentity> {
+    const subject = address.toLowerCase();
+    const existing = await this.findIdentity(subject);
+    if (existing) {
+      if (existing.userId !== userId) {
+        throw new WalletAlreadyLinkedError();
+      }
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    await this.client.upsert('auth_identities', {
+      id: randomUUID(),
+      user_id: userId,
+      kind: 'EXTERNAL_WALLET',
+      provider: 'reown_wallet',
+      subject,
+      verified_at: now,
+    }, 'provider,subject');
+
+    const linked = await this.findIdentity(subject);
+    if (!linked) throw new Error('Wallet identity could not be linked.');
+    if (linked.userId !== userId) throw new WalletAlreadyLinkedError();
+    return linked;
+  }
+
   private async findIdentity(subject: string): Promise<VerifiedIdentity | null> {
     const rows = await this.client.select<IdentityRow>(
       'auth_identities',
@@ -131,5 +115,12 @@ export class ReownWalletIdentityService {
     const resolved = await this.findIdentity(subject);
     if (!resolved) throw new Error('Reown identity could not be persisted.');
     return resolved.userId;
+  }
+}
+
+export class WalletAlreadyLinkedError extends Error {
+  constructor() {
+    super('This wallet is already linked to a different SERA account.');
+    this.name = 'WalletAlreadyLinkedError';
   }
 }

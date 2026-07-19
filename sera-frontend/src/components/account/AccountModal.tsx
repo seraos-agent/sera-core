@@ -19,10 +19,12 @@ interface AccountModalProps {
   walletState: WalletState;
   socket: Socket | null;
   onDisconnect: () => void;
+  onLinkWallet?: () => void;
+  isLinkingWallet?: boolean;
   isMobileView?: boolean;
 }
 
-export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDisconnect, isMobileView }: AccountModalProps) {
+export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDisconnect, onLinkWallet, isLinkingWallet, isMobileView }: AccountModalProps) {
   useEffect(() => {
     if (!isOpen || !socket || !walletState.address) return;
 
@@ -214,21 +216,36 @@ export function AccountModal({ theme, isOpen, onClose, walletState, socket, onDi
           <div style={{ display: "flex", gap: 12, alignItems: "center", color: textSecondary, fontSize: 13 }}>
             <div>Wallet: <span style={{ fontFamily: "monospace", color: textPrimary }}>{shortAddress}</span></div>
           </div>
-          <button
-            onClick={() => {
-              onClose();
-              onDisconnect();
-            }}
-            style={{
-              display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 8,
-              background: "transparent", color: textSecondary, border: `1px solid ${buttonSecondaryBorder}`,
-              fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "background 150ms"
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = theme.surface)}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-          >
-            <LogOut size={16} /> Disconnect
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+            {onLinkWallet && (
+              <button
+                onClick={onLinkWallet}
+                disabled={isLinkingWallet}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, background: "transparent", color: textSecondary,
+                  border: `1px solid ${buttonSecondaryBorder}`, fontSize: 13, fontWeight: 500,
+                  cursor: isLinkingWallet ? "wait" : "pointer", opacity: isLinkingWallet ? 0.65 : 1,
+                }}
+              >
+                {isLinkingWallet ? "Choose the wallet to link" : "Link another wallet"}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                onClose();
+                onDisconnect();
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 8,
+                background: "transparent", color: textSecondary, border: `1px solid ${buttonSecondaryBorder}`,
+                fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "background 150ms"
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = theme.surface)}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+            >
+              <LogOut size={16} /> Disconnect
+            </button>
+          </div>
         </div>
       </div>
     </div>
