@@ -94,6 +94,14 @@ alter table public.operating_agreements enable row level security;
 alter table public.active_intents enable row level security;
 alter table public.execution_audit_events enable row level security;
 
+drop policy if exists "Users read their own SERA profile" on public.sera_users;
+drop policy if exists "Users read their own linked identities" on public.auth_identities;
+drop policy if exists "Users read their own wallets" on public.wallet_accounts;
+drop policy if exists "Users read their own wallet provisioning status" on public.wallet_provisioning_jobs;
+drop policy if exists "Users read their own operating agreements" on public.operating_agreements;
+drop policy if exists "Users read their own active intents" on public.active_intents;
+drop policy if exists "Users read their own execution audit events" on public.execution_audit_events;
+
 create policy "Users read their own SERA profile" on public.sera_users
   for select to authenticated using ((select auth.uid()) = id);
 create policy "Users read their own linked identities" on public.auth_identities

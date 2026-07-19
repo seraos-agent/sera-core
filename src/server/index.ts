@@ -15,8 +15,12 @@ import { requireAuthenticatedSession } from './SessionGuard';
 import { createHmac, randomBytes } from 'crypto';
 import { SeraUserContext } from '../core/identity/types';
 import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityResolver';
+import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
+import { ReownWalletIdentityService } from '../core/identity/ReownWalletIdentityService';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
+const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
+const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 
 interface SessionTokenPrincipal {
   userId: string;
@@ -198,7 +202,7 @@ io.on('connection', (socket: Socket) => {
   
   socket.on('auth:challenge', issueLoginChallenge);
 
-  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string }) => {
+  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string; supabaseAccessToken?: string }) => {
     let address = payload?.address?.toLowerCase();
     let principal: SeraUserContext;
     
@@ -213,6 +217,18 @@ io.on('connection', (socket: Socket) => {
         };
       } else {
         socket.emit('auth:error', { message: 'Session expired or invalid. Please sign in again.', code: 'INVALID_TOKEN' });
+        return;
+      }
+    } else if (payload.supabaseAccessToken) {
+      if (!supabaseIdentityService) {
+        socket.emit('auth:error', { message: 'Supabase identity is not configured on this server.', code: 'IDENTITY_UNAVAILABLE' });
+        return;
+      }
+      try {
+        principal = await supabaseIdentityService.resolve(payload.supabaseAccessToken, address);
+      } catch (error) {
+        console.error('[Server] Supabase identity verification failed:', error);
+        socket.emit('auth:error', { message: 'Your sign-in session could not be verified. Please sign in again.', code: 'INVALID_IDENTITY_TOKEN' });
         return;
       }
     } else {
@@ -246,9 +262,21 @@ io.on('connection', (socket: Socket) => {
         }
       }
 
-      principal = address === 'dev'
-        ? { userId: 'dev' }
-        : resolveVerifiedWalletIdentity(address);
+      if (address === 'dev') {
+        principal = { userId: 'dev' };
+      } else if (serverConfig.isProduction && reownWalletIdentityService) {
+        try {
+          principal = await reownWalletIdentityService.resolveVerifiedWallet(address);
+        } catch (error) {
+          console.error('[Server] Reown identity persistence failed:', error);
+          socket.emit('auth:error', { message: 'Your identity could not be prepared. Please try again.', code: 'IDENTITY_PERSISTENCE_FAILED' });
+          return;
+        }
+      } else {
+        // Local compatibility mode until a configured production Supabase
+        // service is available. This path never writes user data remotely.
+        principal = resolveVerifiedWalletIdentity(address);
+      }
     }
 
     // Now emit the success token to the client so they can save it
