@@ -1,10 +1,10 @@
-import { X, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
-import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { useState, useEffect } from 'react';
 import type { WalletState } from "../../hooks/useWallet";
+
+export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile";
 
 interface SidebarProps {
   theme: ThemeType;
@@ -12,32 +12,24 @@ interface SidebarProps {
   onClose: () => void;
   onToggle?: () => void;
   isMobileView: boolean;
-  onNavigate: (view: "chat" | "wallet" | "connections" | "automations") => void;
+  currentView: SidebarView;
+  onNavigate: (view: SidebarView) => void;
   walletState?: WalletState;
-  onAccountClick?: () => void;
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNavigate, walletState, onAccountClick }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
   const { address } = useAccount();
-  const { open: openWeb3Modal } = useWeb3Modal();
   const devAddress = walletState?.fullAddress;
   const shortAddress = address 
     ? `${address.slice(0, 6)}...${address.slice(-4)}` 
     : (devAddress ? `${devAddress.slice(0, 6)}...${devAddress.slice(-4)}` : "Sera Admin");
 
-  const [hasGithub, setHasGithub] = useState(false);
-  useEffect(() => {
-    const handleGithubInstall = () => setHasGithub(true);
-    window.addEventListener("mock_github_installed", handleGithubInstall);
-    return () => window.removeEventListener("mock_github_installed", handleGithubInstall);
-  }, []);
-
-  const connectors = [...CONNECTORS];
-  if (hasGithub) {
-    connectors.push({ id: "github_mock", name: "GitHub", icon: "github-icon" as any });
-  }
+  const navigate = (view: SidebarView) => {
+    onNavigate(view);
+    if (isMobileView) onClose();
+  };
 
   return (
     <>
@@ -84,13 +76,13 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, alignItems: open ? "stretch" : "center" }}>
             <div
               onClick={() => {
-                onNavigate("connections");
-                if (isMobileView) onClose();
+                navigate("connections");
               }}
               style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: open ? "8px 4px" : "10px", cursor: "pointer", marginBottom: 6,
-                justifyContent: open ? "flex-start" : "center", borderRadius: 8
+                justifyContent: open ? "flex-start" : "center", borderRadius: 8,
+                background: currentView === "connections" ? theme.accentSoft : "transparent",
               }}
               title={!open ? "Workspace" : undefined}
             >
@@ -102,47 +94,39 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
               )}
             </div>
 
-            {connectors.map((c) => {
+            {CONNECTORS.map((c) => {
               const Icon = c.icon;
-              const isClickable = c.id === "wallet" || c.id === "automations";
+              const isActive = currentView === c.id;
               return (
                 <div
                   key={c.id}
                   onClick={() => {
-                    if (isClickable) {
-                      onNavigate(c.id as any);
-                      if (isMobileView) onClose();
-                    }
+                    navigate(c.id as SidebarView);
                   }}
                   title={!open ? c.name : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: isClickable ? "pointer" : "default",
+                    cursor: "pointer",
                     transition: "background 150ms",
                     justifyContent: open ? "flex-start" : "center",
-                    position: "relative"
+                    position: "relative",
+                    background: isActive ? theme.accentSoft : "transparent",
                   }}
-                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isActive ? theme.accentSoft : "transparent"; }}
                 >
                   {typeof Icon === "string" ? (
                     <svg width={15} height={15} style={{ fill: theme.inkSoft, flexShrink: 0 }}>
                       <use href={`/icons.svg#${Icon}`} />
                     </svg>
                   ) : (
-                    <Icon size={15} color={theme.inkSoft} style={{ flexShrink: 0 }} />
+                    <Icon size={15} color={isActive ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
                   )}
                   {open && (
-                    <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: isActive ? theme.accent : theme.ink, fontWeight: isActive ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {c.name}
                     </span>
-                  )}
-                  {open && (
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: theme.status, flexShrink: 0 }} title="Connected" />
-                  )}
-                  {!open && isClickable && (
-                    <span style={{ position: "absolute", top: 8, right: 8, width: 6, height: 6, borderRadius: "50%", background: theme.status }} title="Connected" />
                   )}
                 </div>
               );
@@ -151,22 +135,19 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, onNaviga
 
           <div 
             onClick={() => {
-              if (onAccountClick) {
-                onAccountClick();
-              } else {
-                openWeb3Modal();
-              }
+              navigate("profile");
             }}
             style={{ 
               borderTop: `1px solid ${theme.border}`, paddingTop: 12, marginTop: 8, display: "flex", alignItems: "center", gap: 8, padding: open ? "12px 6px" : "12px 0", justifyContent: open ? "flex-start" : "center", flexDirection: open ? "row" : "column-reverse",
-              cursor: "pointer", borderRadius: 8, transition: "background 150ms"
+              cursor: "pointer", borderRadius: 8, transition: "background 150ms", background: currentView === "profile" ? theme.accentSoft : "transparent"
             }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "profile" ? theme.accentSoft : "transparent"; }}
           >
+            <UserCircle size={18} color={currentView === "profile" ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
             {open && (
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
-                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.ink, fontWeight: 600, whiteSpace: "nowrap" }}>{shortAddress}</span>
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: currentView === "profile" ? theme.accent : theme.ink, fontWeight: 600, whiteSpace: "nowrap" }}>{shortAddress}</span>
                 {walletState?.tier && (
                   <span style={{ 
                     fontFamily: "Inter, sans-serif", fontSize: 9, fontWeight: 700, 

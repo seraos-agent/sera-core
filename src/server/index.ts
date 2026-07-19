@@ -314,6 +314,19 @@ io.on('connection', (socket: Socket) => {
     socket.data.isAuthenticated = true;
   });
 
+  socket.on('auth:logout', () => {
+    // A wallet disconnect must also terminate SERA's socket session. Leaving
+    // the socket authenticated would make a shared-device logout misleading.
+    unbindListeners();
+    walletLinkChallenge = undefined;
+    socket.data.isAuthenticated = false;
+    socket.data.sessionId = 'dev';
+    socket.data.personalWalletAddress = undefined;
+    socket.data.loginMessage = undefined;
+    instance = agentManager.getOrCreateInstance('dev');
+    socket.emit('auth:logged_out');
+  });
+
   socket.on('identity:link_wallet_challenge', (payload: { address?: string }) => {
     if (!requireAuthenticatedSession(socket, 'identity:link_wallet_challenge', instance?.eventBus)) return;
     if (!serverConfig.isProduction || !reownWalletIdentityService) {

@@ -7,12 +7,13 @@ import { WalletPage } from "./components/wallet/WalletPage";
 import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
-import { AccountModal } from "./components/account/AccountModal";
+import { ProfilePage } from "./components/profile/ProfilePage";
+import type { SidebarView } from "./components/sidebar/Sidebar";
 
 import { LandingPage } from "./components/landing/LandingPage";
 import { createWeb3Modal, useWeb3ModalTheme, useWeb3Modal } from '@web3modal/wagmi/react';
 import { defaultWagmiConfig } from '@web3modal/wagmi/react/config';
-import { WagmiProvider, useAccount, useSignMessage } from 'wagmi';
+import { WagmiProvider, useAccount, useDisconnect, useSignMessage } from 'wagmi';
 import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
@@ -73,9 +74,9 @@ function InnerApp() {
 
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
-  const [currentView, setCurrentView] = useState<"chat" | "wallet" | "connections" | "automations">(() => {
-    const saved = localStorage.getItem("sera_view") as any;
-    return ["chat", "wallet", "connections", "automations"].includes(saved) ? saved : "chat";
+  const [currentView, setCurrentView] = useState<SidebarView>(() => {
+    const saved = localStorage.getItem("sera_view") as SidebarView | null;
+    return saved && ["chat", "wallet", "connections", "automations", "profile"].includes(saved) ? saved : "chat";
   });
 
   useEffect(() => {
@@ -83,7 +84,6 @@ function InnerApp() {
   }, [currentView]);
 
   const [lastViewedCount, setLastViewedCount] = useState(0);
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
 
   const { walletState, setWalletState } = useWallet();
   const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat } = useSocket(setWalletState, setMode);
@@ -139,6 +139,7 @@ function InnerApp() {
   useEffect(() => setIsMounted(true), []);
 
   const { isConnected, address } = useAccount();
+  const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { open } = useWeb3Modal();
   const [isBypassed, setIsBypassed] = useState(false);
@@ -147,7 +148,6 @@ function InnerApp() {
   const startWalletLink = () => {
     if (!socket || !address || isBypassed) return;
     setWalletLinkSourceAddress(address.toLowerCase());
-    setIsAccountModalOpen(false);
     open();
   };
 
@@ -336,31 +336,30 @@ function InnerApp() {
               onClose={() => setSidebarOpen(false)}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               isMobileView={isMobileView}
+              currentView={currentView}
               onNavigate={setCurrentView}
               walletState={walletState}
-              onAccountClick={() => setIsAccountModalOpen(true)}
             />
 
-            <AccountModal
+            {currentView === "profile" ? <ProfilePage
               theme={theme}
-              isOpen={isAccountModalOpen}
-              onClose={() => setIsAccountModalOpen(false)}
               walletState={walletState}
-              socket={socket}
               isMobileView={isMobileView}
+              mode={mode}
+              onModeChange={setMode}
+              onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+              onManageWallet={() => open()}
+              onDisconnect={() => {
+                if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
+                socket?.emit('auth:logout');
+                disconnect();
+              }}
               onLinkWallet={isBypassed ? undefined : startWalletLink}
               isLinkingWallet={Boolean(walletLinkSourceAddress)}
-              onDisconnect={() => {
-                setIsAccountModalOpen(false);
-                if (isConnected) {
-                  open();
-                } else {
-                  setIsBypassed(false);
-                }
+              onUpgradePlan={(amountUsdc) => {
+                if (socket && address) socket.emit('billing:topup_dev_mock', { address: address.toLowerCase(), amountUsdc });
               }}
-            />
-
-            {currentView === "wallet" ? (
+            /> : currentView === "wallet" ? (
               <WalletPage
                 theme={theme}
                 walletState={walletState}

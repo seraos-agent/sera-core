@@ -1,4 +1,4 @@
-import { Wallet, Globe, Clock } from "lucide-react";
+import { Wallet, Clock } from "lucide-react";
 
 export const THEME = {
   light: {
@@ -46,7 +46,6 @@ export type ThemeType = typeof THEME.light;
 export const CONNECTORS = [
   { id: "automations", name: "Active Intents", icon: Clock },
   { id: "wallet", name: "Manage Money", icon: Wallet },
-  { id: "x", name: "X", icon: Globe },
 ];
 
 export const SUGGESTIONS = [
