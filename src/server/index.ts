@@ -37,6 +37,11 @@ function verifySessionToken(token: string): string | null {
 }
 
 const app = express();
+// Lightweight, unauthenticated probe for deployment platforms. It deliberately
+// does not instantiate or expose any agent state.
+app.get('/health', (_request, response) => {
+  response.status(200).json({ status: 'ok', service: 'sera-core' });
+});
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {

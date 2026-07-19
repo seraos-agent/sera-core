@@ -9,7 +9,8 @@ dotenv.config({ path: resolve(process.cwd(), '.env') });
 dotenv.config({ path: resolve(process.cwd(), '../.env'), override: false });
 
 const app = express();
-const port = Number(process.env.RECEPTION_PORT || 3002);
+// Render injects PORT. RECEPTION_PORT remains available for local development.
+const port = Number(process.env.PORT || process.env.RECEPTION_PORT || 3002);
 const origins = (process.env.SERA_RECEPTION_CORS_ORIGINS || process.env.SERA_CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -17,6 +18,9 @@ const origins = (process.env.SERA_RECEPTION_CORS_ORIGINS || process.env.SERA_COR
 
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '16kb' }));
+app.get('/health', (_request, response) => {
+  response.status(200).json({ status: 'ok', service: 'sera-reception' });
+});
 app.use('/api/reception', createPublicReceptionRouter((origin) => !origin || origins.includes(origin)));
 
 app.listen(port, () => {
