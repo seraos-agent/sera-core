@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShieldAlert, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, XCircle, Clock, ShieldCheck } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import { getWalletLabel } from '../../utils/walletLabels';
 
@@ -40,12 +40,14 @@ export function ProposalCard({
   const targetIntent = isSchedule ? proposal.parameters?.actionIntent : proposal.intent;
   const isTransfer = targetIntent === 'TRANSFER_FUNDS';
   const isPurchase = proposal.intent === 'PURCHASE_INTEGRATION';
+  const isOperatingAgreement = proposal.intent === 'ACTIVATE_AUTONOMY_AGREEMENT';
   
   let title = "Action Proposal";
   if (isPurchase) title = "Integration Purchase";
   else if (isSchedule && isTransfer) title = "Recurring Transfer";
   else if (isSchedule) title = "Scheduled Automation";
   else if (isTransfer) title = "Wallet Transfer";
+  else if (isOperatingAgreement) title = "Operating Agreement";
 
   const p = isSchedule ? proposal.parameters?.actionParameters || {} : proposal.parameters || {};
 
@@ -65,7 +67,9 @@ export function ProposalCard({
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {isSchedule ? (
+        {isOperatingAgreement ? (
+          <ShieldCheck size={18} color={theme.accent} />
+        ) : isSchedule ? (
           <Clock size={18} color={theme.accent} />
         ) : (
           <ShieldAlert size={18} color={theme.accent} />
@@ -92,9 +96,32 @@ export function ProposalCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
           <span style={{ fontSize: 14, color: theme.ink }}>
-            {isPurchase ? `Install ${p.integrationName} Integration` : isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
+            {isOperatingAgreement
+              ? `Activate ${p.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant'} for ${p.title || 'this ongoing intent'}`
+              : isPurchase ? `Install ${p.integrationName} Integration` : isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
           </span>
         </div>
+
+        {isOperatingAgreement && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Scope</span>
+              <span style={{ fontSize: 14, color: theme.ink }}>{p.intent || 'Ongoing activity'}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Authority</span>
+              <span style={{ fontSize: 14, color: theme.ink }}>{p.mode === 'FULL_ACCESS' ? 'Acts within this exact scope after approval' : 'Requests approval for each action'}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Safety boundary</span>
+              <span style={{ fontSize: 14, color: theme.ink }}>
+                {Array.isArray(p.permissions) && p.permissions.length === 1 && p.permissions[0] === 'PAPER_TRADE'
+                  ? 'Local paper-trading simulation only. No real order or balance can change.'
+                  : 'Only the explicit actions in this agreement are authorized.'}
+              </span>
+            </div>
+          </>
+        )}
 
         {isPurchase && (
           <>
@@ -173,7 +200,7 @@ export function ProposalCard({
       {status === 'PENDING' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
           <div style={{ fontSize: 13, color: theme.inkSoft, fontStyle: 'italic' }}>
-            Do you approve this automation?
+            {isOperatingAgreement ? 'Do you approve this Operating Agreement?' : 'Do you approve this automation?'}
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button 

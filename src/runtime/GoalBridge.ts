@@ -250,7 +250,11 @@ export class GoalBridge {
       timestamp: Date.now(),
       payload: { agreement }
     } as StandardEvent);
-    this.emitResult(requestId, true, { agreement, message: 'Operating Agreement is active.' });
+    this.emitResult(requestId, true, {
+      agreement,
+      message: 'Operating Agreement is active.',
+      _userMessage: typeof parameters._userMessage === 'string' ? parameters._userMessage : undefined
+    });
   }
 
   private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {

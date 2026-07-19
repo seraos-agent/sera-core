@@ -15,7 +15,6 @@ import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 import { ConversationContextCompressor } from './ConversationContextCompressor';
 import { WorkClassificationPolicy } from '../../core/work-classification/WorkClassificationPolicy';
 import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
-import { MessageIntakePolicy } from './MessageIntakePolicy';
 import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementStore';
 
 // Re-export for server bootstrap convenience
@@ -48,6 +47,11 @@ CRITICAL — COMMUNICATION STYLE:
 - When asking for clarification, ask ONE short plain question. Do NOT use bullet points, numbered lists, or structured formatting just to ask a simple question.
 - If the message has no reliable meaning or request, do not classify it as a command, a typo, a test, or a named category. Ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
 - For any clarification response, write any brief context first, then end the entire response with exactly one question. The question mark must be the final character; never put text, lists, or offers after it.
+
+CRITICAL — OPERATING AGREEMENT INTEGRITY:
+- Never claim that an Operating Agreement is active, that an automation has started, or that Full Access was granted unless the system has returned a verified activation result.
+- A request for ongoing management must first produce an explicit proposal card. A vague acknowledgement such as "okay", "good", or "proceed" is not an approval unless a specific proposal is currently pending.
+- Never describe real trading, leverage changes, or real exchange orders for a paper-trading agreement. Paper trading is a local simulation only.
 
 CRITICAL — PLATFORM AWARENESS:
 - When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
@@ -112,7 +116,8 @@ export class DialogueEngine {
   private readonly conversationContextCompressor = new ConversationContextCompressor();
   private readonly workClassificationPolicy = new WorkClassificationPolicy();
   private readonly workerRegistry = new WorkerCapabilityRegistry();
-  private readonly messageIntakePolicy = new MessageIntakePolicy();
+  /** The latest UI proposal that can be answered conversationally (for example, "iya"). */
+  private pendingProposalId: string | undefined;
   private activeAbortController: AbortController | null = null;
 
   /**
@@ -169,6 +174,9 @@ export class DialogueEngine {
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_USER_CANCELLED, this.onUserCancelled.bind(this));
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, this.onGoalResult.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, this.onProposalGenerated.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, this.onProposalResolved.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_REJECTED, this.onProposalResolved.bind(this));
 
     console.log('[DialogueEngine] Initialized and listening for dialogue events.');
   }
@@ -434,6 +442,15 @@ export class DialogueEngine {
     }
   }
 
+  private onProposalGenerated(event: StandardEvent<{ proposalId?: string }>): void {
+    const proposalId = event.payload?.proposalId;
+    if (proposalId) this.pendingProposalId = proposalId;
+  }
+
+  private onProposalResolved(event: StandardEvent<{ proposalId?: string }>): void {
+    if (event.payload?.proposalId === this.pendingProposalId) this.pendingProposalId = undefined;
+  }
+
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
     const userMessage: string = event.payload.message;
 
@@ -451,11 +468,23 @@ export class DialogueEngine {
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +
       (this._activeResponseContext ? ` [routing context: platform=${this._activeResponseContext.platform}]` : ''));
 
-    if (this.messageIntakePolicy.requiresClarification(userMessage)) {
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Could you clarify?' });
+    if (!userMessage.trim()) {
       this._activeResponseContext = undefined;
       return;
     }
+
+    if (this.pendingProposalId && this.isProposalApproval(userMessage)) {
+      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
+      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: this.usesIndonesian(userMessage) ? 'Menerapkan persetujuan Anda...' : 'Applying your approval...' });
+      return;
+    }
+
+    if (this.pendingProposalId && this.isProposalRejection(userMessage)) {
+      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_REJECTED, { proposalId: this.pendingProposalId });
+      return;
+    }
+
+    if (this.preparePaperTradingFullAccessProposal(userMessage)) return;
 
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
 
@@ -789,7 +818,64 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /**
+   * Paper trading is the first product with an explicit operating agreement.
+   * Keep its proposal deterministic so the model cannot accidentally describe
+   * real exchange permissions that this adapter does not implement.
+   */
+  private preparePaperTradingFullAccessProposal(userMessage: string): boolean {
+    const asksForPaperTrading = /\b(?:paper\s*(?:trading|trade)|simulasi\s*trading)\b/i.test(userMessage);
+    const asksForFullAccess = /\b(?:full\s*access|akses\s*penuh)\b/i.test(userMessage);
+    if (!asksForPaperTrading || !asksForFullAccess) return false;
+
+    const coin = userMessage.match(/\b(BTC|ETH|SOL|HYPE)\b/i)?.[1]?.toUpperCase();
+    const assetLabel = coin ? ` ${coin}` : '';
+    this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
+      intent: 'ACTIVATE_AUTONOMY_AGREEMENT',
+      parameters: {
+        title: `Paper trading${assetLabel}`,
+        intent: `Manage${assetLabel} paper-trading activity`,
+        mode: 'FULL_ACCESS',
+        permissions: ['PAPER_TRADE'],
+        nextActionSummary: `Paper-trading activity for${assetLabel || ' the selected asset'} is ready for explicit simulation requests.`
+      },
+      userMessage
+    });
+    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+      text: this.usesIndonesian(userMessage)
+        ? `Saya sudah menyiapkan agreement untuk mengelola paper trading${assetLabel}. Tinjau detailnya di kartu ini, lalu pilih Approve jika scope dan batasnya sudah sesuai.`
+        : `I prepared an agreement to manage paper trading${assetLabel}. Review the details in this card, then choose Approve if the scope and boundaries are right for you.`
+    });
+    return true;
+  }
+
+  private isProposalApproval(message: string): boolean {
+    return /^(?:iya|ya|yes|y|setuju|approve|approved|lanjut|lanjutkan|ok|oke|sip|confirm|konfirmasi|benar)[.!\s]*$/i.test(message.trim());
+  }
+
+  private isProposalRejection(message: string): boolean {
+    return /^(?:tidak|nggak|ga|no|n|batal|cancel|reject|tolak|jangan)[.!\s]*$/i.test(message.trim());
+  }
+
+  private usesIndonesian(message: string): boolean {
+    return /\b(?:saya|aku|kelola|dengan|untuk|akses|penuh|setuju|iya|tolong|bisa|paper\s*trading)\b/i.test(message);
+  }
+
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
+    if (result.success && result.data?.agreement) {
+      const agreement = result.data.agreement;
+      const hasPaperTradingOnlyScope = agreement.permissions.length === 1 && agreement.permissions[0] === 'PAPER_TRADE';
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: this.usesIndonesian(userMessage)
+          ? hasPaperTradingOnlyScope
+            ? `Agreement untuk ${agreement.title} sudah aktif. SERA sekarang memiliki ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'mode Assistant'} untuk simulasi sesuai scope yang Anda setujui; tidak ada order atau saldo nyata yang berubah.`
+            : `Agreement untuk ${agreement.title} sudah aktif dalam mode ${agreement.mode}.`
+          : hasPaperTradingOnlyScope
+            ? `The agreement for ${agreement.title} is active. SERA now has ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant mode'} for simulation within the scope you approved; no order or real balance can change.`
+            : `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
+      });
+      return;
+    }
     if (result.success && result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY') {
       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderReadOnlyHyperliquidResult(result.data) });
       return;

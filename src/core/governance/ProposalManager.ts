@@ -74,7 +74,9 @@ export class ProposalManager {
       payload: {
         requestId,
         intent: proposal.intent,
-        parameters: proposal.parameters
+        // Preserve the originating language/context for the completion
+        // narration without exposing it in the proposal card itself.
+        parameters: { ...proposal.parameters, _userMessage: proposal.userMessage }
       }
     });
 
@@ -85,7 +87,8 @@ export class ProposalManager {
   }
 
   private handleProposalRejected(proposalId: string): void {
-    if (this.pendingProposals.has(proposalId)) {
+    const proposal = this.pendingProposals.get(proposalId);
+    if (proposal) {
       this.pendingProposals.delete(proposalId);
       
       // Optionally notify the original source or dialogue engine
@@ -95,7 +98,9 @@ export class ProposalManager {
         source: 'ProposalManager',
         timestamp: Date.now(),
         payload: {
-          message: "Proposal has been cancelled. Let me know if you'd like to do something else."
+          text: /\b(?:saya|aku|kelola|dengan|untuk|akses|penuh|setuju|iya|tolong|bisa)\b/i.test(proposal.userMessage || '')
+            ? 'Proposal dibatalkan.'
+            : 'Proposal cancelled.'
         }
       });
       
