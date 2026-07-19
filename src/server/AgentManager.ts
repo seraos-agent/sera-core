@@ -1,5 +1,6 @@
 import { SeraAgentInstance } from './SeraAgentInstance';
 import { SubscriptionService } from './billing/SubscriptionService';
+import { SeraUserContext } from '../core/identity/types';
 
 /** Thrown by checkEntitlement() — callers (e.g. server/index.ts) catch this explicitly. */
 export class SubscriptionRequiredError extends Error {
@@ -30,13 +31,14 @@ export class AgentManager {
     }
   }
 
-  public getOrCreateInstance(sessionId: string): SeraAgentInstance {
-    const id = sessionId.toLowerCase();
+  public getOrCreateInstance(context: SeraUserContext | string): SeraAgentInstance {
+    const user = typeof context === 'string' ? { userId: context } : context;
+    const id = user.userId.toLowerCase();
     let instance = this.instances.get(id);
     
     if (!instance) {
       console.log(`[AgentManager] Spawning new Sera Agent Instance for ${id}`);
-      instance = new SeraAgentInstance(id);
+      instance = new SeraAgentInstance({ ...user, userId: id });
       instance.start();
       this.instances.set(id, instance);
     }

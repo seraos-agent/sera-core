@@ -3,10 +3,8 @@ import { EventEmitter } from 'events';
 import { formatEther } from 'viem';
 import { base } from 'viem/chains';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
-import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
-import { SecretManager } from '../core/secrets/SecretManager';
-import { UniversalAgenticWallet } from '../capabilities/wallet/UniversalAgenticWallet';
-import { SpendPermissionAdapter } from '../capabilities/wallet/SpendPermissionAdapter';
+import { WalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProvider';
+import { createWalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProviderFactory';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
 import { analyzeHyperliquidMarketSnapshot, formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
@@ -21,12 +19,13 @@ import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore'
  * - Routes each intent to the appropriate Capability
  * - Emits GOAL_RESULT events back onto the EventBus
  *
- * Wallet stack wired here (all layers injected top-down):
- *   EncryptedDatabaseSecretStore  →  SecretManager  →  ViemWalletAdapter
+ * Wallet custody is injected behind a provider boundary. The local-key
+ * implementation remains development-only; production fails closed until a
+ * managed provider is configured and testnet-verified.
  */
 export class GoalBridge {
   private eventBus: EventEmitter;
-  private walletAdapter: UniversalAgenticWallet;
+  private walletAdapter: WalletCustodyProvider;
   private walletInitialized = false;
   private walletInitializing: Promise<void> | null = null;
   private currentWalletId: { address: string; network: string } | null = null;
@@ -36,16 +35,17 @@ export class GoalBridge {
   private hyperliquid = new HyperliquidMarketDataAdapter();
   private readonly paperTrading = new PaperTradingSimulator();
 
-  constructor(eventBus: EventEmitter, sessionId: string = 'dev', private readonly autonomyAgreementStore?: AutonomyAgreementStore) {
+  constructor(
+    eventBus: EventEmitter,
+    sessionId: string = 'dev',
+    private readonly personalWalletAddress?: string,
+    private readonly autonomyAgreementStore?: AutonomyAgreementStore,
+  ) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
-    // Build the wallet stack
-    const secretStore = new EncryptedDatabaseSecretStore();
-    const secretManager = new SecretManager(secretStore);
-    const spendPermissionAdapter = new SpendPermissionAdapter();
-    this.walletAdapter = new UniversalAgenticWallet(secretManager, spendPermissionAdapter);
+    this.walletAdapter = createWalletCustodyProvider();
 
     // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
     this.walletInitializing = this.initWallet(sessionId !== 'dev' ? sessionId : undefined);
@@ -57,7 +57,7 @@ export class GoalBridge {
 
   private async initWallet(userAddress?: string): Promise<void> {
     try {
-      const walletId = await this.walletAdapter.initialize(userAddress);
+      const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
       this.walletInitialized = true;
       this.currentWalletId = walletId;
       
@@ -71,7 +71,7 @@ export class GoalBridge {
         primaryAddress = walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
       } else {
-        primaryAddress = userAddress;
+        primaryAddress = this.personalWalletAddress || '';
         vaultAddress = walletId.address;
       }
       this.emitSyncing(primaryAddress, vaultAddress, walletId.network);
@@ -98,7 +98,7 @@ export class GoalBridge {
         }
       } else {
         // --- 1:1 AGENT WALLET MODE ---
-        primaryAddress = userAddress;
+        primaryAddress = this.personalWalletAddress || '';
         vaultAddress = walletId.address; // The generated agent wallet for this user
         
         // Mocking user balance as 0 for now until implemented
@@ -301,7 +301,7 @@ export class GoalBridge {
 
     try {
       const userAddress = this.sessionId !== 'dev' ? this.sessionId : undefined;
-      const walletId = await this.walletAdapter.initialize(userAddress);
+      const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
       
       let primaryAddress = '';
       let vaultAddress = '';
@@ -387,7 +387,7 @@ export class GoalBridge {
     }
     
     try {
-      const walletId = await this.walletAdapter.initialize();
+      const walletId = await this.walletAdapter.initializeAgentWallet();
       const { recipient, amount, asset } = parameters;
       
       if (!recipient || !amount || !asset) {

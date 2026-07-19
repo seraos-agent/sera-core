@@ -31,4 +31,12 @@ describe('Operating Agreement autonomy', () => {
     store.revoke(agreement.id);
     expect(store.hasFullAccessFor('PAPER_TRADE')).toBe(false);
   });
+
+  it('never treats another principal\'s agreement as this user\'s authority', () => {
+    const store = new AutonomyAgreementStore();
+    store.activate({ principalId: 'user-a', title: 'Paper trading', intent: 'paper.trade', mode: 'FULL_ACCESS', permissions: ['PAPER_TRADE'] });
+
+    expect(store.hasFullAccessFor('PAPER_TRADE', 'user-a')).toBe(true);
+    expect(store.hasFullAccessFor('PAPER_TRADE', 'user-b')).toBe(false);
+  });
 });

@@ -50,9 +50,11 @@ import { SeraTool } from '../core/cognitive/Tool';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
+import { SeraUserContext } from '../core/identity/types';
 
 export class SeraAgentInstance {
   public sessionId: string;
+  public readonly personalWalletAddress?: string;
   public eventBus: EventEmitter;
   
   public runtime!: Runtime;
@@ -95,8 +97,10 @@ export class SeraAgentInstance {
   };
   private readonly markMemoryDirty = () => { this.memoryDirty = true; };
 
-  constructor(sessionId: string) {
-    this.sessionId = sessionId;
+  constructor(context: SeraUserContext | string) {
+    const user = typeof context === 'string' ? { userId: context } : context;
+    this.sessionId = user.userId;
+    this.personalWalletAddress = user.personalWalletAddress;
     this.eventBus = new EventEmitter();
     this.initialize();
   }
@@ -121,7 +125,7 @@ export class SeraAgentInstance {
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
     (globalThis as any).__triggerEngine = this.triggerEngine;
     
-    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.autonomyAgreementStore);
+    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.personalWalletAddress, this.autonomyAgreementStore);
 
     const executionDispatcher = new ExecutionDispatcher(this.eventBus);
     const planner = new Planner();

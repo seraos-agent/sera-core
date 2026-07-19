@@ -93,9 +93,10 @@ export class AutonomyAgreementStore {
     };
   }
 
-  public hasFullAccessFor(action: PermissionAction): boolean {
+  public hasFullAccessFor(action: PermissionAction, principalId?: string): boolean {
     return this.getAll().some(agreement =>
       agreement.status === 'ACTIVE' &&
+      (!principalId || agreement.principalId === principalId) &&
       agreement.mode === 'FULL_ACCESS' &&
       agreement.permissions.some(permission => permission === action || permission === '*')
     );

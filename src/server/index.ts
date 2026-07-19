@@ -13,24 +13,33 @@ import { agentManager, SubscriptionRequiredError } from './AgentManager';
 import { isAllowedOrigin, serverConfig } from './config';
 import { requireAuthenticatedSession } from './SessionGuard';
 import { createHmac, randomBytes } from 'crypto';
+import { SeraUserContext } from '../core/identity/types';
+import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityResolver';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 
-function generateSessionToken(address: string): string {
-  const expiry = Date.now() + 1000 * 60 * 60 * 24 * 7; // 7 days
-  const payload = `${address}:${expiry}`;
-  const signature = createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
-  return `${payload}:${signature}`;
+interface SessionTokenPrincipal {
+  userId: string;
+  personalWalletAddress?: string;
+  expiry: number;
 }
 
-function verifySessionToken(token: string): string | null {
+function generateSessionToken(principal: Omit<SessionTokenPrincipal, 'expiry'>): string {
+  const expiry = Date.now() + 1000 * 60 * 60 * 24 * 7; // 7 days
+  const payload = Buffer.from(JSON.stringify({ ...principal, expiry })).toString('base64url');
+  const signature = createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return `${payload}.${signature}`;
+}
+
+function verifySessionToken(token: string): SessionTokenPrincipal | null {
   try {
-    const [address, expiryStr, signature] = token.split(':');
-    if (!address || !expiryStr || !signature) return null;
-    if (Date.now() > parseInt(expiryStr)) return null;
-    const expectedSig = createHmac('sha256', SESSION_SECRET).update(`${address}:${expiryStr}`).digest('hex');
-    if (signature === expectedSig) return address;
-    return null;
+    const [payload, signature] = token.split('.');
+    if (!payload || !signature) return null;
+    const expectedSig = createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+    if (signature !== expectedSig) return null;
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as SessionTokenPrincipal;
+    if (!parsed.userId || !parsed.expiry || Date.now() > parsed.expiry) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -191,19 +200,24 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string }) => {
     let address = payload?.address?.toLowerCase();
+    let principal: SeraUserContext;
     
     // Check token authentication
     if (payload.token) {
-      const recoveredAddress = verifySessionToken(payload.token);
-      if (recoveredAddress && (!address || recoveredAddress === address)) {
-        address = recoveredAddress;
+      const recoveredPrincipal = verifySessionToken(payload.token);
+      if (recoveredPrincipal && (!address || recoveredPrincipal.personalWalletAddress === address)) {
+        address = recoveredPrincipal.personalWalletAddress;
+        principal = {
+          userId: recoveredPrincipal.userId,
+          personalWalletAddress: recoveredPrincipal.personalWalletAddress,
+        };
       } else {
         socket.emit('auth:error', { message: 'Session expired or invalid. Please sign in again.', code: 'INVALID_TOKEN' });
         return;
       }
     } else {
       address = address || 'dev';
-      console.log(`[Server] Received auth:login via signature for user: ${address}`);
+      console.log(`[Server] Received auth:login via signature for wallet: ${address}`);
 
       if (address === 'dev' && !serverConfig.allowDevFeatures) {
         socket.emit('auth:error', { message: 'Development login is disabled.' });
@@ -231,22 +245,27 @@ io.on('connection', (socket: Socket) => {
           return;
         }
       }
+
+      principal = address === 'dev'
+        ? { userId: 'dev' }
+        : resolveVerifiedWalletIdentity(address);
     }
 
     // Now emit the success token to the client so they can save it
-    const newToken = generateSessionToken(address);
+    const newToken = generateSessionToken(principal!);
     socket.emit('auth:success', { token: newToken });
 
     // Switch to new context BEFORE checking entitlement so we don't leak dev state
     unbindListeners();
-    socket.data.sessionId = address;
+    socket.data.sessionId = principal!.userId;
+    socket.data.personalWalletAddress = principal!.personalWalletAddress;
     socket.data.loginMessage = undefined;
-    instance = agentManager.getOrCreateInstance(address);
+    instance = agentManager.getOrCreateInstance(principal!);
     bindListeners();
     sendInitialState();
 
     try {
-      agentManager.checkEntitlement(address);
+      agentManager.checkEntitlement(principal!.userId);
     } catch (err) {
       if (err instanceof SubscriptionRequiredError) {
         socket.data.isAuthenticated = false;
@@ -260,31 +279,30 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('billing:fetch', (payload: { address: string }) => {
-    if (!socket.data.sessionId || payload.address.toLowerCase() !== socket.data.sessionId) return;
-    const address = socket.data.sessionId;
-    const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
+    if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
+    const periods = agentManager.getSubscriptionService().getRemainingPeriods(socket.data.sessionId);
     socket.emit('billing:update', { periods });
   });
 
   socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
-    if (!socket.data.sessionId || payload.address.toLowerCase() !== socket.data.sessionId) return;
+    if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
     if (!serverConfig.allowDevFeatures) {
       socket.emit('billing:error', { message: 'Development billing is disabled.' });
       return;
     }
-    const address = payload.address;
+    const principalId = socket.data.sessionId;
     const amountUsdc = payload.amountUsdc;
-    console.log(`[Server] Received mock topup for ${address} amount: ${amountUsdc} USDC`);
+    console.log(`[Server] Received mock topup for ${principalId} amount: ${amountUsdc} USDC`);
     try {
-      agentManager.getSubscriptionService().recordTopUp(address, amountUsdc);
-      const periods = agentManager.getSubscriptionService().getRemainingPeriods(address);
+      agentManager.getSubscriptionService().recordTopUp(principalId, amountUsdc);
+      const periods = agentManager.getSubscriptionService().getRemainingPeriods(principalId);
       socket.emit('billing:update', { periods });
       
       // Attempt to re-verify entitlement after topup
       try {
-        agentManager.checkEntitlement(address);
+        agentManager.checkEntitlement(principalId);
         socket.data.isAuthenticated = true;
-        socket.emit('auth:success', { token: generateSessionToken(address) });
+        socket.emit('auth:success', { token: generateSessionToken({ userId: principalId, personalWalletAddress: socket.data.personalWalletAddress }) });
       } catch (err) {
         // Still not enough
       }

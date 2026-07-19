@@ -696,7 +696,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
           // Determine safety dynamically via CapabilityCatalog
           const toolMeta = this.capabilityCatalog?.getTool(toolIntent);
-          const isAuthorizedByAgreement = this.autonomyAgreementStore?.hasFullAccessFor(toolIntent) === true;
+          const isAuthorizedByAgreement = this.autonomyAgreementStore?.hasFullAccessFor(toolIntent, this.sessionId) === true;
           const isSafe = toolMeta ? (!toolMeta.requiresApproval || isAuthorizedByAgreement) : true;
 
           if (isSafe) {

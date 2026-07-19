@@ -4,7 +4,7 @@ import { EventTypes } from '../core/events/types';
 export interface AuthenticatedSocket {
   id: string;
   handshake: { address: string };
-  data: { isAuthenticated?: boolean; sessionId?: string };
+  data: { isAuthenticated?: boolean; sessionId?: string; personalWalletAddress?: string };
   emit(event: string, payload: unknown): unknown;
 }
 
