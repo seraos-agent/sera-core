@@ -337,10 +337,10 @@
 .streamed-copy {
   min-height: 72px;
   margin: 0;
-  max-width: 440px;
+  max-width: 490px;
   color: var(--muted);
   font-size: 14px;
-  line-height: 1.8
+  line-height: 1.8;
 }
 
 .markdown-copy {
@@ -382,6 +382,16 @@
   border-color: rgba(63, 59, 52, .33);
   background: rgba(63, 59, 52, .06);
   color: #171510;
+}
+
+.sera-retry-btn {
+  border-style: dashed !important;
+  opacity: 0.72;
+  letter-spacing: .01em;
+}
+
+.sera-retry-btn:hover {
+  opacity: 1;
 }
 
 .conversation-launch {
@@ -2442,6 +2452,7 @@
     max-width: 100%;
   }
 
+  .streamed-copy,
   .markdown-copy {
     font-size: 13px;
     line-height: 1.75;

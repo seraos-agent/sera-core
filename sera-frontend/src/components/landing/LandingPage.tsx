@@ -86,12 +86,13 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
   const submit = (event: FormEvent) => { event.preventDefault(); send(message); };
   const chooseHeaderPrompt = (prompt: string) => {
     if (isThinking) return;
-    setMessage(prompt);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
+    send(prompt);
   };
 
+  const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
+
   useEffect(() => {
-    if (scene === 'reception' || isThinking) return;
+    if (scene === 'reception' || isThinking || !isResponseComplete) return;
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       setRemaining(value => {
@@ -100,7 +101,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
       });
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [scene, isThinking]);
+  }, [scene, isThinking, isResponseComplete]);
 
   useEffect(() => () => { if (responseTimer.current) window.clearTimeout(responseTimer.current); }, []);
 
@@ -152,10 +153,10 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} onRetry={() => send(question)} />}
       </section>
 
-      {scene !== 'reception' && !isThinking && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
+      {scene !== 'reception' && !isThinking && isResponseComplete && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
         <span className="session-pulse" />
         <span>{isClosing ? `Returning to reception in ${remaining}s` : `Session active · Return in ${remaining}s`}</span>
         {isClosing && <button onClick={() => setRemaining(45)}>Stay here</button>}
@@ -318,14 +319,82 @@ function IdleScene() {
   );
 }
 
-function IntentScene({ scene, question, content, streamedResponse, isThinking, activeVisual, isVisualTransitioning, onSuggestion, onLaunchApp }: { scene: Scene; question: string; content: ReceptionReply | null; streamedResponse: string; isThinking: boolean; activeVisual: { scene: Scene; id: number } | null; isVisualTransitioning: boolean; onSuggestion: (prompt: string) => void; onLaunchApp: () => void }) {
+function IntentScene({ scene, question, content, streamedResponse, isThinking, activeVisual, isVisualTransitioning, onSuggestion, onLaunchApp, onRetry }: {
+  scene: Scene;
+  question: string;
+  content: ReceptionReply | null;
+  streamedResponse: string;
+  isThinking: boolean;
+  activeVisual: { scene: Scene; id: number } | null;
+  isVisualTransitioning: boolean;
+  onSuggestion: (prompt: string) => void;
+  onLaunchApp: () => void;
+  onRetry: () => void;
+}) {
   const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
   const hasVisual = visualScenes.has(scene);
   const activeHasCard = Boolean(activeVisual && visualScenes.has(activeVisual.scene));
+
+  // Delay suggestion render by 120 ms after streaming ends to avoid race condition
+  // where activeVisual transition re-renders before suggestions are stable.
+  const [suggestionsReady, setSuggestionsReady] = useState(false);
+  useEffect(() => {
+    if (!isResponseComplete) { setSuggestionsReady(false); return; }
+    const t = window.setTimeout(() => setSuggestionsReady(true), 120);
+    return () => window.clearTimeout(t);
+  }, [isResponseComplete]);
+
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-  return <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}><div className="conversation-column"><div className="user-message"><p>{question}</p></div>{isThinking || !content ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div> : <div className="sera-message">{response}{isResponseComplete && hasVisual && <div className="mobile-inline-visual" aria-label="SERA explanation visual"><div className="mobile-inline-scale"><ExplanationAnimation key={`${question}-mobile`} scene={scene} /></div></div>}{isResponseComplete && scene === 'start' && <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>}{isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && <div className="sera-suggestions">{content.suggestedQuestions.map(suggestion => <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>}</div>{activeHasCard ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}><ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} /></div> : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>{activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}</div>}</div>;
+
+  const hasSuggestions = suggestionsReady && content && content.suggestedQuestions.length > 0;
+  // Show retry when server returned no suggestions (error / rate-limited fallback).
+  const showRetry = suggestionsReady && content && content.suggestedQuestions.length === 0 && scene !== 'start';
+
+  return (
+    <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}>
+      <div className="conversation-column">
+        <div className="user-message"><p>{question}</p></div>
+        {isThinking || !content
+          ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div>
+          : <div className="sera-message">
+              {response}
+              {isResponseComplete && hasVisual && (
+                <div className="mobile-inline-visual" aria-label="SERA explanation visual">
+                  <div className="mobile-inline-scale">
+                    <ExplanationAnimation key={`${question}-mobile`} scene={scene} />
+                  </div>
+                </div>
+              )}
+              {isResponseComplete && scene === 'start' && (
+                <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>
+              )}
+              {hasSuggestions && scene !== 'start' && (
+                <div className="sera-suggestions">
+                  {content!.suggestedQuestions.map(suggestion => (
+                    <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
+                  ))}
+                </div>
+              )}
+              {showRetry && (
+                <div className="sera-suggestions">
+                  <button type="button" className="sera-retry-btn" onClick={onRetry}>↺ Try again</button>
+                </div>
+              )}
+            </div>
+        }
+      </div>
+      {activeHasCard
+        ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>
+            <ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} />
+          </div>
+        : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>
+            {activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}
+          </div>
+      }
+    </div>
+  );
 }
 
 function AmbientDiagram({ scene }: { scene: Scene }) {
