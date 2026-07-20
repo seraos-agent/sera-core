@@ -3,6 +3,7 @@ import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
 import { TwinWalletRegistry } from './TwinWalletRegistry';
 import { SeraUserContext } from './types';
 import { SupabaseWalletAccountRepository } from './SupabaseWalletAccountRepository';
+import { ThirdwebAgentWalletProvisioner } from './ThirdwebAgentWalletProvisioner';
 
 /**
  * Resolves a verified Supabase Auth token to SERA's canonical user ID and
@@ -11,9 +12,13 @@ import { SupabaseWalletAccountRepository } from './SupabaseWalletAccountReposito
  */
 export class SupabaseIdentityService {
   private readonly walletRegistry: TwinWalletRegistry;
+  private readonly walletRepository: SupabaseWalletAccountRepository;
+  private readonly thirdwebProvisioner: ThirdwebAgentWalletProvisioner | null;
 
   constructor(private readonly client: SupabaseRestClient) {
-    this.walletRegistry = new TwinWalletRegistry(new SupabaseWalletAccountRepository(client));
+    this.walletRepository = new SupabaseWalletAccountRepository(client);
+    this.walletRegistry = new TwinWalletRegistry(this.walletRepository);
+    this.thirdwebProvisioner = ThirdwebAgentWalletProvisioner.fromEnvironment(this.walletRepository);
   }
 
   static fromEnvironment(): SupabaseIdentityService | null {
@@ -46,7 +51,19 @@ export class SupabaseIdentityService {
       },
       agent: { provider: 'THIRDWEB', chain: 'base-mainnet', status: 'PROVISIONING' },
     });
+    await this.provisionAgentWallet(user.id);
 
     return { userId: user.id, personalWalletAddress: personalWalletAddress?.toLowerCase() };
+  }
+
+  private async provisionAgentWallet(userId: string): Promise<void> {
+    if (!this.thirdwebProvisioner) return;
+    try {
+      await this.thirdwebProvisioner.ensureForUser(userId);
+    } catch (error) {
+      // Identity login remains available. Wallet actions still fail closed
+      // until a retry has provisioned the managed Agent Wallet.
+      console.warn('[SupabaseIdentity] Agent Wallet provisioning deferred:', error instanceof Error ? error.message : error);
+    }
   }
 }

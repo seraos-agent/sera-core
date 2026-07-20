@@ -1,5 +1,6 @@
 import { WalletCustodyProvider, WalletCustodyUnavailableError } from './WalletCustodyProvider';
 import { LocalDevelopmentCustodyProvider } from './LocalDevelopmentCustodyProvider';
+import { ThirdwebCustodyProvider } from './ThirdwebCustodyProvider';
 
 export type WalletCustodyProviderName = 'local_development' | 'thirdweb' | 'base_subaccount';
 
@@ -20,6 +21,10 @@ export function createWalletCustodyProvider(
       );
     }
     return new LocalDevelopmentCustodyProvider();
+  }
+
+  if (provider === 'thirdweb') {
+    return new ThirdwebCustodyProvider();
   }
 
   throw new WalletCustodyUnavailableError(

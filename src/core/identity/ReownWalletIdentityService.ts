@@ -3,6 +3,7 @@ import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
 import { TwinWalletRegistry } from './TwinWalletRegistry';
 import { SeraUserContext, VerifiedIdentity } from './types';
 import { SupabaseWalletAccountRepository } from './SupabaseWalletAccountRepository';
+import { ThirdwebAgentWalletProvisioner } from './ThirdwebAgentWalletProvisioner';
 
 interface IdentityRow {
   id: string;
@@ -20,9 +21,13 @@ interface IdentityRow {
  */
 export class ReownWalletIdentityService {
   private readonly walletRegistry: TwinWalletRegistry;
+  private readonly walletRepository: SupabaseWalletAccountRepository;
+  private readonly thirdwebProvisioner: ThirdwebAgentWalletProvisioner | null;
 
   constructor(private readonly client: SupabaseRestClient) {
-    this.walletRegistry = new TwinWalletRegistry(new SupabaseWalletAccountRepository(client));
+    this.walletRepository = new SupabaseWalletAccountRepository(client);
+    this.walletRegistry = new TwinWalletRegistry(this.walletRepository);
+    this.thirdwebProvisioner = ThirdwebAgentWalletProvisioner.fromEnvironment(this.walletRepository);
   }
 
   static fromEnvironment(): ReownWalletIdentityService | null {
@@ -45,6 +50,7 @@ export class ReownWalletIdentityService {
       },
       agent: { provider: 'THIRDWEB', chain: 'base-mainnet', status: 'PROVISIONING' },
     });
+    await this.provisionAgentWallet(userId);
 
     return { userId, personalWalletAddress };
   }
@@ -115,6 +121,17 @@ export class ReownWalletIdentityService {
     const resolved = await this.findIdentity(subject);
     if (!resolved) throw new Error('Reown identity could not be persisted.');
     return resolved.userId;
+  }
+
+  private async provisionAgentWallet(userId: string): Promise<void> {
+    if (!this.thirdwebProvisioner) return;
+    try {
+      await this.thirdwebProvisioner.ensureForUser(userId);
+    } catch (error) {
+      // Authentication never falls back to a local key. The Agent Wallet stays
+      // PROVISIONING and can be retried after a transient thirdweb failure.
+      console.warn('[ReownIdentity] Agent Wallet provisioning deferred:', error instanceof Error ? error.message : error);
+    }
   }
 }
 

@@ -14,7 +14,14 @@ describe('Wallet custody provider selection', () => {
     }
   });
 
-  it('fails closed until a managed provider is configured', () => {
-    expect(() => createWalletCustodyProvider('production', 'thirdweb')).toThrow(/not configured/);
+  it('fails closed until the thirdweb server credential is configured', () => {
+    const previous = process.env.THIRDWEB_SECRET_KEY;
+    delete process.env.THIRDWEB_SECRET_KEY;
+    try {
+      expect(() => createWalletCustodyProvider('production', 'thirdweb')).toThrow(/THIRDWEB_SECRET_KEY/);
+    } finally {
+      if (previous === undefined) delete process.env.THIRDWEB_SECRET_KEY;
+      else process.env.THIRDWEB_SECRET_KEY = previous;
+    }
   });
 });
