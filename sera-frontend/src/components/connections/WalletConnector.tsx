@@ -60,8 +60,7 @@ export function WalletConnector({ theme, vaultAddress }: { theme: ThemeType, vau
           <h3 style={{ margin: 0, color: theme.ink, fontSize: '1.2rem', fontWeight: 600 }}>External Wallet</h3>
           <p style={{ margin: '4px 0 0', color: theme.inkFaint, fontSize: '0.9rem' }}>Connect your Web3 wallet to fund SERA.</p>
         </div>
-        {/* @ts-expect-error - Web component from Web3Modal */}
-        <w3m-button />
+        <appkit-button />
       </div>
 
       {isConnected && (

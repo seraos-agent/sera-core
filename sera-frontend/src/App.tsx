@@ -11,10 +11,10 @@ import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
 
 import { LandingPage } from "./components/landing/LandingPage";
-import { createWeb3Modal, useWeb3ModalTheme, useWeb3Modal } from '@web3modal/wagmi/react';
-import { defaultWagmiConfig } from '@web3modal/wagmi/react/config';
+import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
+import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
+import { base, mainnet, polygon, arbitrum } from '@reown/appkit/networks';
 import { WagmiProvider, useAccount, useDisconnect, useSignMessage } from 'wagmi';
-import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
@@ -27,21 +27,25 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 };
 
-const chains = [base, mainnet, polygon, arbitrum] as const;
-const wagmiConfig = defaultWagmiConfig({
-  chains,
+const networks = [base, mainnet, polygon, arbitrum] as [
+  typeof base,
+  typeof mainnet,
+  typeof polygon,
+  typeof arbitrum,
+];
+const wagmiAdapter = new WagmiAdapter({
+  networks,
   projectId,
-  metadata,
 });
 
-createWeb3Modal({
-  wagmiConfig,
+createAppKit({
+  adapters: [wagmiAdapter],
+  networks,
   projectId,
-  themeMode: 'light',
-  // Wallet connection is infrastructure only. Asset conversion must be a
-  // governed SERA capability, never an untracked provider-modal action.
-  enableSwaps: false,
-  enableOnramp: false,
+  metadata,
+  // Wallet connection is infrastructure only. Conversion and funding remain
+  // governed SERA capabilities, never provider-modal actions.
+  features: { analytics: false, swaps: false, onramp: false },
 });
 
 function useFonts() {
@@ -62,7 +66,7 @@ function InnerApp() {
     return (saved === "light" || saved === "dark") ? saved : "light";
   });
 
-  const { setThemeMode } = useWeb3ModalTheme();
+  const { setThemeMode } = useAppKitTheme();
 
   useEffect(() => {
     setThemeMode(mode);
@@ -145,7 +149,7 @@ function InnerApp() {
 
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
-  const { open } = useWeb3Modal();
+  const { open } = useAppKit();
   const [isBypassed, setIsBypassed] = useState(false);
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
 
@@ -414,7 +418,7 @@ function InnerApp() {
 
 export default function App() {
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <InnerApp />
       </QueryClientProvider>
