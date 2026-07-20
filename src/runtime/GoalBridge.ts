@@ -3,7 +3,11 @@ import { EventEmitter } from 'events';
 import { formatEther } from 'viem';
 import { base } from 'viem/chains';
 import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
-import { WalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProvider';
+import {
+  UnavailableWalletCustodyProvider,
+  WalletCustodyProvider,
+  WalletCustodyUnavailableError,
+} from '../capabilities/wallet/WalletCustodyProvider';
 import { createWalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProviderFactory';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
@@ -45,10 +49,21 @@ export class GoalBridge {
     this.sessionId = sessionId;
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
-    this.walletAdapter = createWalletCustodyProvider();
+    try {
+      this.walletAdapter = createWalletCustodyProvider();
 
-    // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
-    this.walletInitializing = this.initWallet(sessionId !== 'dev' ? sessionId : undefined);
+      // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
+      this.walletInitializing = this.initWallet(sessionId !== 'dev' ? sessionId : undefined);
+    } catch (error) {
+      if (!(error instanceof WalletCustodyUnavailableError)) throw error;
+
+      // A missing managed custody adapter must never create or use a server
+      // private key. It also must not prevent unrelated Core capabilities
+      // (dialogue, memory, Google Drive) from serving users.
+      this.walletAdapter = new UnavailableWalletCustodyProvider(error.message);
+      this.walletInitializing = Promise.resolve();
+      console.warn(`[GoalBridge] Wallet capability unavailable: ${error.message}`);
+    }
 
     console.log(`[GoalBridge] Initialized for session ${sessionId}. Listening for SPAWN_GOAL events.`);
   }

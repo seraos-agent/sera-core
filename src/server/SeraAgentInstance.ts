@@ -232,10 +232,11 @@ export class SeraAgentInstance {
     this.runtime.setGlobalEventBus(this.eventBus, {
       sessionId: this.sessionId,
       persistUserData: persistLocally,
-      // MCP child processes are integration infrastructure, not part of an
-      // isolated kernel test. Keeping them out of tests prevents orphaned npx
-      // processes and makes shutdown deterministic.
-      disableMcp: process.env.NODE_ENV === 'test',
+      // MCP child processes are optional integration infrastructure. Keeping
+      // them disabled on Cloud Run unless explicitly enabled avoids cold-start
+      // work and background child processes unrelated to the Core API.
+      disableMcp: process.env.NODE_ENV === 'test'
+        || (serverConfig.isProduction && process.env.SERA_ENABLE_MCP !== 'true'),
     });
     this.worldStateService = this.runtime.worldStateService;
 

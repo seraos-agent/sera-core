@@ -20,3 +20,34 @@ export class WalletCustodyUnavailableError extends Error {
     this.name = 'WalletCustodyUnavailableError';
   }
 }
+
+/**
+ * Production-safe placeholder used when a managed wallet provider has not
+ * been configured yet. It lets non-wallet SERA capabilities boot while every
+ * wallet operation remains explicitly unavailable.
+ */
+export class UnavailableWalletCustodyProvider implements WalletCustodyProvider {
+  readonly providerId = 'unavailable';
+
+  constructor(private readonly reason: string) {}
+
+  private unavailable(): never {
+    throw new WalletCustodyUnavailableError(this.reason);
+  }
+
+  async initializeAgentWallet(_userId?: SeraUserId): Promise<WalletId> {
+    return this.unavailable();
+  }
+
+  async getBalance(_walletId: WalletId, _asset: string): Promise<number> {
+    return this.unavailable();
+  }
+
+  async getAddressBalance(_address: string, _asset: string): Promise<number> {
+    return this.unavailable();
+  }
+
+  async execute(_walletId: WalletId, _context: ExecutionContext<any>): Promise<ExecutionReceipt> {
+    return this.unavailable();
+  }
+}
