@@ -190,12 +190,31 @@ function normaliseReply(value: unknown, message: string): ReceptionReply {
     seenSuggestions.add(suggestionKey);
     return true;
   });
-  const response = cleanResponse(candidate.response.slice(0, 1200), suggestedQuestions, message);
+
+  // If the model returned no usable suggestions, supply topic-neutral fallbacks so that
+  // the landing page always renders follow-up capsules after every answer.
+  const fallbackPool = [
+    'What is SERA?',
+    'How does SERA work?',
+    'How does SERA stay safe?',
+    'What can SERA connect to?',
+    'What can SERA help me accomplish?',
+  ];
+  const effectiveSuggestions = suggestedQuestions.length > 0
+    ? suggestedQuestions
+    : fallbackPool
+        .filter(s => {
+          const k = normaliseQuestion(s);
+          return k !== questionKey && !seenSuggestions.has(k);
+        })
+        .slice(0, 3);
+
+  const response = cleanResponse(candidate.response.slice(0, 1200), effectiveSuggestions, message);
   return {
     visual: typeof candidate.visual === 'string' && allowedVisuals.has(candidate.visual) ? candidate.visual : 'general',
     label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : '',
     response,
-    suggestedQuestions,
+    suggestedQuestions: effectiveSuggestions,
   };
 }
 

@@ -89,7 +89,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
     send(prompt);
   };
 
-  const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
+  const isResponseComplete = Boolean(content && content.response.length > 0 && streamedResponse.length >= content.response.length);
 
   useEffect(() => {
     if (scene === 'reception' || isThinking || !isResponseComplete) return;
@@ -153,7 +153,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
       </header>
 
       <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} onRetry={() => send(question)} />}
+        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
       </section>
 
       {scene !== 'reception' && !isThinking && isResponseComplete && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
@@ -319,7 +319,7 @@ function IdleScene() {
   );
 }
 
-function IntentScene({ scene, question, content, streamedResponse, isThinking, activeVisual, isVisualTransitioning, onSuggestion, onLaunchApp, onRetry }: {
+function IntentScene({ scene, question, content, streamedResponse, isThinking, activeVisual, isVisualTransitioning, onSuggestion, onLaunchApp }: {
   scene: Scene;
   question: string;
   content: ReceptionReply | null;
@@ -329,28 +329,14 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
   isVisualTransitioning: boolean;
   onSuggestion: (prompt: string) => void;
   onLaunchApp: () => void;
-  onRetry: () => void;
 }) {
-  const isResponseComplete = Boolean(content && streamedResponse.length >= content.response.length);
+  const isResponseComplete = Boolean(content && content.response.length > 0 && streamedResponse.length >= content.response.length);
   const hasVisual = visualScenes.has(scene);
   const activeHasCard = Boolean(activeVisual && visualScenes.has(activeVisual.scene));
-
-  // Delay suggestion render by 120 ms after streaming ends to avoid race condition
-  // where activeVisual transition re-renders before suggestions are stable.
-  const [suggestionsReady, setSuggestionsReady] = useState(false);
-  useEffect(() => {
-    if (!isResponseComplete) { setSuggestionsReady(false); return; }
-    const t = window.setTimeout(() => setSuggestionsReady(true), 120);
-    return () => window.clearTimeout(t);
-  }, [isResponseComplete]);
 
   const response = !content ? null : isResponseComplete
     ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
     : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
-
-  const hasSuggestions = suggestionsReady && content && content.suggestedQuestions.length > 0;
-  // Show retry when server returned no suggestions (error / rate-limited fallback).
-  const showRetry = suggestionsReady && content && content.suggestedQuestions.length === 0 && scene !== 'start';
 
   return (
     <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}>
@@ -370,18 +356,25 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
               {isResponseComplete && scene === 'start' && (
                 <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>
               )}
-              {hasSuggestions && scene !== 'start' && (
-                <div className="sera-suggestions">
-                  {content!.suggestedQuestions.map(suggestion => (
-                    <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
-                  ))}
-                </div>
-              )}
-              {showRetry && (
-                <div className="sera-suggestions">
-                  <button type="button" className="sera-retry-btn" onClick={onRetry}>↺ Try again</button>
-                </div>
-              )}
+              {isResponseComplete && scene !== 'start' && (() => {
+                const CLIENT_FALLBACK = [
+                  'What is SERA?',
+                  'How does SERA work?',
+                  'How does SERA stay safe?',
+                  'What can SERA connect to?',
+                  'What can SERA help me accomplish?',
+                ];
+                const suggestions = content.suggestedQuestions.length > 0
+                  ? content.suggestedQuestions
+                  : CLIENT_FALLBACK.filter(s => s.toLowerCase().trim() !== question.toLowerCase().trim()).slice(0, 3);
+                return suggestions.length > 0 ? (
+                  <div className="sera-suggestions">
+                    {suggestions.map(suggestion => (
+                      <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
             </div>
         }
       </div>
