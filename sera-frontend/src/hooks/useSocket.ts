@@ -5,6 +5,13 @@ import type { CognitiveObservationPayload } from "../../../src/core/events/types
 import type { MemoryVaultDescriptor } from "../../../src/core/memory/MemoryVault";
 import { deviceMemoryVault, deviceVaultDescriptor, type DeviceVaultDescriptor } from '../storage/DeviceMemoryVault';
 
+export interface GoogleDriveConnectionState {
+  provider: 'GOOGLE_DRIVE';
+  status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+  vaultFolderId?: string;
+  connectedAt?: string;
+}
+
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
   setMode: (mode: "light" | "dark") => void,
@@ -16,8 +23,10 @@ export function useSocket(
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
   const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
+  const [googleDrive, setGoogleDrive] = useState<GoogleDriveConnectionState>({ provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
+  const googleDrivePopup = useRef<Window | null>(null);
   const skipNextDeviceVaultWrite = useRef(false);
 
   const localChatKey = `chat-history:${deviceScope}`;
@@ -79,6 +88,16 @@ export function useSocket(
       .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
     socket?.emit('chat:clear');
   }, [socket, localChatKey]);
+
+  const connectGoogleDrive = useCallback(() => {
+    if (!socket) return;
+    googleDrivePopup.current = window.open('', 'sera-google-drive', 'popup=yes,width=520,height=700');
+    socket.emit('google_drive:connect');
+  }, [socket]);
+
+  const disconnectGoogleDrive = useCallback(() => {
+    socket?.emit('google_drive:disconnect');
+  }, [socket]);
 
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || 
@@ -170,8 +189,33 @@ export function useSocket(
       setMemoryVault(data);
     });
 
+    newSocket.on('google_drive:status', (data: GoogleDriveConnectionState) => {
+      setGoogleDrive(data);
+      if (data.status === 'CONNECTED' && googleDrivePopup.current && !googleDrivePopup.current.closed) {
+        googleDrivePopup.current.close();
+        googleDrivePopup.current = null;
+      }
+    });
+
+    newSocket.on('google_drive:authorization', (data: { authorizationUrl?: string }) => {
+      if (!data.authorizationUrl) return;
+      if (googleDrivePopup.current && !googleDrivePopup.current.closed) {
+        googleDrivePopup.current.location.assign(data.authorizationUrl);
+      } else {
+        window.location.assign(data.authorizationUrl);
+      }
+    });
+
+    newSocket.on('google_drive:error', () => {
+      if (googleDrivePopup.current && !googleDrivePopup.current.closed) googleDrivePopup.current.close();
+      googleDrivePopup.current = null;
+    });
+
     return () => {
       newSocket.off('memory:vault_status');
+      newSocket.off('google_drive:status');
+      newSocket.off('google_drive:authorization');
+      newSocket.off('google_drive:error');
       newSocket.close();
     };
   }, [streamReply, setWalletState, setMode, localChatKey]);
@@ -188,5 +232,8 @@ export function useSocket(
     memoryVault,
     deviceVault,
     deleteDeviceMemory,
+    googleDrive,
+    connectGoogleDrive,
+    disconnectGoogleDrive,
   };
 }

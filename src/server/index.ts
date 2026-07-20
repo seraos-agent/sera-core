@@ -18,10 +18,12 @@ import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityRe
 import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
 import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/identity/ReownWalletIdentityService';
 import { verifyWalletSignature } from './WalletSignatureVerifier';
+import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
 const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
+const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
 
 interface SessionTokenPrincipal {
   userId: string;
@@ -70,6 +72,37 @@ const io = new Server(httpServer, {
   },
 });
 
+function renderGoogleDriveCallbackPage(title: string, message: string, isSuccess: boolean): string {
+  const color = isSuccess ? '#28795B' : '#B23B3B';
+  const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]!));
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#F7F7F4;color:#18221D;font-family:Inter,system-ui,sans-serif"><main style="width:min(90vw,440px);padding:32px;border:1px solid #D9DDD6;border-radius:18px;background:#FFF"><div style="color:${color};font-weight:700;font-size:12px;letter-spacing:.08em">SERA GOOGLE DRIVE</div><h1 style="font-size:24px;margin:12px 0">${escapeHtml(title)}</h1><p style="color:#58635B;line-height:1.55;margin:0">${escapeHtml(message)}</p><p style="color:#58635B;font-size:13px;margin:20px 0 0">You can close this window.</p></main><script>window.opener?.postMessage({type:'sera:google-drive:complete',success:${isSuccess}}, '*');</script></body></html>`;
+}
+
+app.get('/auth/google-drive/callback', async (request, response) => {
+  if (!googleDriveOAuthService) {
+    response.status(503).type('html').send(renderGoogleDriveCallbackPage('Google Drive is not configured', 'SERA Core is missing its Google Drive OAuth configuration.', false));
+    return;
+  }
+
+  const code = typeof request.query.code === 'string' ? request.query.code : undefined;
+  const state = typeof request.query.state === 'string' ? request.query.state : undefined;
+  const authorizationError = typeof request.query.error === 'string' ? request.query.error : undefined;
+  if (authorizationError || !code || !state) {
+    response.status(400).type('html').send(renderGoogleDriveCallbackPage('Google Drive was not connected', authorizationError || 'The authorization response was incomplete.', false));
+    return;
+  }
+
+  try {
+    const completed = await googleDriveOAuthService.completeAuthorization(code, state);
+    io.to(`user:${completed.userId}`).emit('google_drive:status', completed.status);
+    response.type('html').send(renderGoogleDriveCallbackPage('Google Drive connected', 'Your SERA Vault folder is ready. SERA stores only validated memory projections there.', true));
+  } catch (error) {
+    console.error('[GoogleDrive] OAuth callback failed:', error);
+    const message = error instanceof Error ? error.message : 'The connection could not be completed.';
+    response.status(400).type('html').send(renderGoogleDriveCallbackPage('Google Drive was not connected', message, false));
+  }
+});
+
 let msgIdCounter = Date.now();
 
 // ─── Socket.io Bridge (Sensory Layer) ────────────────────────────────────────
@@ -101,6 +134,13 @@ io.on('connection', (socket: Socket) => {
     socket.emit('observations:history', instance.observationStore.getAll());
     socket.emit('automations:update', instance.triggerStore.getAll());
     socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
+    if (googleDriveOAuthService && socket.data.sessionId && socket.data.sessionId !== 'dev') {
+      void googleDriveOAuthService.getStatus(socket.data.sessionId)
+        .then((status) => socket.emit('google_drive:status', status))
+        .catch(() => socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' }));
+    } else {
+      socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
+    }
   };
 
   // Do NOT send initial state or bind listeners upon raw connection!
@@ -293,6 +333,7 @@ io.on('connection', (socket: Socket) => {
     socket.emit('auth:success', { token: newToken });
 
     // Switch to new context BEFORE checking entitlement so we don't leak dev state
+    if (socket.data.sessionId && socket.data.sessionId !== 'dev') socket.leave(`user:${socket.data.sessionId}`);
     unbindListeners();
     socket.data.sessionId = principal!.userId;
     socket.data.personalWalletAddress = principal!.personalWalletAddress;
@@ -313,12 +354,14 @@ io.on('connection', (socket: Socket) => {
     }
     
     socket.data.isAuthenticated = true;
+    socket.join(`user:${principal!.userId}`);
   });
 
   socket.on('auth:logout', () => {
     // A wallet disconnect must also terminate SERA's socket session. Leaving
     // the socket authenticated would make a shared-device logout misleading.
     unbindListeners();
+    if (socket.data.sessionId && socket.data.sessionId !== 'dev') socket.leave(`user:${socket.data.sessionId}`);
     walletLinkChallenge = undefined;
     socket.data.isAuthenticated = false;
     socket.data.sessionId = 'dev';
@@ -326,6 +369,28 @@ io.on('connection', (socket: Socket) => {
     socket.data.loginMessage = undefined;
     instance = agentManager.getOrCreateInstance('dev');
     socket.emit('auth:logged_out');
+  });
+
+  socket.on('google_drive:connect', () => {
+    if (!requireAuthenticatedSession(socket, 'google_drive:connect', instance?.eventBus)) return;
+    if (!googleDriveOAuthService || socket.data.sessionId === 'dev') {
+      socket.emit('google_drive:error', { message: 'Google Drive connection is not configured for this environment.' });
+      return;
+    }
+    socket.emit('google_drive:authorization', { authorizationUrl: googleDriveOAuthService.beginAuthorization(socket.data.sessionId!) });
+  });
+
+  socket.on('google_drive:disconnect', async () => {
+    if (!requireAuthenticatedSession(socket, 'google_drive:disconnect', instance?.eventBus)) return;
+    if (!googleDriveOAuthService || socket.data.sessionId === 'dev') {
+      socket.emit('google_drive:error', { message: 'Google Drive connection is not configured for this environment.' });
+      return;
+    }
+    try {
+      socket.emit('google_drive:status', await googleDriveOAuthService.disconnect(socket.data.sessionId!));
+    } catch (error) {
+      socket.emit('google_drive:error', { message: error instanceof Error ? error.message : 'Unable to disconnect Google Drive.' });
+    }
   });
 
   socket.on('identity:link_wallet_challenge', (payload: { address?: string }) => {

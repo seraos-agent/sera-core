@@ -87,7 +87,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address } = useAccount();
-  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory } = useSocket(
+  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -366,6 +366,9 @@ function InnerApp() {
               memoryVault={memoryVault}
               deviceVault={deviceVault}
               onDeleteDeviceMemory={deleteDeviceMemory}
+              googleDrive={googleDrive}
+              onConnectGoogleDrive={connectGoogleDrive}
+              onDisconnectGoogleDrive={disconnectGoogleDrive}
             /> : currentView === "wallet" ? (
               <WalletPage
                 theme={theme}
