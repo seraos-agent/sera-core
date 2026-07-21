@@ -231,6 +231,16 @@ export class ExecutionCoordinator {
     if (requiresApproval) {
       this.pendingApprovalTasks.set(task.taskId, { task, trace });
       this.logger.info(`Task ${task.taskId} for goal ${goal.id} is WAITING_APPROVAL`);
+      this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        id: `evt-speak-${Date.now()}`,
+        type: EventTypes.DIALOGUE_AGENT_SPEAK,
+        source: 'ExecutionCoordinator',
+        timestamp: Date.now(),
+        payload: {
+          text: `Saya sudah menyiapkan proposal eksekusi yang memerlukan persetujuan manual (misalnya: transfer dana).\n\nSilakan klik "Approve" pada kartu proposal yang muncul untuk melanjutkannya.`
+        }
+      });
+
       this.eventBus.emit(EventTypes.GOAL_REQUIRES_APPROVAL, {
         taskId: task.taskId,
         goalId: goal.id,
@@ -239,7 +249,22 @@ export class ExecutionCoordinator {
         timestamp: Date.now()
       });
     } else {
-      this.scheduler.submitTask(task);
+      try {
+        this.scheduler.submitTask(task);
+      } catch (err: any) {
+        this.logger.error(`Failed to submit task ${task.taskId}: ${err.message}`);
+        this.eventBus.emit(EventTypes.DOMAIN_GOAL_RESULT, {
+          id: `evt-goal-fail-${Date.now()}`,
+          type: EventTypes.DOMAIN_GOAL_RESULT,
+          source: 'ExecutionCoordinator',
+          timestamp: Date.now(),
+          payload: {
+            goalId: goal.id,
+            success: false,
+            errorMessage: err.message || 'Execution blocked by policy.'
+          }
+        });
+      }
     }
   }
 
@@ -249,7 +274,23 @@ export class ExecutionCoordinator {
     
     this.logger.info(`Task ${taskId} APPROVED. Submitting to scheduler.`);
     this.pendingApprovalTasks.delete(taskId);
-    this.scheduler.submitTask(pending.task);
+    
+    try {
+      this.scheduler.submitTask(pending.task);
+    } catch (err: any) {
+      this.logger.error(`Failed to submit approved task ${taskId}: ${err.message}`);
+      this.eventBus.emit(EventTypes.DOMAIN_GOAL_RESULT, {
+        id: `evt-goal-fail-${Date.now()}`,
+        type: EventTypes.DOMAIN_GOAL_RESULT,
+        source: 'ExecutionCoordinator',
+        timestamp: Date.now(),
+        payload: {
+          goalId: pending.task.context.goalId,
+          success: false,
+          errorMessage: err.message || 'Execution blocked by policy.'
+        }
+      });
+    }
     return true;
   }
 

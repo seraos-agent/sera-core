@@ -11,7 +11,7 @@ export interface WorkerCapabilityDescriptor {
 const permittedClasses: Record<WorkerLane, readonly WorkClass[]> = {
   DETERMINISTIC_UI: ['INSTANT_UI'],
   DIALOGUE: ['CONVERSATION'],
-  TOOL_EXECUTION: ['OPERATIONAL'],
+  TOOL_EXECUTION: ['OPERATIONAL', 'COMPLEX'],
   SWARM_REVIEW: ['COMPLEX'],
   GOVERNED_EXECUTION: ['HIGH_RISK']
 };

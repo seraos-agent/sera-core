@@ -108,7 +108,7 @@ let msgIdCounter = Date.now();
 // ─── Socket.io Bridge (Sensory Layer) ────────────────────────────────────────
 io.on('connection', (socket: Socket) => {
   console.log(`[Server] UI Client connected: ${socket.id}`);
-  
+
   // By default, connections are unauthenticated and bound to nothing.
   // We point them to 'dev' to prevent null reference errors, but they cannot 
   // interact or read its state until auth:login succeeds.
@@ -127,7 +127,7 @@ io.on('connection', (socket: Socket) => {
   const sendInitialState = () => {
     const walletState = instance.worldStateService.getWalletState();
     if (walletState && walletState.address) {
-    socket.emit('wallet:update', walletState);
+      socket.emit('wallet:update', walletState);
     }
     socket.emit('memory:vault_status', instance.memoryVault);
     socket.emit('chat:history', instance.chatHistoryStore.getUiMessages());
@@ -248,13 +248,13 @@ io.on('connection', (socket: Socket) => {
   };
 
   // Listeners are only bound after successful auth:login.
-  
+
   socket.on('auth:challenge', issueLoginChallenge);
 
   socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string; supabaseAccessToken?: string }) => {
     let address = payload?.address?.toLowerCase();
     let principal: SeraUserContext;
-    
+
     // Check token authentication
     if (payload.token) {
       const recoveredPrincipal = verifySessionToken(payload.token);
@@ -352,7 +352,7 @@ io.on('connection', (socket: Socket) => {
       }
       throw err;
     }
-    
+
     socket.data.isAuthenticated = true;
     socket.join(`user:${principal!.userId}`);
   });
@@ -475,7 +475,7 @@ io.on('connection', (socket: Socket) => {
       agentManager.getSubscriptionService().recordTopUp(principalId, amountUsdc);
       const periods = agentManager.getSubscriptionService().getRemainingPeriods(principalId);
       socket.emit('billing:update', { periods });
-      
+
       // Attempt to re-verify entitlement after topup
       try {
         agentManager.checkEntitlement(principalId);
@@ -547,10 +547,10 @@ io.on('connection', (socket: Socket) => {
     if (!requireAuthenticatedSession(socket, 'chat:proposal_response', instance?.eventBus)) return;
     const { proposalId, action, candidateId } = data;
     console.log(`[Server] Received proposal response for ${proposalId}: ${action} (candidateId: ${candidateId})`);
-    
+
     const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
     instance.chatHistoryStore.updateProposalStatus(proposalId, status);
-    
+
     if (action === 'APPROVE') {
       instance.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
         id: `evt-${Date.now()}`,

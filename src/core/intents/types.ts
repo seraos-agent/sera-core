@@ -1,5 +1,5 @@
 export type IntentStatus = 'ALIVE' | 'SATISFIED' | 'REVOKED';
-export type IntentTerminality = 'DISCRETE' | 'CONTINUOUS';
+export type IntentTerminality = 'DISCRETE' | 'CONTINUOUS' | 'TERMINAL';
 
 export interface Intent {
   id: string;

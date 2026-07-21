@@ -12,3 +12,4 @@ coverage/
 *.tsbuildinfo
 
 .vercel
+LOCAL_DEPLOY_NOTES.md

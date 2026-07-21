@@ -30,22 +30,24 @@ CRITICAL — IDENTITY AND PERSONA:
 - You HAVE full internet access and real-time capabilities via your connected Tools (such as web search, wallets, etc.).
 - NEVER claim that you are an AI model without internet access or real-time data. You are SERA, a sovereign agent connected to the world. If you need data, use your tools or rely on the system data provided to you.
 - DO NOT expose internal technical jargon to the user. Never mention tool names like 'brave_web_search', 'MCP', 'JSON', or 'API'. Speak naturally. E.g., say "I searched the web" instead of "I used the brave_web_search tool".
-- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "oke", "ok", "sip", "siap" with absolutely no other content): reply with ONE word or very short phrase acknowledging them. Example: "Siap.", "Hadir.", or "Menyimak." Do NOT say "Online."
+- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "oke", "ok", "sip", "siap" with absolutely no other content): respond warmly in 1-2 short sentences. Acknowledge the user and include a brief situational note if relevant context is available (e.g. market status, time of day, or a pending task). Example: "Hai, selamat pagi. Pasar kripto cukup aktif hari ini." or "Siap, ada yang mau kita kerjakan?" Do NOT respond with just one cold word like "Menyimak." or "Online."
 - RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
-- RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear, brief self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does, not just the name expansion. Keep it to 2-3 sentences.
-- NEVER say "How can I help?", "What can I assist with?", or any generic assistant offer.
+- RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does in practical terms. Keep it to 3-4 sentences.
 - No excessive emoji. No self-introduction repetition.
 
 CRITICAL — COMMUNICATION STYLE:
-- Be concise. An agent answers in the fewest words that are still precise and complete.
+- Be clear and purposeful. Write enough to be helpful, but never pad responses with filler words. Prioritize substance over brevity.
 - Be confident. State things as fact, not as offers. "I'll check that." not "I can try to check that for you!"
+- Be professionally warm. You are a knowledgeable colleague, not a cold terminal. Show that you understand the user's situation.
+- When answering questions, provide context that helps the user make decisions. For example, if asked about a token price, include relevant market context (trend, volume, or comparison) — not just the raw number.
+- When completing an action, briefly confirm what was done and, if relevant, suggest a logical next step. Example: "Transfer 50 USDC sudah dikirim ke wallet kamu. Mau cek saldo terbaru?"
 - Match the user's register: formal if they are formal, casual if they are casual.
 - You MUST respond in the exact language of the user's LATEST message (Indonesian → Indonesian, English → English). Switch languages fluidly.
 - Write in complete, fluid sentences. Do NOT use long em-dashes (—). Short hyphens (-) are fine.
-- NEVER list your own capabilities as a response. Saying "I can do X, Y, Z" is FORBIDDEN unless the user explicitly asks what you can do.
-- NEVER end a response with an open offer like "let me know if you need anything", "just ask", or "I'm ready whenever you are".
-- When asking for clarification, ask ONE short plain question. Do NOT use bullet points, numbered lists, or structured formatting just to ask a simple question.
-- If the message has no reliable meaning or request, do not classify it as a command, a typo, a test, or a named category. Ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
+- Do NOT dump an unsolicited list of your capabilities. But if a user seems unsure what to do, you MAY proactively suggest one or two relevant actions based on context (e.g. "Kamu bisa cek portofolio atau pantau harga aset tertentu.").
+- Do NOT end with generic assistant filler like "let me know if you need anything" or "I'm here for you". Instead, close with something contextually relevant or forward-looking if appropriate. If there is nothing to add, simply end naturally.
+- When asking for clarification, ask ONE clear question. Do NOT use bullet points or numbered lists just to ask a simple question.
+- If the message has no reliable meaning or request, ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
 - For any clarification response, write any brief context first, then end the entire response with exactly one question. The question mark must be the final character; never put text, lists, or offers after it.
 
 CRITICAL — OPERATING AGREEMENT INTEGRITY:
@@ -56,8 +58,8 @@ CRITICAL — OPERATING AGREEMENT INTEGRITY:
 CRITICAL — PLATFORM AWARENESS:
 - When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
 - In Slack: no markdown bullet lists unless listing actual data (like addresses or balances). Use plain sentences.
-- In Slack: a greeting is operational signal. Respond and move forward. Don’t offer a menu of services.
-- In Slack: clarification questions should be ONE line. Example: "Maksudnya 'con' apa — config, contract, atau typo 'can'?"
+- In Slack: a greeting is operational signal. Respond and move forward. Don't offer a menu of services.
+- In Slack: clarification questions should be ONE line. Example: "Maksudnya 'con' apa - config, contract, atau typo 'can'?"
 
 CRITICAL — SECURITY AND WALLET POLICY:
 - You have your own operational wallet. Refer to it as "my balance", "my funds", or "my wallet". NEVER say "vault" or "brankas".
@@ -146,7 +148,7 @@ export class DialogueEngine {
    */
   private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
   private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
-  
+
   private consentedUsers: Set<string> = new Set();
   private readonly CONSENT_FILE_PATH = path.join(process.cwd(), '.data', 'consented_users.json');
   private readonly persistLocally: boolean;
@@ -234,7 +236,8 @@ export class DialogueEngine {
         'User attention is limited. Keep answers concise.',
         'Never hallucinate unverified state.',
         'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
-        'If the user asks to transfer or send "all" funds, use the string "all" as the amount parameter. No need to check balance.',
+        'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
+        'When using TRANSFER_FUNDS, include "fromWallet": "agent_vault" to send your own funds, or "user_main_wallet" for the user\'s funds.',
         'CRITICAL: If the user specifies a delay (e.g. "dalam 20dtk", "in 1 hour"), you MUST use the SCHEDULE_GOAL tool, NOT the TRANSFER_FUNDS tool. Put TRANSFER_FUNDS inside the actionIntent of SCHEDULE_GOAL.'
       ]
     };
@@ -245,9 +248,9 @@ export class DialogueEngine {
     });
 
     if (uiCommandExecuted) {
-      messages.push({ 
-        role: 'system', 
-        content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.` 
+      messages.push({
+        role: 'system',
+        content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.`
       });
     }
 
@@ -394,7 +397,7 @@ export class DialogueEngine {
   private evaluateFeasibility(intent: string, parameters: any): { feasible: boolean, reason?: string } {
     let checkIntent = intent;
     let checkParams = parameters;
-    
+
     if (intent === 'SCHEDULE_GOAL' && parameters && parameters.actionIntent) {
       checkIntent = parameters.actionIntent;
       checkParams = parameters.actionParameters || {};
@@ -491,6 +494,13 @@ export class DialogueEngine {
     if (this.preparePaperTradingFullAccessProposal(userMessage)) return;
 
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
+    
+    this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
+      title: "Synthesizing Intent",
+      desc: "Parsing user input to extract semantic goals and parameters.",
+      signal: "Natural Language Understanding",
+      color: "#8b5cf6" // purple
+    });
 
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
@@ -505,49 +515,72 @@ export class DialogueEngine {
         : await this.classifyIntent(userMessage);
       const workRoute = this.workClassificationPolicy.classify(userMessage);
       parameters = { ...parameters, _seraWorkClass: workRoute.workClass };
-      console.log(`[DialogueEngine] Classified intent: ${intent}`);
+      console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass}`);
+
+      // ── Step 1.5: Intercept Complex Autonomy Tasks ───────────────────────────
+      // If this requires swarm or planner coordination, bypass the 1-shot LLM and inject directly into the cognitive loop.
+      if (workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true') {
+        const intentId = `intent-${Date.now()}`;
+        this.emitEvent('system.register.intent' as any, {
+          intent: {
+            id: intentId,
+            description: userMessage, // The raw text acts as the intent goal for the Swarm/Planner to unpack
+            status: 'ALIVE',
+            terminality: 'TERMINAL', // It should complete and stop
+            createdAt: Date.now()
+          }
+        });
+        
+        const messages = await this.buildWorkingMemory();
+        messages.push({ role: 'system', content: 'The user has submitted a complex request that requires multi-step planning. Acknowledge the request naturally and concisely. Tell the user you are analyzing and planning the steps in the background, and will provide a proposal shortly.' });
+        const ackResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, [], this.activeAbortController?.signal);
+        
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: ackResponse.text.trim() });
+        this._activeResponseContext = undefined;
+        return;
+      }
 
       // ── Step 2: Clarification Validation ───────────────────────────────────────
       // (Legacy logic removed - clarification is now natively handled by Tool Calling)
 
-        let uiCommandExecuted = false;
+      let uiCommandExecuted = false;
 
-        if (intent === 'EXECUTE_UI_COMMAND') {
-          uiCommandExecuted = true;
-          const cmd = String(parameters.uiCommand).toUpperCase();
-          
-          if (cmd === 'SET_THEME_DARK') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
-          if (cmd === 'SET_THEME_LIGHT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-          
-          if (cmd === 'CLEAR_CHAT') {
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Alright, I will clear the chat history for you.' });
-            this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
-            return; // Return immediately to avoid unnecessary LLM generation
-          }
-          
-          // Force fallback to conversational response so the agent acknowledges the action naturally
-          intent = 'NONE';
+      if (intent === 'EXECUTE_UI_COMMAND') {
+        uiCommandExecuted = true;
+        const cmd = String(parameters.uiCommand).toUpperCase();
+
+        if (cmd === 'SET_THEME_DARK') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+        if (cmd === 'SET_THEME_LIGHT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+
+        if (cmd === 'CLEAR_CHAT') {
+          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Alright, I will clear the chat history for you.' });
+          this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
+          return; // Return immediately to avoid unnecessary LLM generation
         }
 
-        let forgetMeExecuted = false;
-        if (intent === 'FORGET_ME') {
-          console.log(`[DialogueEngine] Executing FORGET_ME for user/session.`);
-          // In a real system, we'd delete SQLite rows matching the user's principalId.
-          // For now, we clear the working memory map.
-          this.platformConversationHistory.clear();
-          this.chatHistoryStore.clear();
-          
-          if (this._activeResponseContext && this._activeResponseContext.senderId) {
-            this.consentedUsers.delete(this._activeResponseContext.senderId);
-            this.saveConsentedUsers();
-          }
+        // Force fallback to conversational response so the agent acknowledges the action naturally
+        intent = 'NONE';
+      }
 
-          forgetMeExecuted = true;
-          intent = 'NONE'; // Fallback to conversational handler to let LLM generate response
+      let forgetMeExecuted = false;
+      if (intent === 'FORGET_ME') {
+        console.log(`[DialogueEngine] Executing FORGET_ME for user/session.`);
+        // In a real system, we'd delete SQLite rows matching the user's principalId.
+        // For now, we clear the working memory map.
+        this.platformConversationHistory.clear();
+        this.chatHistoryStore.clear();
+
+        if (this._activeResponseContext && this._activeResponseContext.senderId) {
+          this.consentedUsers.delete(this._activeResponseContext.senderId);
+          this.saveConsentedUsers();
         }
 
-        // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
-        if (intent !== 'NONE') {
+        forgetMeExecuted = true;
+        intent = 'NONE'; // Fallback to conversational handler to let LLM generate response
+      }
+
+      // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
+      if (intent !== 'NONE') {
         // AUTO-EXECUTE path: Read-only operations and authorized vault operations (e.g. transfers)
         const AUTO_EXECUTE_INTENTS = ['CHECK_NETWORK'];
         const shouldAutoExecute = AUTO_EXECUTE_INTENTS.includes(intent);
@@ -560,11 +593,18 @@ export class DialogueEngine {
           const result = await this.spawnGoalAndAwaitResult(intent, parameters);
           await this.narrateResult(userMessage, result);
         } else {
+          this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
+            title: "Validation Check",
+            desc: `Evaluating feasibility for ${intent}...`,
+            signal: "Pre-flight verification",
+            color: "#eab308" // yellow
+          });
+
           // Pre-Proposal Validation
           const feasibility = this.evaluateFeasibility(intent, parameters);
           if (!feasibility.feasible) {
             const systemRejectionMsg = `The user's requested operation failed the pre-flight feasibility check. Reason: ${feasibility.reason}. Respond strictly as an objective operational system agent. Explain that the request was evaluated against current world state and cannot be prepared. Do NOT apologize. Maintain an operational, matter-of-fact tone.`;
-            
+
             const messages = await this.buildWorkingMemory();
             messages.push({ role: 'system', content: systemRejectionMsg });
 
@@ -574,15 +614,19 @@ export class DialogueEngine {
             // LLM messages are no longer persisted
 
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
-            return;
-          }
+          } else {
+            this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
+              title: "Formulating Proposal",
+              desc: `Assembling execution parameters for ${intent} based on world state and constraints.`,
+              signal: "Action Planning",
+              color: "#3b82f6" // blue
+            });
 
-          // PROPOSAL path (Risk-Tiered: WRITE/FINANCE/SCHEDULE)
-          this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
-            intent,
-            parameters,
-            userMessage
-          });
+            this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
+              intent,
+              parameters,
+              userMessage
+            });
 
           // Reply conversationally that we are proposing it using the LLM to maintain language continuity
 
@@ -602,7 +646,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
 
           let summaryText = proposalResponse.text.trim();
-          
+
           // Strip any UI commands just in case
           const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
           summaryText = summaryText.replace(darkThemeRegex, '').trim();
@@ -614,18 +658,19 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
           this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
         }
+        }
       } else {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
-      let messages = await this.buildWorkingMemory(uiCommandExecuted, userMessage);
+        let messages = await this.buildWorkingMemory(uiCommandExecuted, userMessage);
 
-      if (forgetMeExecuted) {
-        messages.push({
-          role: 'system',
-          content: "[SYSTEM NOTIFICATION] You have just successfully deleted all of the user's chat history and data from the system per their request. Acknowledge this action concisely in the language the user is speaking."
-        });
-      }
+        if (forgetMeExecuted) {
+          messages.push({
+            role: 'system',
+            content: "[SYSTEM NOTIFICATION] You have just successfully deleted all of the user's chat history and data from the system per their request. Acknowledge this action concisely in the language the user is speaking."
+          });
+        }
 
-      // Determine available tools based on intent ──────────────────────────────
+        // Determine available tools based on intent ──────────────────────────────
         // Programmatic gate: if the message contains substantive content (question words,
         // request verbs, or multiple words), inject an explicit override to prevent the
         // LLM from defaulting to a one-word greeting acknowledgment.
@@ -638,7 +683,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         }
 
         const availableTools = this.capabilityCatalog?.availableTools() || [];
-        
+
         availableTools.push({
           name: 'REMEMBER_FACT',
           description: 'Use this tool when the user explicitly instructs you to remember, save, or note a fact, rule, or piece of information.',
@@ -664,9 +709,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         if (response.toolCalls && response.toolCalls.length > 0) {
           const toolCall = response.toolCalls[0];
           console.log(`[DialogueEngine] LLM Native Tool Call selected: ${toolCall.name}`);
-          
+
           const startTime = Date.now();
-          
+
           const toolIntent = toolCall.name;
           let toolParams: Record<string, any> = {};
           try {
@@ -687,10 +732,10 @@ You MUST write a brief, natural response asking the user to review and click "Ap
               category: 'SEMANTIC'
             };
             this.emitEvent(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
-            
+
             messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
             messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
-            
+
             const summaryResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, [], this.activeAbortController?.signal);
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
             return;
@@ -709,7 +754,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             });
             const result = await this.spawnGoalAndAwaitResult(toolIntent, toolParams);
             const duration = Date.now() - startTime;
-            
+
             // Phase 8: Tool Telemetry
             this.emitEvent('SYSTEM_TELEMETRY' as any, {
               metric: 'tool_execution',
@@ -724,9 +769,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             const feasibility = this.evaluateFeasibility(toolIntent, toolParams);
             if (!feasibility.feasible) {
               const messages = await this.buildWorkingMemory();
-              messages.push({ 
-                role: 'system', 
-                content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.` 
+              messages.push({
+                role: 'system',
+                content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
               });
               const failResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, undefined, this.activeAbortController?.signal);
               this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
@@ -759,7 +804,7 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
 
             const summaryText = proposalResponse.text.trim();
             // LLM messages are no longer persisted
-            
+
             // Telemetry for proposal generation
             this.emitEvent('SYSTEM_TELEMETRY' as any, {
               metric: 'tool_proposal',

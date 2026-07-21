@@ -1,12 +1,8 @@
 import { useState } from 'react';
-import { ShieldAlert, CheckCircle2, XCircle, Clock, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Clock, ShieldAlert, ShieldCheck, XCircle, Zap, Repeat, Timer } from 'lucide-react';
 import type { ThemeType } from '../../theme';
-import { getWalletLabel } from '../../utils/walletLabels';
-
-function shortenAddress(address?: string) {
-  if (!address || typeof address !== 'string' || !address.startsWith('0x')) return '';
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
+import { TransferProposal } from './proposal/TransferProposal';
+import { ScheduleProposal } from './proposal/ScheduleProposal';
 
 export interface ProposalPayload {
   proposalId: string;
@@ -16,18 +12,20 @@ export interface ProposalPayload {
   candidates?: any[];
 }
 
-export function ProposalCard({ 
-  theme, 
-  proposal, 
-  onRespond 
-}: { 
+export function ProposalCard({
+  theme,
+  proposal,
+  onRespond,
+  walletState
+}: {
   theme: ThemeType;
   proposal: ProposalPayload;
   onRespond: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
+  walletState?: any;
 }) {
   const [localStatus, setLocalStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
   const [selectedCandidate, setSelectedCandidate] = useState<string>('');
-  
+
   const status = proposal.status || localStatus;
 
   const handleRespond = (action: 'APPROVE' | 'REJECT') => {
@@ -41,7 +39,7 @@ export function ProposalCard({
   const isTransfer = targetIntent === 'TRANSFER_FUNDS';
   const isPurchase = proposal.intent === 'PURCHASE_INTEGRATION';
   const isOperatingAgreement = proposal.intent === 'ACTIVATE_AUTONOMY_AGREEMENT';
-  
+
   let title = "Action Proposal";
   if (isPurchase) title = "Integration Purchase";
   else if (isSchedule && isTransfer) title = "Recurring Transfer";
@@ -57,50 +55,66 @@ export function ProposalCard({
       background: theme.isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
       border: `1px solid ${theme.border}`,
       borderRadius: 16,
-      padding: 20,
+      padding: 24,
+      minWidth: 380,
+      maxWidth: '100%',
       fontFamily: 'Inter, sans-serif',
       boxShadow: theme.isDark ? '0 4px 20px rgba(0,0,0,0.2)' : '0 2px 10px rgba(0,0,0,0.05)',
-      backdropFilter: 'blur(10px)',
       display: 'flex',
       flexDirection: 'column',
-      gap: 16
+      gap: 20
     }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {isOperatingAgreement ? (
-          <ShieldCheck size={18} color={theme.accent} />
-        ) : isSchedule ? (
-          <Clock size={18} color={theme.accent} />
-        ) : (
-          <ShieldAlert size={18} color={theme.accent} />
-        )}
-        <span style={{ 
-          fontSize: 15, 
-          fontWeight: 600, 
-          color: theme.ink,
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${theme.border}`, padding: '0 24px 16px 24px', margin: '0 -24px -4px -24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isOperatingAgreement ? (
+            <ShieldCheck size={18} color={theme.accent} />
+          ) : isSchedule ? (
+            <Clock size={18} color={theme.accent} />
+          ) : (
+            <ShieldAlert size={18} color={theme.accent} />
+          )}
+          <span style={{ fontSize: 15, fontWeight: 600, color: theme.ink }}>
+            {title}
+          </span>
+        </div>
+        
+        {/* Execution Type Badge */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', borderRadius: 20,
+          background: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+          border: `1px solid ${theme.border}`
         }}>
-          {title}
-        </span>
+          {isSchedule ? (
+            proposal.parameters?.scheduleType === 'cron' ? (
+              <><Repeat size={14} color={theme.accent} /><span style={{ fontSize: 12, fontWeight: 700, color: theme.ink, fontFamily: 'monospace' }}>∞</span></>
+            ) : (
+              <><Timer size={14} color={theme.accent} /><span style={{ fontSize: 11, fontWeight: 700, color: theme.ink, textTransform: 'uppercase' }}>Delay</span></>
+            )
+          ) : (
+            <><Zap size={14} color={theme.accent} /><span style={{ fontSize: 12, fontWeight: 700, color: theme.ink, fontFamily: 'monospace' }}>1x</span></>
+          )}
+        </div>
       </div>
 
       {/* Human-readable Breakdown */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        
-        {isSchedule && proposal.parameters?.humanIntent && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Schedule</span>
-            <span style={{ fontSize: 14, color: theme.ink }}>{proposal.parameters.humanIntent}</span>
-          </div>
+
+        {isSchedule && proposal.parameters && (
+          <ScheduleProposal theme={theme} parameters={proposal.parameters} walletState={walletState} />
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
-          <span style={{ fontSize: 14, color: theme.ink }}>
-            {isOperatingAgreement
-              ? `Activate ${p.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant'} for ${p.title || 'this ongoing intent'}`
-              : isPurchase ? `Install ${p.integrationName} Integration` : isTransfer ? `Transfer ${p.asset?.toUpperCase() || 'USDC'} from my balance` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
-          </span>
-        </div>
+        {!isTransfer && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Action</span>
+            <span style={{ fontSize: 14, color: theme.ink }}>
+              {isOperatingAgreement
+                ? `Activate ${p.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant'} for ${p.title || 'this ongoing intent'}`
+                : isPurchase ? `Install ${p.integrationName} Integration` : (targetIntent?.replace(/_/g, ' ') || 'Execute action')}
+            </span>
+          </div>
+        )}
 
         {isOperatingAgreement && (
           <>
@@ -134,33 +148,8 @@ export function ProposalCard({
           </>
         )}
 
-        {isTransfer && (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Network</span>
-              <span style={{ fontSize: 14, color: theme.ink, fontWeight: 500 }}>
-                Base Mainnet
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Recipient</span>
-              <span style={{ fontSize: 14, color: p.recipient ? theme.ink : theme.status, fontWeight: p.recipient ? 500 : 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontFamily: (p.recipient?.type === 'EXTERNAL_ADDRESS' || (typeof p.recipient === 'string' && p.recipient.startsWith('0x'))) ? 'monospace' : 'inherit' }}>
-                  {p.recipient?.type === 'EXTERNAL_ADDRESS' || (typeof p.recipient === 'string' && p.recipient.startsWith('0x'))
-                    ? shortenAddress(p.recipient?.address || p.recipient) 
-                    : getWalletLabel(p.recipient)}
-                </span>
-              </span>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount</span>
-              <span style={{ fontSize: 14, color: p.amount ? theme.ink : theme.status, fontWeight: p.amount ? 500 : 500 }}>
-                {p.amount ? `${p.amount} ${p.asset?.toUpperCase() || 'USDC'}` : 'Not set yet ⚠️'}
-              </span>
-            </div>
-          </>
+        {isTransfer && !isSchedule && (
+          <TransferProposal theme={theme} parameters={p} walletState={walletState} />
         )}
 
         {proposal.candidates && proposal.candidates.length > 0 && (
@@ -176,10 +165,10 @@ export function ProposalCard({
                 opacity: status === 'PENDING' ? 1 : 0.7,
                 transition: 'all 0.2s'
               }}>
-                <input 
-                  type="radio" 
-                  name={`candidate-${proposal.proposalId}`} 
-                  value={c.id} 
+                <input
+                  type="radio"
+                  name={`candidate-${proposal.proposalId}`}
+                  value={c.id}
                   checked={selectedCandidate === c.id}
                   onChange={() => status === 'PENDING' && setSelectedCandidate(c.id)}
                   style={{ marginTop: 2, accentColor: theme.accent }}
@@ -200,48 +189,53 @@ export function ProposalCard({
       {status === 'PENDING' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
           <div style={{ fontSize: 13, color: theme.inkSoft, fontStyle: 'italic' }}>
-            {isOperatingAgreement ? 'Do you approve this Operating Agreement?' : 'Do you approve this automation?'}
+            {isOperatingAgreement ? 'Approve this agreement?' : 'Approve this transaction?'}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
             <button 
               onClick={() => handleRespond('APPROVE')}
               disabled={(proposal.candidates?.length ?? 0) > 0 && !selectedCandidate}
               style={{
                 flex: 1,
-                background: theme.ink,
+                background: ((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate) ? theme.border : theme.ink,
                 color: theme.bg,
                 border: 'none',
-                padding: '10px',
-                borderRadius: 8,
-                fontSize: 13,
+                padding: '12px',
+                borderRadius: 10,
+                fontSize: 14,
                 fontWeight: 600,
-                cursor: (proposal.candidates?.length ?? 0) > 0 && !selectedCandidate ? 'not-allowed' : 'pointer',
-                opacity: (proposal.candidates?.length ?? 0) > 0 && !selectedCandidate ? 0.5 : 1,
-                transition: 'opacity 0.2s'
+                cursor: ((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                boxShadow: ((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate) ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s',
+                opacity: ((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate) ? 0.5 : 1
               }}
-              onMouseEnter={(e) => { if (!((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate)) e.currentTarget.style.opacity = '0.9'; }}
-              onMouseLeave={(e) => { if (!((proposal.candidates?.length ?? 0) > 0 && !selectedCandidate)) e.currentTarget.style.opacity = '1'; }}
             >
-              Approve
+              <CheckCircle2 size={18} /> Approve
             </button>
             <button 
               onClick={() => handleRespond('REJECT')}
               style={{
                 flex: 1,
-                background: 'transparent',
+                background: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
                 color: theme.ink,
                 border: `1px solid ${theme.border}`,
-                padding: '10px',
-                borderRadius: 8,
-                fontSize: 13,
+                padding: '12px',
+                borderRadius: 10,
+                fontSize: 14,
                 fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'background 0.2s'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.2s'
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
-              Reject
+              <XCircle size={18} /> Reject
             </button>
           </div>
         </div>

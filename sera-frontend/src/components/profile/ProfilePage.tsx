@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowLeft, BadgeCheck, CircleUserRound, Cloud, CreditCard, HardDrive, Link2, Palette, ShieldCheck, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Cloud, CreditCard, HardDrive, Link2, Palette, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
 import type { MemoryVaultDescriptor } from '../../../../src/core/memory/MemoryVault';
@@ -99,16 +99,11 @@ export function ProfilePage({
 
       <main style={{ flex: 1, overflowY: 'auto', padding: `18px ${pad}px ${isMobileView ? 32 : 56}px`, color: theme.ink }}>
         <div style={{ maxWidth: 820, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 34 }}>
-          <header style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 15, display: 'grid', placeItems: 'center', background: theme.accentSoft, color: theme.accent, flexShrink: 0 }}>
-              <CircleUserRound size={24} />
-            </div>
-            <div>
-              <h1 style={{ margin: 0, color: theme.ink, fontFamily: 'Fraunces, serif', fontWeight: 400, fontSize: isMobileView ? 29 : 36, letterSpacing: -0.7 }}>Your SERA profile</h1>
-              <p style={{ margin: '8px 0 0', color: theme.inkSoft, fontSize: 14, lineHeight: 1.55, maxWidth: 570 }}>
-                Your profile keeps your access, wallets, agreements, and SERA continuity together—independent of how you sign in.
-              </p>
-            </div>
+          <header style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingBottom: 10 }}>
+            <h1 style={{ margin: 0, color: theme.ink, fontFamily: 'Fraunces, serif', fontWeight: 500, fontSize: isMobileView ? 28 : 34, letterSpacing: -0.5 }}>Your SERA profile</h1>
+            <p style={{ margin: 0, color: theme.inkSoft, fontSize: 15, lineHeight: 1.5, maxWidth: 570 }}>
+              Your profile keeps your access, wallets, agreements, and SERA continuity together independent of how you sign in.
+            </p>
           </header>
 
           <Section title="Account & access" description="The currently verified connection to your SERA account.">

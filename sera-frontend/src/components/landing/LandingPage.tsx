@@ -33,7 +33,19 @@ const visualScenes = new Set<Scene>(['operating', 'security', 'automation', 'cry
 
 export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'dark') => void }) {
   const [scene, setScene] = useState<Scene>('reception');
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sera-landing-theme');
+      if (saved) return saved === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sera-landing-theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
   const [message, setMessage] = useState('');
   const [question, setQuestion] = useState('');
   const [content, setContent] = useState<ReceptionReply | null>(null);
@@ -295,13 +307,13 @@ const ecosystemTokens = [
 function IdleScene() {
   return (
     <div className="idle-scene">
-      <p className="idle-kicker">The Universal Agent OS</p>
+      <p className="room-kicker">The Universal Agent OS</p>
 
       <h1 className="idle-headline">
         <span className="idle-word idle-word-1">An intelligence for every system</span>
       </h1>
 
-      <p className="idle-sub">
+      <p className="idle-copy">
         Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
       </p>
 
@@ -356,25 +368,13 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
               {isResponseComplete && scene === 'start' && (
                 <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>
               )}
-              {isResponseComplete && scene !== 'start' && (() => {
-                const CLIENT_FALLBACK = [
-                  'What is SERA?',
-                  'How does SERA work?',
-                  'How does SERA stay safe?',
-                  'What can SERA connect to?',
-                  'What can SERA help me accomplish?',
-                ];
-                const suggestions = content.suggestedQuestions.length > 0
-                  ? content.suggestedQuestions
-                  : CLIENT_FALLBACK.filter(s => s.toLowerCase().trim() !== question.toLowerCase().trim()).slice(0, 3);
-                return suggestions.length > 0 ? (
-                  <div className="sera-suggestions">
-                    {suggestions.map(suggestion => (
-                      <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
-                    ))}
-                  </div>
-                ) : null;
-              })()}
+              {isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && (
+                <div className="sera-suggestions">
+                  {content.suggestedQuestions.map(suggestion => (
+                    <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
+                  ))}
+                </div>
+              )}
             </div>
         }
       </div>

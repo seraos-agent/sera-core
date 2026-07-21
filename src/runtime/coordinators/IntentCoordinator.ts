@@ -113,19 +113,37 @@ export class IntentCoordinator {
 
         this.proposalStore.register(proposal);
         
-        if (this.eventBus) {
-          this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
-            id: `evt-${Date.now()}`,
-            type: EventTypes.DIALOGUE_PROPOSAL_GENERATED,
-            source: 'IntentCoordinator',
-            timestamp: Date.now(),
-            payload: {
-              proposalId: proposal.id,
-              intent: 'COMPLEX_GOAL_PROPOSAL',
-              parameters: {},
-              candidates: proposal.candidates
-            }
-          } as StandardEvent);
+        if (intent.terminality === 'TERMINAL') {
+          // Bypass UI and auto-approve the ALIGNED candidate for silent execution
+          const alignedCandidate = proposal.candidates.find(c => c.category === 'ALIGNED') || proposal.candidates[0];
+          if (this.eventBus) {
+            this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
+              id: `evt-auto-approve-${Date.now()}`,
+              type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
+              source: 'IntentCoordinator',
+              timestamp: Date.now(),
+              payload: {
+                proposalId: proposal.id,
+                candidateId: alignedCandidate.id
+              }
+            } as StandardEvent);
+          }
+          this.logger.info(`*** AUTO-APPROVED COMPLEX GOAL PROPOSAL ***`, { intentId: intent.id, proposalId: proposal.id });
+        } else {
+          if (this.eventBus) {
+            this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
+              id: `evt-${Date.now()}`,
+              type: EventTypes.DIALOGUE_PROPOSAL_GENERATED,
+              source: 'IntentCoordinator',
+              timestamp: Date.now(),
+              payload: {
+                proposalId: proposal.id,
+                intent: 'COMPLEX_GOAL_PROPOSAL',
+                parameters: {},
+                candidates: proposal.candidates
+              }
+            } as StandardEvent);
+          }
         }
 
         intent.lastProposalAt = temporalContext.physicalTime;

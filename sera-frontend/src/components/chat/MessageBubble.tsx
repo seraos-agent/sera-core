@@ -53,13 +53,14 @@ function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear:
   );
 }
 
-export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat }: {
+export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat, walletState }: {
   theme: ThemeType;
   msg: any;
   onCopy: (id: number, content: string) => void;
   copied: number | null;
   onApprove: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
   onClearChat?: () => void;
+  walletState: any;
 }) {
   const isUser = msg.role === "user";
   
@@ -185,6 +186,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
             theme={theme}
             proposal={msg.proposal}
             onRespond={onApprove}
+            walletState={walletState}
           />
         )}
 

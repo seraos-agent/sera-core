@@ -25,6 +25,10 @@ export class WalletToolCapability {
             asset: {
               type: 'string',
               description: 'The asset symbol, e.g. usdc'
+            },
+            fromWallet: {
+              type: 'string',
+              description: 'Optional. "user_main_wallet" or "agent_vault"'
             }
           },
           required: ['recipient', 'amount']

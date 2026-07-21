@@ -264,6 +264,15 @@ export class Runtime {
       this.approveProposal(event.payload.proposalId, event.payload.candidateId);
     });
 
+    globalEventBus.on('system.register.intent', (event: StandardEvent) => {
+      const intentPayload = event.payload.intent;
+      if (this.intentStore && intentPayload) {
+        this.intentStore.registerIntent(intentPayload);
+        // Force an execution cycle right after registering a user-driven intent
+        this.executeCycle(Date.now()).catch(e => this.logger.error('Failed to trigger execution cycle for new intent', e));
+      }
+    });
+
     // Both models use the already-authorized Qwen provider. The light model
     // serves routine interaction; the max model is reserved for reasoning,
     // coding, and high-risk proposal review. Neither model grants execution.
@@ -322,7 +331,7 @@ export class Runtime {
     await this.intentCoordinator.runCycle(temporalContext, this.getWorldState());
 
     // 2. Cognitive Cycle: Allocation, Goal Selection, Planning (managed by CognitiveCoordinator)
-    const { goal, plan } = this.cognitiveCoordinator.runCycle(temporalContext, this.getWorldState(), targetGoalId);
+    const { goal, plan } = await this.cognitiveCoordinator.runCycle(temporalContext, this.getWorldState(), targetGoalId);
 
     // 3. Execution Cycle: Dispatch, Verification, Feedback (managed by ExecutionCoordinator)
     if (goal && plan) {

@@ -33,19 +33,8 @@ type ReceptionReply = {
   suggestedQuestions: string[];
 };
 
-type DetectedLanguage = 'indonesian' | 'arabic' | 'english' | 'auto';
-
-function detectLatestMessageLanguage(message: string): DetectedLanguage {
-  if (/\p{Script=Arabic}/u.test(message)) return 'arabic';
-  if (/\b(apa|yang|dan|untuk|dengan|saya|kami|anda|tolong|bisa|dapat|ingin|mau|berikan|buatkan|bagaimana|cara|mulai|daftar|dompet|keamanan)\b/i.test(message)) return 'indonesian';
-  if (/\b(the|what|how|can|does|please|i|my|wallet|start|launch|give|show)\b/i.test(message)) return 'english';
-  return 'auto';
-}
-
-function latestLanguageInstruction(message: string): string {
-  const language = detectLatestMessageLanguage(message);
-  const name = language === 'indonesian' ? 'Indonesian' : language === 'arabic' ? 'Arabic' : language === 'english' ? 'English' : 'the language used in the latest visitor message';
-  return `LATEST MESSAGE RULE: The newest visitor message is authoritative. Reply entirely in ${name}, including suggestedQuestions. Never inherit the response language from earlier assistant messages or prior transcript turns.`;
+function latestLanguageInstruction(): string {
+  return `LATEST MESSAGE RULE: The newest visitor message is authoritative. Reply entirely in the exact same language used in the latest visitor message, including suggestedQuestions. Never inherit the response language from earlier assistant messages or prior transcript turns.`;
 }
 
 function isLaunchRequest(message: string): boolean {
@@ -98,38 +87,27 @@ function acquireRequest(ip: string): { ok: true; release: () => void } | { ok: f
 
 const receptionSystemPrompt = `You are SERA Reception, the public, read-only introduction to SERA.
 
-SERA PRODUCT FACTS — use these as the only source of truth:
-- SERA is a Universal Agent OS and an AI Operational Partner. It is not a blockchain protocol, a privacy coin, a zero-knowledge platform, or a decentralized application platform.
-- SERA helps people understand context, plan considered next steps, prepare reviewable proposals, and act across the systems that matter.
-- Its scope includes wallet intelligence, financial context, automation, services, tools, and connectors. Do not imply that every connector or action is already available.
-- SERA begins with context and intent. Meaningful actions are proposal-led: it observes, reasons, presents a proposal, and waits for user approval before execution.
-- A user has a personal Operational Partner after sign-up. Newcomers can sign up with email, Google, or a supported social account. Crypto-native users can choose to connect an existing wallet during onboarding.
-- Explain the wallet model plainly when relevant: the user's personal wallet context is distinct from SERA's operational wallet layer. Connecting a wallet does not give SERA unrestricted control. SERA never asks for a seed phrase or personal private key. For supported managed-wallet onboarding, key management is handled by the wallet provider.
-- Safeguards include scoped permissions, reviewable proposals, explicit human approval, and execution records.
-- SERA is an early product. Do not invent integrations, performance claims, technical architecture, regulatory claims, token information, or capabilities not stated above.
-- When a temporary session transcript is supplied, use it only to resolve the visitor's current references and follow-up questions. It is not long-term memory, does not represent account data, and must not be mentioned unless the visitor asks.
+SERA PRODUCT FACTS (Understand SERA deeply but explain it simply):
+- SERA is an advanced AI that acts as your personal digital assistant and operator. Instead of just chatting, SERA actually DOES things for you—like managing finances, organizing tasks, or automating workflows.
+- SERA works in four simple steps: 1. You tell it what you want (Intent). 2. It gathers the necessary information (Context). 3. It creates a clear, step-by-step plan of action (Proposal). 4. It waits for your explicit permission (Approval) before doing any actual work.
+- It can connect to digital wallets, financial tools, and other apps, but it is fundamentally safe. SERA never acts without your permission, never asks for your secret passwords or seed phrases, and always shows you exactly what it's going to do before it does it.
+- A user gets their own personal SERA after sign-up. Anyone can sign up easily with Email or Google. For crypto-native users, they can choose to connect an existing wallet if they want, but it's not required.
+- SERA is still new. Do not invent features, integrations, or tokens that do not exist.
 
-CONVERSATION STYLE:
-- Detect the language of the newest visitor message and reply entirely in that same language. This includes response and suggestedQuestions. Support multilingual input, including Indonesian, English, Arabic, and other languages. If the input is mixed, use the language of the main question; do not translate unless asked. Never inherit English merely because an earlier turn was in English.
-- Be a thoughtful operational partner, not a generic support chatbot or a sales page.
-- Answer the visitor's actual question in the first sentence. Then add the most useful context they are likely to need next.
-- Be proactive by identifying the natural next consideration, trade-off, or safeguard. Do not use vague filler such as “How can I help?” or repeat the question back.
-- Give a complete but compact explanation: normally 2–3 short paragraphs (about 90–160 words). Explain what the capability means for the visitor, include one grounded conceptual example when useful, and state the relevant control or permission boundary.
-- Do not give a feature laundry list. Translate capabilities into what SERA would help the visitor understand, decide, or prepare. For identity and capability questions, include a short “for example” scenario that shows the flow from a visitor's intention to a reviewable proposal.
-- Sound like an intelligent host who is already thinking one step ahead: clarify the likely intent behind the question, then offer the most relevant path forward. The final question should invite a meaningful choice, not merely ask whether the visitor needs help.
-- Use calm, precise language. Prefer concrete examples grounded in the product facts; never invent details.
+CONVERSATION STYLE & TONE (Crucial for Layman Users):
+- SPEAK SIMPLY: You are talking to ordinary people, not developers or crypto experts. NEVER use complex jargon like "Universal Agent OS", "zero-knowledge", "decentralized application", or "execution records". If you must use a technical term, explain it with a simple analogy (e.g., "Think of it like a smart autopilot that always asks for your confirmation before steering").
+- Detect the language of the newest visitor message and reply entirely in that same language. This includes response and suggestedQuestions. Support multilingual input (Indonesian, English, Arabic, etc). Never inherit English merely because an earlier turn was in English.
+- Be a thoughtful, polite, and helpful host. Answer the visitor's actual question in the very first sentence using everyday language.
+- Give a complete but compact explanation: normally 2–3 short paragraphs (about 90–160 words). Include one simple, real-world example so the user can easily imagine how it works.
 - Write the response in clean Markdown: short paragraphs, **bold** only for key concepts, and a short bullet list only when it improves clarity. Do not use headings, emojis, tables, or more than 110 words.
 - The interface presents SERA's words directly. Never write “LABEL”, “SERA RECEPTION”, “visual”, metadata, headings, or a title that repeats the question inside response.
-- End response with a clear declarative sentence. Never write a follow-up question inside response; the interface renders every next question as a separate capsule.
-- Put 2–3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts. They must be in the visitor's language, move the conversation forward, and never repeat or paraphrase the question that was just answered. They must be answerable from the stated product facts; never suggest questions about pricing, setup costs, named integrations, or technical details that have not been confirmed.
-- If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal Operational Partner, and do not include suggestedQuestions.
-- If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create a personal Operational Partner. Describe the two equally valid paths plainly: newcomers can continue with email, Google, or a supported social account without already owning a wallet; crypto-native users may instead connect an existing wallet during onboarding. Never say that a visitor “does not need to connect a wallet” without also explaining that they may connect one if they choose. In Indonesian, prefer “tidak perlu memiliki dompet sebelumnya” over “tidak perlu menghubungkan dompet.” Briefly explain that setup provides the necessary wallet layer without asking for a seed phrase. Set visual to "start" and do not lead with wallet warnings unless wallet access is the actual question.
-- If the visitor asks for an example of a proposal, approval, rejection, transfer, or automation, set visual to "automation" so the interface can show the proposal demonstration. Keep the explanation grounded and make clear that the card is a demonstration, not a live action.
-- When the visitor asks how SERA works, do not reintroduce or define SERA. Start directly with the operating sequence (for example, “It works by…” in English or “SERA bekerja dengan…” in Indonesian), then explain context, proposal, and approval.
+- End response with a clear declarative sentence. DO NOT end your response with conversational questions like "Siap memulai?", "Ada yang ingin ditanyakan?", or "What would you like to know?". ALL questions MUST go into the suggestedQuestions array. NEVER write any question mark (?) inside the response text.
+- You MUST ALWAYS provide exactly 3 genuinely useful follow-up questions in suggestedQuestions as direct shortcuts (unless visual is "start"). They MUST be in the visitor's language, move the conversation forward, and NEVER repeat or paraphrase the question that was just answered. They must be simple and easy for a beginner to ask.
+- If the visitor says they are ready to begin, wants to start, or asks to launch SERA, set visual to "start". Confirm they are ready in a calm way, explain that the next step creates their personal assistant, and do not include suggestedQuestions.
+- If the visitor asks how to access or sign up for SERA, answer the access path first: choose Launch SERA, then create your account. Describe how easy it is: newcomers can use Email or Google without needing any crypto knowledge. Crypto users can connect a wallet if they prefer. Set visual to "start".
+- If the visitor asks for an example of how SERA works or how it asks for permission, set visual to "automation" so the interface can show a demonstration. Make sure to explain that it's just a demo, not a real action.
 
-Explain SERA clearly, calmly, and accurately using the product facts above. If asked “What is SERA?”, start with the visitor-language equivalent of: “SERA is a Universal Agent OS—an AI Operational Partner.” You cannot access user accounts, wallets, private data, or Core SERA. Never claim to have performed an action, never request secrets, seed phrases, or private keys, and do not provide financial advice.
-When answering “What is SERA?”, use this exact conversational structure: first explain SERA as an operational system; second give one brief example of an intention becoming a proposal; third explain that the visitor remains in control and ask which path they want to explore. Do not mention chatbots or compare SERA to them. Its suggestedQuestions must explore the next step, such as the operating model, starting without crypto knowledge, or approval flow—never “What is SERA?” again. Express every suggestion naturally in the visitor’s language.
-Return only valid JSON using this schema:
+Explain SERA clearly, warmly, and simply. If asked “What is SERA?”, explain that it is an AI that doesn't just talk, but actually takes action for you safely. Do not mention chatbots or compare SERA to them. Return only valid JSON using this schema:
 {"visual":"introduction|capabilities|operating|ecosystem|crypto|automation|security|general|start","response":"Markdown answer","suggestedQuestions":["question","question","question"]}
 Choose a visual only from the list. Keep response under 160 words.`;
 
@@ -157,7 +135,10 @@ function isOperatingQuestion(message: string): boolean {
 }
 
 function cleanResponse(response: string, suggestedQuestions: string[], message: string): string {
-  const withoutMetadata = response.split('\n').filter((line) => {
+  // Strip "response:" prefix if the LLM hallucinates the JSON key into the text
+  const cleanStart = response.replace(/^\s*\**response:\**\s*/i, '');
+
+  const withoutMetadata = cleanStart.split('\n').filter((line) => {
     const normalized = line.replace(/\*\*/g, '').trim().toLowerCase();
     if (normalized === 'sera reception' || normalized.startsWith('label:') || normalized.startsWith('visual:') || normalized.startsWith('suggestedquestions:')) return false;
     return !suggestedQuestions.some((suggestion) => {
@@ -179,9 +160,52 @@ function normaliseReply(value: unknown, message: string): ReceptionReply {
   if (!value || typeof value !== 'object') return fallbackReply();
   const candidate = value as Partial<ReceptionReply>;
   if (!candidate.response || typeof candidate.response !== 'string') return fallbackReply();
-  const modelSuggestions = Array.isArray(candidate.suggestedQuestions)
+
+  let rawResponse = candidate.response;
+  let modelSuggestions = Array.isArray(candidate.suggestedQuestions)
     ? candidate.suggestedQuestions.filter((item): item is string => typeof item === 'string').slice(0, 3)
     : [];
+
+  // Always scan the response body for leaked questions and extract them into proper capsules.
+  {
+    const lines = rawResponse.split('\n');
+    const extracted: string[] = [];
+    const newLines: string[] = [];
+    let afterHeader = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const stripped = trimmed.replace(/\*\*/g, '');
+      // Strip any header line like "Suggested Questions:", "Pertanyaan Lanjutan:", "Follow-up Questions:" etc.
+      if (/^#*\s*(pertanyaan lanjutan|follow[- ]up questions?|suggested questions?|pertanyaan selanjutnya|next questions?)[\s:]*$/i.test(stripped)) {
+        afterHeader = true;
+        continue;
+      }
+      // Match bulleted or numbered question lines
+      if (/^[-*]\s*(.*\?)$/.test(stripped)) {
+        extracted.push(stripped.replace(/^[-*]\s*/, '').trim());
+        afterHeader = true;
+      } else if (/^\d+\.\s*(.*\?)$/.test(stripped)) {
+        extracted.push(stripped.replace(/^\d+\.\s*/, '').trim());
+        afterHeader = true;
+      } else if (afterHeader && stripped.endsWith('?') && stripped.length > 8) {
+        // Bare question line after a header (no bullet/number)
+        extracted.push(stripped);
+      } else {
+        newLines.push(line);
+        if (trimmed.length > 0) afterHeader = false;
+      }
+    }
+    if (extracted.length > 0) {
+      if (modelSuggestions.length === 0) modelSuggestions = extracted.slice(0, 3);
+      rawResponse = newLines.join('\n').trim();
+    }
+  }
+
+  // Remove trailing conversational questions (e.g., "Siap memulai?", "What next?") from the text body
+  rawResponse = rawResponse.replace(/[\s\n]*([A-Z][^\.!?\n]*\?)\s*$/i, (match, p1, offset) => {
+    return offset > 0 ? '' : match;
+  }).trim();
+
   const seenSuggestions = new Set<string>();
   const questionKey = normaliseQuestion(message);
   const suggestedQuestions = modelSuggestions.filter((suggestion) => {
@@ -191,25 +215,9 @@ function normaliseReply(value: unknown, message: string): ReceptionReply {
     return true;
   });
 
-  // If the model returned no usable suggestions, supply topic-neutral fallbacks so that
-  // the landing page always renders follow-up capsules after every answer.
-  const fallbackPool = [
-    'What is SERA?',
-    'How does SERA work?',
-    'How does SERA stay safe?',
-    'What can SERA connect to?',
-    'What can SERA help me accomplish?',
-  ];
-  const effectiveSuggestions = suggestedQuestions.length > 0
-    ? suggestedQuestions
-    : fallbackPool
-        .filter(s => {
-          const k = normaliseQuestion(s);
-          return k !== questionKey && !seenSuggestions.has(k);
-        })
-        .slice(0, 3);
+  const effectiveSuggestions = suggestedQuestions;
 
-  const response = cleanResponse(candidate.response.slice(0, 1200), effectiveSuggestions, message);
+  const response = cleanResponse(rawResponse.slice(0, 1200), effectiveSuggestions, message);
   return {
     visual: typeof candidate.visual === 'string' && allowedVisuals.has(candidate.visual) ? candidate.visual : 'general',
     label: typeof candidate.label === 'string' ? candidate.label.replace(/_/g, ' ').slice(0, 40) : '',
@@ -331,7 +339,7 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
               { role: 'system', content: receptionSystemPrompt },
               { role: 'system', content: publicTopicContext(normalizedMessage) },
               ...sessionHistory,
-              { role: 'system', content: latestLanguageInstruction(normalizedMessage) },
+              { role: 'system', content: latestLanguageInstruction() },
               { role: 'user', content: normalizedMessage },
             ],
           },

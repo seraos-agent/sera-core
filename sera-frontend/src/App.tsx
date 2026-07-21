@@ -45,7 +45,15 @@ createAppKit({
   metadata,
   // Wallet connection is infrastructure only. Conversion and funding remain
   // governed SERA capabilities, never provider-modal actions.
-  features: { analytics: false, swaps: false, onramp: false },
+  features: { 
+    analytics: false, 
+    swaps: false, 
+    onramp: false,
+    email: true,
+    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+    emailShowWallets: true,
+    connectMethodsOrder: ['email', 'social', 'wallet']
+  },
 });
 
 function useFonts() {
@@ -409,6 +417,7 @@ function InnerApp() {
                 setLastViewedCount={setLastViewedCount}
                 currentActivity={currentActivity}
                 onCancelChat={cancelChat}
+                walletState={walletState}
               />
             )}
           </div>

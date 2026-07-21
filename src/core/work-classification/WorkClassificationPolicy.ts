@@ -13,9 +13,15 @@ export class WorkClassificationPolicy {
   public classify(text: string): WorkRoute {
     const value = text.toLowerCase();
     if (this.uiCommand(text)) return this.route('INSTANT_UI');
-    if (/\b(transfer|send|trade|buy|sell|deploy|production)\b/.test(value)) return this.route('HIGH_RISK');
+    
+    // Detect conditional or multi-step logic (e.g. "cek saldo, jika ada kirim" or "check balance then transfer")
+    if (/\b(jika|kalau|setelah|kemudian|lalu|if|then|after)\b/.test(value) && /\b(kirim|transfer|cek|check|send)\b/.test(value)) {
+      return this.route('COMPLEX');
+    }
+
+    if (/\b(transfer|send|trade|buy|sell|deploy|production|kirim)\b/.test(value)) return this.route('HIGH_RISK');
     if (/\b(build|implement|refactor|audit|research|codebase|strategi)\b/.test(value)) return this.route('COMPLEX');
-    if (/\b(check|search|status|balance|schedule)\b/.test(value)) return this.route('OPERATIONAL');
+    if (/\b(check|search|status|balance|schedule|cek)\b/.test(value)) return this.route('OPERATIONAL');
     return this.route('CONVERSATION');
   }
 

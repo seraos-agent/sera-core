@@ -19,6 +19,7 @@ interface ChatViewProps {
   setLastViewedCount: (n: number) => void;
   currentActivity: string | null;
   onCancelChat: () => void;
+  walletState: any;
 }
 
 export function ChatView({
@@ -33,7 +34,8 @@ export function ChatView({
   lastViewedCount,
   setLastViewedCount,
   currentActivity,
-  onCancelChat
+  onCancelChat,
+  walletState
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -97,6 +99,7 @@ export function ChatView({
                 copied={copied}
                 onApprove={handleApprove}
                 onClearChat={() => socket?.emit("chat:clear")}
+                walletState={walletState}
               />
             ))}
 

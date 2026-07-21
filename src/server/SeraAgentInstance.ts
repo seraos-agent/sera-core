@@ -16,6 +16,8 @@ import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
 import { Planner } from '../core/planner/Planner';
 import { StrategyStore } from '../core/strategy/StrategyStore';
 import { StrategyEngine } from '../core/strategy/StrategyEngine';
+import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
+import { ModelRegistry } from '../core/llm/ModelRegistry';
 import { GoalEngine } from '../core/goals/GoalEngine';
 import { AttentionEngine } from '../core/attention/AttentionEngine';
 import { IntentStore } from '../core/intents/IntentStore';
@@ -140,7 +142,8 @@ export class SeraAgentInstance {
     this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.personalWalletAddress, this.autonomyAgreementStore);
 
     const executionDispatcher = new ExecutionDispatcher(this.eventBus);
-    const planner = new Planner();
+    const plannerLLM = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
+    const planner = new Planner(plannerLLM, this.eventBus);
     const strategyStore = new StrategyStore();
     const strategyEngine = new StrategyEngine(strategyStore);
     const goalEngine = new GoalEngine();

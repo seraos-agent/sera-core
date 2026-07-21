@@ -483,7 +483,7 @@ export class GoalBridge {
           recipient: normalizedRecipient,
           amount: transferAmount,
           asset,
-          fromWallet: parameters.fromWallet || 'sera_vault'
+          fromWallet: (parameters.fromWallet === 'agent_vault' || parameters.fromWallet === 'sera_vault') ? 'sera_vault' : 'user_main_wallet'
         }
       };
 

@@ -26,7 +26,7 @@ export class CognitiveCoordinator {
     private coherenceMonitor: CoherenceMonitor | undefined
   ) {}
 
-  public runCycle(temporalContext: TemporalContext, worldState: any, targetGoalId?: string): CognitiveCycleResult {
+  public async runCycle(temporalContext: TemporalContext, worldState: any, targetGoalId?: string): Promise<CognitiveCycleResult> {
     this.logger.debug(`Running cognitive cycle ${temporalContext.cognitiveCycleId}`);
     
     if (!this.attentionEngine || !this.goalEngine) {
@@ -64,7 +64,7 @@ export class CognitiveCoordinator {
     }
 
     const activeProfile = this.strategyStore.getActiveProfile();
-    const plan = this.planner.generatePlan(goalToProcess, worldState, this.memoryStore, activeProfile, temporalContext);
+    const plan = await this.planner.generatePlan(goalToProcess, worldState, this.memoryStore, activeProfile, temporalContext);
     
     return { goal: goalToProcess, plan };
   }
