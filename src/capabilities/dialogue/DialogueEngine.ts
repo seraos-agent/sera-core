@@ -229,6 +229,7 @@ export class DialogueEngine {
 
     const cognitiveState = {
       relevant_facts: {
+        currentTime: new Date().toUTCString(),
         userMainWalletAddress: walletState?.address || 'Unknown'
       },
       memory_attention: this.memoryQueryService.toPromptContext(memoryAttention),
@@ -493,15 +494,7 @@ export class DialogueEngine {
 
     if (this.preparePaperTradingFullAccessProposal(userMessage)) return;
 
-    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Preparing your request...' });
-    
-    this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
-      title: "Synthesizing Intent",
-      desc: "Parsing user input to extract semantic goals and parameters.",
-      signal: "Natural Language Understanding",
-      color: "#8b5cf6" // purple
-    });
-
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
       const deterministicUiCommand = this.workClassificationPolicy.uiCommand(userMessage);
@@ -593,12 +586,7 @@ export class DialogueEngine {
           const result = await this.spawnGoalAndAwaitResult(intent, parameters);
           await this.narrateResult(userMessage, result);
         } else {
-          this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
-            title: "Validation Check",
-            desc: `Evaluating feasibility for ${intent}...`,
-            signal: "Pre-flight verification",
-            color: "#eab308" // yellow
-          });
+          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Validating request feasibility' });
 
           // Pre-Proposal Validation
           const feasibility = this.evaluateFeasibility(intent, parameters);
@@ -615,13 +603,6 @@ export class DialogueEngine {
 
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText });
           } else {
-            this.emitEvent(EventTypes.COGNITIVE_OBSERVATION, {
-              title: "Formulating Proposal",
-              desc: `Assembling execution parameters for ${intent} based on world state and constraints.`,
-              signal: "Action Planning",
-              color: "#3b82f6" // blue
-            });
-
             this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
               intent,
               parameters,
@@ -697,6 +678,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           requiresApproval: false
         });
 
+        this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
         const toolTier = workRoute.workClass === 'HIGH_RISK' || workRoute.workClass === 'COMPLEX' ? 'Reasoning' : 'Execution';
         const response = await this.orchestrator.generate(
           this.profileFor(toolTier, messages, { requiresTools: true, requiresThinking: toolTier === 'Reasoning' }),

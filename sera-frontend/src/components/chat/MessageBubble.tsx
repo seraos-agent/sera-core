@@ -4,7 +4,6 @@ import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useState, useEffect } from 'react';
-
 function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear: () => void }) {
   const [timeLeft, setTimeLeft] = useState(5);
   const [canceled, setCanceled] = useState(false);

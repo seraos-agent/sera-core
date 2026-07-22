@@ -346,9 +346,13 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
   const hasVisual = visualScenes.has(scene);
   const activeHasCard = Boolean(activeVisual && visualScenes.has(activeVisual.scene));
 
-  const response = !content ? null : isResponseComplete
-    ? <div className="markdown-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content.response}</ReactMarkdown></div>
-    : <p className="streamed-copy">{streamedResponse}<b className="stream-cursor" /></p>;
+  const response = !content ? null : (
+    <div className={`markdown-copy ${!isResponseComplete ? 'is-streaming' : ''}`}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {isResponseComplete ? content.response : streamedResponse + ' █'}
+      </ReactMarkdown>
+    </div>
+  );
 
   return (
     <div className={`intent-scene ${hasVisual ? 'has-visual' : 'is-text-only'}`}>

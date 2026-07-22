@@ -95,11 +95,9 @@ function InnerApp() {
     localStorage.setItem("sera_view", currentView);
   }, [currentView]);
 
-  const [lastViewedCount, setLastViewedCount] = useState(0);
-
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address } = useAccount();
-  const { socket, messages, setMessages, observations, setObservations, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive } = useSocket(
+  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -177,7 +175,6 @@ function InnerApp() {
     // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
     if (!isAwaitingLinkedWallet) {
       setMessages([]);
-      setObservations([]);
       setWalletState({
         ...INITIAL_WALLET,
         address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
@@ -283,7 +280,7 @@ function InnerApp() {
         socket.off('identity:link_error', handleWalletLinkError);
       };
     }
-  }, [socket, isConnected, address, isBypassed, walletLinkSourceAddress, setMessages, setObservations, signMessageAsync, setWalletState]);
+  }, [socket, isConnected, address, isBypassed, walletLinkSourceAddress, setMessages, signMessageAsync, setWalletState]);
 
   if (!isMounted) return null;
 
@@ -412,9 +409,7 @@ function InnerApp() {
                 onOpenSidebar={() => setSidebarOpen(true)}
                 onSend={handleSend}
                 socket={socket}
-                observations={observations}
-                lastViewedCount={lastViewedCount}
-                setLastViewedCount={setLastViewedCount}
+
                 currentActivity={currentActivity}
                 onCancelChat={cancelChat}
                 walletState={walletState}

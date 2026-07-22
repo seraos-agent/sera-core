@@ -14,9 +14,6 @@ interface ChatViewProps {
   onOpenSidebar: () => void;
   onSend: (text: string) => void;
   socket: Socket | null;
-  observations: any[];
-  lastViewedCount: number;
-  setLastViewedCount: (n: number) => void;
   currentActivity: string | null;
   onCancelChat: () => void;
   walletState: any;
@@ -30,9 +27,6 @@ export function ChatView({
   onOpenSidebar,
   onSend,
   socket,
-  observations,
-  lastViewedCount,
-  setLastViewedCount,
   currentActivity,
   onCancelChat,
   walletState
@@ -40,12 +34,6 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [showObservations, setShowObservations] = useState(false);
-
-  useEffect(() => {
-    if (showObservations) {
-      setLastViewedCount(observations.length);
-    }
-  }, [observations.length, showObservations]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -103,6 +91,8 @@ export function ChatView({
               />
             ))}
 
+
+            
             {currentActivity && (
               <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
                 <div style={{
@@ -136,7 +126,6 @@ export function ChatView({
           {showObservations && (
             <CognitiveStreamPanel
               theme={theme}
-              observations={observations}
               onClose={() => setShowObservations(false)}
             />
           )}
@@ -150,13 +139,8 @@ export function ChatView({
             onOpenSidebar={onOpenSidebar}
             onCancelChat={onCancelChat}
             onToggleObservations={() => {
-              const nextState = !showObservations;
-              setShowObservations(nextState);
-              if (nextState) {
-                setLastViewedCount(observations.length);
-              }
+              setShowObservations(!showObservations);
             }}
-            unreadCount={Math.max(0, observations.length - lastViewedCount)}
           />
         </div>
       </div>

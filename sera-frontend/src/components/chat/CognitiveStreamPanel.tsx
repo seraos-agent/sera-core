@@ -1,16 +1,17 @@
 import type { ThemeType } from "../../theme";
-import type { CognitiveObservationPayload } from "../../../../src/core/events/types";
 
 export interface CognitiveStreamPanelProps {
   theme: ThemeType;
-  observations: CognitiveObservationPayload[];
   onClose: () => void;
 }
 
-export function CognitiveStreamPanel({ theme, observations, onClose }: CognitiveStreamPanelProps) {
-  // Sort observations to show newest first if they aren't already
-  // Assuming they are appended to the end, we'll reverse them for display.
-  const displayObs = [...observations].reverse();
+export function CognitiveStreamPanel({ theme, onClose }: CognitiveStreamPanelProps) {
+  // System Notifications Mock
+  const mockNotifications = [
+    { title: "System Ready", desc: "SERA Agent OS is online and operational.", signal: "Info", color: theme.accent, timestamp: Date.now() - 60000 },
+    { title: "Network Synced", desc: "Successfully connected to Base network.", signal: "Success", color: "#10b981", timestamp: Date.now() - 120000 }
+  ];
+  const displayObs = mockNotifications;
 
   return (
     <>
@@ -26,8 +27,8 @@ export function CognitiveStreamPanel({ theme, observations, onClose }: Cognitive
         animation: "walletPageIn 200ms ease forwards"
       }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${theme.border}` }}>
-          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 2 }}>Cognitive Stream</div>
-          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft }}>Live intelligence and system observations</div>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 2 }}>System Notifications</div>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft }}>System alerts and network updates</div>
         </div>
         <div style={{ maxHeight: 360, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {displayObs.length === 0 && (

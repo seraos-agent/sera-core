@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import type { WalletState } from "./useWallet";
-import type { CognitiveObservationPayload } from "../../../src/core/events/types";
 import type { MemoryVaultDescriptor } from "../../../src/core/memory/MemoryVault";
 import { deviceMemoryVault, deviceVaultDescriptor, type DeviceVaultDescriptor } from '../storage/DeviceMemoryVault';
 
@@ -19,7 +18,6 @@ export function useSocket(
 ) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [observations, setObservations] = useState<CognitiveObservationPayload[]>([]);
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
   const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
@@ -121,19 +119,6 @@ export function useSocket(
       }
     });
 
-    newSocket.on("observations:history", (history: any[]) => {
-      // Map history to raw payloads and inject timestamp from the record
-      const payloads = history.map((record: any) => ({ 
-        ...record.payload, 
-        timestamp: record.timestamp 
-      }));
-      setObservations(payloads);
-    });
-
-    newSocket.on("observations:new", (obs: CognitiveObservationPayload) => {
-      setObservations(prev => [...prev, obs]);
-    });
-
     newSocket.on("chat:reply", (data: any) => {
       setCurrentActivity(null);
       streamReply(data.content, data.id || Date.now(), data.actionLinks);
@@ -224,8 +209,6 @@ export function useSocket(
     socket,
     messages,
     setMessages,
-    observations,
-    setObservations,
     streamReply,
     currentActivity,
     cancelChat,

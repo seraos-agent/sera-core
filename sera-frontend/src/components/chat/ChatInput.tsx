@@ -9,7 +9,6 @@ interface ChatInputProps {
   isProcessing?: boolean;
   onToggleObservations?: () => void;
   showObservations?: boolean;
-  unreadCount?: number;
   isMobileView?: boolean;
   onOpenSidebar?: () => void;
   onCancelChat?: () => void;
@@ -22,7 +21,6 @@ export function ChatInput({
   isProcessing,
   onToggleObservations,
   showObservations,
-  unreadCount = 0,
   isMobileView,
   onOpenSidebar,
   onCancelChat
@@ -268,7 +266,7 @@ export function ChatInput({
               
               {/* Moved Bell icon to the left side, outside of menuRef */}
               <button
-                title="Observations"
+                title="System Notifications"
                 onClick={onToggleObservations}
                 disabled={disabled}
                 style={{
@@ -281,14 +279,6 @@ export function ChatInput({
                 }}
               >
                 <Bell size={20} />
-                {unreadCount > 0 && (
-                  <div style={{
-                    position: "absolute", top: 3, right: 3,
-                    background: "#ef4444",
-                    width: 8, height: 8, borderRadius: "50%",
-                    border: `1.5px solid ${theme.surface}`
-                  }} />
-                )}
               </button>
             </div>
             

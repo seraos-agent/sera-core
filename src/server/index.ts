@@ -116,6 +116,7 @@ io.on('connection', (socket: Socket) => {
   socket.data.isAuthenticated = false;
   let instance = agentManager.getOrCreateInstance('dev');
   let walletLinkChallenge: WalletLinkChallenge | undefined;
+  let socketObservationBuffer: any[] = [];
 
   const issueLoginChallenge = () => {
     const nonce = randomUUID();
@@ -150,6 +151,9 @@ io.on('connection', (socket: Socket) => {
   // Socket-specific listener references to allow proper unbinding
   const onAgentSpeak = (event: StandardEvent) => {
     const msgId = ++msgIdCounter;
+    const currentObs = [...socketObservationBuffer];
+    socketObservationBuffer = [];
+    
     socket.emit('chat:reply', {
       id: msgId,
       content: event.payload.text,
@@ -160,6 +164,7 @@ io.on('connection', (socket: Socket) => {
       role: 'agent',
       content: event.payload.text,
       actionLinks: event.payload.actionLinks,
+      observations: currentObs.length > 0 ? currentObs : undefined,
     });
   };
 
@@ -180,6 +185,9 @@ io.on('connection', (socket: Socket) => {
 
   const onProposalGenerated = (event: StandardEvent) => {
     const msgId = ++msgIdCounter;
+    const currentObs = [...socketObservationBuffer];
+    socketObservationBuffer = [];
+    
     const proposalData = {
       id: msgId,
       proposalId: event.payload.proposalId,
@@ -191,7 +199,8 @@ io.on('connection', (socket: Socket) => {
     instance.chatHistoryStore.appendUiMessage({
       id: msgId,
       role: 'agent',
-      proposal: proposalData
+      proposal: proposalData,
+      observations: currentObs.length > 0 ? currentObs : undefined,
     });
   };
 
@@ -210,6 +219,7 @@ io.on('connection', (socket: Socket) => {
 
   const onCognitiveObservation = (event: StandardEvent) => {
     instance.observationStore.append(event);
+    socketObservationBuffer.push({ ...event.payload, timestamp: event.timestamp });
     socket.emit('observations:new', { ...event.payload, timestamp: event.timestamp });
   };
 
@@ -491,6 +501,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('chat:message', (message: string) => {
     if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
+    socketObservationBuffer = [];
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
     if (serverConfig.allowDevFeatures && serverConfig.demoIntentCommand && message.toLowerCase().trim() === serverConfig.demoIntentCommand) {

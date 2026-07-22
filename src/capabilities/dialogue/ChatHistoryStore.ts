@@ -9,6 +9,7 @@ export interface UiMessage {
   content?: string;
   proposal?: any;
   actionLinks?: { label: string; url: string }[];
+  observations?: any[];
 }
 
 export interface ChatHistoryState {
