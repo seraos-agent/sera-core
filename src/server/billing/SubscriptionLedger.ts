@@ -1,16 +1,14 @@
 export interface SubscriptionEntry {
   address: string;
-  creditPeriods: number; // whole periods remaining, e.g. 3 = 3 more billing cycles
-  pricePerPeriodUsdc: number;
+  agentCredits: number; // Non-expiring Agent Computation Credits ($1 USDC = 200,000 credits)
+  totalTopUpUsdc: number;
   lastDeductedAt: number;
   createdAt: number;
   updatedAt: number;
 }
 
 /**
- * Pure data store — no pricing/product policy here. That belongs in
- * SubscriptionService. This class only knows how to store, credit, and
- * debit whole periods per address.
+ * Data store for user Agent Credits (non-expiring utility token model).
  */
 export class SubscriptionLedger {
   private entries: Map<string, SubscriptionEntry> = new Map();
@@ -19,18 +17,23 @@ export class SubscriptionLedger {
     return this.entries.get(address.toLowerCase());
   }
 
-  /** Creates the ledger entry on first top-up if it doesn't exist yet. */
-  credit(address: string, periods: number, pricePerPeriodUsdc: number): SubscriptionEntry {
+  /** Credits agent tokens on top-up. Credits never expire. */
+  credit(address: string, credits: number, amountUsdc: number): SubscriptionEntry {
     const key = address.toLowerCase();
     const now = Date.now();
     const existing = this.entries.get(key);
 
     const entry: SubscriptionEntry = existing
-      ? { ...existing, creditPeriods: existing.creditPeriods + periods, updatedAt: now }
+      ? {
+          ...existing,
+          agentCredits: existing.agentCredits + credits,
+          totalTopUpUsdc: existing.totalTopUpUsdc + amountUsdc,
+          updatedAt: now
+        }
       : {
           address: key,
-          creditPeriods: periods,
-          pricePerPeriodUsdc,
+          agentCredits: credits,
+          totalTopUpUsdc: amountUsdc,
           lastDeductedAt: now,
           createdAt: now,
           updatedAt: now,
@@ -40,13 +43,13 @@ export class SubscriptionLedger {
     return entry;
   }
 
-  /** Returns true if a period was available and consumed, false if the account was already empty. */
-  debitOnePeriod(address: string): boolean {
+  /** Deducts a specified amount of agent credits. */
+  debitCredits(address: string, amount: number): boolean {
     const key = address.toLowerCase();
     const entry = this.entries.get(key);
-    if (!entry || entry.creditPeriods <= 0) return false;
+    if (!entry || entry.agentCredits < amount) return false;
 
-    entry.creditPeriods -= 1;
+    entry.agentCredits -= amount;
     entry.lastDeductedAt = Date.now();
     entry.updatedAt = Date.now();
     return true;
@@ -54,6 +57,6 @@ export class SubscriptionLedger {
 
   hasCredit(address: string): boolean {
     const entry = this.entries.get(address.toLowerCase());
-    return !!entry && entry.creditPeriods > 0;
+    return !!entry && entry.agentCredits > 0;
   }
 }

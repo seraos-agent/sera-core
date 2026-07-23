@@ -135,6 +135,9 @@ io.on('connection', (socket: Socket) => {
     socket.emit('observations:history', instance.observationStore.getAll());
     socket.emit('automations:update', instance.triggerStore.getAll());
     socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
+    if (instance.metaGovernanceReview) {
+      socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
+    }
     if (googleDriveOAuthService && socket.data.sessionId && socket.data.sessionId !== 'dev') {
       void googleDriveOAuthService.getStatus(socket.data.sessionId)
         .then((status) => socket.emit('google_drive:status', status))
@@ -231,6 +234,13 @@ io.on('connection', (socket: Socket) => {
     socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
   };
 
+  const onGovernanceRecommendationSubmitted = (event: StandardEvent) => {
+    socket.emit('governance:recommendation_pending', event.payload);
+    if (instance.metaGovernanceReview) {
+      socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
+    }
+  };
+
   const bindListeners = () => {
     instance.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
     instance.eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
@@ -242,6 +252,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
     instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
     instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
+    instance.eventBus.on(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
   };
 
   const unbindListeners = () => {
@@ -255,6 +266,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.off(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
     instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
     instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
+    instance.eventBus.off(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
   };
 
   // Listeners are only bound after successful auth:login.
@@ -649,6 +661,26 @@ io.on('connection', (socket: Socket) => {
     if (!requireAuthenticatedSession(socket, 'governance:reject_task', instance?.eventBus)) return;
     if (instance) {
       instance.runtime.executionCoordinator.rejectTask(payload.taskId);
+    }
+  });
+
+  socket.on('governance:get_recommendations', () => {
+    if (!requireAuthenticatedSession(socket, 'governance:get_recommendations', instance?.eventBus)) return;
+    if (instance?.metaGovernanceReview) {
+      socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
+    }
+  });
+
+  socket.on('governance:respond_recommendation', (payload: { recommendationId: string; decision: 'APPROVED' | 'REJECTED' | 'MODIFIED'; rationale?: string }) => {
+    if (!requireAuthenticatedSession(socket, 'governance:respond_recommendation', instance?.eventBus)) return;
+    if (instance?.metaGovernanceReview) {
+      const decisionResult = instance.metaGovernanceReview.recordDecision(
+        payload.recommendationId,
+        payload.decision,
+        payload.rationale
+      );
+      socket.emit('governance:recommendation_response_result', { success: !!decisionResult, decision: decisionResult });
+      socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
     }
   });
 

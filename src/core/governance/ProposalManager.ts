@@ -98,9 +98,7 @@ export class ProposalManager {
         source: 'ProposalManager',
         timestamp: Date.now(),
         payload: {
-          text: /\b(?:saya|aku|kelola|dengan|untuk|akses|penuh|setuju|iya|tolong|bisa)\b/i.test(proposal.userMessage || '')
-            ? 'Proposal dibatalkan.'
-            : 'Proposal cancelled.'
+          text: 'Proposal cancelled.'
         }
       });
       

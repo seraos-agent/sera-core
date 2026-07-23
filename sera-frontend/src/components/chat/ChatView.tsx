@@ -5,6 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { ChatInput } from "./ChatInput";
 import { Socket } from "socket.io-client";
 import { CognitiveStreamPanel } from "./CognitiveStreamPanel";
+import { GovernanceRecommendationCard } from "./proposal/GovernanceRecommendationCard";
 
 interface ChatViewProps {
   theme: ThemeType;
@@ -17,6 +18,8 @@ interface ChatViewProps {
   currentActivity: string | null;
   onCancelChat: () => void;
   walletState: any;
+  governanceRecommendations?: any[];
+  onRespondGovernance?: (recommendationId: string, decision: 'APPROVED' | 'REJECTED', rationale?: string) => void;
 }
 
 export function ChatView({
@@ -29,7 +32,9 @@ export function ChatView({
   socket,
   currentActivity,
   onCancelChat,
-  walletState
+  walletState,
+  governanceRecommendations,
+  onRespondGovernance
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -90,6 +95,19 @@ export function ChatView({
                 walletState={walletState}
               />
             ))}
+
+            {governanceRecommendations && governanceRecommendations.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '16px 0' }}>
+                {governanceRecommendations.map((rec) => (
+                  <GovernanceRecommendationCard
+                    key={rec.id}
+                    theme={theme}
+                    recommendation={rec}
+                    onRespond={(id, decision, rationale) => onRespondGovernance?.(id, decision, rationale)}
+                  />
+                ))}
+              </div>
+            )}
 
 
             

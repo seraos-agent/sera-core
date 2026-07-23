@@ -30,9 +30,9 @@ CRITICAL — IDENTITY AND PERSONA:
 - You HAVE full internet access and real-time capabilities via your connected Tools (such as web search, wallets, etc.).
 - NEVER claim that you are an AI model without internet access or real-time data. You are SERA, a sovereign agent connected to the world. If you need data, use your tools or rely on the system data provided to you.
 - DO NOT expose internal technical jargon to the user. Never mention tool names like 'brave_web_search', 'MCP', 'JSON', or 'API'. Speak naturally. E.g., say "I searched the web" instead of "I used the brave_web_search tool".
-- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "oke", "ok", "sip", "siap" with absolutely no other content): respond warmly in 1-2 short sentences. Acknowledge the user and include a brief situational note if relevant context is available (e.g. market status, time of day, or a pending task). Example: "Hai, selamat pagi. Pasar kripto cukup aktif hari ini." or "Siap, ada yang mau kita kerjakan?" Do NOT respond with just one cold word like "Menyimak." or "Online."
+- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "ok", "okay" with absolutely no other content): respond warmly in 1-2 short sentences in the user's language. Acknowledge the user and include a brief situational note if relevant context is available (e.g. market status, time of day, or a pending task). Example: "Hello, good morning. The crypto market is quite active today." or "Ready, what shall we work on today?" Do NOT respond with just one cold word like "Listening." or "Online."
 - RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
-- RULE 3 — Identity questions ("kamu siapa", "perkenalkan", "who are you", "apa itu SERA", "introduce yourself"): give a clear self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does in practical terms. Keep it to 3-4 sentences.
+- RULE 3 — Identity questions ("who are you", "what is SERA", "introduce yourself"): give a clear self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does in practical terms. Keep it to 3-4 sentences.
 - No excessive emoji. No self-introduction repetition.
 
 CRITICAL — COMMUNICATION STYLE:
@@ -40,35 +40,96 @@ CRITICAL — COMMUNICATION STYLE:
 - Be confident. State things as fact, not as offers. "I'll check that." not "I can try to check that for you!"
 - Be professionally warm. You are a knowledgeable colleague, not a cold terminal. Show that you understand the user's situation.
 - When answering questions, provide context that helps the user make decisions. For example, if asked about a token price, include relevant market context (trend, volume, or comparison) — not just the raw number.
-- When completing an action, briefly confirm what was done and, if relevant, suggest a logical next step. Example: "Transfer 50 USDC sudah dikirim ke wallet kamu. Mau cek saldo terbaru?"
+- When completing an action, briefly confirm what was done and, if relevant, suggest a logical next step. Example: "The transfer of 50 USDC has been sent to your wallet. Would you like to check your updated balance?"
 - Match the user's register: formal if they are formal, casual if they are casual.
 - You MUST respond in the exact language of the user's LATEST message (Indonesian → Indonesian, English → English). Switch languages fluidly.
 - Write in complete, fluid sentences. Do NOT use long em-dashes (—). Short hyphens (-) are fine.
-- Do NOT dump an unsolicited list of your capabilities. But if a user seems unsure what to do, you MAY proactively suggest one or two relevant actions based on context (e.g. "Kamu bisa cek portofolio atau pantau harga aset tertentu.").
-- Do NOT end with generic assistant filler like "let me know if you need anything" or "I'm here for you". Instead, close with something contextually relevant or forward-looking if appropriate. If there is nothing to add, simply end naturally.
+- Do NOT dump an unsolicited list of your capabilities. But if a user seems unsure what to do, you MAY proactively suggest one or two relevant actions based on context (e.g. "You can check your portfolio or monitor specific asset prices.").
+- Do NOT end with generic assistant filler like "let menu of services" or "let me know if you need anything". Instead, close with something contextually relevant or forward-looking if appropriate. If there is nothing to add, simply end naturally.
 - When asking for clarification, ask ONE clear question. Do NOT use bullet points or numbered lists just to ask a simple question.
 - If the message has no reliable meaning or request, ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
 - For any clarification response, write any brief context first, then end the entire response with exactly one question. The question mark must be the final character; never put text, lists, or offers after it.
 
-CRITICAL — OPERATING AGREEMENT INTEGRITY:
-- Never claim that an Operating Agreement is active, that an automation has started, or that Full Access was granted unless the system has returned a verified activation result.
-- A request for ongoing management must first produce an explicit proposal card. A vague acknowledgement such as "okay", "good", or "proceed" is not an approval unless a specific proposal is currently pending.
-- Never describe real trading, leverage changes, or real exchange orders for a paper-trading agreement. Paper trading is a local simulation only.
+CRITICAL — OPERATING AGREEMENT INTEGRITY & NO TEXT HALLUCINATION:
+- You DO NOT have the capability to create proposal cards by writing assistant text.
+- NEVER write text claiming a proposal card has been prepared or instructing the user to click Approve on screen unless you are executing a native function call to SCHEDULE_GOAL in that exact turn.
+- Writing text claims without issuing a tool call causes UI confusion because no proposal card will appear on the user's screen.
+- When the user requests a schedule or confirms a schedule creation, YOU MUST IMMEDIATELY INVOKE THE SCHEDULE_GOAL TOOL CALL.
 
 CRITICAL — PLATFORM AWARENESS:
 - When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
 - In Slack: no markdown bullet lists unless listing actual data (like addresses or balances). Use plain sentences.
 - In Slack: a greeting is operational signal. Respond and move forward. Don't offer a menu of services.
-- In Slack: clarification questions should be ONE line. Example: "Maksudnya 'con' apa - config, contract, atau typo 'can'?"
+- In Slack: clarification questions should be ONE line. Example: "Did you mean 'config', 'contract', or a typo for 'can'?"
 
 CRITICAL — SECURITY AND WALLET POLICY:
-- You have your own operational wallet. Refer to it as "my balance", "my funds", or "my wallet". NEVER say "vault" or "brankas".
+- You have your own operational wallet. Refer to it as "my balance", "my funds", or "my wallet". NEVER say "vault".
 - The user has their own personal wallet. You have READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
 - When the user asks you to "transfer", "send", or "return" funds, ALWAYS use your own balance. You can only send TO the user's wallet, not FROM it.
 
 CRITICAL — TIMEZONE CONTEXT:
 - The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
-- Always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).`;
+- Always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).
+
+CRITICAL — SCHEDULING POLICY AND MINIMUM INTERVAL:
+- The system's minimum allowed recurring schedule frequency is 1 minute (60 seconds).
+- The system does NOT allow recurring schedules faster than 1 minute (e.g., every 5 seconds or 30 seconds are invalid).
+- If a user requests a recurring schedule faster than 1 minute:
+  1. DO NOT issue a proposal card immediately.
+  2. Educate the user politely in their language that the minimum schedule frequency is 1 minute to preserve API rate limits and system stability.
+  3. Ask if they would like to proceed with a 1-minute schedule instead.
+
+CRITICAL — FEW-SHOT TOOL CALL EXEMPLARS:
+You have native function-calling capabilities. When a user's request matches a tool's capability, YOU MUST INVOKE THAT TOOL IMMEDIATELY instead of responding with plain assistant text.
+
+Exemplar 1a — Valid Recurring Task (>= 1 minute):
+User: "check BTC price every 5 minutes" or "monitor ETH price every 1 hour"
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "cron",
+  "cronExpression": "*/5 * * * *",
+  "humanIntent": "Every 5 minutes",
+  "actionIntent": "HYPERLIQUID_CANDLES",
+  "actionParameters": { "coin": "BTC" }
+}
+
+Exemplar 1b — Invalid Recurring Task (< 1 minute):
+User: "check BTC price every 30 seconds" or "monitor ETH price every 5 seconds"
+Action: Do NOT call any tool. Reply in plain text in the user's language explaining that the minimum schedule frequency is 1 minute, and ask if they would like to proceed with a 1-minute schedule instead.
+
+Exemplar 1c — User Confirms Schedule Creation:
+User: "make it recurring" or "yes exactly" or "proceed with 1 minute" (when confirming a schedule)
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "cron",
+  "cronExpression": "*/1 * * * *",
+  "humanIntent": "Every 1 minute",
+  "actionIntent": "HYPERLIQUID_CANDLES",
+  "actionParameters": { "coin": "ETH" }
+}
+
+Exemplar 2 — Single Delayed Task (Exact Delay):
+User: "dalam 20 detik kirim 10 USDC ke 0x123..." or "in 1 hour check my balance"
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "exact",
+  "delaySeconds": 20,
+  "humanIntent": "In 20 seconds",
+  "actionIntent": "TRANSFER_FUNDS",
+  "actionParameters": { "recipient": { "type": "address", "address": "0x123..." }, "amount": 10, "asset": "usdc" }
+}
+
+Exemplar 3 — Immediate Market / Asset Query:
+User: "berapa harga ETH sekarang" or "what is the price of BTC"
+Action: Call tool "HYPERLIQUID_CANDLES" or "HYPERLIQUID_MARKET_SUMMARY" with: { "coin": "ETH" }
+
+Exemplar 4 — Wallet Balance Query:
+User: "cek saldo wallet" or "how much USDC is in my wallet"
+Action: Call tool "CHECK_WALLET_BALANCE" with: {}
+
+Exemplar 5 — Pure Conversational Question:
+User: "Pasar kripto lagi ramai ya hari ini?" or "How does SERA work?"
+Action: Do NOT call any tool. Provide a clear, natural text response in the user's language.`;
 
 // ── Intent Extraction Prompt ───────────────────────────────────────────────
 const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
@@ -87,7 +148,7 @@ Response format:
 
 User Context:
 Current Time (UTC): \${new Date().toISOString()}
-Timezone: UTC+7 (WIB)
+Timezone: UTC (Global)
 
 User message: `;
 
@@ -239,7 +300,7 @@ export class DialogueEngine {
         'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
         'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
         'When using TRANSFER_FUNDS, include "fromWallet": "agent_vault" to send your own funds, or "user_main_wallet" for the user\'s funds.',
-        'CRITICAL: If the user specifies a delay (e.g. "dalam 20dtk", "in 1 hour"), you MUST use the SCHEDULE_GOAL tool, NOT the TRANSFER_FUNDS tool. Put TRANSFER_FUNDS inside the actionIntent of SCHEDULE_GOAL.'
+        'CRITICAL — SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action, monitor an asset, or fetch data periodically/recurringly (e.g., "every 30 seconds", "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.'
       ]
     };
 
@@ -450,13 +511,16 @@ export class DialogueEngine {
     }
   }
 
-  private onProposalGenerated(event: StandardEvent<{ proposalId?: string }>): void {
-    const proposalId = event.payload?.proposalId;
+  private onProposalGenerated(event: any): void {
+    const proposalId = event?.payload?.proposalId || event?.proposalId;
     if (proposalId) this.pendingProposalId = proposalId;
   }
 
-  private onProposalResolved(event: StandardEvent<{ proposalId?: string }>): void {
-    if (event.payload?.proposalId === this.pendingProposalId) this.pendingProposalId = undefined;
+  private onProposalResolved(event: any): void {
+    const proposalId = event?.payload?.proposalId || event?.proposalId;
+    if (event?.payload?.proposalId === this.pendingProposalId || event?.proposalId === this.pendingProposalId) {
+      this.pendingProposalId = undefined;
+    }
   }
 
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
@@ -483,7 +547,7 @@ export class DialogueEngine {
 
     if (this.pendingProposalId && this.isProposalApproval(userMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
-      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: this.usesIndonesian(userMessage) ? 'Menerapkan persetujuan Anda...' : 'Applying your approval...' });
+      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Applying your approval...' });
       return;
     }
 
@@ -523,11 +587,11 @@ export class DialogueEngine {
             createdAt: Date.now()
           }
         });
-        
+
         const messages = await this.buildWorkingMemory();
         messages.push({ role: 'system', content: 'The user has submitted a complex request that requires multi-step planning. Acknowledge the request naturally and concisely. Tell the user you are analyzing and planning the steps in the background, and will provide a proposal shortly.' });
         const ackResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, [], this.activeAbortController?.signal);
-        
+
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: ackResponse.text.trim() });
         this._activeResponseContext = undefined;
         return;
@@ -609,10 +673,10 @@ export class DialogueEngine {
               userMessage
             });
 
-          // Reply conversationally that we are proposing it using the LLM to maintain language continuity
+            // Reply conversationally that we are proposing it using the LLM to maintain language continuity
 
-          const walletState = this.worldStateService.getWalletState();
-          const systemProposalMsg = `You have just prepared an action proposal.
+            const walletState = this.worldStateService.getWalletState();
+            const systemProposalMsg = `You have just prepared an action proposal.
 Intent: ${intent}
 Parameters: ${JSON.stringify(parameters)}
 Current World State:
@@ -622,23 +686,23 @@ Current World State:
 CRITICAL INSTRUCTION:
 Do NOT say that you are processing, executing, or performing the action right now. The action has NOT happened yet.
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
-          const messages = await this.buildWorkingMemory(false, userMessage);
-          messages.push({ role: 'system', content: systemProposalMsg });
-          const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
+            const messages = await this.buildWorkingMemory(false, userMessage);
+            messages.push({ role: 'system', content: systemProposalMsg });
+            const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
 
-          let summaryText = proposalResponse.text.trim();
+            let summaryText = proposalResponse.text.trim();
 
-          // Strip any UI commands just in case
-          const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
-          summaryText = summaryText.replace(darkThemeRegex, '').trim();
-          const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
-          summaryText = summaryText.replace(lightThemeRegex, '').trim();
+            // Strip any UI commands just in case
+            const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
+            summaryText = summaryText.replace(darkThemeRegex, '').trim();
+            const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
+            summaryText = summaryText.replace(lightThemeRegex, '').trim();
 
-          // LLM messages are no longer persisted
+            // LLM messages are no longer persisted
 
 
-          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
-        }
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+          }
         }
       } else {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
@@ -659,7 +723,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         if (!isPureGreeting) {
           messages.push({
             role: 'system',
-            content: `OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. You MUST provide a complete, relevant answer. Responding with only a presence word like "Online." or "Here." is STRICTLY FORBIDDEN for this message. Answer the actual content of what was asked.`
+            content: `OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. Provide a complete answer or invoke the appropriate tool.`
           });
         }
 
@@ -767,25 +831,29 @@ You MUST write a brief, natural response asking the user to review and click "Ap
               userMessage
             });
 
-            const walletState = this.worldStateService.getWalletState();
+            // Fast, cheap LLM call via qwen3.5-flash (Execution tier) for natural conversational announcement
             const systemProposalMsg = `You have just prepared an action proposal via Tool Calling.
 Intent: ${toolIntent}
 Parameters: ${JSON.stringify(toolParams)}
-Current World State:
-- Agent Vault Balance: ${walletState?.vaultBalance ?? 'Unknown'} USDC
-- User Main Wallet Balance: ${walletState?.balance ?? 'Unknown'} USDC
 
 CRITICAL INSTRUCTION:
-Do NOT say that you are processing, executing, or transferring the funds right now. The action has NOT happened yet.
-You MUST respond naturally to the user acknowledging that you have prepared the request and are currently WAITING for them to click "Approve" or "Reject" in the UI popup. Keep it extremely brief and professional.`;
+Write ONE short, natural sentence in the exact language the user is speaking. Acknowledge that the proposal card has been prepared and ask them to review and click Approve on their screen. Do NOT say that the action has been executed yet. Keep it under 15 words.`;
 
-            const messages = await this.buildWorkingMemory();
-            messages.push({ role: 'system', content: systemProposalMsg });
+            const proposalMessages = await this.buildWorkingMemory();
+            proposalMessages.push({ role: 'system', content: systemProposalMsg });
 
-            const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
-
-            const summaryText = proposalResponse.text.trim();
-            // LLM messages are no longer persisted
+            let summaryText = "";
+            try {
+              const proposalResponse = await this.orchestrator.generate(
+                this.profileFor('Execution', proposalMessages),
+                proposalMessages,
+                undefined,
+                this.activeAbortController?.signal
+              );
+              summaryText = proposalResponse.text.trim();
+            } catch (err) {
+              summaryText = this.generateInstantProposalSummary(toolIntent, toolParams);
+            }
 
             // Telemetry for proposal generation
             this.emitEvent('SYSTEM_TELEMETRY' as any, {
@@ -873,23 +941,17 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       userMessage
     });
     this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-      text: this.usesIndonesian(userMessage)
-        ? `Saya sudah menyiapkan agreement untuk mengelola paper trading${assetLabel}. Tinjau detailnya di kartu ini, lalu pilih Approve jika scope dan batasnya sudah sesuai.`
-        : `I prepared an agreement to manage paper trading${assetLabel}. Review the details in this card, then choose Approve if the scope and boundaries are right for you.`
+      text: `I prepared an agreement to manage paper trading${assetLabel}. Review the details in this card, then choose Approve if the scope and boundaries are right for you.`
     });
     return true;
   }
 
   private isProposalApproval(message: string): boolean {
-    return /^(?:iya|ya|yes|y|setuju|approve|approved|lanjut|lanjutkan|ok|oke|sip|confirm|konfirmasi|benar)[.!\s]*$/i.test(message.trim());
+    return /^(?:yes|y|iya|ya|approve|approved|proceed|confirm|ok|okay)[.!\s]*$/i.test(message.trim());
   }
 
   private isProposalRejection(message: string): boolean {
-    return /^(?:tidak|nggak|ga|no|n|batal|cancel|reject|tolak|jangan)[.!\s]*$/i.test(message.trim());
-  }
-
-  private usesIndonesian(message: string): boolean {
-    return /\b(?:saya|aku|kelola|dengan|untuk|akses|penuh|setuju|iya|tolong|bisa|paper\s*trading)\b/i.test(message);
+    return /^(?:no|n|tidak|batal|cancel|reject|deny|stop)[.!\s]*$/i.test(message.trim());
   }
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
@@ -897,13 +959,9 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
       const agreement = result.data.agreement;
       const hasPaperTradingOnlyScope = agreement.permissions.length === 1 && agreement.permissions[0] === 'PAPER_TRADE';
       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        text: this.usesIndonesian(userMessage)
-          ? hasPaperTradingOnlyScope
-            ? `Agreement untuk ${agreement.title} sudah aktif. SERA sekarang memiliki ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'mode Assistant'} untuk simulasi sesuai scope yang Anda setujui; tidak ada order atau saldo nyata yang berubah.`
-            : `Agreement untuk ${agreement.title} sudah aktif dalam mode ${agreement.mode}.`
-          : hasPaperTradingOnlyScope
-            ? `The agreement for ${agreement.title} is active. SERA now has ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant mode'} for simulation within the scope you approved; no order or real balance can change.`
-            : `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
+        text: hasPaperTradingOnlyScope
+          ? `The agreement for ${agreement.title} is active. SERA now has ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant mode'} for simulation within the scope you approved; no order or real balance can change.`
+          : `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
       });
       return;
     }
@@ -949,12 +1007,30 @@ You MUST respond naturally to the user acknowledging that you have prepared the 
 
   private renderReadOnlyHyperliquidResult(data: Record<string, any>): string {
     if (data.latest) {
-      return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. Data ini belum merupakan analisis arah harga atau sinyal trading.`;
+      return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. This data does not constitute price direction analysis or trading signals.`;
     }
-    return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; volume notional 24 jam ${data.dayNotionalVolume ?? 'n/a'}. Ini adalah snapshot pasar; order book, funding, dan open interest tidak cukup untuk menyimpulkan arah harga, breakout, atau sinyal trading.`;
+    return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; 24h notional volume ${data.dayNotionalVolume ?? 'n/a'}. This is a market snapshot; order book, funding, and open interest alone are insufficient to infer price direction, breakouts, or trading signals.`;
   }
 
   private renderPaperTradeResult(data: Record<string, any>): string {
     return `Paper trade ${data.side} ${data.quantity} ${data.coin}: reference ${data.referencePrice}, simulated fill ${data.fillPrice}, fee ${data.fee}, slippage cost ${data.slippageCost}. No order was sent and no real balance changed.`;
+  }
+
+  private generateInstantProposalSummary(toolIntent: string, toolParams: Record<string, any>): string {
+    if (toolIntent === 'SCHEDULE_GOAL') {
+      const humanIntent = toolParams.humanIntent || (toolParams.cronExpression ? `recurring schedule (${toolParams.cronExpression})` : 'schedule');
+      const rawAction = toolParams.actionIntent ? toolParams.actionIntent.split('_').join(' ').toLowerCase() : 'action';
+      const coin = toolParams.actionParameters?.coin ? ` (${toolParams.actionParameters.coin})` : '';
+      return `Proposal for ${rawAction}${coin} ${humanIntent} has been prepared. Please click Approve on your screen to activate this automation.`;
+    }
+
+    if (toolIntent === 'TRANSFER_FUNDS') {
+      const amount = toolParams.amount || '';
+      const asset = (toolParams.asset || 'USDC').toUpperCase();
+      return `Proposal to transfer ${amount} ${asset} has been prepared. Please click Approve on your screen to authorize this transaction.`;
+    }
+
+    const actionName = toolIntent.split('_').join(' ').toLowerCase();
+    return `Proposal for ${actionName} has been prepared. Please click Approve on your screen to proceed.`;
   }
 }

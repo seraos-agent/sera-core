@@ -22,6 +22,7 @@ export function useSocket(
   const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
   const [googleDrive, setGoogleDrive] = useState<GoogleDriveConnectionState>({ provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
+  const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
   const googleDrivePopup = useRef<Window | null>(null);
@@ -95,6 +96,12 @@ export function useSocket(
 
   const disconnectGoogleDrive = useCallback(() => {
     socket?.emit('google_drive:disconnect');
+  }, [socket]);
+
+  const respondToGovernanceRecommendation = useCallback((recommendationId: string, decision: 'APPROVED' | 'REJECTED' | 'MODIFIED', rationale?: string) => {
+    if (socket) {
+      socket.emit('governance:respond_recommendation', { recommendationId, decision, rationale });
+    }
   }, [socket]);
 
   useEffect(() => {
@@ -196,11 +203,24 @@ export function useSocket(
       googleDrivePopup.current = null;
     });
 
+    newSocket.on('governance:recommendation_list', (list: any[]) => {
+      setGovernanceRecommendations(list);
+    });
+
+    newSocket.on('governance:recommendation_pending', (rec: any) => {
+      setGovernanceRecommendations((prev) => {
+        if (prev.some((r) => r.id === rec.id)) return prev;
+        return [...prev, rec];
+      });
+    });
+
     return () => {
       newSocket.off('memory:vault_status');
       newSocket.off('google_drive:status');
       newSocket.off('google_drive:authorization');
       newSocket.off('google_drive:error');
+      newSocket.off('governance:recommendation_list');
+      newSocket.off('governance:recommendation_pending');
       newSocket.close();
     };
   }, [streamReply, setWalletState, setMode, localChatKey]);
@@ -218,5 +238,7 @@ export function useSocket(
     googleDrive,
     connectGoogleDrive,
     disconnectGoogleDrive,
+    governanceRecommendations,
+    respondToGovernanceRecommendation,
   };
 }

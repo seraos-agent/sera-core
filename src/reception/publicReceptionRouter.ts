@@ -275,9 +275,9 @@ function parseReceptionReply(raw: string, message: string): ReceptionReply {
 
 function visualForPublicQuestion(message: string, fallback: string): string {
   const input = message.toLowerCase();
-  if (isLaunchRequest(input) || input.includes('masuk ke aplikasi') || input.includes('masuk ke sera') || input.includes('akses aplikasi')) return 'start';
+  if (isLaunchRequest(input) || input.includes('launch app') || input.includes('open sera') || input.includes('access app')) return 'start';
   if (input.includes('how does sera work') || input.includes('how it works')) return 'operating';
-  if (input.includes('proposal') || input.includes('approve') || input.includes('reject') || input.includes('approval') || input.includes('persetujuan') || input.includes('setujui') || input.includes('menolak') || input.includes('ditolak') || input.includes('automation') || input.includes('automasi') || input.includes('schedule') || input.includes('transfer')) return 'automation';
+  if (input.includes('proposal') || input.includes('approve') || input.includes('reject') || input.includes('approval') || input.includes('automation') || input.includes('schedule') || input.includes('transfer')) return 'automation';
   if (input.includes('how does sera stay safe') || input.includes('safeguard') || input.includes('security')) return 'security';
   if (input.includes('wallet') || input.includes('portfolio')) return 'crypto';
   return fallback;

@@ -1,20 +1,11 @@
 import { useState, useEffect } from "react";
 import {
   ChevronLeft as CloseIcon,
-  MonitorPlay,
   Wallet,
   MessageCircle,
-  Store,
-  CalendarCheck,
-  Megaphone,
-  BookOpen,
-  Home,
-  Cloud,
-  Database,
-  Server,
-  Box,
-  Terminal,
-  Activity
+  Activity,
+  CheckCircle2,
+  Clock
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
@@ -25,59 +16,28 @@ interface WorkspacePageProps {
   isMobileView?: boolean;
 }
 
+interface CapabilityItem {
+  name: string;
+  icon: any;
+  status: "Active" | "Ready";
+  description: string;
+}
 
 const CATEGORIES = [
-  { id: "software", name: "Build Software", icon: MonitorPlay },
-  { id: "finance", name: "Manage Money", icon: Wallet },
-  { id: "communication", name: "Communicate", icon: MessageCircle },
-  { id: "productivity", name: "Stay Organized", icon: CalendarCheck },
-  { id: "commerce", name: "Run Business", icon: Store },
-  { id: "social", name: "Grow Audience", icon: Megaphone },
-  { id: "smarthome", name: "Smart Home", icon: Home },
+  { id: "finance", name: "Finance & Trading", icon: Wallet, description: "Manage Web3 wallets, balances, and market trading" },
+  { id: "communication", name: "Channels & Messaging", icon: MessageCircle, description: "Interactive channels and workspace integrations" },
 ];
 
-const CAPABILITIES: Record<string, { name: string, icon: any, price: string }[]> = {
-  software: [
-    { name: "GitHub", icon: "github-icon", price: "10 USDC/mo" },
-    { name: "Cloudflare", icon: Cloud, price: "5 USDC/mo" },
-    { name: "Supabase", icon: Database, price: "15 USDC/mo" },
-    { name: "Railway", icon: Server, price: "5 USDC/mo" },
-    { name: "Vercel", icon: Activity, price: "10 USDC/mo" },
-    { name: "Docker", icon: Box, price: "Free" },
-    { name: "Kubernetes", icon: Terminal, price: "25 USDC/mo" },
-  ],
+const CAPABILITIES: Record<string, CapabilityItem[]> = {
   finance: [
-    { name: "Base", icon: Wallet, price: "Free (Included)" },
-    { name: "Ethereum", icon: Wallet, price: "Free (Included)" },
-    { name: "Coinbase", icon: Activity, price: "5 USDC/mo" },
+    { name: "Hyperliquid", icon: Activity, status: "Active", description: "Real-time candles, orderbooks & perpetual trading" },
+    { name: "Base Network", icon: Wallet, status: "Active", description: "On-chain USDC/ETH transfers & Agent Vault" },
+    { name: "Ethereum Mainnet", icon: Wallet, status: "Active", description: "L1 asset tracking and balance monitoring" },
   ],
   communication: [
-    { name: "Discord", icon: "discord-icon", price: "Free" },
-    { name: "Telegram", icon: "telegram-icon", price: "5 USDC/mo" },
-    { name: "Slack", icon: MessageCircle, price: "5 USDC/mo" },
-    { name: "Gmail", icon: "gmail-icon", price: "Free" },
-  ],
-  productivity: [
-    { name: "Notion", icon: BookOpen, price: "5 USDC/mo" },
-    { name: "Google Calendar", icon: CalendarCheck, price: "Free" },
-    { name: "Linear", icon: Activity, price: "10 USDC/mo" },
-  ],
-  commerce: [
-    { name: "Shopify", icon: Store, price: "15 USDC/mo" },
-    { name: "WooCommerce", icon: Store, price: "10 USDC/mo" },
-    { name: "Gumroad", icon: Store, price: "5 USDC/mo" },
-  ],
-  social: [
-    { name: "X", icon: "x-icon", price: "Free (Included)" },
-    { name: "Instagram", icon: Megaphone, price: "10 USDC/mo" },
-    { name: "YouTube", icon: MonitorPlay, price: "15 USDC/mo" },
-    { name: "LinkedIn", icon: Megaphone, price: "15 USDC/mo" },
-    { name: "Bluesky", icon: "bluesky-icon", price: "Free" },
-  ],
-  smarthome: [
-    { name: "Home Assistant", icon: Home, price: "Free" },
-    { name: "Philips Hue", icon: Home, price: "5 USDC/mo" },
-    { name: "SmartThings", icon: Home, price: "5 USDC/mo" },
+    { name: "Slack", icon: MessageCircle, status: "Active", description: "Interactive bot via Slack Socket Mode (@sera)" },
+    { name: "Telegram", icon: "telegram-icon", status: "Ready", description: "Instant messaging bot integration" },
+    { name: "X (Twitter)", icon: "x-icon", status: "Ready", description: "Social market sentiment & automated updates" },
   ],
 };
 
@@ -98,31 +58,44 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
   }, [activeCategory]);
 
   const renderCategories = () => (
-    <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileView ? 12 : 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(240px, 1fr))", gap: isMobileView ? 12 : 20 }}>
       {CATEGORIES.map(cat => {
         const Icon = cat.icon;
+        const capCount = CAPABILITIES[cat.id]?.length || 0;
         return (
           <div
             key={cat.id}
             onClick={() => setActiveCategory(cat.id)}
             style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: isMobileView ? 12 : 16,
-              padding: isMobileView ? "20px 12px" : "32px 20px", borderRadius: 20, border: `1px solid ${theme.border}`,
-              background: theme.surface2, transition: "transform 200ms ease",
+              display: "flex", flexDirection: "column", gap: isMobileView ? 12 : 16,
+              padding: isMobileView ? "20px 16px" : "28px 24px", borderRadius: 20, border: `1px solid ${theme.border}`,
+              background: theme.surface2, transition: "transform 200ms ease, border-color 200ms ease",
               cursor: "pointer",
             }}
             onMouseEnter={e => {
-              e.currentTarget.style.transform = "translateY(-4px) scale(1.02)";
+              e.currentTarget.style.transform = "translateY(-3px)";
+              e.currentTarget.style.borderColor = theme.inkSoft;
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.transform = "translateY(0) scale(1)";
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.borderColor = theme.border;
             }}
           >
-            <div style={{ width: isMobileView ? 44 : 56, height: isMobileView ? 44 : 56, borderRadius: 16, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon size={isMobileView ? 20 : 26} color={theme.ink} strokeWidth={1.5} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ width: isMobileView ? 44 : 52, height: isMobileView ? 44 : 52, borderRadius: 16, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={isMobileView ? 20 : 24} color={theme.ink} strokeWidth={1.5} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, background: theme.surface, border: `1px solid ${theme.border}`, padding: "4px 10px", borderRadius: 12 }}>
+                {capCount} {capCount === 1 ? 'Product' : 'Products'}
+              </span>
             </div>
-            <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 13 : 15, fontWeight: 600, color: theme.ink, textAlign: "center" }}>
-              {cat.name}
+            <div>
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+                {cat.name}
+              </div>
+              <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
+                {cat.description}
+              </div>
             </div>
           </div>
         );
@@ -136,19 +109,23 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
 
     return (
       <div style={{ animation: "walletPageIn 300ms ease forwards" }}>
-        <div style={{ fontFamily: "Fraunces, serif", fontSize: isMobileView ? 24 : 32, fontWeight: 500, color: theme.ink, marginBottom: isMobileView ? 24 : 40, letterSpacing: -0.5 }}>
+        <div style={{ fontFamily: "Fraunces, serif", fontSize: isMobileView ? 24 : 32, fontWeight: 500, color: theme.ink, marginBottom: 8, letterSpacing: -0.5 }}>
           {category?.name}
         </div>
+        <div style={{ fontSize: 14, color: theme.inkSoft, marginBottom: isMobileView ? 24 : 36 }}>
+          {category?.description}
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(240px, 1fr))", gap: isMobileView ? 12 : 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(260px, 1fr))", gap: isMobileView ? 12 : 20 }}>
           {caps.map(cap => {
             const Icon = cap.icon;
+            const isActive = cap.status === "Active";
             return (
               <div
                 key={cap.name}
                 style={{
-                  display: "flex", flexDirection: "column", gap: 12,
-                  padding: isMobileView ? "16px 12px" : "20px 16px", borderRadius: 16, border: `1px solid ${theme.border}`,
+                  display: "flex", flexDirection: "column", gap: 14,
+                  padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`,
                   background: theme.surface2, transition: "transform 200ms ease",
                   cursor: "default",
                   position: "relative",
@@ -156,7 +133,7 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 12, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {typeof Icon === "string" ? (
                       <svg width={20} height={20} style={{ fill: theme.ink }}>
                         <use href={`/icons.svg#${Icon}`} />
@@ -165,15 +142,25 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
                       <Icon size={20} color={theme.ink} strokeWidth={1.5} />
                     )}
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: theme.ink, background: theme.surface, border: `1px solid ${theme.border}`, padding: "4px 8px", borderRadius: 8 }}>
-                    {cap.price}
+                  <div style={{ 
+                    display: "flex", alignItems: "center", gap: 5,
+                    fontSize: 11, fontWeight: 600, 
+                    color: isActive ? "#10b981" : theme.inkSoft, 
+                    background: isActive ? "rgba(16, 185, 129, 0.1)" : theme.surface, 
+                    border: `1px solid ${isActive ? "rgba(16, 185, 129, 0.2)" : theme.border}`, 
+                    padding: "4px 10px", borderRadius: 20 
+                  }}>
+                    {isActive ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                    {cap.status}
                   </div>
                 </div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 500, color: theme.ink }}>
-                  {cap.name}
-                </div>
-                <div style={{ fontSize: 11, color: theme.inkSoft, marginTop: -4 }}>
-                  Available in Marketplace
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+                    {cap.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.inkSoft, lineHeight: 1.4 }}>
+                    {cap.description}
+                  </div>
                 </div>
               </div>
             );

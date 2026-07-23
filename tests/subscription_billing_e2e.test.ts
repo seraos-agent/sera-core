@@ -20,11 +20,11 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
     expect(() => manager.checkEntitlement('0xabc')).toThrow(SubscriptionRequiredError);
   });
 
-  it('grants entitlement after a sufficient top-up, spawns an instance, and consumes it via billing ticks', () => {
+  it('grants entitlement after a sufficient top-up, spawns an instance, and manages credits', () => {
     const service = new SubscriptionService(new SubscriptionLedger());
-    // 45 USDC at 20 USDC/period => floor(45/20) = 2 periods
-    const periods = service.recordTopUp('0xUser1', 45, 20);
-    expect(periods).toBe(2);
+    // 45 USDC => 45 * 200,000 = 9,000,000 Agent Credits
+    const credits = service.recordTopUp('0xUser1', 45);
+    expect(credits).toBe(9_000_000);
 
     manager = new AgentManager(service, 1000);
     expect(() => manager.checkEntitlement('0xUser1')).not.toThrow();
@@ -32,21 +32,14 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
     const instance = manager.getOrCreateInstance('0xUser1');
     expect(instance).toBeDefined();
 
-    manager.runBillingTick(); // consumes period 1 of 2
-    expect(service.getRemainingPeriods('0xUser1')).toBe(1);
+    service.consumeCredits('0xUser1', 1_000_000);
+    expect(service.getAgentCredits('0xUser1')).toBe(8_000_000);
     expect(() => manager.checkEntitlement('0xUser1')).not.toThrow();
-
-    manager.runBillingTick(); // consumes period 2 of 2 — now exhausted
-    expect(service.getRemainingPeriods('0xUser1')).toBe(0);
-
-    // Instance should have been stopped and evicted by the tick that exhausted credit
-    expect(manager.getInstance('0xUser1')).toBeUndefined();
-    expect(() => manager.checkEntitlement('0xUser1')).toThrow(SubscriptionRequiredError);
   });
 
-  it('rejects a top-up smaller than one period', () => {
+  it('rejects a top-up smaller than minimum 1 USDC', () => {
     const service = new SubscriptionService(new SubscriptionLedger());
-    expect(() => service.recordTopUp('0xUser2', 5, 20)).toThrow(/less than one period/);
+    expect(() => service.recordTopUp('0xUser2', 0.5)).toThrow(/less than the minimum/);
   });
 
   it('never bills or evicts the dev instance during a billing tick', () => {
@@ -64,9 +57,9 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
     const ledger = new SubscriptionLedger();
     const service = new SubscriptionService(ledger);
 
-    service.recordTopUp('0xUser3', 20, 20); // +1 period
-    service.recordTopUp('0xUser3', 40, 20); // +2 periods
+    service.recordTopUp('0xUser3', 20); // +4,000,000 credits
+    service.recordTopUp('0xUser3', 40); // +8,000,000 credits
 
-    expect(service.getRemainingPeriods('0xUser3')).toBe(3);
+    expect(service.getAgentCredits('0xUser3')).toBe(12_000_000);
   });
 });

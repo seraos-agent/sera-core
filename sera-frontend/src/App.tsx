@@ -97,7 +97,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address } = useAccount();
-  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive } = useSocket(
+  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -409,10 +409,11 @@ function InnerApp() {
                 onOpenSidebar={() => setSidebarOpen(true)}
                 onSend={handleSend}
                 socket={socket}
-
                 currentActivity={currentActivity}
                 onCancelChat={cancelChat}
                 walletState={walletState}
+                governanceRecommendations={governanceRecommendations}
+                onRespondGovernance={respondToGovernanceRecommendation}
               />
             )}
           </div>

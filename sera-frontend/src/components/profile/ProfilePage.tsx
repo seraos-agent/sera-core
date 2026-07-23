@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowLeft, BadgeCheck, Cloud, CreditCard, HardDrive, Link2, Palette, ShieldCheck, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Cloud, CreditCard, HardDrive, Link2, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
 import type { MemoryVaultDescriptor } from '../../../../src/core/memory/MemoryVault';
@@ -46,8 +46,8 @@ function Section({ title, description, children }: { title: string; description?
 export function ProfilePage({
   theme,
   walletState,
-  mode,
-  onModeChange,
+  mode: _mode,
+  onModeChange: _onModeChange,
   onBack,
   onManageWallet,
   onDisconnect,
@@ -144,16 +144,6 @@ export function ProfilePage({
             )}
           </Section>
 
-          <Section title="Network scope" description="Connections can span networks. SERA enables capabilities per network, not by assumption.">
-            <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>Base</div>
-                <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 4 }}>Operational wallet and read-only balance support</div>
-              </div>
-              <span style={{ fontSize: 11, color: theme.status, background: theme.statusSoft, borderRadius: 999, padding: '5px 8px', fontWeight: 700 }}>ACTIVE</span>
-            </div>
-          </Section>
-
           <Section title="Memory & data ownership" description="Your cognitive memory follows the storage mode shown here; SERA does not silently copy it to a server vault.">
             <div style={{ ...cardStyle, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', maxWidth: 540 }}>
@@ -219,18 +209,6 @@ export function ProfilePage({
                 </div>
                 <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>Additional options such as S3-compatible storage, R2, or a private Supabase project will be added through the same revocable-vault contract.</p>
                 <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 'auto' }}>No provider is connected yet.</div>
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Preferences">
-            <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Palette size={18} color={theme.inkSoft} />
-                <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>Appearance</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Choose how SERA appears on this device.</div></div>
-              </div>
-              <div style={{ display: 'flex', gap: 6, padding: 3, borderRadius: 10, background: theme.surface, border: `1px solid ${theme.border}` }}>
-                {(['light', 'dark'] as const).map(option => <button key={option} onClick={() => onModeChange(option)} style={{ border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', textTransform: 'capitalize', fontSize: 12, fontWeight: 600, background: mode === option ? theme.accent : 'transparent', color: mode === option ? theme.accentInk : theme.inkSoft }}>{option}</button>)}
               </div>
             </div>
           </Section>

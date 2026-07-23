@@ -11,6 +11,15 @@ export class MetaGovernanceReview {
     if (rec.status !== 'PENDING_GOVERNANCE_REVIEW') return;
     this.pendingRecommendations.set(rec.id, rec);
     console.log(`\n[MetaGovernanceReview] Recommendation ${rec.id} submitted for governance review.`);
+
+    const event: StandardEvent<MetaCognitiveRecommendation> = {
+      id: `evt-${rec.id}`,
+      type: EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED,
+      source: 'MetaGovernanceReview',
+      timestamp: Date.now(),
+      payload: rec
+    };
+    this.eventBus.emit(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, event);
   }
 
   recordDecision(

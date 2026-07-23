@@ -74,6 +74,7 @@ export class SeraAgentInstance {
   public goalBridge!: GoalBridge;
   public temporalClockService!: TemporalClockService;
   public governanceCoordinator!: GovernanceCoordinator;
+  public metaGovernanceReview!: MetaGovernanceReview;
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
   public metricsStore!: InMemoryMetricsStore;
@@ -175,6 +176,7 @@ export class SeraAgentInstance {
     const governanceReflectionEngine = new GovernanceReflectionEngine(this.memoryStore, this.eventBus);
     const governanceCalibrationEngine = new GovernanceCalibrationEngine(this.memoryStore);
     const metaGovernanceReview = new MetaGovernanceReview(this.eventBus);
+    this.metaGovernanceReview = metaGovernanceReview;
 
     this.governanceCoordinator = new GovernanceCoordinator(
       this.eventBus,

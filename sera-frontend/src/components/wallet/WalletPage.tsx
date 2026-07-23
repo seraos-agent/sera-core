@@ -238,8 +238,37 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   </div>
                 )}
 
+                {/* Gas Sponsoring & Web3 Agent Credits Banner */}
+                <div style={{
+                  marginTop: 16,
+                  padding: "12px 16px",
+                  borderRadius: 14,
+                  background: theme.isDark ? 'rgba(52, 82, 224, 0.15)' : 'rgba(52, 82, 224, 0.08)',
+                  border: `1px solid ${theme.isDark ? 'rgba(52, 82, 224, 0.3)' : 'rgba(52, 82, 224, 0.2)'}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  fontFamily: "Inter, sans-serif"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: theme.ink }}>Gas Sponsoring & 0.20% Volume Cut Active</div>
+                      <div style={{ fontSize: 11, color: theme.inkSoft }}>ETH gas fees & $0.05 transfer fee paid in USDC • 0.20% DEX Swap Take Rate.</div>
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: "4px 10px", borderRadius: 20,
+                    background: theme.accent, color: "#FFF",
+                    fontSize: 11, fontWeight: 700, letterSpacing: "0.05em"
+                  }}>
+                    PAY-AS-YOU-GO
+                  </div>
+                </div>
+
                 {/* Nested Bento for accounts */}
-                <div style={{ display: "flex", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 20 : 32 }}>
+                <div style={{ display: "flex", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 16 : 24 }}>
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>

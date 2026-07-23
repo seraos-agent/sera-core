@@ -23,9 +23,9 @@ describe('conversational Operating Agreement approval', () => {
       eventBus,
       new WorldStateService(eventBus, 'dialogue-agreement-test'),
       { getTool: () => undefined },
-      { getHistory: () => [] } as any,
+      { getBeliefsByCategory: () => [], getAllBeliefs: () => [] } as any,
       new ChatHistoryStore('dialogue-agreement-test'),
-      {} as any,
+      { getHistory: () => [] } as any,
       'dialogue-agreement-test',
       new AutonomyAgreementStore()
     );
@@ -43,6 +43,7 @@ describe('conversational Operating Agreement approval', () => {
     });
 
     eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, observed('iya'));
+    await new Promise(r => setTimeout(r, 50));
     expect(spawned).toHaveLength(1);
     expect(spawned[0]).toMatchObject({
       intent: 'ACTIVATE_AUTONOMY_AGREEMENT',

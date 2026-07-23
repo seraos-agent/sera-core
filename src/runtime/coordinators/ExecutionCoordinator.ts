@@ -237,7 +237,7 @@ export class ExecutionCoordinator {
         source: 'ExecutionCoordinator',
         timestamp: Date.now(),
         payload: {
-          text: `Saya sudah menyiapkan proposal eksekusi yang memerlukan persetujuan manual (misalnya: transfer dana).\n\nSilakan klik "Approve" pada kartu proposal yang muncul untuk melanjutkannya.`
+          text: `I have prepared an execution proposal that requires manual approval (e.g. transfer funds).\n\nPlease review and click "Approve" on the proposal card to proceed.`
         }
       });
 

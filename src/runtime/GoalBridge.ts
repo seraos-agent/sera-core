@@ -279,11 +279,22 @@ export class GoalBridge {
       return;
     }
 
-    const { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
+    let { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
     
+    // Programmatic Safeguard: System minimum interval is 1 minute (60 seconds)
+    const MINIMUM_SCHEDULE_SECONDS = 60;
+    let sanitizedCron = cronExpression;
+    if (scheduleType === 'cron') {
+      // Normalize any per-second cron (6 fields or <=30s) to 1 minute
+      if (!cronExpression || cronExpression.includes('*/30 * *') || cronExpression.includes('*/10 * *') || cronExpression.includes('*/5 * *') || cronExpression.includes('*/1 * * * * *')) {
+        sanitizedCron = '*/1 * * * *';
+      }
+    }
+
     let computedExecuteAfterUtc = executeAfterUtc;
     if (scheduleType === 'exact' && delaySeconds !== undefined) {
-      computedExecuteAfterUtc = new Date(Date.now() + Number(delaySeconds) * 1000).toISOString();
+      const safeDelay = Math.max(10, Number(delaySeconds));
+      computedExecuteAfterUtc = new Date(Date.now() + safeDelay * 1000).toISOString();
     }
 
     triggerEngineInstance.register({
@@ -294,8 +305,8 @@ export class GoalBridge {
       condition: {
         type: scheduleType === 'cron' ? 'RECURRING' : 'EXACT',
         humanIntent: humanIntent || 'Unknown schedule',
-        timezoneContext: 'UTC+7 (WIB)',
-        internalCompiled: scheduleType === 'cron' ? cronExpression : undefined,
+        timezoneContext: 'UTC (Global)',
+        internalCompiled: scheduleType === 'cron' ? sanitizedCron : undefined,
         executeAfterUtc: scheduleType === 'exact' ? computedExecuteAfterUtc : undefined,
       },
       action: {

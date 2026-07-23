@@ -14,20 +14,20 @@ export class WorkClassificationPolicy {
     const value = text.toLowerCase();
     if (this.uiCommand(text)) return this.route('INSTANT_UI');
     
-    // Detect conditional or multi-step logic (e.g. "cek saldo, jika ada kirim" or "check balance then transfer")
-    if (/\b(jika|kalau|setelah|kemudian|lalu|if|then|after)\b/.test(value) && /\b(kirim|transfer|cek|check|send)\b/.test(value)) {
+    // Detect conditional or multi-step logic (e.g. "if balance > 10 then transfer")
+    if (/\b(if|then|after|when)\b/.test(value) && /\b(transfer|check|send)\b/.test(value)) {
       return this.route('COMPLEX');
     }
 
-    if (/\b(transfer|send|trade|buy|sell|deploy|production|kirim)\b/.test(value)) return this.route('HIGH_RISK');
-    if (/\b(build|implement|refactor|audit|research|codebase|strategi)\b/.test(value)) return this.route('COMPLEX');
-    if (/\b(check|search|status|balance|schedule|cek)\b/.test(value)) return this.route('OPERATIONAL');
+    if (/\b(transfer|send|trade|buy|sell|deploy|production)\b/.test(value)) return this.route('HIGH_RISK');
+    if (/\b(build|implement|refactor|audit|research|codebase|strategy)\b/.test(value)) return this.route('COMPLEX');
+    if (/\b(check|search|status|balance|schedule)\b/.test(value)) return this.route('OPERATIONAL');
     return this.route('CONVERSATION');
   }
 
   public uiCommand(text: string): 'SET_THEME_DARK' | 'SET_THEME_LIGHT' | 'CLEAR_CHAT' | undefined {
     const value = text.toLowerCase().trim();
-    if (/\b(clear|bersihkan|hapus)\b.*\b(chat|percakapan)\b/.test(value)) return 'CLEAR_CHAT';
+    if (/\b(clear)\b.*\b(chat)\b/.test(value)) return 'CLEAR_CHAT';
     if (/\b(light|terang)\b/.test(value) && /\b(mode|tema|theme)\b/.test(value)) return 'SET_THEME_LIGHT';
     if (/\b(dark|gelap)\b/.test(value) && /\b(mode|tema|theme)\b/.test(value)) return 'SET_THEME_DARK';
     return undefined;

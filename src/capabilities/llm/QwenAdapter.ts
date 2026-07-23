@@ -64,6 +64,7 @@ export class QwenAdapter implements ILLMAdapter {
 
     if (dashScopeTools && dashScopeTools.length > 0) {
       body.tools = dashScopeTools;
+      body.tool_choice = 'auto';
     }
 
     const response = await fetch(this.endpoint, {

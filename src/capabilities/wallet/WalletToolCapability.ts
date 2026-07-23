@@ -48,16 +48,16 @@ export class WalletToolCapability {
       },
       {
         name: 'SCHEDULE_GOAL',
-        description: 'Use this tool to schedule a recurring or future action. You must specify the action to be performed.',
+        description: 'Use this tool to schedule a recurring or future action (such as checking asset prices periodically or making delayed transfers). You must specify the target action to be performed.',
         parameters: {
           type: 'object',
           properties: {
             scheduleType: { type: 'string', enum: ['cron', 'exact'], description: 'Type of schedule: cron for recurring, exact for a one-time delay.' },
-            humanIntent: { type: 'string', description: 'A professional, clear, and concise summary of WHEN this will happen, translated into a formal statement. e.g. "In 20 seconds"' },
-            cronExpression: { type: 'string', description: 'If recurring, the standard cron expression in UTC.' },
+            humanIntent: { type: 'string', description: 'A professional summary of WHEN this will happen (e.g. "Every 5 minutes", "Every 30 seconds", "Every Monday at 9:00 AM", "In 20 seconds").' },
+            cronExpression: { type: 'string', description: 'If recurring, standard cron expression in UTC (e.g. "*/5 * * * *" for every 5 mins, "0 9 * * 1" for every Monday 9am UTC).' },
             delaySeconds: { type: 'number', description: 'If exact timestamp, how many seconds from now this should execute. e.g. 20' },
-            actionIntent: { type: 'string', description: 'The actual tool or action to execute (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
-            actionParameters: { type: 'object', description: 'The exact parameters required for the actionIntent. For TRANSFER_FUNDS, MUST include recipient (object with type and address), amount, and asset ("usdc").' }
+            actionIntent: { type: 'string', description: 'The tool to execute (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
+            actionParameters: { type: 'object', description: 'The exact parameters required for the actionIntent (e.g. { "coin": "BTC" } for HYPERLIQUID_CANDLES or HYPERLIQUID_MARKET_SUMMARY).' }
           },
           required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
         },

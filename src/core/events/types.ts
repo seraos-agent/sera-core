@@ -56,6 +56,7 @@ export const EventTypes = {
   GOVERNANCE_DECISION_RECORDED: 'governance.decision.recorded',
   GOVERNANCE_OUTCOME_RECORDED: 'governance.outcome.recorded',
   GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
+  GOVERNANCE_RECOMMENDATION_SUBMITTED: 'governance.recommendation.submitted',
 
   // Autonomy Domain
   AUTONOMY_AGREEMENT_ACTIVATED: 'autonomy.agreement.activated',
