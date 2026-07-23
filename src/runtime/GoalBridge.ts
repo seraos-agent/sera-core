@@ -14,6 +14,8 @@ import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/Hyperl
 import { analyzeHyperliquidMarketSnapshot, formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
 import { PaperTradingSimulator, PaperSide } from '../core/paper-trading/PaperTradingSimulator';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
+import { BaseSpotMarketCapability } from '../capabilities/spot/BaseSpotMarketCapability';
+import { TokenResolverService } from '../capabilities/spot/TokenResolverService';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -38,6 +40,8 @@ export class GoalBridge {
   private sessionId: string;
   private hyperliquid = new HyperliquidMarketDataAdapter();
   private readonly paperTrading = new PaperTradingSimulator();
+  private readonly spotMarket = new BaseSpotMarketCapability();
+  private readonly tokenResolver = new TokenResolverService();
 
   constructor(
     eventBus: EventEmitter,
@@ -198,6 +202,12 @@ export class GoalBridge {
         case 'PAPER_TRADE':
           await this.handlePaperTrade(requestId, actionPayload);
           break;
+        case 'SPOT_SWAP':
+          await this.handleSpotSwap(requestId, actionPayload);
+          break;
+        case 'RESOLVE_TOKEN':
+          await this.handleResolveToken(requestId, actionPayload);
+          break;
         case 'ACTIVATE_AUTONOMY_AGREEMENT':
           this.handleActivateAutonomyAgreement(requestId, actionPayload);
           break;
@@ -242,6 +252,28 @@ export class GoalBridge {
       ...fill,
       disclaimer: 'Local simulation only. No order was sent and no real balance changed.'
     });
+  }
+
+  private async handleSpotSwap(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const fromToken = parameters.fromToken || 'USDC';
+    const toToken = parameters.toToken || 'WETH';
+    const amountIn = Number(parameters.amount || 10);
+    const recipient = parameters.recipient || this.currentWalletId?.address || '0x0000000000000000000000000000000000000000';
+
+    const result = await this.spotMarket.executeSpotSwap({
+      fromTokenSymbol: fromToken,
+      toTokenSymbol: toToken,
+      amountInUsdc: amountIn,
+      recipientAddress: recipient
+    });
+
+    this.emitResult(requestId, result.success, result, result.errorMessage);
+  }
+
+  private async handleResolveToken(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const query = String(parameters.query || parameters.coin || 'WETH');
+    const metadata = await this.tokenResolver.resolveToken(query);
+    this.emitResult(requestId, true, metadata);
   }
 
   private handleActivateAutonomyAgreement(requestId: string, parameters: Record<string, any>): void {

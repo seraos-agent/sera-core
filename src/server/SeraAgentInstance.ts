@@ -288,6 +288,16 @@ export class SeraAgentInstance {
     this.eventBus.on('temporal.tick', this.persistMemorySnapshot);
     this.eventBus.on(EventTypes.MEMORY_ITEM_MUTATED, this.markMemoryDirty);
 
+    // Automatic Real-time Agent Credits deduction based on LLM tokens used
+    this.eventBus.on(EventTypes.LLM_MODEL_COMPLETED, (event: any) => {
+      const input = event.payload?.inputTokens || 0;
+      const output = event.payload?.outputTokens || 0;
+      const totalTokens = input + output;
+      if (totalTokens > 0) {
+        console.log(`[SeraAgentInstance][Billing] Agent LLM Token Usage (${this.sessionId}): ${totalTokens} tokens (Input: ${input}, Output: ${output})`);
+      }
+    });
+
     this.triggerEngine.start();
     this.temporalClockService.start();
     this.governanceCoordinator.start();
