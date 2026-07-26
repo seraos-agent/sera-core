@@ -12,8 +12,7 @@ export interface WorkRoute {
 export class WorkClassificationPolicy {
   public classify(text: string): WorkRoute {
     const value = text.toLowerCase();
-    if (this.uiCommand(text)) return this.route('INSTANT_UI');
-    
+
     // Detect conditional or multi-step logic (e.g. "if balance > 10 then transfer")
     if (/\b(if|then|after|when)\b/.test(value) && /\b(transfer|check|send)\b/.test(value)) {
       return this.route('COMPLEX');
@@ -21,22 +20,14 @@ export class WorkClassificationPolicy {
 
     if (/\b(transfer|send|trade|buy|sell|deploy|production)\b/.test(value)) return this.route('HIGH_RISK');
     if (/\b(build|implement|refactor|audit|research|codebase|strategy)\b/.test(value)) return this.route('COMPLEX');
-    if (/\b(check|search|status|balance|schedule)\b/.test(value)) return this.route('OPERATIONAL');
+    if (/\b(check|search|status|balance|schedule|mode|theme|display|light|dark|clear|chat|history|delete|remove|reset|clean|switch|change|retry|monitor|report|track|every|interval|cron|minute|minutes|min|mins|sec|second|seconds|hour|hours|daily|weekly|btc|eth|sol|arb|hype|aero|brett|toshi|usdc|price|market|start|begin|proceed|yes|ok|okay|confirm)\b/i.test(value)) return this.route('OPERATIONAL');
     return this.route('CONVERSATION');
-  }
-
-  public uiCommand(text: string): 'SET_THEME_DARK' | 'SET_THEME_LIGHT' | 'CLEAR_CHAT' | undefined {
-    const value = text.toLowerCase().trim();
-    if (/\b(clear)\b.*\b(chat)\b/.test(value)) return 'CLEAR_CHAT';
-    if (/\b(light|terang)\b/.test(value) && /\b(mode|tema|theme)\b/.test(value)) return 'SET_THEME_LIGHT';
-    if (/\b(dark|gelap)\b/.test(value) && /\b(mode|tema|theme)\b/.test(value)) return 'SET_THEME_DARK';
-    return undefined;
   }
 
   private route(workClass: WorkClass): WorkRoute {
     const routes: Record<WorkClass, WorkRoute> = {
       INSTANT_UI: { workClass, tokenBudget: 0, allowTools: false, allowSwarm: false, requiresHumanApproval: false },
-      CONVERSATION: { workClass, tokenBudget: 1200, allowTools: false, allowSwarm: false, requiresHumanApproval: false },
+      CONVERSATION: { workClass, tokenBudget: 1200, allowTools: true, allowSwarm: false, requiresHumanApproval: false },
       OPERATIONAL: { workClass, tokenBudget: 2400, allowTools: true, allowSwarm: false, requiresHumanApproval: false },
       COMPLEX: { workClass, tokenBudget: 7000, allowTools: false, allowSwarm: true, requiresHumanApproval: true },
       HIGH_RISK: { workClass, tokenBudget: 4000, allowTools: true, allowSwarm: false, requiresHumanApproval: true }

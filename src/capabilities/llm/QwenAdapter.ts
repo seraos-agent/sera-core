@@ -79,7 +79,59 @@ export class QwenAdapter implements ILLMAdapter {
 
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`[QwenAdapter] API Error (${response.status}): ${err}`);
+      const errorMsg = `[QwenAdapter] API Error (${response.status}): ${err}`;
+      
+      // DashScope sometimes returns this error when the model generates empty output.
+      // Retry once with enable_thinking toggled to nudge the model into producing output.
+      if (err.includes('model output') && err.includes('empty')) {
+        console.warn(`[QwenAdapter] Empty model output error detected. Retrying with adjusted parameters...`);
+        const retryBody = { ...body };
+        // Toggle thinking to nudge the model
+        if (retryBody.enable_thinking === false) {
+          delete retryBody.enable_thinking;
+        } else {
+          retryBody.enable_thinking = false;
+        }
+        
+        const retryResponse = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(retryBody),
+          signal: abortSignal
+        });
+        
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          const retryChoice = retryData.choices[0].message;
+          console.log('[QwenAdapter] Retry succeeded. raw response message:', JSON.stringify(retryChoice, null, 2));
+          
+          let retryToolCalls: SeraToolCall[] | undefined;
+          if (retryChoice.tool_calls && retryChoice.tool_calls.length > 0) {
+            retryToolCalls = retryChoice.tool_calls.map((tc: any) => {
+              let args = {};
+              try {
+                args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+              } catch (e) {
+                console.error('[QwenAdapter] Failed to parse retry tool arguments:', tc.function.arguments);
+              }
+              return { name: tc.function.name, arguments: args };
+            });
+          }
+          
+          return {
+            text: retryChoice.content || '',
+            usage: retryData.usage,
+            toolCalls: retryToolCalls,
+          };
+        }
+        // If retry also fails, fall through to throw the original error
+        console.error('[QwenAdapter] Retry also failed.');
+      }
+      
+      throw new Error(errorMsg);
     }
 
     const data = await response.json();

@@ -364,6 +364,8 @@
   color: var(--muted);
   font-size: 14px;
   line-height: 1.8;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .markdown-copy > :first-child { margin-top: 0; }
@@ -373,7 +375,14 @@
 .markdown-copy ul,
 .markdown-copy ol { margin: 0 0 13px; padding-left: 19px; }
 .markdown-copy li { margin: 3px 0; }
-.markdown-copy code { padding: 2px 5px; border-radius: 4px; background: rgba(91, 112, 200, .09); color: #5266b7; font: 600 .88em 'DM Mono', monospace; }
+
+.markdown-copy code { padding: 2px 5px; border-radius: 4px; background: rgba(91, 112, 200, .09); color: #5266b7; font: 600 .88em 'DM Mono', monospace; word-break: break-word; }
+.markdown-copy pre { max-width: 100%; overflow-x: auto; padding: 12px; border-radius: 6px; background: rgba(91, 112, 200, 0.05); }
+.markdown-copy pre code { background: transparent; padding: 0; color: #c9d1f1; word-break: normal; }
+
+.markdown-copy table { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-collapse: collapse; margin-bottom: 13px; }
+.markdown-copy th, .markdown-copy td { padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.1); }
+.markdown-copy img { max-width: 100%; height: auto; border-radius: 6px; }
 
 .sera-suggestions {
   display: flex;

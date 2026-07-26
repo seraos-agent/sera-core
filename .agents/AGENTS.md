@@ -29,3 +29,8 @@ This file enshrines the core architectural constraints of Sera. As an AI buildin
    - It is not a measure of user activity, nor a replacement for reasoning. 
    - Metrics provide evidence for reflection, not direct control over decisions.
    - Do NOT expose this telemetry as an 'AI analytics dashboard' to end-users.
+
+7. **Universal Codebase Language (English Only for Code & Prompts)**
+   - All source code, internal comments, docstrings, system prompts, prompt exemplars, tool descriptions, and error messages MUST be written strictly in **English (Universal Engineering Standard)**.
+   - Indonesian or non-English text is ONLY permitted for dynamic user-facing responses when conversing with non-English users.
+   - Hardcoding Indonesian or non-English text inside code files, system prompts, or architectural rules is strictly prohibited to ensure global developer readability and seamless team collaboration.

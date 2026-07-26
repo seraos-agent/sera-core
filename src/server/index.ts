@@ -152,51 +152,55 @@ io.on('connection', (socket: Socket) => {
   // before their auth:login completes. Wait for auth:login.
 
   // Socket-specific listener references to allow proper unbinding
-  const onAgentSpeak = (event: StandardEvent) => {
+  const onAgentSpeak = (event: any) => {
+    const payload = event.payload || event;
     const msgId = ++msgIdCounter;
     const currentObs = [...socketObservationBuffer];
     socketObservationBuffer = [];
     
     socket.emit('chat:reply', {
       id: msgId,
-      content: event.payload.text,
-      actionLinks: event.payload.actionLinks,
+      content: payload.text,
+      actionLinks: payload.actionLinks,
     });
     instance.chatHistoryStore.appendUiMessage({
       id: msgId,
       role: 'agent',
-      content: event.payload.text,
-      actionLinks: event.payload.actionLinks,
+      content: payload.text,
+      actionLinks: payload.actionLinks,
       observations: currentObs.length > 0 ? currentObs : undefined,
     });
   };
 
-  const onActivity = (event: StandardEvent) => {
+  const onActivity = (event: any) => {
+    const payload = event.payload || event;
     const msgId = ++msgIdCounter;
     socket.emit('chat:activity', {
       id: msgId,
-      content: event.payload.content,
+      content: payload.content,
     });
   };
 
-  const onUiCommand = (event: StandardEvent) => {
+  const onUiCommand = (event: any) => {
+    const payload = event.payload || event;
     socket.emit('ui:command', {
-      type: event.payload.command,
-      payload: event.payload.value,
+      type: payload.command,
+      payload: payload.value,
     });
   };
 
-  const onProposalGenerated = (event: StandardEvent) => {
+  const onProposalGenerated = (event: any) => {
+    const payload = event.payload || event;
     const msgId = ++msgIdCounter;
     const currentObs = [...socketObservationBuffer];
     socketObservationBuffer = [];
     
     const proposalData = {
       id: msgId,
-      proposalId: event.payload.proposalId,
-      intent: event.payload.intent,
-      parameters: event.payload.parameters,
-      candidates: event.payload.candidates
+      proposalId: payload.proposalId,
+      intent: payload.intent,
+      parameters: payload.parameters,
+      candidates: payload.candidates
     };
     socket.emit('chat:proposal', proposalData);
     instance.chatHistoryStore.appendUiMessage({

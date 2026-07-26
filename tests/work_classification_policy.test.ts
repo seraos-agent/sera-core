@@ -3,8 +3,8 @@ import { WorkClassificationPolicy } from '../src/core/work-classification/WorkCl
 
 describe('WorkClassificationPolicy', () => {
   const policy = new WorkClassificationPolicy();
-  it('keeps UI changes deterministic and outside LLM/swarm escalation', () => {
-    expect(policy.classify('ubah mode menjadi dark')).toMatchObject({ workClass: 'INSTANT_UI', tokenBudget: 0, allowTools: false, allowSwarm: false });
+  it('routes UI changes to OPERATIONAL for native tool execution', () => {
+    expect(policy.classify('ubah mode menjadi dark')).toMatchObject({ workClass: 'OPERATIONAL', allowTools: true, allowSwarm: false });
   });
   it('escalates coding and trading through different universal safeguards', () => {
     expect(policy.classify('audit dan refactor codebase')).toMatchObject({ workClass: 'COMPLEX', allowSwarm: true, requiresHumanApproval: true });

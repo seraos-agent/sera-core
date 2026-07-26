@@ -221,10 +221,33 @@ export class GoalBridge {
     }
   }
 
+
   private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
     const coin = String(parameters.coin || '').toUpperCase();
+    const KNOWN_PERPS = ['BTC', 'ETH', 'SOL', 'ARB', 'HYPE', 'AVAX', 'OP', 'SUI', 'LINK'];
+    
+    // If the token is a Base Spot token (e.g. BRETT, TOSHI, AERO, VIRTUAL) or not a perpetual contract
+    if (!KNOWN_PERPS.includes(coin)) {
+      const spotData = await this.tokenResolver.resolveToken(coin);
+      this.emitResult(requestId, true, {
+        provider: 'Base Network DEX Spot Market',
+        mode: 'SPOT',
+        coin: spotData.symbol,
+        symbol: spotData.symbol,
+        name: spotData.name,
+        address: spotData.address,
+        priceUsdc: spotData.priceUsdc,
+        liquidityUsdc: spotData.liquidityUsdc,
+        volume24hUsdc: spotData.volume24hUsdc,
+        riskLevel: spotData.riskLevel,
+        riskEducationSummary: spotData.riskEducationSummary,
+        summary: `${spotData.symbol} (${spotData.name}) on Base DEX Spot: Price $${spotData.priceUsdc} USDC, 24h Volume $${spotData.volume24hUsdc}, Liquidity $${spotData.liquidityUsdc}. Risk Level: ${spotData.riskLevel}.`
+      });
+      return;
+    }
+
     const [mids, book, asset] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin), this.hyperliquid.getAssetContext(coin)]);
-    const data = { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, funding: asset.funding, openInterest: asset.openInterest, markPrice: asset.markPrice, oraclePrice: asset.oraclePrice, dayNotionalVolume: asset.dayNotionalVolume, timestamp: book.timestamp };
+    const data = { provider: 'Hyperliquid Perpetual Futures', mode: 'PERPETUAL_FUTURES', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, funding: asset.funding, openInterest: asset.openInterest, markPrice: asset.markPrice, oraclePrice: asset.oraclePrice, dayNotionalVolume: asset.dayNotionalVolume, timestamp: book.timestamp };
     this.emitResult(requestId, true, { ...data, summary: formatHyperliquidMarketSummary(data), analysis: analyzeHyperliquidMarketSnapshot(data) });
   }
 

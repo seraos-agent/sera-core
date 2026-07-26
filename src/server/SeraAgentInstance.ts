@@ -252,17 +252,52 @@ export class SeraAgentInstance {
     const episodicSemanticBridge = new EpisodicSemanticBridge(this.eventBus, this.memoryStore);
 
     this.capabilityCatalog = new CapabilityCatalog();
-    const dummyPingTool: SeraTool = {
-      name: 'system_ping',
-      description: 'Pings the system to check if it is responsive. Use this when the user asks to ping the system.',
-      parameters: {
-        type: 'object',
-        properties: {
-          message: { type: 'string', description: 'Optional message to attach to the ping' }
+    const baseTools: SeraTool[] = [
+      {
+        name: 'system_ping',
+        description: 'Pings the system to check if it is responsive. Use this when the user asks to ping the system.',
+        parameters: {
+          type: 'object',
+          properties: {
+            message: { type: 'string', description: 'Optional message to attach to the ping' }
+          }
+        }
+      },
+      {
+        name: 'RESOLVE_BASE_TOKEN',
+        description: 'Fetches official live token data, contract address, price, liquidity depth, and risk analysis DIRECTLY on-chain from the Base ecosystem (DexScreener/Uniswap/Aerodrome). ALWAYS use this tool for Base token queries, price checks, or token lists instead of web search.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The token symbol, name, or contract address to resolve on Base (e.g. WETH, BRETT, TOSHI, top 10 Base coins)' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'SPOT_SWAP',
+        description: 'Executes a live DEX spot swap on Base network via Uniswap V3 / Aerodrome router. Charges 0.20% Volume Take Rate + Gas Surcharge in USDC.',
+        parameters: {
+          type: 'object',
+          properties: {
+            fromToken: { type: 'string', description: 'Source token symbol (default USDC)' },
+            toToken: { type: 'string', description: 'Destination token symbol (e.g. WETH, AERO, BRETT)' },
+            amount: { type: 'number', description: 'Amount in USDC to swap' }
+          },
+          required: ['toToken', 'amount']
+        },
+        requiresApproval: true
+      },
+      {
+        name: 'CHECK_WALLET_BALANCE',
+        description: 'Checks real-time wallet balances (USDC, WETH) for user and agent wallet on Base network.',
+        parameters: {
+          type: 'object',
+          properties: {}
         }
       }
-    };
-    this.capabilityCatalog.registerTools([dummyPingTool]);
+    ];
+    this.capabilityCatalog.registerTools(baseTools);
 
     this.communicationBridge = new CommunicationBridge(this.eventBus);
   }

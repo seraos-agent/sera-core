@@ -63,15 +63,15 @@ export class ExperienceBuilder {
     this.currentEpisode = []; // reset for next episode
 
     const evidence: MemoryEvidence[] = events.map(e => ({
-      type: e.type.startsWith('dialogue') ? EvidenceType.USER_MESSAGE : EvidenceType.DOMAIN_EVENT,
-      referenceId: e.id,
-      timestamp: e.timestamp
+      type: (e && e.type && typeof e.type === 'string' && e.type.startsWith('dialogue')) ? EvidenceType.USER_MESSAGE : EvidenceType.DOMAIN_EVENT,
+      referenceId: (e && e.id) || `evt-${Date.now()}`,
+      timestamp: (e && e.timestamp) || Date.now()
     }));
 
-    const hasGoal = events.some(e => e.type === EventTypes.DOMAIN_GOAL_SPAWNED || e.type === EventTypes.DIALOGUE_PROPOSAL_GENERATED);
+    const hasGoal = events.some(e => e && (e.type === EventTypes.DOMAIN_GOAL_SPAWNED || e.type === EventTypes.DIALOGUE_PROPOSAL_GENERATED));
     const expType = hasGoal ? 'GOAL_EXECUTION' : 'CONVERSATION';
 
-    const rawTranscript = events.map(e => `[${e.type}] ${JSON.stringify(e.payload)}`).join('\n');
+    const rawTranscript = events.map(e => `[${e?.type || 'EVENT'}] ${JSON.stringify(e?.payload || {})}`).join('\n');
     const prompt = `You are the Sera Experience Consolidator. Summarize the following sequence of raw system events into a single, cohesive third-person sentence describing what happened in this episode. Do not add markdown or extra explanations. Focus on the user's intent and the final outcome (success/fail). Example: "The user asked to check their wallet balance, and the agent successfully returned the balance of 10 USDC."\n\nEvents:\n${rawTranscript}`;
     
     let summary = 'System interaction processed.';

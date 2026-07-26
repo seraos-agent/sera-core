@@ -17,140 +17,13 @@ import { WorkClassificationPolicy } from '../../core/work-classification/WorkCla
 import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
 import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementStore';
 
-// Re-export for server bootstrap convenience
-export { EventTypes as SERA_EVENTS };
-
-// ── System Prompt ──────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are SERA — Synthesizing & Evolving Rational Agent.
-You are NOT a chatbot. You are an operational agent already integrated into the user's workflow.
-You operate as a cognitive partner: you monitor, reason, propose, and act on behalf of the user.
-
-CRITICAL — IDENTITY AND PERSONA:
-- You are already present and operational.
-- You HAVE full internet access and real-time capabilities via your connected Tools (such as web search, wallets, etc.).
-- NEVER claim that you are an AI model without internet access or real-time data. You are SERA, a sovereign agent connected to the world. If you need data, use your tools or rely on the system data provided to you.
-- DO NOT expose internal technical jargon to the user. Never mention tool names like 'brave_web_search', 'MCP', 'JSON', or 'API'. Speak naturally. E.g., say "I searched the web" instead of "I used the brave_web_search tool".
-- RULE 1 — Pure greeting (ONLY words like "hi", "hello", "helo", "hey", "yo", "hei", "ok", "okay" with absolutely no other content): respond warmly in 1-2 short sentences in the user's language. Acknowledge the user and include a brief situational note if relevant context is available (e.g. market status, time of day, or a pending task). Example: "Hello, good morning. The crypto market is quite active today." or "Ready, what shall we work on today?" Do NOT respond with just one cold word like "Listening." or "Online."
-- RULE 2 — Any message that contains a question, a request, or substantive content: you MUST give a full, real answer. A one-word presence acknowledgment is FORBIDDEN for these.
-- RULE 3 — Identity questions ("who are you", "what is SERA", "introduce yourself"): give a clear self-description as an operational agent — in the SAME LANGUAGE as the user's message. Describe what SERA does in practical terms. Keep it to 3-4 sentences.
-- No excessive emoji. No self-introduction repetition.
-
-CRITICAL — COMMUNICATION STYLE:
-- Be clear and purposeful. Write enough to be helpful, but never pad responses with filler words. Prioritize substance over brevity.
-- Be confident. State things as fact, not as offers. "I'll check that." not "I can try to check that for you!"
-- Be professionally warm. You are a knowledgeable colleague, not a cold terminal. Show that you understand the user's situation.
-- When answering questions, provide context that helps the user make decisions. For example, if asked about a token price, include relevant market context (trend, volume, or comparison) — not just the raw number.
-- When completing an action, briefly confirm what was done and, if relevant, suggest a logical next step. Example: "The transfer of 50 USDC has been sent to your wallet. Would you like to check your updated balance?"
-- Match the user's register: formal if they are formal, casual if they are casual.
-- You MUST respond in the exact language of the user's LATEST message (Indonesian → Indonesian, English → English). Switch languages fluidly.
-- Write in complete, fluid sentences. Do NOT use long em-dashes (—). Short hyphens (-) are fine.
-- Do NOT dump an unsolicited list of your capabilities. But if a user seems unsure what to do, you MAY proactively suggest one or two relevant actions based on context (e.g. "You can check your portfolio or monitor specific asset prices.").
-- Do NOT end with generic assistant filler like "let menu of services" or "let me know if you need anything". Instead, close with something contextually relevant or forward-looking if appropriate. If there is nothing to add, simply end naturally.
-- When asking for clarification, ask ONE clear question. Do NOT use bullet points or numbered lists just to ask a simple question.
-- If the message has no reliable meaning or request, ask one concise, proactive clarification question ending in a question mark. Do not list possible actions or claim you are ready to execute anything.
-- For any clarification response, write any brief context first, then end the entire response with exactly one question. The question mark must be the final character; never put text, lists, or offers after it.
-
-CRITICAL — OPERATING AGREEMENT INTEGRITY & NO TEXT HALLUCINATION:
-- You DO NOT have the capability to create proposal cards by writing assistant text.
-- NEVER write text claiming a proposal card has been prepared or instructing the user to click Approve on screen unless you are executing a native function call to SCHEDULE_GOAL in that exact turn.
-- Writing text claims without issuing a tool call causes UI confusion because no proposal card will appear on the user's screen.
-- When the user requests a schedule or confirms a schedule creation, YOU MUST IMMEDIATELY INVOKE THE SCHEDULE_GOAL TOOL CALL.
-
-CRITICAL — PLATFORM AWARENESS:
-- When operating via Slack, write like a knowledgeable colleague, not a helpdesk bot.
-- In Slack: no markdown bullet lists unless listing actual data (like addresses or balances). Use plain sentences.
-- In Slack: a greeting is operational signal. Respond and move forward. Don't offer a menu of services.
-- In Slack: clarification questions should be ONE line. Example: "Did you mean 'config', 'contract', or a typo for 'can'?"
-
-CRITICAL — SECURITY AND WALLET POLICY:
-- You have your own operational wallet. Refer to it as "my balance", "my funds", or "my wallet". NEVER say "vault".
-- The user has their own personal wallet. You have READ-ONLY access to it. You CANNOT transfer funds OUT OF the user's wallet.
-- When the user asks you to "transfer", "send", or "return" funds, ALWAYS use your own balance. You can only send TO the user's wallet, not FROM it.
-
-CRITICAL — TIMEZONE CONTEXT:
-- The user's timezone is provided at the start of your message. Use it to understand relative times like "tomorrow 9am".
-- Always normalize time requests to a valid 'cronExpression' or Unix timestamp (UTC).
-
-CRITICAL — SCHEDULING POLICY AND MINIMUM INTERVAL:
-- The system's minimum allowed recurring schedule frequency is 1 minute (60 seconds).
-- The system does NOT allow recurring schedules faster than 1 minute (e.g., every 5 seconds or 30 seconds are invalid).
-- If a user requests a recurring schedule faster than 1 minute:
-  1. DO NOT issue a proposal card immediately.
-  2. Educate the user politely in their language that the minimum schedule frequency is 1 minute to preserve API rate limits and system stability.
-  3. Ask if they would like to proceed with a 1-minute schedule instead.
-
-CRITICAL — FEW-SHOT TOOL CALL EXEMPLARS:
-You have native function-calling capabilities. When a user's request matches a tool's capability, YOU MUST INVOKE THAT TOOL IMMEDIATELY instead of responding with plain assistant text.
-
-Exemplar 1a — Valid Recurring Task (>= 1 minute):
-User: "check BTC price every 5 minutes" or "monitor ETH price every 1 hour"
-Action: Call tool "SCHEDULE_GOAL" with:
-{
-  "scheduleType": "cron",
-  "cronExpression": "*/5 * * * *",
-  "humanIntent": "Every 5 minutes",
-  "actionIntent": "HYPERLIQUID_CANDLES",
-  "actionParameters": { "coin": "BTC" }
-}
-
-Exemplar 1b — Invalid Recurring Task (< 1 minute):
-User: "check BTC price every 30 seconds" or "monitor ETH price every 5 seconds"
-Action: Do NOT call any tool. Reply in plain text in the user's language explaining that the minimum schedule frequency is 1 minute, and ask if they would like to proceed with a 1-minute schedule instead.
-
-Exemplar 1c — User Confirms Schedule Creation:
-User: "make it recurring" or "yes exactly" or "proceed with 1 minute" (when confirming a schedule)
-Action: Call tool "SCHEDULE_GOAL" with:
-{
-  "scheduleType": "cron",
-  "cronExpression": "*/1 * * * *",
-  "humanIntent": "Every 1 minute",
-  "actionIntent": "HYPERLIQUID_CANDLES",
-  "actionParameters": { "coin": "ETH" }
-}
-
-Exemplar 2 — Single Delayed Task (Exact Delay):
-User: "dalam 20 detik kirim 10 USDC ke 0x123..." or "in 1 hour check my balance"
-Action: Call tool "SCHEDULE_GOAL" with:
-{
-  "scheduleType": "exact",
-  "delaySeconds": 20,
-  "humanIntent": "In 20 seconds",
-  "actionIntent": "TRANSFER_FUNDS",
-  "actionParameters": { "recipient": { "type": "address", "address": "0x123..." }, "amount": 10, "asset": "usdc" }
-}
-
-Exemplar 3 — Immediate Market / Asset Query:
-User: "berapa harga ETH sekarang" or "what is the price of BTC"
-Action: Call tool "HYPERLIQUID_CANDLES" or "HYPERLIQUID_MARKET_SUMMARY" with: { "coin": "ETH" }
-
-Exemplar 4 — Wallet Balance Query:
-User: "cek saldo wallet" or "how much USDC is in my wallet"
-Action: Call tool "CHECK_WALLET_BALANCE" with: {}
-
-Exemplar 5 — Pure Conversational Question:
-User: "Pasar kripto lagi ramai ya hari ini?" or "How does SERA work?"
-Action: Do NOT call any tool. Provide a clear, natural text response in the user's language.`;
-
-// ── Intent Extraction Prompt ───────────────────────────────────────────────
-const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analyze the user's message and respond ONLY with a JSON object — no markdown, no explanation.
-
-Supported intents:
-- CHECK_NETWORK: user asks about the current network, chain, or blockchain Sera is connected to.
-- EXECUTE_UI_COMMAND: user wants to change a UI state, such as dark/light mode or clearing the chat. parameters must include "uiCommand" ("SET_THEME_DARK", "SET_THEME_LIGHT", or "CLEAR_CHAT").
-- FORGET_ME: user asks SERA to forget them, delete their data, wipe their memory, or opt-out.
-- NONE: anything else (conversation, questions, checking balances, transferring funds, scheduling tasks)
-
-Response format:
-{"intent": "CHECK_NETWORK", "parameters": {}}
-{"intent": "EXECUTE_UI_COMMAND", "parameters": {"uiCommand": "SET_THEME_DARK"}}
-{"intent": "FORGET_ME", "parameters": {}}
-{"intent": "NONE", "parameters": {}}
-
-User Context:
-Current Time (UTC): \${new Date().toISOString()}
-Timezone: UTC (Global)
-
-User message: `;
+import { SYSTEM_PROMPT, INTENT_EXTRACTION_PROMPT } from './SystemPrompts';
+import { FeasibilityEvaluator } from './FeasibilityEvaluator';
+import { DialogueResultNarrator } from './DialogueResultNarrator';
+import { IntentClassifier } from './IntentClassifier';
+import { CognitiveContextBuilder } from './CognitiveContextBuilder';
+import { ProposalResponseHandler } from './ProposalResponseHandler';
+import { ToolExecutionHandler } from './ToolExecutionHandler';
 
 /**
  * DialogueEngine — A Capability that handles human↔Sera conversation.
@@ -183,30 +56,7 @@ export class DialogueEngine {
   private pendingProposalId: string | undefined;
   private activeAbortController: AbortController | null = null;
 
-  /**
-   * TRANSPORT-AGNOSTIC RESPONSE ROUTING
-   * Holds the response context for the currently active observation request.
-   * This is set at the start of onUserObservation() and cleared when the reply
-   * is emitted. DialogueEngine does NOT inspect platform-specific fields.
-   * It simply carries this opaque object from input event to output event,
-   * allowing CommunicationBridge to route the reply back to the correct channel.
-   *
-   * BOUNDARY NOTE: No Slack-specific logic shall ever be added here.
-   * The entire platform surface area is contained inside CommunicationBridge
-   * and the adapter layer.
-   */
   private _activeResponseContext: Record<string, any> | undefined = undefined;
-
-  /**
-   * PLATFORM CONVERSATION HISTORY
-   * Stores recent conversation turns per external platform channel.
-   * Key: "platform:channelId" (e.g. "slack:C0B9D2MHMDY")
-   * Value: rolling window of the last N {role, content} turns.
-   *
-   * This gives SERA conversational memory within a Slack thread (or any platform
-   * channel) without coupling DialogueEngine to any platform-specific logic.
-   * The key uses the opaque channelId from _activeResponseContext.
-   */
   private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
   private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
 
@@ -215,6 +65,12 @@ export class DialogueEngine {
   private readonly persistLocally: boolean;
 
   private chatHistoryStore: ChatHistoryStore;
+  private feasibilityEvaluator: FeasibilityEvaluator;
+  private dialogueResultNarrator: DialogueResultNarrator;
+  private intentClassifier: IntentClassifier;
+  private cognitiveContextBuilder: CognitiveContextBuilder;
+  private proposalResponseHandler: ProposalResponseHandler;
+  private toolExecutionHandler: ToolExecutionHandler;
 
   constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore, options: { persistLocally?: boolean } = {}) {
     this.eventBus = eventBus;
@@ -224,8 +80,6 @@ export class DialogueEngine {
     this.chatHistoryStore = chatHistoryStore;
     this.orchestrator = orchestrator;
     this.persistLocally = options.persistLocally ?? true;
-    this.workerRegistry.register({ id: 'dialogue-ui', lane: 'DETERMINISTIC_UI', supportedWorkClasses: ['INSTANT_UI'] });
-    this.workerRegistry.register({ id: 'dialogue-model', lane: 'DIALOGUE', supportedWorkClasses: ['CONVERSATION'] });
     const vectorStore = new VectorMemoryStore(sessionId, { persistLocally: this.persistLocally });
     this.memoryQueryService = new MemoryQueryService(
       memoryStore,
@@ -233,6 +87,20 @@ export class DialogueEngine {
       vectorStore,
       new QwenAdapter('text-embedding-v3')
     );
+    this.feasibilityEvaluator = new FeasibilityEvaluator(this.worldStateService);
+    this.dialogueResultNarrator = new DialogueResultNarrator(this.eventBus, this.orchestrator);
+    this.intentClassifier = new IntentClassifier(this.workClassificationPolicy, this.orchestrator);
+    this.cognitiveContextBuilder = new CognitiveContextBuilder(this.worldStateService, this.memoryQueryService, this.chatHistoryStore);
+    this.proposalResponseHandler = new ProposalResponseHandler(this.eventBus);
+    this.toolExecutionHandler = new ToolExecutionHandler(
+      this.eventBus,
+      this.orchestrator,
+      this.feasibilityEvaluator,
+      this.proposalResponseHandler,
+      this.dialogueResultNarrator
+    );
+    this.workerRegistry.register({ id: 'dialogue-ui', lane: 'DETERMINISTIC_UI', supportedWorkClasses: ['INSTANT_UI'] });
+    this.workerRegistry.register({ id: 'dialogue-model', lane: 'DIALOGUE', supportedWorkClasses: ['CONVERSATION'] });
 
     this.loadConsentedUsers();
 
@@ -281,83 +149,13 @@ export class DialogueEngine {
   // ── Cognitive Context Builder ─────────────────────────────────────────────
 
   private async buildWorkingMemory(uiCommandExecuted?: boolean, userMessage?: string): Promise<QwenMessage[]> {
-    const messages: QwenMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-
-    const walletState = this.worldStateService.getWalletState();
-
-    // Unified Memory Retrieval
-    const memoryAttention = await this.memoryQueryService.query(userMessage, { tokenBudget: 700 });
-
-    const cognitiveState = {
-      relevant_facts: {
-        currentTime: new Date().toUTCString(),
-        userMainWalletAddress: walletState?.address || 'Unknown'
-      },
-      memory_attention: this.memoryQueryService.toPromptContext(memoryAttention),
-      constraints: [
-        'User attention is limited. Keep answers concise.',
-        'Never hallucinate unverified state.',
-        'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
-        'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
-        'When using TRANSFER_FUNDS, include "fromWallet": "agent_vault" to send your own funds, or "user_main_wallet" for the user\'s funds.',
-        'CRITICAL — SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action, monitor an asset, or fetch data periodically/recurringly (e.g., "every 30 seconds", "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.'
-      ]
-    };
-
-    messages.push({
-      role: 'system',
-      content: `[COGNITIVE STATE (WORKING MEMORY)]\n${JSON.stringify(cognitiveState, null, 2)}`
-    });
-
-    if (uiCommandExecuted) {
-      messages.push({
-        role: 'system',
-        content: `The system has just executed the user's requested UI action in the background automatically. Acknowledge this naturally and concisely without explaining how it works. Do not claim you lack access to settings.`
-      });
-    }
-
-    // Recent Dialogue Context
-    // PLATFORM BOUNDARY: When the message originates from an external platform
-    // (Slack, Discord, etc.), the chatHistoryStore contains web UI history that
-    // is irrelevant and actively harmful — the LLM would respond to UI context
-    // instead of the actual Slack message. We skip it entirely for platform messages.
-    if (!this._activeResponseContext) {
-      // UI/Socket.io origin: include recent web chat history as conversation context
-      const recentUi = this.chatHistoryStore.getUiMessages()
-        .filter(m => m.type !== 'activity' && m.content)
-        .map(m => ({ role: m.role === 'agent' ? 'assistant' as const : 'user' as const, content: m.content! }));
-      const context = this.conversationContextCompressor.compress(recentUi, {
-        tokenBudget: 700,
-        maxRecentTurns: 5
-      });
-
-      messages.push(...context.messages);
-    } else {
-      // External platform origin: inject platform context + conversation history
-      const ctxKey = `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}`;
-      const history = this.platformConversationHistory.get(ctxKey) ?? [];
-
-      messages.push({
-        role: 'system',
-        content: `[PLATFORM CONTEXT] Message arrived via ${this._activeResponseContext.platform}. Rules for this context: (1) Plain prose only, no markdown bullet lists unless displaying structured data. (2) Clarification questions must be ONE short sentence. (3) Do NOT list your capabilities. (4) Do NOT end with open-ended offers to help. Write like a senior colleague, not a support bot.`
-      });
-
-      // Inject platform-specific conversation history so SERA has conversational
-      // continuity within a Slack thread. Without this, every message is stateless.
-      if (history.length > 0) {
-        const context = this.conversationContextCompressor.compress(history, {
-          tokenBudget: 700,
-          maxRecentTurns: this.PLATFORM_HISTORY_MAX_TURNS
-        });
-        messages.push({
-          role: 'system',
-          content: `[CONVERSATION HISTORY - selective context from ${history.length} turns in this channel]`
-        });
-        messages.push(...context.messages);
-      }
-    }
-
-    return messages;
+    return this.cognitiveContextBuilder.build(
+      uiCommandExecuted,
+      userMessage,
+      this._activeResponseContext,
+      this.platformConversationHistory,
+      this.PLATFORM_HISTORY_MAX_TURNS
+    );
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
@@ -392,20 +190,6 @@ export class DialogueEngine {
       source: 'DialogueEngine'
     };
     this.eventBus.emit(type, event);
-  }
-
-  private async classifyIntent(userMessage: string): Promise<{ intent: string; parameters: Record<string, any> }> {
-    try {
-      const messages = [
-        { role: 'system', content: INTENT_EXTRACTION_PROMPT },
-        { role: 'user', content: userMessage }
-      ];
-      const response = await this.orchestrator.generate(this.profileFor('Execution', messages, { requiresJSON: true }), messages, undefined, this.activeAbortController?.signal);
-      const parsed = JSON.parse(response.text.trim());
-      return parsed;
-    } catch {
-      return { intent: 'NONE', parameters: {} };
-    }
   }
 
   private profileFor(
@@ -457,35 +241,7 @@ export class DialogueEngine {
    * (Triggers, Planner, Reflection, APIs), feasibility validation should be promoted into a shared execution-stage service.
    */
   private evaluateFeasibility(intent: string, parameters: any): { feasible: boolean, reason?: string } {
-    let checkIntent = intent;
-    let checkParams = parameters;
-
-    if (intent === 'SCHEDULE_GOAL' && parameters && parameters.actionIntent) {
-      checkIntent = parameters.actionIntent;
-      checkParams = parameters.actionParameters || {};
-    }
-
-    if (checkIntent === 'TRANSFER_FUNDS') {
-      const walletState = this.worldStateService.getWalletState();
-      if (!walletState) return { feasible: false, reason: "Wallet state is completely unknown or disconnected." };
-
-      const requestedAmount = checkParams.amount;
-      const currentBalance = walletState.balance; // Using Main Wallet (or Vault depending on logic)
-
-      // Based on rules, Sera writes to Sera Vault balance
-      const vaultBalance = walletState.vaultBalance;
-      const effectiveBalance = checkParams.fromWallet === 'user_main_wallet' ? currentBalance : vaultBalance;
-
-      if (requestedAmount === 'all') {
-        if (effectiveBalance <= 0) return { feasible: false, reason: `Insufficient funds. Available balance is 0 USDC.` };
-      } else {
-        const amount = parseFloat(requestedAmount);
-        if (isNaN(amount) || amount <= 0) return { feasible: false, reason: "Invalid amount specified." };
-        if (amount > effectiveBalance) return { feasible: false, reason: `Insufficient funds. Requested: ${amount}, Available: ${effectiveBalance} USDC.` };
-      }
-    }
-
-    return { feasible: true };
+    return this.feasibilityEvaluator.evaluate(intent, parameters);
   }
 
   // ── Event Handlers ────────────────────────────────────────────────────────
@@ -561,17 +317,9 @@ export class DialogueEngine {
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
-      const deterministicUiCommand = this.workClassificationPolicy.uiCommand(userMessage);
-      if (deterministicUiCommand) {
-        const worker = this.workerRegistry.require('INSTANT_UI', 'DETERMINISTIC_UI');
-        this.emitEvent(EventTypes.WORK_CLASSIFIED, { workClass: 'INSTANT_UI', lane: worker.lane, workerId: worker.id });
-        this.emitEvent(EventTypes.WORKER_LANE_SELECTED, { workClass: 'INSTANT_UI', lane: worker.lane, workerId: worker.id });
-      }
-      let { intent, parameters } = deterministicUiCommand
-        ? { intent: 'EXECUTE_UI_COMMAND', parameters: { uiCommand: deterministicUiCommand } }
-        : await this.classifyIntent(userMessage);
-      const workRoute = this.workClassificationPolicy.classify(userMessage);
-      parameters = { ...parameters, _seraWorkClass: workRoute.workClass };
+      const classification = await this.intentClassifier.classify(userMessage, this.activeAbortController?.signal);
+      let { intent, parameters, workRoute } = classification;
+
       console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass}`);
 
       // ── Step 1.5: Intercept Complex Autonomy Tasks ───────────────────────────
@@ -600,25 +348,6 @@ export class DialogueEngine {
       // ── Step 2: Clarification Validation ───────────────────────────────────────
       // (Legacy logic removed - clarification is now natively handled by Tool Calling)
 
-      let uiCommandExecuted = false;
-
-      if (intent === 'EXECUTE_UI_COMMAND') {
-        uiCommandExecuted = true;
-        const cmd = String(parameters.uiCommand).toUpperCase();
-
-        if (cmd === 'SET_THEME_DARK') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
-        if (cmd === 'SET_THEME_LIGHT') this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
-
-        if (cmd === 'CLEAR_CHAT') {
-          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: 'Alright, I will clear the chat history for you.' });
-          this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
-          return; // Return immediately to avoid unnecessary LLM generation
-        }
-
-        // Force fallback to conversational response so the agent acknowledges the action naturally
-        intent = 'NONE';
-      }
-
       let forgetMeExecuted = false;
       if (intent === 'FORGET_ME') {
         console.log(`[DialogueEngine] Executing FORGET_ME for user/session.`);
@@ -638,9 +367,11 @@ export class DialogueEngine {
 
       // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
       if (intent !== 'NONE') {
-        // AUTO-EXECUTE path: Read-only operations and authorized vault operations (e.g. transfers)
-        const AUTO_EXECUTE_INTENTS = ['CHECK_NETWORK'];
-        const shouldAutoExecute = AUTO_EXECUTE_INTENTS.includes(intent);
+        // Read-only operations execute immediately without proposal cards.
+        // Only mutative/financial actions (TRANSFER_FUNDS, SPOT_SWAP, SCHEDULE_GOAL,
+        // ACTIVATE_AUTONOMY_AGREEMENT) fall through to the proposal path below.
+        const PROPOSAL_REQUIRED_INTENTS = ['TRANSFER_FUNDS', 'SPOT_SWAP', 'SCHEDULE_GOAL', 'ACTIVATE_AUTONOMY_AGREEMENT'];
+        const shouldAutoExecute = !PROPOSAL_REQUIRED_INTENTS.includes(intent);
 
         if (shouldAutoExecute) {
           // AUTO-EXECUTE path
@@ -706,7 +437,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         }
       } else {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
-        let messages = await this.buildWorkingMemory(uiCommandExecuted, userMessage);
+        let messages = await this.buildWorkingMemory(false, userMessage);
 
         if (forgetMeExecuted) {
           messages.push({
@@ -727,7 +458,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           });
         }
 
-        const availableTools = this.capabilityCatalog?.availableTools() || [];
+        const availableTools = typeof this.capabilityCatalog?.availableTools === 'function'
+          ? this.capabilityCatalog.availableTools()
+          : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
 
         availableTools.push({
           name: 'REMEMBER_FACT',
@@ -742,6 +475,29 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           requiresApproval: false
         });
 
+        availableTools.push({
+          name: 'CLEAR_CHAT',
+          description: 'Use this tool to clear, delete, reset, or remove the chat history and messages from the screen (e.g. "clear chat", "delete messages", "wipe chat").',
+          parameters: {
+            type: 'object',
+            properties: {}
+          },
+          requiresApproval: false
+        });
+
+        availableTools.push({
+          name: 'SET_THEME',
+          description: 'Use this tool to change, toggle, or switch the user interface display theme/mode (e.g. Dark Mode or Light Mode). MUST be invoked whenever user asks to change, switch, retry, or fix theme display (e.g. "change mode light", "mode dark", "switch theme", "try again").',
+          parameters: {
+            type: 'object',
+            properties: {
+              theme: { type: 'string', enum: ['dark', 'light'], description: 'The display theme mode to set: "dark" or "light".' }
+            },
+            required: ['theme']
+          },
+          requiresApproval: false
+        });
+
         this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
         const toolTier = workRoute.workClass === 'HIGH_RISK' || workRoute.workClass === 'COMPLEX' ? 'Reasoning' : 'Execution';
         const response = await this.orchestrator.generate(
@@ -752,121 +508,21 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         );
 
         // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
-        if (response.toolCalls && response.toolCalls.length > 0) {
-          const toolCall = response.toolCalls[0];
-          console.log(`[DialogueEngine] LLM Native Tool Call selected: ${toolCall.name}`);
+        const toolHandled = await this.toolExecutionHandler.handleToolCall({
+          event,
+          userMessage,
+          response,
+          messages,
+          capabilityCatalog: this.capabilityCatalog,
+          autonomyAgreementStore: this.autonomyAgreementStore,
+          sessionId: this.sessionId,
+          activeAbortControllerSignal: this.activeAbortController?.signal,
+          buildWorkingMemory: this.buildWorkingMemory.bind(this),
+          spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
+          emitEvent: this.emitEvent.bind(this)
+        });
 
-          const startTime = Date.now();
-
-          const toolIntent = toolCall.name;
-          let toolParams: Record<string, any> = {};
-          try {
-            toolParams = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments;
-          } catch (e) {
-            console.error('[DialogueEngine] Failed to parse tool arguments:', e);
-          }
-
-          if (toolIntent === 'REMEMBER_FACT') {
-            const fact = toolParams.fact || 'Unknown fact';
-            const proposal: MemoryProposal = {
-              operation: MemoryOperation.CREATE,
-              key: `workspace.fact.${Date.now()}`,
-              value: fact,
-              source: MemorySource.USER_DIRECT_INSTRUCTION,
-              evidence: { type: EvidenceType.USER_MESSAGE, referenceId: event.id, timestamp: event.timestamp },
-              confidence: 1.0,
-              category: 'SEMANTIC'
-            };
-            this.emitEvent(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
-
-            messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
-            messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
-
-            const summaryResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, [], this.activeAbortController?.signal);
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
-            return;
-          }
-
-          // Route tool call through standard execution/proposal path
-
-          // Determine safety dynamically via CapabilityCatalog
-          const toolMeta = this.capabilityCatalog?.getTool(toolIntent);
-          const isAuthorizedByAgreement = this.autonomyAgreementStore?.hasFullAccessFor(toolIntent, this.sessionId) === true;
-          const isSafe = toolMeta ? (!toolMeta.requiresApproval || isAuthorizedByAgreement) : true;
-
-          if (isSafe) {
-            this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
-              content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c: string) => c.toUpperCase())}...`,
-            });
-            const result = await this.spawnGoalAndAwaitResult(toolIntent, toolParams);
-            const duration = Date.now() - startTime;
-
-            // Phase 8: Tool Telemetry
-            this.emitEvent('SYSTEM_TELEMETRY' as any, {
-              metric: 'tool_execution',
-              toolName: toolIntent,
-              success: result.success,
-              durationMs: duration
-            });
-
-            await this.narrateResult(userMessage, result);
-          } else {
-            // PROPOSAL path for risky tools
-            const feasibility = this.evaluateFeasibility(toolIntent, toolParams);
-            if (!feasibility.feasible) {
-              const messages = await this.buildWorkingMemory();
-              messages.push({
-                role: 'system',
-                content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
-              });
-              const failResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, undefined, this.activeAbortController?.signal);
-              this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
-              return;
-            }
-
-            console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
-            this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
-              intent: toolIntent,
-              parameters: toolParams,
-              userMessage
-            });
-
-            // Fast, cheap LLM call via qwen3.5-flash (Execution tier) for natural conversational announcement
-            const systemProposalMsg = `You have just prepared an action proposal via Tool Calling.
-Intent: ${toolIntent}
-Parameters: ${JSON.stringify(toolParams)}
-
-CRITICAL INSTRUCTION:
-Write ONE short, natural sentence in the exact language the user is speaking. Acknowledge that the proposal card has been prepared and ask them to review and click Approve on their screen. Do NOT say that the action has been executed yet. Keep it under 15 words.`;
-
-            const proposalMessages = await this.buildWorkingMemory();
-            proposalMessages.push({ role: 'system', content: systemProposalMsg });
-
-            let summaryText = "";
-            try {
-              const proposalResponse = await this.orchestrator.generate(
-                this.profileFor('Execution', proposalMessages),
-                proposalMessages,
-                undefined,
-                this.activeAbortController?.signal
-              );
-              summaryText = proposalResponse.text.trim();
-            } catch (err) {
-              summaryText = this.generateInstantProposalSummary(toolIntent, toolParams);
-            }
-
-            // Telemetry for proposal generation
-            this.emitEvent('SYSTEM_TELEMETRY' as any, {
-              metric: 'tool_proposal',
-              toolName: toolIntent,
-              success: true,
-              durationMs: Date.now() - startTime
-            });
-
-            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
-          }
-          return;
-        }
+        if (toolHandled) return;
 
         let rawText = response.text.trim();
         console.log(`[DialogueEngine] Qwen responded (${response.usage?.total_tokens || 0} tokens).`);
@@ -875,6 +531,20 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
         const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
         const lightThemeRegex = /<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi;
         rawText = rawText.replace(darkThemeRegex, '').replace(lightThemeRegex, '').trim();
+
+        // Deterministic Fallback Guard: If Qwen claims in text that it switched to dark/light mode without emitting a tool call, force-emit the UI_COMMAND!
+        const isThemeRequest = /\b(mode|theme|display)\b/i.test(userMessage) || /\b(light|dark)\b/i.test(userMessage);
+        if (isThemeRequest) {
+          const textClaimsLight = /light/i.test(rawText) || /light/i.test(userMessage);
+          const textClaimsDark = /dark/i.test(rawText) || /dark/i.test(userMessage);
+          if (textClaimsLight && !textClaimsDark) {
+            console.log('[DialogueEngine] Safety Guard: Force-emitting UI_COMMAND SET_THEME light.');
+            this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'light' });
+          } else if (textClaimsDark) {
+            console.log('[DialogueEngine] Safety Guard: Force-emitting UI_COMMAND SET_THEME dark.');
+            this.emitEvent(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: 'dark' });
+          }
+        }
 
         // LLM messages are no longer persisted
 
@@ -904,6 +574,7 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
         });
       } else {
         console.error('[DialogueEngine] Error:', error.message);
+        console.error('[DialogueEngine] Stack:', error.stack);
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
           text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
         });
@@ -923,114 +594,18 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
    * real exchange permissions that this adapter does not implement.
    */
   private preparePaperTradingFullAccessProposal(userMessage: string): boolean {
-    const asksForPaperTrading = /\b(?:paper\s*(?:trading|trade)|simulasi\s*trading)\b/i.test(userMessage);
-    const asksForFullAccess = /\b(?:full\s*access|akses\s*penuh)\b/i.test(userMessage);
-    if (!asksForPaperTrading || !asksForFullAccess) return false;
-
-    const coin = userMessage.match(/\b(BTC|ETH|SOL|HYPE)\b/i)?.[1]?.toUpperCase();
-    const assetLabel = coin ? ` ${coin}` : '';
-    this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
-      intent: 'ACTIVATE_AUTONOMY_AGREEMENT',
-      parameters: {
-        title: `Paper trading${assetLabel}`,
-        intent: `Manage${assetLabel} paper-trading activity`,
-        mode: 'FULL_ACCESS',
-        permissions: ['PAPER_TRADE'],
-        nextActionSummary: `Paper-trading activity for${assetLabel || ' the selected asset'} is ready for explicit simulation requests.`
-      },
-      userMessage
-    });
-    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-      text: `I prepared an agreement to manage paper trading${assetLabel}. Review the details in this card, then choose Approve if the scope and boundaries are right for you.`
-    });
-    return true;
+    return this.proposalResponseHandler.preparePaperTradingFullAccessProposal(userMessage);
   }
 
   private isProposalApproval(message: string): boolean {
-    return /^(?:yes|y|iya|ya|approve|approved|proceed|confirm|ok|okay)[.!\s]*$/i.test(message.trim());
+    return this.proposalResponseHandler.isApproval(message);
   }
 
   private isProposalRejection(message: string): boolean {
-    return /^(?:no|n|tidak|batal|cancel|reject|deny|stop)[.!\s]*$/i.test(message.trim());
+    return this.proposalResponseHandler.isRejection(message);
   }
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
-    if (result.success && result.data?.agreement) {
-      const agreement = result.data.agreement;
-      const hasPaperTradingOnlyScope = agreement.permissions.length === 1 && agreement.permissions[0] === 'PAPER_TRADE';
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        text: hasPaperTradingOnlyScope
-          ? `The agreement for ${agreement.title} is active. SERA now has ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant mode'} for simulation within the scope you approved; no order or real balance can change.`
-          : `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
-      });
-      return;
-    }
-    if (result.success && result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY') {
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderReadOnlyHyperliquidResult(result.data) });
-      return;
-    }
-    if (result.success && result.data?.provider === 'SERA Paper Trading' && result.data?.mode === 'PAPER') {
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderPaperTradeResult(result.data) });
-      return;
-    }
-    let sanitizedDataStr = JSON.stringify(result.data || {});
-    sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
-    sanitizedDataStr = sanitizedDataStr.replace(/"vaultAddress"/g, '"agentAddress"');
-    sanitizedDataStr = sanitizedDataStr.replace(/"personalBalance"/g, '"userBalance"');
-    sanitizedDataStr = sanitizedDataStr.replace(/"personalAddress"/g, '"userAddress"');
-    sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
-
-    const isReadOnlyMarketData = result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY';
-    const marketEvidencePolicy = isReadOnlyMarketData
-      ? ` MARKET EVIDENCE POLICY: Use only fields present in the retrieved data. State observations and limitations separately. Do NOT claim historical changes, breakout levels, institutional participation, support/resistance, causation, ETF flows, macro yields, price targets, future direction, or alerts. Order-book depth is a cancellable snapshot, not proof of buying/selling pressure. Funding and open interest are not standalone trade signals. If asked for unavailable analysis, say it requires the future research worker and historical validation.`
-      : '';
-    const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.${marketEvidencePolicy}`
-      : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
-
-    const messages = await this.buildWorkingMemory();
-    messages.push({ role: 'user', content: narratePrompt });
-
-    const narrateResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, undefined, this.activeAbortController?.signal);
-
-    const generatedText = narrateResponse.text.trim();
-    // LLM messages are no longer persisted
-
-    const actionLinks = [];
-    if (result.success && result.data?.executionId && typeof result.data.executionId === 'string' && result.data.executionId.startsWith('0x')) {
-      const txHash = result.data.executionId;
-      actionLinks.push({ label: 'View on Basescan', url: `https://basescan.org/tx/${txHash}` });
-    }
-
-    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText, actionLinks });
-  }
-
-  private renderReadOnlyHyperliquidResult(data: Record<string, any>): string {
-    if (data.latest) {
-      return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. This data does not constitute price direction analysis or trading signals.`;
-    }
-    return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; 24h notional volume ${data.dayNotionalVolume ?? 'n/a'}. This is a market snapshot; order book, funding, and open interest alone are insufficient to infer price direction, breakouts, or trading signals.`;
-  }
-
-  private renderPaperTradeResult(data: Record<string, any>): string {
-    return `Paper trade ${data.side} ${data.quantity} ${data.coin}: reference ${data.referencePrice}, simulated fill ${data.fillPrice}, fee ${data.fee}, slippage cost ${data.slippageCost}. No order was sent and no real balance changed.`;
-  }
-
-  private generateInstantProposalSummary(toolIntent: string, toolParams: Record<string, any>): string {
-    if (toolIntent === 'SCHEDULE_GOAL') {
-      const humanIntent = toolParams.humanIntent || (toolParams.cronExpression ? `recurring schedule (${toolParams.cronExpression})` : 'schedule');
-      const rawAction = toolParams.actionIntent ? toolParams.actionIntent.split('_').join(' ').toLowerCase() : 'action';
-      const coin = toolParams.actionParameters?.coin ? ` (${toolParams.actionParameters.coin})` : '';
-      return `Proposal for ${rawAction}${coin} ${humanIntent} has been prepared. Please click Approve on your screen to activate this automation.`;
-    }
-
-    if (toolIntent === 'TRANSFER_FUNDS') {
-      const amount = toolParams.amount || '';
-      const asset = (toolParams.asset || 'USDC').toUpperCase();
-      return `Proposal to transfer ${amount} ${asset} has been prepared. Please click Approve on your screen to authorize this transaction.`;
-    }
-
-    const actionName = toolIntent.split('_').join(' ').toLowerCase();
-    return `Proposal for ${actionName} has been prepared. Please click Approve on your screen to proceed.`;
+    await this.dialogueResultNarrator.narrate(userMessage, result, this.buildWorkingMemory.bind(this), this.activeAbortController?.signal, this.emitEvent.bind(this));
   }
 }

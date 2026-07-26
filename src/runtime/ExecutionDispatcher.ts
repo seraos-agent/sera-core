@@ -19,16 +19,20 @@ export class ExecutionDispatcher {
     this.eventBus.on(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
   }
 
-  private handleGoalSpawned(event: StandardEvent): void {
-    const { intent, parameters, requestId } = event.payload;
+  private handleGoalSpawned(event: any): void {
+    const payload = event?.payload || event;
+    if (!payload || !payload.intent) return;
+    const { intent, parameters, requestId } = payload;
     // Normalize intent from DialogueEngine
     this.dispatch(intent, parameters, { triggerId: requestId, workClass: parameters?._seraWorkClass });
   }
 
-  private handleTriggerFired(event: StandardEvent): void {
-    const { action, actionPayload, triggerId } = event.payload;
+  private handleTriggerFired(event: any): void {
+    const payload = event?.payload || event;
+    if (!payload) return;
+    const { action, actionPayload, triggerId } = payload;
     // Normalize intent from TriggerEngine
-    this.dispatch(action, actionPayload, { triggerId });
+    this.dispatch(action || payload.intent, actionPayload || payload.parameters, { triggerId });
   }
 
   /**

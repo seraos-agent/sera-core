@@ -32,7 +32,7 @@ export class CommunicationBridge {
       console.warn(`[CommunicationBridge] Warning: Adapter for platform '${platform}' is being overwritten.`);
     }
     this.adapters.set(platform, adapter);
-    
+
     // Auto-start the adapter
     adapter.start().catch(err => {
       console.error(`[CommunicationBridge] Failed to start adapter for ${platform}:`, err);
@@ -72,7 +72,7 @@ export class CommunicationBridge {
 
   private async handleSendMessage(requestId: string, payload: Record<string, any>): Promise<void> {
     const { platform, channelId, text, threadRef } = payload;
-    
+
     if (!platform) {
       this.emitResult(requestId, false, {}, 'Missing target platform for SEND_MESSAGE.');
       return;
@@ -102,15 +102,15 @@ export class CommunicationBridge {
   /**
    * Routes natural language responses from DialogueEngine back to the origin platform.
    */
-  private async handleAgentSpeak(event: StandardEvent): Promise<void> {
-    const payload = event.payload;
+  private async handleAgentSpeak(event: any): Promise<void> {
+    const payload = event.payload || event;
 
     // [DIAGNOSTIC] Always log incoming DIALOGUE_AGENT_SPEAK to verify payload arrives
-    console.log(`[CommunicationBridge][DIAG] DIALOGUE_AGENT_SPEAK received. responseContext=${JSON.stringify(payload.responseContext ?? null)}`);
+    console.log(`[CommunicationBridge][DIAG] DIALOGUE_AGENT_SPEAK received. responseContext=${JSON.stringify(payload?.responseContext ?? null)}`);
 
     // We expect DialogueEngine to pass through the responseContext
     // If it's missing, this message might be intended for the UI/Socket layer
-    if (!payload.responseContext || !payload.responseContext.platform) {
+    if (!payload || !payload.responseContext || !payload.responseContext.platform) {
       console.log(`[CommunicationBridge][DIAG] No platform responseContext — treating as UI-only reply. Skipping Slack routing.`);
       return; // Not a communication platform message
     }

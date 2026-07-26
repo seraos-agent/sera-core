@@ -45,6 +45,13 @@ export class BaseSpotMarketCapability {
     });
   }
 
+  public getMinSwapAmountUsdc(): number {
+    const isDev = process.env.NODE_ENV !== 'production';
+    const customMin = process.env.MIN_SWAP_AMOUNT_USDC ? parseFloat(process.env.MIN_SWAP_AMOUNT_USDC) : null;
+    if (customMin !== null && !isNaN(customMin)) return customMin;
+    return isDev ? 0.01 : 1.0;
+  }
+
   /**
    * Evaluates and quotes a spot swap trade across Base DEXes (Uniswap V3 & Aerodrome).
    */
@@ -59,6 +66,11 @@ export class BaseSpotMarketCapability {
     feeBreakdown: FeeBreakdownResult;
     routerUsed: string;
   }> {
+    const minAmount = this.getMinSwapAmountUsdc();
+    if (amountInUsdc < minAmount) {
+      throw new Error(`Minimum spot swap amount is $${minAmount} USDC.`);
+    }
+
     const fromToken = await this.tokenResolver.resolveToken(fromTokenSymbol);
     const toToken = await this.tokenResolver.resolveToken(toTokenSymbol);
 
