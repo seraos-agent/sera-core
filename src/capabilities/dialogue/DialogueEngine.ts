@@ -546,6 +546,17 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           }
         }
 
+        // Deterministic Fallback Guard for CLEAR_CHAT: If the user asked to clear/delete/hapus
+        // chat but the LLM skipped the tool call and hallucinated a confirmation, force-emit the
+        // CLEAR_CHAT_COUNTDOWN UI command and suppress the hallucinated text.
+        const isClearChatRequest = /\b(clear|delete|hapus|wipe|reset|bersihkan|kosongkan)\b/i.test(userMessage)
+          && /\b(chat|pesan|message|riwayat|history|obrolan)\b/i.test(userMessage);
+        if (isClearChatRequest) {
+          console.log('[DialogueEngine] Safety Guard: User requested chat clear but LLM skipped tool call. Force-emitting CLEAR_CHAT_COUNTDOWN.');
+          this.emitEvent(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
+          rawText = '';
+        }
+
         // LLM messages are no longer persisted
 
 
@@ -561,7 +572,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         // Strip the markdown links and any trailing link emojis from the text
         rawText = rawText.replace(markdownLinkRegex, '').replace(/🔗\s*/g, '').trim();
 
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
+        if (rawText) {
+          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
+        }
       }
 
     } catch (error: any) {
