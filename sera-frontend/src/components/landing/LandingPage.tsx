@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import { Activity, Database, Plug, Terminal, Wallet } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -13,13 +13,61 @@ import type { ReceptionTurn } from '../../services/reception/receptionClient';
 
 type Scene = 'reception' | ReceptionVisual;
 
-const headerPrompts = [
-  { label: 'Introduction', prompt: 'What is SERA?' },
-  { label: 'Capabilities', prompt: 'What can SERA help me accomplish?' },
-  { label: 'How it works', prompt: 'How does SERA work?' },
-  { label: 'Safeguards', prompt: 'How does SERA stay safe?' },
-  { label: 'Ecosystem', prompt: 'What can SERA connect to?' },
-];
+/* ─── Scroll Reveal Hook ─── */
+function useScrollReveal() {
+  const observe = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      node.classList.add('is-visible');
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          node.classList.add('is-visible');
+          observer.unobserve(node);
+        }
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+    observer.observe(node);
+  }, []);
+  return observe;
+}
+
+/* ─── Animated Counter Hook ─── */
+function useCountUp(target: number, duration = 2000) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !started.current) {
+          started.current = true;
+          const start = performance.now();
+          const animate = (now: number) => {
+            const progress = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setCount(Math.round(eased * target));
+            if (progress < 1) requestAnimationFrame(animate);
+          };
+          requestAnimationFrame(animate);
+          observer.unobserve(node);
+        }
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [target, duration]);
+
+  return { count, ref };
+}
 
 const inputPrompts = [
   'What is SERA?',
@@ -96,10 +144,6 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
   };
 
   const submit = (event: FormEvent) => { event.preventDefault(); send(message); };
-  const chooseHeaderPrompt = (prompt: string) => {
-    if (isThinking) return;
-    send(prompt);
-  };
 
   const isResponseComplete = Boolean(content && content.response.length > 0 && streamedResponse.length >= content.response.length);
 
@@ -150,50 +194,339 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
   const isClosing = remaining <= 10;
   const launchApp = () => onLaunchApp(isDark ? 'dark' : 'light');
 
+  /* Scroll reveal refs for each section */
+  const reveal = useScrollReveal();
+  const reveal2 = useScrollReveal();
+  const reveal3 = useScrollReveal();
+  const reveal4 = useScrollReveal();
+  const reveal5 = useScrollReveal();
+
+  const handleSamplePromptClick = (promptText: string) => {
+    send(promptText);
+    const interactiveEl = document.getElementById('interactive');
+    if (interactiveEl) {
+      interactiveEl.scrollIntoView({ behavior: 'smooth' });
+    }
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
   return (
     <main className={`sera-room scene-${scene} ${isDark ? 'is-dark' : ''}`}>
       <div className="room-glow room-glow-one" /><div className="room-glow room-glow-two" />
-      {scene === 'reception' && <GlobeAccent isDark={isDark} onToggle={() => setIsDark(value => !value)} />}
+
       <header className="room-header">
-        <a href="#reception" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
-        <div className="header-prompt-rail" aria-label="Explore SERA">
-          <div className="header-prompt-track">
-            {headerPrompts.map(item => <button type="button" key={item.label} onClick={() => chooseHeaderPrompt(item.prompt)}>{item.label}</button>)}
-          </div>
+        <a href="#hero" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
+
+        <nav className="room-header-nav" aria-label="Main Navigation">
+          <a href="#hero" className="nav-link">Home</a>
+          <a href="#about" className="nav-link">Why SERA</a>
+          <a href="#features" className="nav-link">Features</a>
+          <a href="#how-it-works" className="nav-link">How It Works</a>
+          <a href="#use-cases" className="nav-link">Use Cases</a>
+          <a href="#interactive" className="nav-link">Try SERA</a>
+        </nav>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button className="header-launch" onClick={launchApp}>Launch SERA</button>
         </div>
-        <button className="header-launch" onClick={launchApp}>Launch SERA</button>
       </header>
 
-      <section className="room-stage" id="reception">
-        {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
-      </section>
+      {scene === 'reception' && (
+        <>
+          {/* SECTION 1: HERO SECTION */}
+          <section className="landing-section hero-section" id="hero">
+            {/* Animated gradient mesh background */}
+            <div className="hero-mesh" aria-hidden="true">
+              <span className="hero-blob hero-blob-1" />
+              <span className="hero-blob hero-blob-2" />
+              <span className="hero-blob hero-blob-3" />
+              <span className="hero-blob hero-blob-4" />
+            </div>
+            <div className="landing-container">
+              <div className="section-badge">SERA OS · Universal AI Agent Engine</div>
+              <h1 className="hero-title">
+                Autonomous Intelligence That Executes Your Intent
+              </h1>
+              <p className="hero-subtitle">
+                Beyond standard text responses. SERA evaluates real-world state, formulates actionable plans, and securely executes workflows for you.
+              </p>
+              <div className="hero-cta-group">
+                <a href="#interactive" className="cta-button cta-primary">
+                  Try SERA Now
+                </a>
+                <a href="#about" className="cta-button cta-secondary">
+                  Learn More
+                </a>
+              </div>
+              <div className="hero-stats-row">
+                <div className="hero-stat-item"><span>100% Autonomous Planning</span></div>
+                <div className="hero-stat-item"><span>Real-Time WorldState Integration</span></div>
+                <div className="hero-stat-item"><span>Verifiable Safeguards & Security</span></div>
+              </div>
+            </div>
+          </section>
 
-      {scene !== 'reception' && !isThinking && isResponseComplete && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
-        <span className="session-pulse" />
-        <span>{isClosing ? `Returning to reception in ${remaining}s` : `Session active · Return in ${remaining}s`}</span>
-        {isClosing && <button onClick={() => setRemaining(45)}>Stay here</button>}
-        <button onClick={endSession}>{isClosing ? 'End now' : 'End session'}</button>
-      </div>}
+          {/* SECTION 1.5: METRICS STRIP */}
+          <MetricsStrip />
 
-      {scene === 'reception' && <footer className="landing-footer" aria-label="SERA information">
-        <div className="landing-footer-identity"><span>SERA OS · 2026</span><span className="landing-footer-trust">Public reception · Read-only</span></div>
-        <div className="landing-footer-links">
-          <a className="landing-footer-social" href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer" aria-label="Follow SERA on X">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" /></svg>
-          </a>
-          <a className="landing-footer-social" href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer" aria-label="Contact SERA on Telegram" title="Open Telegram">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 3.4a1.45 1.45 0 0 0-1.5-.22L2.95 9.8a1.44 1.44 0 0 0 .12 2.72l4.2 1.32 1.6 5.07a1.42 1.42 0 0 0 2.4.53l2.34-2.35 4.17 3.05a1.44 1.44 0 0 0 2.26-.85l2.18-14.4a1.43 1.43 0 0 0-.82-1.48ZM9.42 13.02l8.24-5.1-6.75 6.53-.26 2.62-1.23-3.9Z" /></svg>
-          </a>
-          <a className="landing-footer-gmail" href="https://mail.google.com/mail/?view=cm&fs=1&to=seraos.agent%40gmail.com" target="_blank" rel="noreferrer" aria-label="Email SERA with Gmail" title="Open Gmail">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.25 18V6.25" stroke="#4285F4" strokeWidth="3.1" strokeLinecap="round" /><path d="m4.25 6.25 7.75 5.8" stroke="#EA4335" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="m12 12.05 7.75-5.8" stroke="#FBBC04" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="M19.75 6.25V18" stroke="#34A853" strokeWidth="3.1" strokeLinecap="round" /></svg>
-          </a>
-        </div>
-      </footer>}
+          {/* SECTION 2: WHY SERA */}
+          <section className="landing-section" id="about" ref={reveal}>
+            <div className="landing-container">
+              <div className="section-badge reveal-child reveal-delay-1">WHY SERA</div>
+              <h2 className="section-title reveal-child reveal-delay-2">Bridging Natural Intent With Complex Execution</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3">
+                Designed for non-technical users to orchestrate intelligent workflows without needing engineering skills.
+              </p>
+              <div className="about-grid reveal-child reveal-delay-4">
+                <div className="about-card">
+                  <div className="card-icon">
+                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle className="icon-ring" cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M16 20c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path className="icon-draw icon-draw-2" d="M14 30l4-4m16-4l-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  </div>
+                  <h3>Zero Technical Friction</h3>
+                  <p>No syntax or complex commands to memorize. Simply express your goals in everyday human language.</p>
+                </div>
+                <div className="about-card">
+                  <div className="card-icon">
+                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect className="icon-ring" x="8" y="8" width="32" height="32" rx="8" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M18 24h12M24 18v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle className="icon-pulse" cx="24" cy="24" r="6" stroke="currentColor" strokeWidth="1" /></svg>
+                  </div>
+                  <h3>Real-World Execution</h3>
+                  <p>Most AI tools stop at generating text. SERA constructs structured action plans and executes them for real.</p>
+                </div>
+                <div className="about-card">
+                  <div className="card-icon">
+                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle className="icon-ring" cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="1.5" /><circle className="icon-pulse" cx="24" cy="24" r="10" stroke="currentColor" strokeWidth="1" /><circle className="icon-pulse icon-pulse-2" cx="24" cy="24" r="4" fill="currentColor" opacity="0.6" /><path className="icon-draw" d="M24 6v6M24 36v6M6 24h6M36 24h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  </div>
+                  <h3>Real-Time State Awareness</h3>
+                  <p>SERA inspects live system state before acting, ensuring zero false assumptions during task execution.</p>
+                </div>
+              </div>
+            </div>
+          </section>
 
-      <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
-        <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
-        <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
-      </form>
+          {/* SECTION 3: CORE CAPABILITIES */}
+          <section className="landing-section" id="features" ref={reveal2}>
+            <div className="landing-container">
+              <div className="section-badge reveal-child reveal-delay-1">CORE CAPABILITIES</div>
+              <h2 className="section-title reveal-child reveal-delay-2">The Power Behind SERA OS</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3">
+                Combining artificial intelligence, system automation, and verifiable human control.
+              </p>
+              <div className="features-grid reveal-child reveal-delay-4">
+                <div className="feature-card">
+                  <div className="feature-card-header">
+                    <div className="card-icon card-icon-sm">
+                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path className="icon-draw" d="M10 28c0-2 2-3 4-3h12c2 0 4 1 4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle className="icon-ring" cx="20" cy="15" r="7" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw icon-draw-2" d="M8 20h4M28 20h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                    </div>
+                    <h3>Natural Language Interaction</h3>
+                  </div>
+                  <p>Describe goals in your own words. SERA understands context and intent accurately.</p>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-card-header">
+                    <div className="card-icon card-icon-sm">
+                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect className="icon-ring" x="6" y="6" width="28" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M14 20l4 4 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
+                    <h3>Autonomous Planner</h3>
+                  </div>
+                  <p>Decomposes complex requests into structured, step-by-step proposals automatically.</p>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-card-header">
+                    <div className="card-icon card-icon-sm">
+                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="icon-pulse" cx="20" cy="20" r="4" fill="currentColor" opacity="0.5" /><circle className="icon-ring" cx="20" cy="20" r="12" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M8 14l4 2M28 14l-4 2M8 26l4-2M28 26l-4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                    </div>
+                    <h3>Multi-System & Web3 Connectors</h3>
+                  </div>
+                  <p>Integrates seamlessly with wallets, external APIs, data services, and automated tasks.</p>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-card-header">
+                    <div className="card-icon card-icon-sm">
+                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path className="icon-draw" d="M20 6v6M20 28v6M6 20h6M28 20h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle className="icon-ring" cx="20" cy="20" r="10" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw icon-draw-2" d="M16 20l2.5 2.5L23 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
+                    <h3>Verifiable Control & Safeguards</h3>
+                  </div>
+                  <p>Critical actions require your explicit review and approval before execution.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 4: HOW IT WORKS */}
+          <section className="landing-section" id="how-it-works" ref={reveal3}>
+            <div className="landing-container">
+              <div className="section-badge reveal-child reveal-delay-1">HOW IT WORKS</div>
+              <h2 className="section-title reveal-child reveal-delay-2">In 3 Simple Steps</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3">
+                A transparent journey from initial instruction to verified outcome.
+              </p>
+              <div className="steps-wrapper reveal-child reveal-delay-4">
+                <div className="step-card">
+                  <div className="step-number">01</div>
+                  <h3>Express Your Intent</h3>
+                  <p>Type your request or question in SERA's interactive console at the bottom of this page.</p>
+                </div>
+                <div className="step-connector" aria-hidden="true">
+                  <svg viewBox="0 0 80 20" fill="none">
+                    <path className="flow-line" d="M0 10h70" stroke="currentColor" strokeWidth="2" />
+                    <path className="arrow-head" d="M64 4l7 6-7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="step-card">
+                  <div className="step-number">02</div>
+                  <h3>SERA Formulates a Plan</h3>
+                  <p>SERA evaluates real-time state, checks policy constraints, and builds a proposed action workflow.</p>
+                </div>
+                <div className="step-connector" aria-hidden="true">
+                  <svg viewBox="0 0 80 20" fill="none">
+                    <path className="flow-line" d="M0 10h70" stroke="currentColor" strokeWidth="2" />
+                    <path className="arrow-head" d="M64 4l7 6-7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="step-card">
+                  <div className="step-number">03</div>
+                  <h3>Execute & Verify</h3>
+                  <p>Upon review, SERA completes the task safely and delivers transparent execution reports.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 5: SAMPLE USE CASES */}
+          <section className="landing-section" id="use-cases" ref={reveal4}>
+            <div className="landing-container">
+              <div className="section-badge reveal-child reveal-delay-1">SAMPLE USE CASES</div>
+              <h2 className="section-title reveal-child reveal-delay-2">What Can You Ask SERA To Do?</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3">
+                Click any sample prompt below to populate the interactive console at the bottom and try it out!
+              </p>
+              <div className="prompts-grid reveal-child reveal-delay-4">
+                <div className="prompt-card" onClick={() => handleSamplePromptClick('What is SERA?')}>
+                  <div className="prompt-card-category">INTRODUCTION</div>
+                  <p className="prompt-card-text">"What is SERA?"</p>
+                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+                </div>
+                <div className="prompt-card" onClick={() => handleSamplePromptClick('What can SERA help me accomplish?')}>
+                  <div className="prompt-card-category">CAPABILITIES</div>
+                  <p className="prompt-card-text">"What can SERA help me accomplish?"</p>
+                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+                </div>
+                <div className="prompt-card" onClick={() => handleSamplePromptClick('How does SERA stay safe?')}>
+                  <div className="prompt-card-category">SECURITY</div>
+                  <p className="prompt-card-text">"How does SERA stay safe?"</p>
+                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+                </div>
+                <div className="prompt-card" onClick={() => handleSamplePromptClick('What can SERA connect to?')}>
+                  <div className="prompt-card-category">INTEGRATIONS</div>
+                  <p className="prompt-card-text">"What can SERA connect to?"</p>
+                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 5.5: DEMO SHOWCASE */}
+          <section className="landing-section demo-section" id="demo" ref={reveal5}>
+            <div className="landing-container">
+              <div className="section-badge reveal-child reveal-delay-1">PRODUCT DEMO</div>
+              <h2 className="section-title reveal-child reveal-delay-2">See SERA in Action</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3">
+                Watch how SERA transforms natural language into real, verified execution.
+              </p>
+              <div className="demo-showcase reveal-child reveal-delay-4">
+                <div className="demo-frame">
+                  {/* Browser mockup top bar */}
+                  <div className="demo-browser-bar">
+                    <span className="demo-dot" /><span className="demo-dot" /><span className="demo-dot" />
+                    <div className="demo-url-bar">sera-os.app/demo</div>
+                  </div>
+                  {/* Placeholder content simulating product */}
+                  <div className="demo-content">
+                    <div className="demo-sidebar">
+                      <div className="demo-sidebar-item active" />
+                      <div className="demo-sidebar-item" />
+                      <div className="demo-sidebar-item" />
+                      <div className="demo-sidebar-item" />
+                    </div>
+                    <div className="demo-main">
+                      <div className="demo-line demo-line-short" />
+                      <div className="demo-line" />
+                      <div className="demo-line demo-line-medium" />
+                      <div className="demo-card-row">
+                        <div className="demo-mini-card" />
+                        <div className="demo-mini-card" />
+                        <div className="demo-mini-card" />
+                      </div>
+                      <div className="demo-line" />
+                      <div className="demo-line demo-line-short" />
+                    </div>
+                  </div>
+                  {/* Play overlay */}
+                  <div className="demo-overlay">
+                    <div className="demo-play-ring">
+                      <svg viewBox="0 0 48 48" fill="none"><polygon points="18,12 38,24 18,36" fill="currentColor" /></svg>
+                    </div>
+                    <span>Play Demo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* SECTION 6: INTERACTIVE TERMINAL EXPERIENCE (Globe, Reception Chat & Footer) */}
+      <div id="interactive" className="interactive-section">
+        {scene === 'reception' && (
+          <GlobeAccent isDark={isDark} onToggle={() => setIsDark(value => !value)} />
+        )}
+
+        <section className="room-stage" id="reception">
+          {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
+        </section>
+
+
+        {scene !== 'reception' && !isThinking && isResponseComplete && <div className={`session-control ${isClosing ? 'is-closing' : ''}`}>
+          <span className="session-pulse" />
+          <span>{isClosing ? `Returning to reception in ${remaining}s` : `Session active · Return in ${remaining}s`}</span>
+          {isClosing && <button type="button" onClick={() => setRemaining(45)}>Stay here</button>}
+          <button type="button" onClick={endSession}>{isClosing ? 'End now' : 'End session'}</button>
+        </div>}
+
+        <footer className="landing-footer" aria-label="SERA information">
+          {scene === 'reception' && (
+            <div className="landing-footer-identity">
+              <span>SERA OS · 2026</span>
+              <span className="landing-footer-trust">Public reception · Read-only</span>
+            </div>
+          )}
+
+
+          <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
+            <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
+            <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
+          </form>
+
+          {scene === 'reception' && (
+            <div className="landing-footer-links">
+              <a className="landing-footer-social" href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer" aria-label="SERA OS on GitHub" title="Open GitHub">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" /></svg>
+              </a>
+              <a className="landing-footer-social" href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer" aria-label="Follow SERA on X">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" /></svg>
+              </a>
+              <a className="landing-footer-social" href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer" aria-label="Contact SERA on Telegram" title="Open Telegram">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 3.4a1.45 1.45 0 0 0-1.5-.22L2.95 9.8a1.44 1.44 0 0 0 .12 2.72l4.2 1.32 1.6 5.07a1.42 1.42 0 0 0 2.4.53l2.34-2.35 4.17 3.05a1.44 1.44 0 0 0 2.26-.85l2.18-14.4a1.43 1.43 0 0 0-.82-1.48ZM9.42 13.02l8.24-5.1-6.75 6.53-.26 2.62-1.23-3.9Z" /></svg>
+              </a>
+              <a className="landing-footer-gmail" href="https://mail.google.com/mail/?view=cm&fs=1&to=seraos.agent%40gmail.com" target="_blank" rel="noreferrer" aria-label="Email SERA with Gmail" title="Open Gmail">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.25 18V6.25" stroke="#4285F4" strokeWidth="3.1" strokeLinecap="round" /><path d="m4.25 6.25 7.75 5.8" stroke="#EA4335" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="m12 12.05 7.75-5.8" stroke="#FBBC04" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="M19.75 6.25V18" stroke="#34A853" strokeWidth="3.1" strokeLinecap="round" /></svg>
+              </a>
+            </div>
+          )}
+        </footer>
+      </div>
     </main>
   );
 }
@@ -238,61 +571,94 @@ function GlobeAccent({ isDark, onToggle }: { isDark: boolean; onToggle: () => vo
 
   return (
     <>
-    <div className="globe-accent">
-      <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs>
-          <clipPath id="globe-clip">
-            <circle cx="250" cy="250" r="248" />
-          </clipPath>
-          <radialGradient id="pixel-globe-sphere" cx="38%" cy="30%" r="68%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
-            <stop offset="60%" stopColor="#7889ca" stopOpacity="0.06" />
-            <stop offset="100%" stopColor="#4056ab" stopOpacity="0.16" />
-          </radialGradient>
-          <radialGradient id="pixel-globe-vignette" cx="50%" cy="50%" r="50%">
-            <stop offset="68%" stopColor="#ffffff" stopOpacity="0" />
-            <stop offset="100%" stopColor="#5266ba" stopOpacity="0.28" />
-          </radialGradient>
-          <pattern id="pixel-globe-base-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-            <circle cx="3" cy="3" r="1.05" fill="#7182c8" />
-          </pattern>
-          <pattern id="pixel-globe-land-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-            <circle cx="3" cy="3" r="1.25" fill="#4d60b5" />
-          </pattern>
-          <filter id="pixel-globe-contrast" colorInterpolationFilters="sRGB">
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncR type="discrete" tableValues="0 0 0 1 1" />
-              <feFuncG type="discrete" tableValues="0 0 0 1 1" />
-              <feFuncB type="discrete" tableValues="0 0 0 1 1" />
-            </feComponentTransfer>
-          </filter>
-          <mask id="pixel-globe-land-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="500" height="500">
-            <rect width="500" height="500" fill="#000" />
-            <g filter="url(#pixel-globe-contrast)">
-              <animateTransform ref={rotationRef} attributeName="transform" type="translate" from="0 0" to="-996 0" dur="40s" begin="indefinite" repeatCount="indefinite" />
-              <image href={globeMapSrc} x="-248" y="0" width="996" height="500" preserveAspectRatio="none" />
-              <image href={globeMapSrc} x="718" y="0" width="996" height="500" preserveAspectRatio="none" />
-            </g>
-          </mask>
-        </defs>
+      <div className="globe-accent">
+        <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <clipPath id="globe-clip">
+              <circle cx="250" cy="250" r="248" />
+            </clipPath>
+            <radialGradient id="pixel-globe-sphere" cx="38%" cy="30%" r="68%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
+              <stop offset="60%" stopColor="#7889ca" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="#4056ab" stopOpacity="0.16" />
+            </radialGradient>
+            <radialGradient id="pixel-globe-vignette" cx="50%" cy="50%" r="50%">
+              <stop offset="68%" stopColor="#ffffff" stopOpacity="0" />
+              <stop offset="100%" stopColor="#5266ba" stopOpacity="0.28" />
+            </radialGradient>
+            <pattern id="pixel-globe-base-grid" width="6" height="6" patternUnits="userSpaceOnUse">
+              <circle cx="3" cy="3" r="1.05" fill="#7182c8" />
+            </pattern>
+            <pattern id="pixel-globe-land-grid" width="6" height="6" patternUnits="userSpaceOnUse">
+              <circle cx="3" cy="3" r="1.25" fill="#4d60b5" />
+            </pattern>
+            <filter id="pixel-globe-contrast" colorInterpolationFilters="sRGB">
+              <feColorMatrix type="saturate" values="0" />
+              <feComponentTransfer>
+                <feFuncR type="discrete" tableValues="0 0 0 1 1" />
+                <feFuncG type="discrete" tableValues="0 0 0 1 1" />
+                <feFuncB type="discrete" tableValues="0 0 0 1 1" />
+              </feComponentTransfer>
+            </filter>
+            <mask id="pixel-globe-land-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="500" height="500">
+              <rect width="500" height="500" fill="#000" />
+              <g filter="url(#pixel-globe-contrast)">
+                <animateTransform ref={rotationRef} attributeName="transform" type="translate" from="0 0" to="-996 0" dur="40s" begin="indefinite" repeatCount="indefinite" />
+                <image href={globeMapSrc} x="-248" y="0" width="996" height="500" preserveAspectRatio="none" />
+                <image href={globeMapSrc} x="718" y="0" width="996" height="500" preserveAspectRatio="none" />
+              </g>
+            </mask>
+          </defs>
 
-        <g clipPath="url(#globe-clip)">
-          <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-sphere)" />
-          <rect width="500" height="500" fill="url(#pixel-globe-base-grid)" opacity=".48" />
-          <rect width="500" height="500" fill="url(#pixel-globe-land-grid)" mask="url(#pixel-globe-land-mask)" opacity=".88" />
-          <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-vignette)" />
-        </g>
-      </svg>
-    </div>
-    <div className="globe-mode-orbit">
-      <button ref={modeToggleRef} type="button" className={`globe-mode-toggle ${isDark ? 'is-dark' : 'is-light'}`} onClick={onToggle} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-        {isDark
-          ? <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 15.1A8.25 8.25 0 0 1 8.9 3.8 8.25 8.25 0 1 0 20.2 15.1Z" fill="currentColor" /></svg>
-          : <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.1" fill="currentColor" /><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.72 5.28l-1.42 1.42M6.7 17.3l-1.42 1.42M18.72 18.72 17.3 17.3M6.7 6.7 5.28 5.28" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" /></svg>}
-      </button>
-    </div>
+          <g clipPath="url(#globe-clip)">
+            <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-sphere)" />
+            <rect width="500" height="500" fill="url(#pixel-globe-base-grid)" opacity=".48" />
+            <rect width="500" height="500" fill="url(#pixel-globe-land-grid)" mask="url(#pixel-globe-land-mask)" opacity=".88" />
+            <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-vignette)" />
+          </g>
+        </svg>
+      </div>
+      <div className="globe-mode-orbit">
+        <button ref={modeToggleRef} type="button" className={`globe-mode-toggle ${isDark ? 'is-dark' : 'is-light'}`} onClick={onToggle} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+          {isDark
+            ? <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 15.1A8.25 8.25 0 0 1 8.9 3.8 8.25 8.25 0 1 0 20.2 15.1Z" fill="currentColor" /></svg>
+            : <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.1" fill="currentColor" /><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.72 5.28l-1.42 1.42M6.7 17.3l-1.42 1.42M18.72 18.72 17.3 17.3M6.7 6.7 5.28 5.28" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" /></svg>}
+        </button>
+      </div>
     </>
+  );
+}
+
+/* ─── Metrics Strip Component ─── */
+const metricsData = [
+  { value: 100, suffix: '+', label: 'Systems Connected' },
+  { value: 24, suffix: '/7', label: 'Autonomous Operation' },
+  { value: 2, prefix: '< ', suffix: 's', label: 'Average Response' },
+  { value: 0, suffix: '', label: 'Unauthorized Actions', display: 'Zero' },
+];
+
+function MetricCard({ value, suffix, prefix, label, display }: { value: number; suffix: string; prefix?: string; label: string; display?: string }) {
+  const { count, ref } = useCountUp(value, 1800);
+  return (
+    <div className="metric-card" ref={ref}>
+      <span className="metric-number">{display || `${prefix || ''}${count}${suffix}`}</span>
+      <span className="metric-label">{label}</span>
+    </div>
+  );
+}
+
+function MetricsStrip() {
+  const reveal = useScrollReveal();
+  return (
+    <section className="metrics-strip" ref={reveal}>
+      <div className="landing-container">
+        <div className="metrics-row reveal-child reveal-delay-2">
+          {metricsData.map((m) => (
+            <MetricCard key={m.label} {...m} />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -361,34 +727,34 @@ function IntentScene({ scene, question, content, streamedResponse, isThinking, a
         {isThinking || !content
           ? <div className="thinking"><span className="thinking-spinner" /><p>Preparing your request…</p></div>
           : <div className="sera-message">
-              {response}
-              {isResponseComplete && hasVisual && (
-                <div className="mobile-inline-visual" aria-label="SERA explanation visual">
-                  <div className="mobile-inline-scale">
-                    <ExplanationAnimation key={`${question}-mobile`} scene={scene} />
-                  </div>
+            {response}
+            {isResponseComplete && hasVisual && (
+              <div className="mobile-inline-visual" aria-label="SERA explanation visual">
+                <div className="mobile-inline-scale">
+                  <ExplanationAnimation key={`${question}-mobile`} scene={scene} />
                 </div>
-              )}
-              {isResponseComplete && scene === 'start' && (
-                <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>
-              )}
-              {isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && (
-                <div className="sera-suggestions">
-                  {content.suggestedQuestions.map(suggestion => (
-                    <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
+            {isResponseComplete && scene === 'start' && (
+              <button type="button" className="conversation-launch" onClick={onLaunchApp}>Launch SERA</button>
+            )}
+            {isResponseComplete && scene !== 'start' && content.suggestedQuestions.length > 0 && (
+              <div className="sera-suggestions">
+                {content.suggestedQuestions.map(suggestion => (
+                  <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
+                ))}
+              </div>
+            )}
+          </div>
         }
       </div>
       {activeHasCard
         ? <div className={`intent-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>
-            <ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} />
-          </div>
+          <ExplanationAnimation key={activeVisual!.id} scene={activeVisual!.scene} />
+        </div>
         : <div className={`ambient-visual-space persistent-visual ${isVisualTransitioning ? 'is-transitioning' : ''}`}>
-            {activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}
-          </div>
+          {activeVisual && <AmbientDiagram key={activeVisual.id} scene={activeVisual.scene} />}
+        </div>
       }
     </div>
   );
