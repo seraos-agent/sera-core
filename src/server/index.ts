@@ -19,6 +19,7 @@ import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityServic
 import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/identity/ReownWalletIdentityService';
 import { verifyWalletSignature } from './WalletSignatureVerifier';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
+import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -245,6 +246,11 @@ io.on('connection', (socket: Socket) => {
     }
   };
 
+  const onBillingCreditsUpdated = (event: StandardEvent) => {
+    // The frontend listens to 'billing:update' to set state.agentCredits
+    socket.emit('billing:update', event.payload);
+  };
+
   const bindListeners = () => {
     instance.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
     instance.eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
@@ -257,6 +263,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
     instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
     instance.eventBus.on(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
+    instance.eventBus.on(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
   };
 
   const unbindListeners = () => {
@@ -271,6 +278,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
     instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
     instance.eventBus.off(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
+    instance.eventBus.off(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
   };
 
   // Listeners are only bound after successful auth:login.
@@ -485,7 +493,9 @@ io.on('connection', (socket: Socket) => {
   socket.on('billing:fetch', (payload: { address: string }) => {
     if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(socket.data.sessionId);
-    socket.emit('billing:update', { periods });
+    const credits = agentManager.getSubscriptionService().getAgentCredits(socket.data.sessionId);
+    const agentCredits = credits === Infinity ? -1 : credits;
+    socket.emit('billing:update', { periods, agentCredits });
   });
 
   socket.on('billing:topup_dev_mock', (payload: { address: string, amountUsdc: number }) => {
@@ -500,7 +510,9 @@ io.on('connection', (socket: Socket) => {
     try {
       agentManager.getSubscriptionService().recordTopUp(principalId, amountUsdc);
       const periods = agentManager.getSubscriptionService().getRemainingPeriods(principalId);
-      socket.emit('billing:update', { periods });
+      const credits = agentManager.getSubscriptionService().getAgentCredits(principalId);
+      const agentCredits = credits === Infinity ? -1 : credits;
+      socket.emit('billing:update', { periods, agentCredits });
 
       // Attempt to re-verify entitlement after topup
       try {
@@ -724,6 +736,27 @@ if (slackBotToken && slackSocketToken) {
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 agentManager.startBillingTick();
+
+const treasuryWatcher = new TreasuryDepositWatcher(agentManager.getSubscriptionService(), {
+  treasuryAddress: process.env.SERA_VAULT_ADDRESS,
+  onDepositDetected: (address: string, newBalance: number) => {
+    const instance = agentManager.getInstance(address);
+    if (instance) {
+      instance.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
+        id: `evt-bill-dep-${Date.now()}`,
+        type: EventTypes.BILLING_CREDITS_UPDATED,
+        source: 'TreasuryDepositWatcher',
+        timestamp: Date.now(),
+        payload: {
+          address,
+          remainingTokens: newBalance
+        }
+      });
+    }
+  }
+});
+treasuryWatcher.start();
+
 httpServer.listen(PORT, () => {
   console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);
   console.log(`   Architecture: Actor Model Router (SeraAgentInstance)\n`);
@@ -731,6 +764,7 @@ httpServer.listen(PORT, () => {
 
 const shutdown = () => {
   console.log('[SERA] Shutting down gracefully.');
+  treasuryWatcher.stop();
   agentManager.shutdownAll();
   io.close();
   httpServer.close(() => process.exit(0));

@@ -2,8 +2,8 @@ import { SubscriptionLedger } from './SubscriptionLedger';
 
 const DEV_SESSION_ID = 'dev';
 
-/** $1 USDC = 200,000 Agent Computation Credits */
-export const CREDITS_PER_USDC = 200_000;
+/** $1 USDC = 100,000 Agent Computation Credits */
+export const CREDITS_PER_USDC = 100_000;
 const MINIMUM_TOPUP_USDC = 1;
 
 export class SubscriptionService {
@@ -11,9 +11,9 @@ export class SubscriptionService {
 
   /**
    * Top-up Agent Computation Credits (Non-Expiring Utility Token Model).
-   * - $1 USDC = 200,000 Credits
-   * - $5 USDC = 1,000,000 Credits
-   * - $10 USDC = 2,000,000 Credits
+   * - $1 USDC = 100,000 Credits
+   * - $5 USDC = 500,000 Credits
+   * - $10 USDC = 1,000,000 Credits
    */
   recordTopUp(address: string, amountUsdc: number): number {
     if (amountUsdc < MINIMUM_TOPUP_USDC) {

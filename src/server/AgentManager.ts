@@ -38,7 +38,7 @@ export class AgentManager {
     
     if (!instance) {
       console.log(`[AgentManager] Spawning new Sera Agent Instance for ${id}`);
-      instance = new SeraAgentInstance({ ...user, userId: id });
+      instance = new SeraAgentInstance({ ...user, userId: id }, this.subscriptionService);
       instance.start();
       this.instances.set(id, instance);
     }

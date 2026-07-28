@@ -104,7 +104,10 @@ export class SeraAgentInstance {
   };
   private readonly markMemoryDirty = () => { this.memoryDirty = true; };
 
-  constructor(context: SeraUserContext | string) {
+  constructor(
+    context: SeraUserContext | string,
+    public readonly subscriptionService?: any
+  ) {
     const user = typeof context === 'string' ? { userId: context } : context;
     this.sessionId = user.userId;
     this.personalWalletAddress = user.personalWalletAddress;
@@ -120,6 +123,31 @@ export class SeraAgentInstance {
     this.memoryIngress = new MemoryIngress(this.eventBus, this.memoryStore);
     this.metricsStore = new InMemoryMetricsStore();
     this.metricsAggregator = new MetricsAggregator(this.eventBus, this.metricsStore);
+    
+    // Wire token deduction based on LLM usage
+    this.eventBus.on(EventTypes.LLM_MODEL_COMPLETED, (event: any) => {
+      if (this.subscriptionService) {
+        const inputTokens = event.payload.inputTokens || 0;
+        const outputTokens = event.payload.outputTokens || 0;
+        const total = inputTokens + outputTokens;
+        
+        if (total > 0) {
+          const success = this.subscriptionService.consumeCredits(this.sessionId, total);
+          if (success) {
+            this.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
+              id: `evt-bill-${Date.now()}`,
+              type: EventTypes.BILLING_CREDITS_UPDATED,
+              source: 'SeraAgentInstance',
+              timestamp: Date.now(),
+              payload: {
+                address: this.sessionId,
+                remainingTokens: this.subscriptionService.getAgentCredits(this.sessionId)
+              }
+            });
+          }
+        }
+      }
+    });
     
     // The fixed key remains available only to support isolated local-development
     // fixtures. Production defaults to runtime-only memory and never uses it.
@@ -231,7 +259,8 @@ export class SeraAgentInstance {
       this.chatHistoryStore,
       swarmCoordinator,
       this.autonomyAgreementStore,
-      persistLocally
+      persistLocally,
+      this.subscriptionService
     );
 
     this.runtime.setGlobalEventBus(this.eventBus, {

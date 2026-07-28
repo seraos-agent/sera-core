@@ -1,6 +1,6 @@
 export interface SubscriptionEntry {
   address: string;
-  agentCredits: number; // Non-expiring Agent Computation Credits ($1 USDC = 200,000 credits)
+  agentCredits: number; // Non-expiring Agent Computation Credits ($1 USDC = 100,000 credits)
   totalTopUpUsdc: number;
   lastDeductedAt: number;
   createdAt: number;

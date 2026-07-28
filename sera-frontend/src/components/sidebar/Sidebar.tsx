@@ -1,4 +1,4 @@
-import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle } from "lucide-react";
+import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery } from "lucide-react";
 import { CONNECTORS } from "../../theme";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
@@ -15,9 +15,10 @@ interface SidebarProps {
   currentView: SidebarView;
   onNavigate: (view: SidebarView) => void;
   walletState?: WalletState;
+  onOpenBilling?: () => void;
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, onOpenBilling }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
   const { address } = useAccount();
@@ -132,6 +133,23 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               );
             })}
           </div>
+          
+          <div style={{ flex: 1 }} />
+
+          {onOpenBilling && (
+            <div 
+              onClick={onOpenBilling}
+              style={{ 
+                display: "flex", alignItems: "center", gap: 8, padding: open ? "12px 6px" : "12px 0", justifyContent: "center",
+                cursor: "pointer", borderRadius: 8, transition: "background 150ms", marginBottom: 4
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              title="Monetization / Agent Battery"
+            >
+              <Battery size={20} color={(walletState?.agentCredits === -1 || (walletState?.agentCredits ?? 0) > 10000) ? "#22c55e" : "#ef4444"} style={{ flexShrink: 0 }} />
+            </div>
+          )}
 
           <div 
             onClick={() => {

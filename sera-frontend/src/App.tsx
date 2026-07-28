@@ -11,6 +11,7 @@ import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
 
 import { LandingPage } from "./components/landing/LandingPage";
+import { BillingModal } from "./components/sidebar/BillingModal";
 import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { base, mainnet, polygon, arbitrum } from '@reown/appkit/networks';
@@ -86,6 +87,7 @@ function InnerApp() {
 
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const [billingOpen, setBillingOpen] = useState(false);
   const [currentView, setCurrentView] = useState<SidebarView>(() => {
     const saved = localStorage.getItem("sera_view") as SidebarView | null;
     return saved && ["chat", "wallet", "connections", "automations", "profile"].includes(saved) ? saved : "chat";
@@ -352,7 +354,16 @@ function InnerApp() {
               currentView={currentView}
               onNavigate={setCurrentView}
               walletState={walletState}
+              onOpenBilling={() => setBillingOpen(true)}
             />
+
+            {billingOpen && (
+              <BillingModal
+                theme={theme}
+                walletState={walletState}
+                onClose={() => setBillingOpen(false)}
+              />
+            )}
 
             {currentView === "profile" ? <ProfilePage
               theme={theme}
@@ -369,9 +380,6 @@ function InnerApp() {
               }}
               onLinkWallet={isBypassed ? undefined : startWalletLink}
               isLinkingWallet={Boolean(walletLinkSourceAddress)}
-              onUpgradePlan={(amountUsdc) => {
-                if (socket && address) socket.emit('billing:topup_dev_mock', { address: address.toLowerCase(), amountUsdc });
-              }}
               memoryVault={memoryVault}
               deviceVault={deviceVault}
               onDeleteDeviceMemory={deleteDeviceMemory}

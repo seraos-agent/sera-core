@@ -38,6 +38,8 @@ export interface WalletState {
   asset: string;
   quality: ObservationQuality;
   syncing?: boolean;
+  agentCredits?: number;
+  tier?: string;
 }
 
 export interface TemporalState {

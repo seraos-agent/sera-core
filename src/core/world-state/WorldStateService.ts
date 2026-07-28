@@ -48,6 +48,8 @@ export class WorldStateService {
         network: p.network || 'unknown',
         asset: p.asset || 'USDC',
         syncing: p.syncing || false,
+        agentCredits: p.agentCredits,
+        tier: p.tier,
         quality: {
           updatedAt: Date.now(),
           source: 'EventBus/DOMAIN_WALLET_STATE',

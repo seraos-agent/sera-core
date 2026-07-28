@@ -58,6 +58,9 @@ export const EventTypes = {
   GOVERNANCE_PATTERN_RECORDED: 'governance.pattern.recorded',
   GOVERNANCE_RECOMMENDATION_SUBMITTED: 'governance.recommendation.submitted',
 
+  // Billing Domain
+  BILLING_CREDITS_UPDATED: 'billing.credits.updated',
+
   // Autonomy Domain
   AUTONOMY_AGREEMENT_ACTIVATED: 'autonomy.agreement.activated',
   AUTONOMY_AGREEMENT_REVOKED: 'autonomy.agreement.revoked',

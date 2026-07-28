@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowLeft, BadgeCheck, Cloud, CreditCard, HardDrive, Link2, ShieldCheck, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Cloud, HardDrive, Link2, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
 import type { MemoryVaultDescriptor } from '../../../../src/core/memory/MemoryVault';
@@ -16,7 +16,6 @@ interface ProfilePageProps {
   onDisconnect: () => void;
   onLinkWallet?: () => void;
   isLinkingWallet?: boolean;
-  onUpgradePlan?: (amountUsdc: number) => void;
   memoryVault?: MemoryVaultDescriptor | null;
   deviceVault?: DeviceVaultDescriptor;
   onDeleteDeviceMemory?: () => void;
@@ -53,7 +52,6 @@ export function ProfilePage({
   onDisconnect,
   onLinkWallet,
   isLinkingWallet,
-  onUpgradePlan,
   memoryVault,
   deviceVault,
   onDeleteDeviceMemory,
@@ -66,11 +64,6 @@ export function ProfilePage({
   const pad = isMobileView ? 20 : 40;
   const connectedAddress = walletState.fullAddress;
   const agentAddress = walletState.vaultAddress;
-  const plan = walletState.tier || 'FREE';
-  const planCards = [
-    { id: 'PRO', name: 'Pro', price: 19, description: 'Research, automate, and build.', features: ['10k Base LLM tokens / month', 'SERA Base Agent', 'Full cognitive execution & memory'] },
-    { id: 'WHALE', name: 'Whale', price: 295, description: 'Higher limits and priority execution.', features: ['100k Base LLM tokens / month', 'SERA Advanced Agent', 'Unlocked deep reasoning mode'] },
-  ] as const;
   const cardStyle: CSSProperties = {
     border: `1px solid ${theme.border}`,
     borderRadius: 16,
@@ -213,43 +206,13 @@ export function ProfilePage({
             </div>
           </Section>
 
-          <Section title="Plan & usage" description="Plan is one part of your SERA account, not its identity.">
-            <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <Section title="Danger Zone" description="Irreversible actions.">
+            <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', borderColor: '#F0CACA', background: theme.isDark ? '#1C1515' : '#FFF5F5' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <CreditCard size={18} color={theme.inkSoft} />
-                <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>{plan} plan</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Usage and billing controls will appear here when billing is enabled.</div></div>
+                <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#D04646', color: '#FFF' }}><Trash2 size={17} /></div>
+                <div><div style={{ color: theme.isDark ? '#E5AAAA' : '#992B2B', fontSize: 14, fontWeight: 600 }}>Delete local chat</div><div style={{ color: theme.isDark ? '#B37777' : '#B35959', fontSize: 12, marginTop: 3 }}>Clear chat history from this device browser.</div></div>
               </div>
-              <span style={{ color: theme.inkSoft, fontSize: 12 }}>No action needed</span>
-            </div>
-          </Section>
-
-          <Section title="Upgrade your plan" description="Choose the level of capacity that fits what you want SERA to manage.">
-            <div style={{ display: 'grid', gridTemplateColumns: isMobileView ? '1fr' : 'repeat(2, 1fr)', gap: 12 }}>
-              {planCards.map(card => {
-                const isCurrent = plan === card.id;
-                return (
-                  <div key={card.id} style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 18, borderColor: isCurrent ? theme.accent : theme.border }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                      <div>
-                        <div style={{ color: theme.ink, fontSize: 17, fontWeight: 650 }}>{card.name}</div>
-                        <div style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.5, marginTop: 5 }}>{card.description}</div>
-                      </div>
-                      {isCurrent && <span style={{ color: theme.accent, background: theme.accentSoft, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '5px 7px' }}>CURRENT</span>}
-                    </div>
-                    <div style={{ color: theme.ink, fontSize: 28, fontWeight: 650, letterSpacing: -0.5 }}>${card.price}<span style={{ color: theme.inkSoft, fontSize: 12, fontWeight: 500, letterSpacing: 0 }}> / month</span></div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {card.features.map(feature => <div key={feature} style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.4 }}>• {feature}</div>)}
-                    </div>
-                    <button
-                      onClick={() => onUpgradePlan?.(card.price)}
-                      disabled={isCurrent || !onUpgradePlan}
-                      style={{ border: 'none', borderRadius: 9, padding: '10px 12px', marginTop: 'auto', background: isCurrent ? theme.surface : theme.ink, color: isCurrent ? theme.inkSoft : theme.bg, fontSize: 13, fontWeight: 650, cursor: isCurrent ? 'default' : 'pointer', opacity: !onUpgradePlan && !isCurrent ? 0.6 : 1 }}
-                    >
-                      {isCurrent ? 'Current plan' : `Choose ${card.name}`}
-                    </button>
-                  </div>
-                );
-              })}
+              <button onClick={() => setIsDeleteDialogOpen(true)} disabled={!onDeleteDeviceMemory} style={{ border: '1px solid #D04646', background: 'transparent', color: '#D04646', borderRadius: 9, padding: '9px 12px', fontSize: 13, fontWeight: 600, cursor: onDeleteDeviceMemory ? 'pointer' : 'default', opacity: onDeleteDeviceMemory ? 1 : 0.5 }}>Delete chat</button>
             </div>
           </Section>
         </div>

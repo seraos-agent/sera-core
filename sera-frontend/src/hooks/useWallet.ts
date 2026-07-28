@@ -10,6 +10,7 @@ export const INITIAL_WALLET = {
   syncing: true,
   error: "",
   tier: "",
+  agentCredits: 0,
 };
 
 export type WalletState = typeof INITIAL_WALLET;

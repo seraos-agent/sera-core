@@ -135,7 +135,8 @@ export class Runtime {
     chatHistoryStore?: any,
     swarmCoordinator?: SwarmCoordinator,
     private readonly autonomyAgreementStore?: AutonomyAgreementStore,
-    private readonly persistUserData: boolean = true
+    private readonly persistUserData: boolean = true,
+    private readonly subscriptionService?: any
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
     this.productContracts.register(HyperliquidTradingProductContract);
@@ -291,7 +292,8 @@ export class Runtime {
       modelOrchestrator,
       options?.sessionId || 'default',
       this.autonomyAgreementStore,
-      { persistLocally: persistUserData }
+      { persistLocally: persistUserData },
+      this.subscriptionService
     );
     console.log('[Runtime] Global EventBus, CapabilityCatalog, ProposalManager, Orchestrator, and Cognitive Engines Initialized');
   }

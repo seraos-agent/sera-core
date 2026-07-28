@@ -7,6 +7,7 @@ export interface TreasuryDepositWatcherConfig {
   usdcContractAddress?: string;
   rpcUrl?: string;
   pollIntervalMs?: number;
+  onDepositDetected?: (address: string, newBalance: number) => void;
 }
 
 const DEFAULT_BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // USDC on Base Mainnet
@@ -19,6 +20,7 @@ export class TreasuryDepositWatcher {
   private treasuryAddress: string;
   private usdcContractAddress: string;
   private client: any;
+  private onDepositDetected?: (address: string, newBalance: number) => void;
 
   constructor(
     private subscriptionService: SubscriptionService,
@@ -26,6 +28,7 @@ export class TreasuryDepositWatcher {
   ) {
     this.treasuryAddress = (config.treasuryAddress || DEFAULT_TREASURY_ADDRESS).toLowerCase();
     this.usdcContractAddress = (config.usdcContractAddress || DEFAULT_BASE_USDC_CONTRACT).toLowerCase();
+    this.onDepositDetected = config.onDepositDetected;
     
     const rpcUrl = config.rpcUrl || process.env.BASE_RPC_URL || 'https://mainnet.base.org';
     this.client = createPublicClient({
@@ -88,6 +91,9 @@ export class TreasuryDepositWatcher {
           try {
             const credits = this.subscriptionService.recordTopUp(sender, usdcAmount);
             console.log(`[TreasuryDepositWatcher] Successfully credited ${sender} — Total Agent Credits: ${credits}`);
+            if (this.onDepositDetected) {
+              this.onDepositDetected(sender, credits);
+            }
           } catch (e: any) {
             console.warn(`[TreasuryDepositWatcher] TopUp skipped for ${sender}: ${e.message}`);
           }

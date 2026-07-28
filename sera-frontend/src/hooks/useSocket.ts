@@ -170,10 +170,11 @@ export function useSocket(
       }
     });
 
-    newSocket.on("billing:update", (data: { periods: number }) => {
+    newSocket.on("billing:update", (data: { periods: number, agentCredits?: number }) => {
       setWalletState(prev => ({
         ...prev,
-        tier: data.periods >= 15 ? "WHALE" : (data.periods > 0 ? "PRO" : "FREE")
+        tier: data.periods >= 15 ? "WHALE" : (data.periods > 0 ? "PRO" : "FREE"),
+        agentCredits: data.agentCredits ?? prev.agentCredits,
       }));
     });
 

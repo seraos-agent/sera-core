@@ -72,7 +72,7 @@ export class DialogueEngine {
   private proposalResponseHandler: ProposalResponseHandler;
   private toolExecutionHandler: ToolExecutionHandler;
 
-  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore, options: { persistLocally?: boolean } = {}) {
+  constructor(eventBus: EventEmitter, worldStateService: WorldStateService, capabilityCatalog: any, memoryStore: IWorkingMemory, chatHistoryStore: ChatHistoryStore, orchestrator: ModelOrchestrator, private sessionId: string = 'default', private readonly autonomyAgreementStore?: AutonomyAgreementStore, options: { persistLocally?: boolean } = {}, private readonly subscriptionService?: any) {
     this.eventBus = eventBus;
     this.worldStateService = worldStateService;
     this.capabilityCatalog = capabilityCatalog;
@@ -281,6 +281,17 @@ export class DialogueEngine {
 
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
     const userMessage: string = event.payload.message;
+
+    // Check battery empty state
+    if (this.subscriptionService) {
+      const credits = this.subscriptionService.getAgentCredits(this.sessionId);
+      if (credits <= 0) {
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+          text: '🔋 **Agent Energy Core depleted.**\n\nPlease top up your tokens in the battery menu to continue processing tasks.'
+        });
+        return;
+      }
+    }
 
     // Reset abort controller for the new request
     if (this.activeAbortController) {
