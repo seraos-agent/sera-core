@@ -131,16 +131,16 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                   ol: ({ node, ...props }) => <ol style={{ paddingLeft: 22, margin: "0 0 12px 0" }} {...props} />,
                   li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
                   strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: theme.ink }} {...props} />,
-                  h1: ({ node, ...props }) => <h1 style={{ fontSize: "1.4em", fontWeight: 700, margin: "20px 0 12px 0", color: theme.ink }} {...props} />,
-                  h2: ({ node, ...props }) => <h2 style={{ fontSize: "1.2em", fontWeight: 600, margin: "18px 0 10px 0", color: theme.ink, borderBottom: `1px solid ${theme.border}`, paddingBottom: 6 }} {...props} />,
-                  h3: ({ node, ...props }) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
-                  blockquote: ({ node, ...props }) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
-                  table: ({ node, ...props }) => <div style={{ overflowX: "auto", margin: "16px 0" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95em" }} {...props} /></div>,
-                  th: ({ node, ...props }) => <th style={{ borderBottom: `2px solid ${theme.border}`, padding: "10px 12px", textAlign: "left", fontWeight: 600, background: theme.surface2 }} {...props} />,
-                  td: ({ node, ...props }) => <td style={{ borderBottom: `1px solid ${theme.border}`, padding: "10px 12px" }} {...props} />,
-                  hr: ({ node, ...props }) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,
-                  pre: ({ node, ...props }) => <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />,
-                  code: ({ node, className, ...props }: any) => {
+                  h1: ({ _node, ...props }: any) => <h1 style={{ fontSize: "1.4em", fontWeight: 700, margin: "20px 0 12px 0", color: theme.ink }} {...props} />,
+                  h2: ({ _node, ...props }: any) => <h2 style={{ fontSize: "1.2em", fontWeight: 600, margin: "18px 0 10px 0", color: theme.ink, borderBottom: `1px solid ${theme.border}`, paddingBottom: 6 }} {...props} />,
+                  h3: ({ _node, ...props }: any) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
+                  blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
+                  table: ({ _node, ...props }: any) => <div style={{ overflowX: "auto", margin: "16px 0" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95em" }} {...props} /></div>,
+                  th: ({ _node, ...props }: any) => <th style={{ borderBottom: `2px solid ${theme.border}`, padding: "10px 12px", textAlign: "left", fontWeight: 600, background: theme.surface2 }} {...props} />,
+                  td: ({ _node, ...props }: any) => <td style={{ borderBottom: `1px solid ${theme.border}`, padding: "10px 12px" }} {...props} />,
+                  hr: ({ _node, ...props }: any) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,
+                  pre: ({ _node, ...props }: any) => <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />,
+                  code: ({ _node, className, ...props }: any) => {
                     const hasNewline = String(props.children).includes('\n');
                     const match = /language-(\w+)/.exec(className || '');
                     if (match || hasNewline) {
