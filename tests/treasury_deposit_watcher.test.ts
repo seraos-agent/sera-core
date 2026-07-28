@@ -10,8 +10,8 @@ describe('TreasuryDepositWatcher & Non-Expiring Agent Token Credits', () => {
     const userAddress = '0x1234567890123456789012345678901234567890';
     const credits = watcher.processDeposit(userAddress, 5);
 
-    expect(credits).toBe(500_000); // 5 * 100,000
-    expect(service.getAgentCredits(userAddress)).toBe(500_000);
+    expect(credits).toBe(1_200_000); // 5 * 200,000 * 1.2
+    expect(service.getAgentCredits(userAddress)).toBe(1_200_000);
     expect(service.hasActiveEntitlement(userAddress)).toBe(true);
   });
 
@@ -22,7 +22,7 @@ describe('TreasuryDepositWatcher & Non-Expiring Agent Token Credits', () => {
     const userAddress = '0x9876543210987654321098765432109876543210';
     const credits = watcher.processDeposit(userAddress, 19);
 
-    expect(credits).toBe(1_900_000);
+    expect(credits).toBe(4_940_000); // 19 * 200,000 * 1.3
     expect(service.hasActiveEntitlement(userAddress)).toBe(true);
   });
 
@@ -33,7 +33,7 @@ describe('TreasuryDepositWatcher & Non-Expiring Agent Token Credits', () => {
 
     const deducted = service.consumeCredits(userAddress, 50_000);
     expect(deducted).toBe(true);
-    expect(service.getAgentCredits(userAddress)).toBe(450_000);
+    expect(service.getAgentCredits(userAddress)).toBe(1_150_000); // 1.2M - 50k
   });
 
   it('rejects deposits less than $1 USDC minimum', () => {

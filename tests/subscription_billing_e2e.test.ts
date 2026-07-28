@@ -22,9 +22,9 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
 
   it('grants entitlement after a sufficient top-up, spawns an instance, and manages credits', () => {
     const service = new SubscriptionService(new SubscriptionLedger());
-    // 45 USDC => 45 * 100,000 = 4,500,000 Agent Credits
+    // 45 USDC (>= 20 tier) => 45 * 200,000 * 1.5 = 13,500,000 Agent Credits
     const credits = service.recordTopUp('0xUser1', 45);
-    expect(credits).toBe(4_500_000);
+    expect(credits).toBe(13_500_000);
 
     manager = new AgentManager(service, 1000);
     expect(() => manager.checkEntitlement('0xUser1')).not.toThrow();
@@ -33,7 +33,7 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
     expect(instance).toBeDefined();
 
     service.consumeCredits('0xUser1', 1_000_000);
-    expect(service.getAgentCredits('0xUser1')).toBe(3_500_000);
+    expect(service.getAgentCredits('0xUser1')).toBe(12_500_000);
     expect(() => manager.checkEntitlement('0xUser1')).not.toThrow();
   });
 
@@ -57,9 +57,9 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
     const ledger = new SubscriptionLedger();
     const service = new SubscriptionService(ledger);
 
-    service.recordTopUp('0xUser3', 20); // 2,000,000 credits
-    service.recordTopUp('0xUser3', 40); // +4,000,000 credits
+    service.recordTopUp('0xUser3', 20); // 6,000,000 credits
+    service.recordTopUp('0xUser3', 40); // +12,000,000 credits
 
-    expect(service.getAgentCredits('0xUser3')).toBe(6_000_000);
+    expect(service.getAgentCredits('0xUser3')).toBe(18_000_000);
   });
 });
