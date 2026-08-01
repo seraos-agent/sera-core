@@ -29,6 +29,7 @@
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.51.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@polymarket/clob-client": "^5.8.1",
     "@slack/bolt": "^4.7.3",
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",

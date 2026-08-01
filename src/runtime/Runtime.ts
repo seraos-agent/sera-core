@@ -48,6 +48,10 @@ import { CommunicationToolCapability } from '../capabilities/communication/Commu
 import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
 import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
+import { PolymarketService } from '../capabilities/polymarket/PolymarketService';
+import { PolymarketToolCapability } from '../capabilities/polymarket/PolymarketToolCapability';
+import { SecretManager } from '../core/secrets/SecretManager';
+import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ProposalManager } from '../core/governance/ProposalManager';
 import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
@@ -225,11 +229,16 @@ export class Runtime {
     const hyperliquidCap = new HyperliquidMarketDataCapability();
     const paperTradingCap = new PaperTradingCapability();
     const autonomyAgreementCap = new AutonomyAgreementCapability();
+    
+    const secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
+    const polymarketService = new PolymarketService(secretManager);
+    const polymarketCap = new PolymarketToolCapability(polymarketService);
+
     this.productContracts.assertCapabilitiesAvailable(
       HyperliquidTradingProductContract.id,
       [...hyperliquidCap.getTools(), ...paperTradingCap.getTools()].map(tool => tool.name)
     );
-    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools(), ...paperTradingCap.getTools(), ...autonomyAgreementCap.getTools()]);
+    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools(), ...paperTradingCap.getTools(), ...autonomyAgreementCap.getTools(), ...polymarketCap.getTools()]);
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
     

@@ -503,12 +503,6 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
             </div>
           )}
 
-
-          <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
-            <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
-            <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
-          </form>
-
           {scene === 'reception' && (
             <div className="landing-footer-links">
               <a className="landing-footer-social" href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer" aria-label="SERA OS on GitHub" title="Open GitHub">
@@ -526,6 +520,11 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
             </div>
           )}
         </footer>
+
+        <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
+          <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
+          <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
+        </form>
       </div>
     </main>
   );

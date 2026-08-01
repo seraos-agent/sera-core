@@ -5,15 +5,21 @@ import {
   MessageCircle,
   Activity,
   CheckCircle2,
-  Clock
+  Clock,
+  Gift,
+  MonitorPlay,
+  Server
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
+import { QuestDashboard } from "../quests/QuestDashboard";
+import { McpConnectorPanel } from "./McpConnectorPanel";
 
 interface WorkspacePageProps {
   theme: ThemeType;
   walletState?: any; // Kept for backwards compatibility with App.tsx if still passed
   onBack: () => void;
   isMobileView?: boolean;
+  socket?: any; // Used by MCP connector panel
 }
 
 interface CapabilityItem {
@@ -26,6 +32,8 @@ interface CapabilityItem {
 const CATEGORIES = [
   { id: "finance", name: "Finance & Trading", icon: Wallet, description: "Manage Web3 wallets, balances, and market trading" },
   { id: "communication", name: "Channels & Messaging", icon: MessageCircle, description: "Interactive channels and workspace integrations" },
+  { id: "quests", name: "Quests & Airdrops", icon: Gift, description: "Complete tasks to earn points and free Agent Credits" },
+  { id: "connectors", name: "Platform Connectors", icon: Server, description: "External AI platforms & MCP (Model Context Protocol) integrations" },
 ];
 
 const CAPABILITIES: Record<string, CapabilityItem[]> = {
@@ -33,15 +41,24 @@ const CAPABILITIES: Record<string, CapabilityItem[]> = {
     { name: "Hyperliquid", icon: Activity, status: "Active", description: "Real-time candles, orderbooks & perpetual trading" },
     { name: "Base Network", icon: Wallet, status: "Active", description: "On-chain USDC/ETH transfers & Agent Vault" },
     { name: "Ethereum Mainnet", icon: Wallet, status: "Active", description: "L1 asset tracking and balance monitoring" },
+    { name: "Polymarket (Polygon)", icon: Activity, status: "Active", description: "Prediction markets & CLOB trading on Polygon" },
   ],
   communication: [
     { name: "Slack", icon: MessageCircle, status: "Active", description: "Interactive bot via Slack Socket Mode (@sera)" },
     { name: "Telegram", icon: "telegram-icon", status: "Ready", description: "Instant messaging bot integration" },
     { name: "X (Twitter)", icon: "x-icon", status: "Ready", description: "Social market sentiment & automated updates" },
   ],
+  quests: [
+    { name: "Daily Check-in", icon: CheckCircle2, status: "Ready", description: "Log in daily to claim free Sera Points" },
+    { name: "X (Twitter) Engagement", icon: "x-icon", status: "Ready", description: "Earn points by interacting with AI-generated posts" },
+    { name: "Watch & Earn", icon: MonitorPlay, status: "Ready", description: "Find hidden passwords in YouTube videos for rewards" },
+  ],
+  connectors: [
+    { name: "Claude / ChatGPT", icon: Server, status: "Active", description: "Connect Sera via MCP to other desktop AI clients" },
+  ]
 };
 
-export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, onBack, isMobileView, socket }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
 
@@ -104,6 +121,13 @@ export function ConnectionsPage({ theme, onBack, isMobileView }: WorkspacePagePr
   );
 
   const renderCapabilities = (catId: string) => {
+    if (catId === "quests") {
+      return <QuestDashboard theme={theme} onBack={() => setActiveCategory(null)} isMobileView={isMobileView} />;
+    }
+    if (catId === "connectors") {
+      return <McpConnectorPanel theme={theme} onBack={() => setActiveCategory(null)} isMobileView={isMobileView} socket={socket} />;
+    }
+
     const category = CATEGORIES.find(c => c.id === catId);
     const caps = CAPABILITIES[catId] || [];
 

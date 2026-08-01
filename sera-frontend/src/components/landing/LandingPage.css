@@ -1429,18 +1429,7 @@ html {
   box-sizing: border-box;
 }
 
-.interactive-section .room-input,
-.interactive-section .room-input:focus-within {
-  position: absolute !important;
-  z-index: 10 !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  bottom: 24px !important;
-  margin: 0 !important;
-  width: min(740px, calc(100% - 420px)) !important;
-  max-width: 740px !important;
-  box-shadow: none !important;
-}
+
 
 .interactive-section .landing-footer-identity {
   display: flex !important;
@@ -1496,18 +1485,7 @@ html {
     margin-top: 10px !important;
   }
 
-  .interactive-section .room-input,
-  .interactive-section .room-input:focus-within {
-    position: relative !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    bottom: auto !important;
-    transform: none !important;
-    width: 100% !important;
-    max-width: 680px !important;
-    margin: 0 auto !important;
-  }
+
 
   .interactive-section .landing-footer-identity {
     display: flex !important;
@@ -1682,16 +1660,7 @@ html {
     box-sizing: border-box !important;
   }
 
-  .interactive-section .room-input,
-  .interactive-section .room-input:focus-within {
-    position: relative !important;
-    left: auto !important;
-    transform: none !important;
-    bottom: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-  }
+
 }
 
 

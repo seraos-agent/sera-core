@@ -398,6 +398,7 @@ function InnerApp() {
               <ConnectionsPage
                 theme={theme}
                 walletState={walletState}
+                socket={socket}
                 isMobileView={isMobileView}
                 onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
               />

@@ -51,6 +51,15 @@ export class SubscriptionService {
     return this.ledger.debitCredits(address, creditAmount);
   }
 
+  /**
+   * Adds Agent Credits directly without requiring a USDC payment.
+   * Useful for internal conversions (like Bounty Points to Agent Credits).
+   */
+  public addCreditsDirectly(userAddress: string, creditsAmount: number): void {
+    if (creditsAmount <= 0) return;
+    this.ledger.credit(userAddress, creditsAmount, 0); // 0 USDC added
+  }
+
   getAgentCredits(address: string): number {
     if (address.toLowerCase() === DEV_SESSION_ID) return Infinity;
     return this.ledger.get(address)?.agentCredits ?? 0;

@@ -6,6 +6,7 @@ import { SecretManager } from '../../core/secrets/SecretManager';
 import { ExecutionContext } from '../../core/execution/ExecutionContext';
 import { TransferIntentParameters } from '../../core/intents/transfer.types';
 import { BaseAdapter } from './chains/BaseAdapter';
+import { PolygonAdapter } from './chains/PolygonAdapter';
 
 /**
  * UniversalAgenticWallet — The Universal Execution Router.
@@ -25,11 +26,13 @@ export class UniversalAgenticWallet implements IExecutionCapability {
   
   // Pluggable reality adapters
   private baseAdapter: BaseAdapter;
+  private polygonAdapter: PolygonAdapter;
 
   constructor(secretManager: SecretManager, permissionGuard: SpendPermissionAdapter) {
     this.secretManager = secretManager;
     this.permissionGuard = permissionGuard;
     this.baseAdapter = new BaseAdapter();
+    this.polygonAdapter = new PolygonAdapter();
   }
 
   async initialize(userAddress?: string): Promise<WalletId> {
@@ -54,12 +57,18 @@ export class UniversalAgenticWallet implements IExecutionCapability {
     return this.walletId!;
   }
 
-  async getBalance(_walletId: WalletId, asset: string): Promise<number> {
+  async getBalance(_walletId: WalletId, asset: string, network: string = 'base-mainnet'): Promise<number> {
     if (!this.walletId) throw new Error('[UniversalAgenticWallet] Not initialized.');
+    if (network === 'polygon') {
+      return this.polygonAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
+    }
     return this.baseAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
   }
 
-  async getAddressBalance(address: string, asset: string): Promise<number> {
+  async getAddressBalance(address: string, asset: string, network: string = 'base-mainnet'): Promise<number> {
+    if (network === 'polygon') {
+      return this.polygonAdapter.getBalance(address as `0x${string}`, asset);
+    }
     return this.baseAdapter.getBalance(address as `0x${string}`, asset);
   }
 
@@ -99,9 +108,12 @@ export class UniversalAgenticWallet implements IExecutionCapability {
 
     // ── 3. Decrypt Secrets ─────────────────────────────────────────────
     const privateKey = await this.secretManager.getAgenticWalletPrivateKey();
-    if (!privateKey) throw new Error('[UniversalAgenticWallet] Private key not found in SecretStore.');
+    if (!privateKey) throw new Error('[UniversalAgenticWallet] Failed to decrypt private key for execution.');
 
-    // ── 4. Delegate to Reality Adapter ─────────────────────────────────
+    // ── 4. Execute via Reality Adapter ─────────────────────────────────
+    if (resolvedNetwork === 'polygon') {
+      return this.polygonAdapter.executeTransaction(privateKey, context);
+    }
     if (resolvedNetwork === 'base-mainnet' || resolvedNetwork === 'base-sepolia') {
       console.log(`[UniversalAgenticWallet] Routing ExecutionContext to BaseAdapter...`);
       return await this.baseAdapter.executeTransaction(privateKey, context);

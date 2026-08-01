@@ -20,6 +20,10 @@ import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/id
 import { verifyWalletSignature } from './WalletSignatureVerifier';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
+import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
+import { SeraMcpServer } from '../mcp/SeraMcpServer';
+
+const mcpApiKeyStore = new McpApiKeyStore();
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -102,6 +106,113 @@ app.get('/auth/google-drive/callback', async (request, response) => {
     const message = error instanceof Error ? error.message : 'The connection could not be completed.';
     response.status(400).type('html').send(renderGoogleDriveCallbackPage('Google Drive was not connected', message, false));
   }
+});
+
+// ─── MCP Streamable HTTP Transport ────────────────────────────────────────────
+const seraMcpServer = new SeraMcpServer({
+  apiKeyStore: mcpApiKeyStore,
+  resolveInstance: (userId: string) => agentManager.getOrCreateInstance(userId),
+  getSubscriptionService: () => agentManager.getSubscriptionService(),
+});
+
+// Express CORS and body parser for MCP routes
+app.use('/mcp', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+app.use('/mcp', express.json());
+
+// List available MCP tools
+app.get('/mcp/tools', (req, res) => {
+  const apiKey = req.headers.authorization?.replace('Bearer ', '') || '';
+  const userId = mcpApiKeyStore.resolveUser(apiKey);
+  if (!userId) return res.status(401).json({ error: 'Invalid API key' });
+  res.json({
+    tools: [
+      { name: 'sera_chat', description: 'Send a message to your personal Sera AI agent and receive a response.', inputSchema: { type: 'object', properties: { message: { type: 'string', description: 'The message to send to Sera' } }, required: ['message'] } },
+      { name: 'sera_wallet_balance', description: 'Check the current balance and address of your Sera Agent Vault wallet.', inputSchema: { type: 'object', properties: {} } },
+      { name: 'sera_wallet_transfer', description: 'Propose a token transfer from your Sera Agent Vault (requires dashboard approval).', inputSchema: { type: 'object', properties: { to: { type: 'string' }, amount: { type: 'string' }, asset: { type: 'string' }, reason: { type: 'string' } }, required: ['to', 'amount', 'asset'] } },
+      { name: 'sera_memory_read', description: 'Read your Sera agent\'s confirmed beliefs and working memory.', inputSchema: { type: 'object', properties: {} } },
+      { name: 'sera_billing_status', description: 'Check your remaining Sera Agent Credits balance.', inputSchema: { type: 'object', properties: {} } }
+    ]
+  });
+});
+
+// Execute an MCP tool call (used by sera-mcp-stdio proxy)
+app.post('/mcp/tool', async (req, res) => {
+  const apiKey = req.headers.authorization?.replace('Bearer ', '') || '';
+  const userId = mcpApiKeyStore.resolveUser(apiKey);
+  if (!userId) return res.status(401).json({ isError: true, content: [{ type: 'text', text: 'Invalid API key' }] });
+
+  const { name, arguments: args } = req.body;
+  if (!name) return res.status(400).json({ isError: true, content: [{ type: 'text', text: 'Tool name is required' }] });
+
+  const instance = agentManager.getOrCreateInstance(userId);
+
+  // Delegate to SeraMcpServer's internal handler by simulating the MCP call
+  try {
+    // Use a direct approach: inject the API key into _meta and call the server's handler
+    const mockRequest = { params: { name, arguments: args || {}, _meta: { apiKey } } };
+    // We access the server's handler directly via the public method
+    const result = await (seraMcpServer as any).handleToolCallDirect(name, args || {}, userId, instance);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ isError: true, content: [{ type: 'text', text: `Error: ${error.message}` }] });
+  }
+});
+
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+const mcpTransports = new Map<string, SSEServerTransport>();
+
+app.get('/mcp/sse', async (req, res) => {
+  const apiKey = req.query.apiKey as string || req.headers.authorization?.replace('Bearer ', '') || '';
+  const userId = mcpApiKeyStore.resolveUser(apiKey);
+  
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing Sera API Key' });
+  }
+
+  // Construct the absolute endpoint URL for the client to send messages to
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const messageEndpoint = `${protocol}://${host}/mcp/message`;
+
+  // Create a dedicated transport for this connection using the absolute URL
+  const transport = new SSEServerTransport(messageEndpoint, res);
+  await transport.start();
+  
+  mcpTransports.set(transport.sessionId, transport);
+  
+  // Create a new Server instance just for this connection
+  const serverInstance = seraMcpServer.createServer(apiKey);
+  
+  // We will just connect it
+  await serverInstance.connect(transport);
+  
+  res.on('close', () => {
+    mcpTransports.delete(transport.sessionId);
+  });
+});
+
+app.post('/mcp/message', async (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  const transport = mcpTransports.get(sessionId);
+  if (!transport) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  // We need to inject the API key into the message if it's a CallToolRequest
+  // The API key was validated in /mcp/sse, but the handler needs it.
+  // We can't easily modify the transport's internal message routing, 
+  // but we can just let it fail auth if not provided?
+  // Actually, Claude Desktop sends headers on /mcp/message as well.
+  
+  await transport.handlePostMessage(req, res);
 });
 
 let msgIdCounter = Date.now();
@@ -700,6 +811,25 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  // ── MCP API Key Management ────────────────────────────────────────────────
+  socket.on('mcp:generate_key', () => {
+    if (!requireAuthenticatedSession(socket, 'mcp:generate_key', instance?.eventBus)) return;
+    const key = mcpApiKeyStore.generateKey(socket.data.sessionId!);
+    socket.emit('mcp:key_generated', { key });
+    socket.emit('mcp:keys_list', mcpApiKeyStore.listKeys(socket.data.sessionId!));
+  });
+
+  socket.on('mcp:revoke_key', (payload: { key: string }) => {
+    if (!requireAuthenticatedSession(socket, 'mcp:revoke_key', instance?.eventBus)) return;
+    mcpApiKeyStore.revokeKey(payload.key);
+    socket.emit('mcp:keys_list', mcpApiKeyStore.listKeys(socket.data.sessionId!));
+  });
+
+  socket.on('mcp:list_keys', () => {
+    if (!requireAuthenticatedSession(socket, 'mcp:list_keys', instance?.eventBus)) return;
+    socket.emit('mcp:keys_list', mcpApiKeyStore.listKeys(socket.data.sessionId!));
+  });
+
   socket.on('disconnect', () => {
     unbindListeners();
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
@@ -759,7 +889,8 @@ treasuryWatcher.start();
 
 httpServer.listen(PORT, () => {
   console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);
-  console.log(`   Architecture: Actor Model Router (SeraAgentInstance)\n`);
+  console.log(`   Architecture: Actor Model Router (SeraAgentInstance)`);
+  console.log(`   MCP Connector: HTTP /mcp/tool (Streamable HTTP ready)\n`);
 });
 
 const shutdown = () => {
