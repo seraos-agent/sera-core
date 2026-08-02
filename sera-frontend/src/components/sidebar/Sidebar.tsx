@@ -131,6 +131,9 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
             {activeConnectors?.filter(c => c.isActive || c.alwaysActive).map((c) => {
               // Hide internal connectors from sidebar
               if (c.id === 'wallet' || c.id === 'autonomy' || c.id === 'communication') return null;
+              
+              // Hide any unrecognized connectors that don't have UI icons
+              if (c.id !== 'polymarket' && c.id !== 'hyperliquid-market-data') return null;
 
               return (
                 <div
@@ -149,12 +152,8 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
                 >
                   {c.id === 'polymarket' ? (
                      <img src="/polymarket.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
-                  ) : c.id === 'hyperliquid-market-data' ? (
-                     <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   ) : (
-                     <svg width={18} height={18} style={{ fill: theme.inkSoft, flexShrink: 0 }}>
-                       <use href={`/icons.svg#Server`} />
-                     </svg>
+                     <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   )}
                   {open && (
                     <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -168,13 +167,11 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               );
             })}
           </div>
-          
-          <div style={{ flex: 1 }} />
-
           {onOpenBilling && (
             <div 
               onClick={onOpenBilling}
               style={{ 
+                marginTop: "auto",
                 display: "flex", alignItems: "center", gap: 8, padding: open ? "12px 6px" : "12px 0", justifyContent: "center",
                 cursor: "pointer", borderRadius: 8, transition: "background 150ms", marginBottom: 4
               }}
