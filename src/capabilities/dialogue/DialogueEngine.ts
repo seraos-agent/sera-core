@@ -90,7 +90,7 @@ export class DialogueEngine {
     this.feasibilityEvaluator = new FeasibilityEvaluator(this.worldStateService);
     this.dialogueResultNarrator = new DialogueResultNarrator(this.eventBus, this.orchestrator);
     this.intentClassifier = new IntentClassifier(this.workClassificationPolicy, this.orchestrator);
-    this.cognitiveContextBuilder = new CognitiveContextBuilder(this.worldStateService, this.memoryQueryService, this.chatHistoryStore);
+    this.cognitiveContextBuilder = new CognitiveContextBuilder(this.worldStateService, this.memoryQueryService, this.chatHistoryStore, this.capabilityCatalog);
     this.proposalResponseHandler = new ProposalResponseHandler(this.eventBus);
     this.toolExecutionHandler = new ToolExecutionHandler(
       this.eventBus,
@@ -348,7 +348,7 @@ export class DialogueEngine {
         });
 
         const messages = await this.buildWorkingMemory();
-        messages.push({ role: 'system', content: 'The user has submitted a complex request that requires multi-step planning. Acknowledge the request naturally and concisely. Tell the user you are analyzing and planning the steps in the background, and will provide a proposal shortly.' });
+        messages.push({ role: 'user', content: '[SYSTEM NOTIFICATION] The user has submitted a complex request that requires multi-step planning. Acknowledge the request naturally and concisely. Tell the user you are analyzing and planning the steps in the background, and will provide a proposal shortly.' });
         const ackResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, [], this.activeAbortController?.signal);
 
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: ackResponse.text.trim() });
@@ -400,7 +400,7 @@ export class DialogueEngine {
             const systemRejectionMsg = `The user's requested operation failed the pre-flight feasibility check. Reason: ${feasibility.reason}. Respond strictly as an objective operational system agent. Explain that the request was evaluated against current world state and cannot be prepared. Do NOT apologize. Maintain an operational, matter-of-fact tone.`;
 
             const messages = await this.buildWorkingMemory();
-            messages.push({ role: 'system', content: systemRejectionMsg });
+            messages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemRejectionMsg}` });
 
             const response = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, undefined, this.activeAbortController?.signal);
 
@@ -429,7 +429,7 @@ CRITICAL INSTRUCTION:
 Do NOT say that you are processing, executing, or performing the action right now. The action has NOT happened yet.
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
             const messages = await this.buildWorkingMemory(false, userMessage);
-            messages.push({ role: 'system', content: systemProposalMsg });
+            messages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemProposalMsg}` });
             const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
 
             let summaryText = proposalResponse.text.trim();
@@ -452,7 +452,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
         if (forgetMeExecuted) {
           messages.push({
-            role: 'system',
+            role: 'user',
             content: "[SYSTEM NOTIFICATION] You have just successfully deleted all of the user's chat history and data from the system per their request. Acknowledge this action concisely in the language the user is speaking."
           });
         }
@@ -464,14 +464,28 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap)[\.!\s]*$/i.test(userMessage.trim());
         if (!isPureGreeting) {
           messages.push({
-            role: 'system',
-            content: `OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. Provide a complete answer or invoke the appropriate tool.`
+            role: 'user',
+            content: `[SYSTEM NOTIFICATION] OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. Provide a complete answer or invoke the appropriate tool.`
           });
         }
 
         const availableTools = typeof this.capabilityCatalog?.availableTools === 'function'
           ? this.capabilityCatalog.availableTools()
           : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
+
+        // ── Inject inactive connector awareness ────────────────────────────
+        // The AI knows about ALL connectors but can only use tools from active ones.
+        // For inactive connectors, it educates the user and suggests activation.
+        if (typeof this.capabilityCatalog?.allConnectorSummaries === 'function') {
+          const inactiveConnectors = this.capabilityCatalog.allConnectorSummaries()
+            .filter((c: any) => !c.isActive && !c.alwaysActive);
+          if (inactiveConnectors.length > 0) {
+            messages.push({
+              role: 'user',
+              content: `[SYSTEM NOTIFICATION] AVAILABLE BUT INACTIVE CONNECTORS: The following connectors are available in Sera but have not been activated by the user yet. You do NOT have tools for these connectors. If the user asks about any of these capabilities, briefly explain what it does, mention the risks, and suggest they activate it from the Workspace page in the sidebar.\n${inactiveConnectors.map((c: any) => `- ${c.name}: ${c.description}`).join('\n')}`
+            });
+          }
+        }
 
         availableTools.push({
           name: 'REMEMBER_FACT',

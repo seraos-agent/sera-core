@@ -45,6 +45,7 @@ export class WorldStateService {
         vaultAddress: p.vaultAddress,
         balance: parseFloat(p.balance) || 0,
         vaultBalance: parseFloat(p.vaultBalance) || 0,
+        vaultBalances: p.vaultBalances || { base: p.vaultBalance || "0", polygon: "0", ethereum: "0" },
         network: p.network || 'unknown',
         asset: p.asset || 'USDC',
         syncing: p.syncing || false,

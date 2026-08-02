@@ -9,8 +9,8 @@ import { ExecutionReceipt, WalletId } from './types';
 export interface WalletCustodyProvider {
   readonly providerId: string;
   initializeAgentWallet(userId?: SeraUserId): Promise<WalletId>;
-  getBalance(walletId: WalletId, asset: string): Promise<number>;
-  getAddressBalance(address: string, asset: string): Promise<number>;
+  getBalance(walletId: WalletId, asset: string, network?: string): Promise<number>;
+  getAddressBalance(address: string, asset: string, network?: string): Promise<number>;
   execute(walletId: WalletId, context: ExecutionContext<any>): Promise<ExecutionReceipt>;
 }
 
@@ -39,11 +39,11 @@ export class UnavailableWalletCustodyProvider implements WalletCustodyProvider {
     return this.unavailable();
   }
 
-  async getBalance(_walletId: WalletId, _asset: string): Promise<number> {
+  async getBalance(_walletId: WalletId, _asset: string, _network?: string): Promise<number> {
     return this.unavailable();
   }
 
-  async getAddressBalance(_address: string, _asset: string): Promise<number> {
+  async getAddressBalance(_address: string, _asset: string, _network?: string): Promise<number> {
     return this.unavailable();
   }
 

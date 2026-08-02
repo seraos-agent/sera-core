@@ -22,12 +22,12 @@ export class LocalDevelopmentCustodyProvider implements WalletCustodyProvider {
     return this.wallet.initialize(userId);
   }
 
-  getBalance(walletId: WalletId, asset: string): Promise<number> {
-    return this.wallet.getBalance(walletId, asset);
+  getBalance(walletId: WalletId, asset: string, network?: string): Promise<number> {
+    return this.wallet.getBalance(walletId, asset, network);
   }
 
-  getAddressBalance(address: string, asset: string): Promise<number> {
-    return this.wallet.getAddressBalance(address, asset);
+  getAddressBalance(address: string, asset: string, network?: string): Promise<number> {
+    return this.wallet.getAddressBalance(address, asset, network);
   }
 
   execute(walletId: WalletId, context: ExecutionContext<any>): Promise<ExecutionReceipt> {

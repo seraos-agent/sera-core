@@ -34,6 +34,7 @@ export interface WalletState {
   vaultAddress: string;
   balance: number;
   vaultBalance: number;
+  vaultBalances?: { base: string; polygon: string; ethereum: string };
   network: string;
   asset: string;
   quality: ObservationQuality;

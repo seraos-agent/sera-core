@@ -77,7 +77,7 @@ export class ToolExecutionHandler {
 
       messages.push({ role: 'assistant', content: `[TOOL_CALL: SET_THEME] ${JSON.stringify(toolParams)}` });
       messages.push({
-        role: 'system',
+        role: 'user',
         content: `[SYSTEM NOTIFICATION] You have successfully executed the SET_THEME tool call and updated the UI display theme to ${themeValue.toUpperCase()} MODE. Confirm this naturally and warmly in 1 short sentence in the user's language.`
       });
 
@@ -96,7 +96,7 @@ export class ToolExecutionHandler {
 
       messages.push({ role: 'assistant', content: `[TOOL_CALL: CLEAR_CHAT] ${JSON.stringify(toolParams)}` });
       messages.push({
-        role: 'system',
+        role: 'user',
         content: `[SYSTEM NOTIFICATION] You have successfully executed the CLEAR_CHAT tool call. Confirm this naturally and warmly in 1 short sentence in the user's language.`
       });
 
@@ -124,7 +124,7 @@ export class ToolExecutionHandler {
       this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
 
       messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
-      messages.push({ role: 'system', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
+      messages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
 
       const profile = ExecutionProfileBuilder.forTier('Execution')
         .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
@@ -137,6 +137,7 @@ export class ToolExecutionHandler {
 
     let isSafe = false;
     const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'SPOT_SWAP', 'TRANSFER_FUNDS'];
+    const emitEvent = params.emitEvent || ((type: string, payload: Record<string, any>) => this.eventBus.emit(type, payload));
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {
       const isAuthorizedByAgreement = autonomyAgreementStore?.hasFullAccessFor(toolIntent, sessionId) === true;
@@ -163,7 +164,18 @@ export class ToolExecutionHandler {
         content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c: string) => c.toUpperCase())}...`
       });
 
-      const result = await spawnGoalAndAwaitResult(toolIntent, toolParams);
+      let result: any;
+      const connector = capabilityCatalog?.getConnectorForTool?.(toolIntent);
+      if (connector && typeof connector.executeTool === 'function') {
+        try {
+          const data = await connector.executeTool(toolIntent, toolParams);
+          result = { success: true, data };
+        } catch (e: any) {
+          result = { success: false, errorMessage: e.message };
+        }
+      } else {
+        result = await spawnGoalAndAwaitResult(toolIntent, toolParams);
+      }
       const duration = Date.now() - startTime;
 
       this.eventBus.emit('SYSTEM_TELEMETRY' as any, {
@@ -179,8 +191,8 @@ export class ToolExecutionHandler {
       if (!feasibility.feasible) {
         const workingMessages = await buildWorkingMemory();
         workingMessages.push({
-          role: 'system',
-          content: `CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
+          role: 'user',
+          content: `[SYSTEM NOTIFICATION] CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
         });
 
         const profile = ExecutionProfileBuilder.forTier('Execution')
@@ -188,13 +200,12 @@ export class ToolExecutionHandler {
           .build();
 
         const failResponse = await this.orchestrator.generate(profile, workingMessages, undefined, activeAbortControllerSignal);
-        const emit = params.emitEvent || ((type, payload) => this.eventBus.emit(type, payload));
-        emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
+        emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
         return true;
       }
 
       console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
-      this.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, {
+      emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
         intent: toolIntent,
         parameters: toolParams,
         userMessage
@@ -208,7 +219,7 @@ CRITICAL INSTRUCTION:
 Write ONE short, natural sentence in the exact language the user is speaking. Acknowledge that the proposal card has been prepared and ask them to review and click Approve on their screen. Do NOT say that the action has been executed yet. Keep it under 15 words.`;
 
       const proposalMessages = await buildWorkingMemory();
-      proposalMessages.push({ role: 'system', content: systemProposalMsg });
+      proposalMessages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemProposalMsg}` });
 
       let summaryText = '';
       try {
@@ -229,8 +240,7 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
         durationMs: Date.now() - startTime
       });
 
-      const emit = params.emitEvent || ((type, payload) => this.eventBus.emit(type, payload));
-      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+      emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
     }
 
     return true;

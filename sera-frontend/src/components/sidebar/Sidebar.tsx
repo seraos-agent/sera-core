@@ -1,10 +1,17 @@
-import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery } from "lucide-react";
-import { CONNECTORS } from "../../theme";
+import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
 export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile";
+
+interface ConnectorSummary {
+  id: string;
+  name: string;
+  isActive: boolean;
+  alwaysActive: boolean;
+  [key: string]: any;
+}
 
 interface SidebarProps {
   theme: ThemeType;
@@ -16,9 +23,10 @@ interface SidebarProps {
   onNavigate: (view: SidebarView) => void;
   walletState?: WalletState;
   onOpenBilling?: () => void;
+  activeConnectors?: ConnectorSummary[];
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, onOpenBilling }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, onOpenBilling, activeConnectors }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
   const { address } = useAccount();
@@ -95,39 +103,66 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               )}
             </div>
 
-            {CONNECTORS.map((c) => {
-              const Icon = c.icon;
-              const isActive = currentView === c.id;
+            {/* Core Views */}
+            <div
+              onClick={() => {
+                navigate("wallet" as SidebarView);
+              }}
+              title={!open ? "Manage Money" : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: open ? "8px 6px" : "12px", borderRadius: 8,
+                cursor: "pointer", transition: "background 150ms",
+                marginBottom: 2,
+                justifyContent: open ? "flex-start" : "center",
+                background: currentView === "wallet" ? theme.accentSoft : "transparent"
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = currentView === "wallet" ? theme.accentSoft : theme.surface; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "wallet" ? theme.accentSoft : "transparent"; }}
+            >
+              <Wallet size={18} color={currentView === "wallet" ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
+              {open && (
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: currentView === "wallet" ? theme.accent : theme.inkSoft, fontWeight: currentView === "wallet" ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Manage Money
+                </span>
+              )}
+            </div>
+
+            {activeConnectors?.filter(c => c.isActive || c.alwaysActive).map((c) => {
+              // Hide internal connectors from sidebar
+              if (c.id === 'wallet' || c.id === 'autonomy' || c.id === 'communication') return null;
+
               return (
                 <div
                   key={c.id}
-                  onClick={() => {
-                    navigate(c.id as SidebarView);
-                  }}
                   title={!open ? c.name : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: "pointer",
-                    transition: "background 150ms",
+                    cursor: "default", transition: "background 150ms",
+                    marginBottom: 2,
                     justifyContent: open ? "flex-start" : "center",
-                    position: "relative",
-                    background: isActive ? theme.accentSoft : "transparent",
+                    background: "transparent"
                   }}
-                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = theme.surface; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isActive ? theme.accentSoft : "transparent"; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  {typeof Icon === "string" ? (
-                    <svg width={15} height={15} style={{ fill: theme.inkSoft, flexShrink: 0 }}>
-                      <use href={`/icons.svg#${Icon}`} />
-                    </svg>
+                  {c.id === 'polymarket' ? (
+                     <img src="/polymarket.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
+                  ) : c.id === 'hyperliquid-market-data' ? (
+                     <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   ) : (
-                    <Icon size={15} color={isActive ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
+                     <svg width={18} height={18} style={{ fill: theme.inkSoft, flexShrink: 0 }}>
+                       <use href={`/icons.svg#Server`} />
+                     </svg>
                   )}
                   {open && (
-                    <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: 13, color: isActive ? theme.accent : theme.ink, fontWeight: isActive ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.name}
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {c.name.split(' (')[0]}
                     </span>
+                  )}
+                  {open && (
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", flexShrink: 0 }} />
                   )}
                 </div>
               );

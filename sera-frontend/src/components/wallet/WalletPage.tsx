@@ -282,15 +282,55 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                     </div>
                   </div>
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Sera</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedVaultBalance.toFixed(2)}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortVault || "—"}</div>
-                      {vaultAddr && (
-                        <button onClick={() => handleCopy(vaultAddr, "vault")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedVault ? theme.status : theme.inkFaint }}>
-                          {copiedVault ? <Check size={12} /> : <Copy size={12} />}
-                        </button>
-                      )}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft }}>Sera Agent Vault</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortVault || "—"}</div>
+                        {vaultAddr && (
+                          <button onClick={() => handleCopy(vaultAddr, "vault")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedVault ? theme.status : theme.inkFaint }}>
+                            {copiedVault ? <Check size={12} /> : <Copy size={12} />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink, marginBottom: 12 }}>
+                      {(parseFloat(walletState.vaultBalances.base) + parseFloat(walletState.vaultBalances.polygon) + parseFloat(walletState.vaultBalances.ethereum)).toFixed(2)} USDC
+                    </div>
+
+                    {/* Multi-Network Breakdown */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {/* Base */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(0,82,255,0.1)" : "rgba(0,82,255,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#0052FF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                            <img src="/base.svg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </div>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Base</span>
+                        </div>
+                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.base).toFixed(2)}</span>
+                      </div>
+
+                      {/* Polygon */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(130,71,229,0.1)" : "rgba(130,71,229,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#8247E5", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                            <img src="/polygon.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </div>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Polygon</span>
+                        </div>
+                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.polygon).toFixed(2)}</span>
+                      </div>
+
+                      {/* Ethereum */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(98,126,234,0.1)" : "rgba(98,126,234,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#627EEA", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                            <img src="/ethereum.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </div>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Ethereum</span>
+                        </div>
+                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.ethereum).toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>

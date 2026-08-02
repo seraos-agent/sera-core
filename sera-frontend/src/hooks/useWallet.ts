@@ -5,6 +5,7 @@ export const INITIAL_WALLET = {
   fullAddress: "Connecting...",
   balance: "...",
   vaultBalance: "...",
+  vaultBalances: { base: "0", polygon: "0", ethereum: "0" },
   chain: "Base Mainnet",
   vaultAddress: "",
   syncing: true,

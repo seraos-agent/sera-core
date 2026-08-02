@@ -49,22 +49,37 @@ export class PolymarketService {
    * Searches for active markets on Polymarket.
    */
   public async searchMarkets(query: string = '', limit: number = 10): Promise<any> {
-    await this.initialize();
-    
     try {
-      // getMarkets accepts a next_cursor string
-      const response = await this.client!.getMarkets('');
-      let markets = response.data || [];
+      const url = `https://gamma-api.polymarket.com/events?query=${encodeURIComponent(query)}&active=true&closed=false`;
+      const res = await fetch(url);
+      const events = await res.json();
       
-      if (query) {
-        const lowerQuery = query.toLowerCase();
-        markets = markets.filter((m: any) => 
-          (m.question && m.question.toLowerCase().includes(lowerQuery)) || 
-          (m.condition_id && m.condition_id.toLowerCase() === lowerQuery)
-        );
+      let results: any[] = [];
+      for (const event of events) {
+        if (!event.markets) continue;
+        for (const m of event.markets) {
+          if (m.active && !m.closed) {
+            let clobTokenIds = [];
+            try { clobTokenIds = JSON.parse(m.clobTokenIds || '[]'); } catch (e) {}
+            let outcomes = [];
+            try { outcomes = JSON.parse(m.outcomes || '[]'); } catch (e) {}
+            
+            results.push({
+              title: event.title || m.question,
+              question: m.question,
+              conditionId: m.conditionId,
+              outcomes: outcomes,
+              clobTokenIds: clobTokenIds,
+              volume: m.volumeNum
+            });
+          }
+        }
       }
       
-      return markets.slice(0, limit);
+      // Sort by volume descending
+      results.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+      
+      return results.slice(0, limit);
     } catch (error: any) {
       throw new Error(`Failed to search markets: ${error.message}`);
     }

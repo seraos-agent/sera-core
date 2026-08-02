@@ -830,6 +830,31 @@ io.on('connection', (socket: Socket) => {
     socket.emit('mcp:keys_list', mcpApiKeyStore.listKeys(socket.data.sessionId!));
   });
 
+  // ── Connector Marketplace Events ────────────────────────────────────────
+  socket.on('connector:list', () => {
+    if (!instance?.runtime?.capabilityCatalog) return;
+    const summaries = instance.runtime.capabilityCatalog.allConnectorSummaries();
+    socket.emit('connector:catalog', summaries);
+  });
+
+  socket.on('connector:activate', (payload: { connectorId: string }) => {
+    if (!requireAuthenticatedSession(socket, 'connector:activate', instance?.eventBus)) return;
+    if (!instance?.runtime?.capabilityCatalog) return;
+    instance.runtime.capabilityCatalog.activateConnector(payload.connectorId);
+    const summaries = instance.runtime.capabilityCatalog.allConnectorSummaries();
+    socket.emit('connector:status_changed', summaries);
+    console.log(`[Server] Connector activated: ${payload.connectorId}`);
+  });
+
+  socket.on('connector:deactivate', (payload: { connectorId: string }) => {
+    if (!requireAuthenticatedSession(socket, 'connector:deactivate', instance?.eventBus)) return;
+    if (!instance?.runtime?.capabilityCatalog) return;
+    instance.runtime.capabilityCatalog.deactivateConnector(payload.connectorId);
+    const summaries = instance.runtime.capabilityCatalog.allConnectorSummaries();
+    socket.emit('connector:status_changed', summaries);
+    console.log(`[Server] Connector deactivated: ${payload.connectorId}`);
+  });
+
   socket.on('disconnect', () => {
     unbindListeners();
     console.log(`[Server] UI Client disconnected: ${socket.id}`);

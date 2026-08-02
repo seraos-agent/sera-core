@@ -160,6 +160,7 @@ function InnerApp() {
   const { open } = useAppKit();
   const [isBypassed, setIsBypassed] = useState(false);
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
+  const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
 
   const startWalletLink = () => {
     if (!socket || !address || isBypassed) return;
@@ -264,6 +265,10 @@ function InnerApp() {
       socket.on('identity:link_success', handleWalletLinkSuccess);
       socket.on('identity:link_error', handleWalletLinkError);
       
+      socket.on('connector:catalog', setActiveConnectors);
+      socket.on('connector:status_changed', setActiveConnectors);
+      socket.emit('connector:list');
+      
       if (isConnected && address) {
         if (walletLinkSourceAddress) {
           if (isAwaitingLinkedWallet) socket.emit('identity:link_wallet_challenge', { address });
@@ -280,6 +285,8 @@ function InnerApp() {
         socket.off('identity:link_wallet_challenge', signWalletLinkChallenge);
         socket.off('identity:link_success', handleWalletLinkSuccess);
         socket.off('identity:link_error', handleWalletLinkError);
+        socket.off('connector:catalog', setActiveConnectors);
+        socket.off('connector:status_changed', setActiveConnectors);
       };
     }
   }, [socket, isConnected, address, isBypassed, walletLinkSourceAddress, setMessages, signMessageAsync, setWalletState]);
@@ -355,6 +362,7 @@ function InnerApp() {
               onNavigate={setCurrentView}
               walletState={walletState}
               onOpenBilling={() => setBillingOpen(true)}
+              activeConnectors={activeConnectors}
             />
 
             {billingOpen && (

@@ -62,14 +62,20 @@ export class UniversalAgenticWallet implements IExecutionCapability {
     if (network === 'polygon') {
       return this.polygonAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
     }
-    return this.baseAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
+    if (network === 'base-mainnet' || network === 'base-sepolia') {
+      return this.baseAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
+    }
+    return 0; // Unsupported network
   }
 
   async getAddressBalance(address: string, asset: string, network: string = 'base-mainnet'): Promise<number> {
     if (network === 'polygon') {
       return this.polygonAdapter.getBalance(address as `0x${string}`, asset);
     }
-    return this.baseAdapter.getBalance(address as `0x${string}`, asset);
+    if (network === 'base-mainnet' || network === 'base-sepolia') {
+      return this.baseAdapter.getBalance(address as `0x${string}`, asset);
+    }
+    return 0; // Unsupported network
   }
 
   async execute(walletId: WalletId, context: ExecutionContext<TransferIntentParameters>): Promise<ExecutionReceipt> {

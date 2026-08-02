@@ -1,8 +1,9 @@
 import { createPublicClient, formatEther, formatUnits, http, isAddress } from 'viem';
-import { base } from 'viem/chains';
+import { base, polygon, mainnet } from 'viem/chains';
 import { ExecutionContext } from '../../core/execution/ExecutionContext';
 import { SeraUserId } from '../../core/identity/types';
 import { USDC_BASE_MAINNET } from './chains/BaseAdapter';
+import { USDC_POLYGON_MAINNET } from './chains/PolygonAdapter';
 import { ExecutionReceipt, WalletId } from './types';
 import { WalletCustodyProvider, WalletCustodyUnavailableError } from './WalletCustodyProvider';
 
@@ -15,6 +16,9 @@ const ERC20_ABI = [
     outputs: [{ type: 'uint256' }],
   },
 ] as const;
+
+// USDC on Ethereum Mainnet
+const USDC_ETHEREUM_MAINNET = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const;
 
 interface ThirdwebServerWalletResponse {
   result?: { address?: string };
@@ -31,9 +35,17 @@ interface ThirdwebServerWalletResponse {
  */
 export class ThirdwebCustodyProvider implements WalletCustodyProvider {
   readonly providerId = 'thirdweb';
-  private readonly client = createPublicClient({
+  private readonly baseClient = createPublicClient({
     chain: base,
     transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
+  });
+  private readonly polygonClient = createPublicClient({
+    chain: polygon,
+    transport: http(process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com'),
+  });
+  private readonly ethClient = createPublicClient({
+    chain: mainnet,
+    transport: http(process.env.ETH_RPC_URL || 'https://eth.drpc.org'),
   });
   private readonly wallets = new Map<string, WalletId>();
 
@@ -72,27 +84,64 @@ export class ThirdwebCustodyProvider implements WalletCustodyProvider {
     return wallet;
   }
 
-  async getBalance(walletId: WalletId, asset: string): Promise<number> {
-    return this.getAddressBalance(walletId.address, asset);
+  async getBalance(walletId: WalletId, asset: string, network?: string): Promise<number> {
+    return this.getAddressBalance(walletId.address, asset, network);
   }
 
-  async getAddressBalance(address: string, asset: string): Promise<number> {
+  async getAddressBalance(address: string, asset: string, network?: string): Promise<number> {
     if (!isAddress(address)) {
       throw new WalletCustodyUnavailableError('A valid wallet address is required to read a balance.');
     }
 
-    if (asset.trim().toLowerCase() === 'usdc') {
-      const balance = await this.client.readContract({
+    const resolvedNetwork = (network || 'base-mainnet').toLowerCase();
+    const assetLower = asset.trim().toLowerCase();
+
+    // Select the correct client and USDC contract for the network
+    if (resolvedNetwork === 'polygon') {
+      if (assetLower === 'usdc') {
+        const balance = await this.polygonClient.readContract({
+          address: USDC_POLYGON_MAINNET,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        });
+        return Number(formatUnits(balance, 6));
+      }
+      if (assetLower === 'pol' || assetLower === 'matic') {
+        return Number(formatEther(await this.polygonClient.getBalance({ address: address as `0x${string}` })));
+      }
+      return 0;
+    }
+
+    if (resolvedNetwork === 'ethereum') {
+      if (assetLower === 'usdc') {
+        const balance = await this.ethClient.readContract({
+          address: USDC_ETHEREUM_MAINNET,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        });
+        return Number(formatUnits(balance, 6));
+      }
+      if (assetLower === 'eth') {
+        return Number(formatEther(await this.ethClient.getBalance({ address: address as `0x${string}` })));
+      }
+      return 0;
+    }
+
+    // Default: Base Mainnet
+    if (assetLower === 'usdc') {
+      const balance = await this.baseClient.readContract({
         address: USDC_BASE_MAINNET,
         abi: ERC20_ABI,
         functionName: 'balanceOf',
-        args: [address],
+        args: [address as `0x${string}`],
       });
       return Number(formatUnits(balance, 6));
     }
 
-    if (asset.trim().toLowerCase() === 'eth') {
-      return Number(formatEther(await this.client.getBalance({ address })));
+    if (assetLower === 'eth') {
+      return Number(formatEther(await this.baseClient.getBalance({ address: address as `0x${string}` })));
     }
 
     throw new WalletCustodyUnavailableError(`Unsupported read-only asset: ${asset}.`);

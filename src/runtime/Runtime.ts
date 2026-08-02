@@ -43,6 +43,7 @@ import { CapabilityRoutingPolicy } from '../core/llm/CapabilityRoutingPolicy';
 import { ModelOrchestrator } from '../core/llm/ModelOrchestrator';
 import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
+import { ConnectorActivationStore } from '../core/capabilities/ConnectorActivationStore';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
@@ -223,7 +224,8 @@ export class Runtime {
     const persistUserData = options?.persistUserData ?? this.persistUserData;
     this.worldStateService = new WorldStateService(globalEventBus, options?.sessionId || 'default', { persistLocally: persistUserData });
     
-    this.capabilityCatalog = new CapabilityCatalog();
+    const activationStore = new ConnectorActivationStore(persistUserData);
+    this.capabilityCatalog = new CapabilityCatalog(activationStore);
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
     const hyperliquidCap = new HyperliquidMarketDataCapability();
@@ -238,7 +240,73 @@ export class Runtime {
       HyperliquidTradingProductContract.id,
       [...hyperliquidCap.getTools(), ...paperTradingCap.getTools()].map(tool => tool.name)
     );
-    this.capabilityCatalog.registerTools([...walletCap.getTools(), ...commCap.getTools(), ...hyperliquidCap.getTools(), ...paperTradingCap.getTools(), ...autonomyAgreementCap.getTools(), ...polymarketCap.getTools()]);
+
+    // ── Register Connectors with full metadata ─────────────────────────────
+    // Always-on connectors: available from boot, cannot be deactivated
+    this.capabilityCatalog.registerConnector({
+      id: 'wallet',
+      name: 'Base Network',
+      category: 'finance',
+      description: 'On-chain USDC/ETH transfers & Agent Vault',
+      riskSummary: 'Core wallet functionality for managing on-chain assets on the Base network. This connector is always active as it provides fundamental asset management capabilities.',
+      network: 'Base',
+      alwaysActive: true,
+      tools: walletCap.getTools(),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'communication',
+      name: 'Slack',
+      category: 'communication',
+      description: 'Interactive bot via Slack Socket Mode (@sera)',
+      riskSummary: 'Enables Sera to communicate through Slack channels. This connector is always active for core messaging capabilities.',
+      alwaysActive: true,
+      tools: commCap.getTools(),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'autonomy',
+      name: 'Operating Agreements',
+      category: 'connectors',
+      description: 'Manage delegation scopes and autonomy agreements',
+      riskSummary: 'Allows Sera to propose and manage operating agreements that define its level of autonomous authority. This connector is always active as it is part of the governance layer.',
+      alwaysActive: true,
+      tools: autonomyAgreementCap.getTools(),
+    });
+
+    // Opt-in connectors: require explicit user activation
+    this.capabilityCatalog.registerConnector({
+      id: 'hyperliquid-market-data',
+      name: 'Hyperliquid',
+      category: 'finance',
+      description: 'Real-time candles, orderbooks & perpetual trading',
+      riskSummary: 'Hyperliquid is a decentralized perpetual exchange. Activating this connector allows Sera to read real-time market data including price candles, orderbooks, and funding rates. The market data tools are read-only and do not execute trades.',
+      network: 'Hyperliquid L1',
+      alwaysActive: false,
+      tools: hyperliquidCap.getTools(),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'paper-trading',
+      name: 'Paper Trading',
+      category: 'finance',
+      description: 'Simulated trading with virtual funds for strategy testing',
+      riskSummary: 'Paper Trading uses simulated (virtual) funds to test trading strategies without financial risk. No real assets are involved. This is a safe way to evaluate Sera\'s trading capabilities before committing real capital.',
+      alwaysActive: false,
+      tools: paperTradingCap.getTools(),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'polymarket',
+      name: 'Polymarket (Polygon)',
+      category: 'finance',
+      description: 'Prediction markets & CLOB trading on Polygon',
+      riskSummary: 'Polymarket is a prediction market platform on the Polygon network. Activating this connector allows Sera to search active markets, view orderbooks with bid/ask spreads, and execute trades (buy/sell prediction shares) using your wallet funds. Trading on prediction markets involves real financial risk — you may lose your entire position if the outcome does not resolve in your favor.',
+      network: 'Polygon PoS',
+      alwaysActive: false,
+      tools: polymarketCap.getTools(),
+      executeTool: (name: string, args: any) => polymarketCap.executeTool(name, args),
+    });
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
     

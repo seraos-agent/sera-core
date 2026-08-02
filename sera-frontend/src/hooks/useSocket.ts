@@ -163,6 +163,11 @@ export function useSocket(
           fullAddress: data.address,
           balance: `${Number(data.balance).toFixed(2)} ${data.asset || 'USDC'}`,
           vaultBalance: data.vaultBalance ? `${Number(data.vaultBalance).toFixed(2)} ${data.asset || 'USDC'}` : prev.vaultBalance,
+          vaultBalances: data.vaultBalances ? {
+            base: data.vaultBalances.base || '0',
+            polygon: data.vaultBalances.polygon || '0',
+            ethereum: data.vaultBalances.ethereum || '0',
+          } : prev.vaultBalances,
           chain: data.network,
           vaultAddress: data.vaultAddress || prev.vaultAddress,
           syncing: false,

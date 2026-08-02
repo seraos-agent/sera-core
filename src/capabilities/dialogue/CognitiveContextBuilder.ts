@@ -17,7 +17,8 @@ export class CognitiveContextBuilder {
   constructor(
     private readonly worldStateService: WorldStateService,
     private readonly memoryQueryService: MemoryQueryService,
-    private readonly chatHistoryStore: ChatHistoryStore
+    private readonly chatHistoryStore: ChatHistoryStore,
+    private readonly capabilityCatalog: any
   ) {}
 
   public async build(
@@ -43,7 +44,8 @@ export class CognitiveContextBuilder {
     const cognitiveState = {
       relevant_facts: {
         currentTime: new Date().toUTCString(),
-        userMainWalletAddress: walletState?.address || 'Unknown'
+        userMainWalletAddress: walletState?.address || 'Unknown',
+        activeCapabilities: this.capabilityCatalog ? this.capabilityCatalog.allConnectorSummaries().filter((c: any) => c.isActive).map((c: any) => c.name) : []
       },
       memory_attention: this.memoryQueryService.toPromptContext(memoryAttention),
       constraints: [
@@ -53,7 +55,8 @@ export class CognitiveContextBuilder {
         'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
         'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
         'CRITICAL — SERA IDENTITY & SPOT TRADING: You are SERA Agent, a sovereign Web3 AI operational agent. You HAVE your own operational wallet (agent_vault) and active DEX Spot Market execution capabilities on Base Network (Uniswap V3 / Aerodrome). You CAN buy, sell, and swap ERC-20 crypto tokens. NEVER say you lack access to exchanges or wallets. When asked if you can buy or swap a token, explain confidently that you CAN execute spot DEX swaps via your operational wallet, and generate a SPOT_SWAP tool call or proposal for the user to approve.',
-        'CRITICAL — SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action, monitor an asset, or fetch data periodically/recurringly (e.g., "every 30 seconds", "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.'
+        'CRITICAL — SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action, monitor an asset, or fetch data periodically/recurringly (e.g., "every 30 seconds", "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.',
+        'CRITICAL — POLYMARKET CAPABILITIES: If the user has Polymarket active, you MUST know that Polymarket CAN be used to predict ANY real-world event AND crypto prices (e.g. BTC/ETH 5-minute predictions, long term prices). NEVER refuse to check crypto prices on Polymarket by claiming it is only for real-world events. Use the POLYMARKET_SEARCH_MARKETS tool to find crypto prediction markets.'
       ]
     };
 
@@ -76,8 +79,8 @@ export class CognitiveContextBuilder {
         .map(m => ({ role: m.role === 'agent' ? ('assistant' as const) : ('user' as const), content: m.content! }));
 
       const context = this.conversationContextCompressor.compress(recentUi, {
-        tokenBudget: 700,
-        maxRecentTurns: 5
+        tokenBudget: 3000,
+        maxRecentTurns: 15
       });
 
       messages.push(...context.messages);
@@ -92,7 +95,7 @@ export class CognitiveContextBuilder {
 
       if (history.length > 0) {
         const context = this.conversationContextCompressor.compress(history, {
-          tokenBudget: 700,
+          tokenBudget: 3000,
           maxRecentTurns: maxPlatformHistoryTurns
         });
         messages.push({

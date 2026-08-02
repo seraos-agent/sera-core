@@ -120,8 +120,18 @@ export class GoalBridge {
         primaryAddress = this.personalWalletAddress || '';
         vaultAddress = walletId.address; // The generated agent wallet for this user
         
-        // Mocking user balance as 0 for now until implemented
-        primaryBalance = '0'; 
+        // Fetch actual user balance instead of mocking
+        try {
+          if (primaryAddress) {
+            const pb = await this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet');
+            primaryBalance = pb.toString();
+          } else {
+            primaryBalance = '0';
+          }
+        } catch (e) {
+          console.warn('[GoalBridge] Failed to get user personal balance:', e);
+          primaryBalance = '0';
+        }
         
         if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
           try {
@@ -142,6 +152,7 @@ export class GoalBridge {
           vaultAddress,
           balance: primaryBalance,
           vaultBalance,
+          vaultBalances: { base: vaultBalance, polygon: '0', ethereum: '0' },
           network: walletId.network,
           asset: 'USDC'
         },
@@ -389,6 +400,9 @@ export class GoalBridge {
       let primaryBalance = '0';
       let vaultBalance = this.cachedVault || '0';
 
+      // Multi-network vault balances
+      let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
+
       if (!userAddress) {
         primaryAddress = walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
@@ -401,16 +415,29 @@ export class GoalBridge {
       } else {
         primaryAddress = userAddress;
         vaultAddress = walletId.address;
-        primaryBalance = '0'; // Mocking user balance as 0 for now
+        try {
+          const pb = await this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet');
+          primaryBalance = pb.toString();
+        } catch (e) {
+          console.warn('[GoalBridge] Failed to get user personal balance:', e);
+          primaryBalance = '0';
+        }
       }
 
+      // Fetch vault balances across all networks concurrently
       if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        try {
-          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-          vaultBalance = vb.toString();
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get vault balance, keeping cached:', e);
-        }
+        const [baseResult, polygonResult, ethResult] = await Promise.allSettled([
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'polygon'),
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'ethereum'),
+        ]);
+
+        vaultBalances.base = baseResult.status === 'fulfilled' ? baseResult.value.toString() : '0';
+        vaultBalances.polygon = polygonResult.status === 'fulfilled' ? polygonResult.value.toString() : '0';
+        vaultBalances.ethereum = ethResult.status === 'fulfilled' ? ethResult.value.toString() : '0';
+
+        // Primary vault balance stays as the Base balance for backward compatibility
+        vaultBalance = vaultBalances.base;
       }
 
       this.cachedPersonal = primaryBalance;
@@ -420,7 +447,8 @@ export class GoalBridge {
       asset: 'USDC',
       personalBalance: primaryBalance,
       vaultBalance,
-      totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalance)).toString(),
+      vaultBalances,
+      totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
       network: walletId.network || 'Base Mainnet',
       personalAddress: primaryAddress,
       vaultAddress,
@@ -435,6 +463,7 @@ export class GoalBridge {
         vaultAddress,
         balance: primaryBalance,
         vaultBalance,
+        vaultBalances,
         network: walletId.network || 'Base Mainnet',
         asset: 'USDC'
       },
@@ -450,6 +479,7 @@ export class GoalBridge {
           asset: 'USDC',
           personalBalance: this.cachedPersonal,
           vaultBalance: this.cachedVault,
+          vaultBalances: { base: this.cachedVault, polygon: '0', ethereum: '0' },
           totalBalance: (parseFloat(this.cachedPersonal) + parseFloat(this.cachedVault)).toString(),
           network: 'Base Mainnet',
           personalAddress: this.currentWalletId.address,
