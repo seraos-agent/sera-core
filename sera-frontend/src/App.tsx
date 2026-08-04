@@ -11,6 +11,7 @@ import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
 
 import { LandingPage } from "./components/landing/LandingPage";
+import { PolymarketPage } from "./components/polymarket/PolymarketPage";
 import { BillingModal } from "./components/sidebar/BillingModal";
 import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
@@ -46,12 +47,12 @@ createAppKit({
   metadata,
   // Wallet connection is infrastructure only. Conversion and funding remain
   // governed SERA capabilities, never provider-modal actions.
-  features: { 
-    analytics: false, 
-    swaps: false, 
+  features: {
+    analytics: false,
+    swaps: false,
     onramp: false,
     email: true,
-    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+    socials: ['google'],
     emailShowWallets: true,
     connectMethodsOrder: ['email', 'social', 'wallet']
   },
@@ -205,14 +206,14 @@ function InnerApp() {
           socket.emit("auth:login", { address, message: data.message, signature });
         } catch {
           // The server keeps this socket unauthenticated until the user signs.
-          setWalletState(prev => ({ 
-            ...prev, 
-            syncing: false, 
-            error: "Authentication signature rejected. Please sign the message to authenticate your session." 
+          setWalletState(prev => ({
+            ...prev,
+            syncing: false,
+            error: "Authentication signature rejected. Please sign the message to authenticate your session."
           }));
         }
       };
-      
+
       const handleAuthSuccess = (data: { token: string }) => {
         if (address) {
           localStorage.setItem(`sera_auth_token_${address.toLowerCase()}`, data.token);
@@ -225,11 +226,11 @@ function InnerApp() {
           localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
           socket.emit('auth:challenge'); // Retry with fresh challenge
         } else {
-           setWalletState(prev => ({ 
-             ...prev, 
-             syncing: false, 
-             error: err.message || "Authentication failed." 
-           }));
+          setWalletState(prev => ({
+            ...prev,
+            syncing: false,
+            error: err.message || "Authentication failed."
+          }));
         }
       };
 
@@ -256,7 +257,7 @@ function InnerApp() {
         setWalletLinkSourceAddress(null);
         setWalletState(prev => ({ ...prev, syncing: false, error: error.message || 'The wallet could not be linked.' }));
       };
-      
+
       socket.on("auth:challenge", requestChallenge);
       socket.on("auth:success", handleAuthSuccess);
       socket.on("auth:error", handleAuthError);
@@ -264,11 +265,11 @@ function InnerApp() {
       socket.on('identity:link_wallet_challenge', signWalletLinkChallenge);
       socket.on('identity:link_success', handleWalletLinkSuccess);
       socket.on('identity:link_error', handleWalletLinkError);
-      
+
       socket.on('connector:catalog', setActiveConnectors);
       socket.on('connector:status_changed', setActiveConnectors);
       socket.emit('connector:list');
-      
+
       if (isConnected && address) {
         if (walletLinkSourceAddress) {
           if (isAwaitingLinkedWallet) socket.emit('identity:link_wallet_challenge', { address });
@@ -276,7 +277,7 @@ function InnerApp() {
           socket.emit("auth:challenge");
         }
       }
-      
+
       return () => {
         socket.off("auth:challenge", requestChallenge);
         socket.off("auth:success", handleAuthSuccess);
@@ -301,19 +302,19 @@ function InnerApp() {
           setThemeMode(landingMode);
           window.requestAnimationFrame(() => open());
         }} />
-        
+
         {/* Tombol Bypass khusus Localhost */}
         {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
-          <button 
+          <button
             onClick={() => {
               setIsBypassed(true);
               if (socket) {
                 socket.emit("auth:login", {});
               }
             }}
-            style={{ 
-              position: "fixed", bottom: 20, right: 20, background: "#ef4444", color: "#fff", 
-              border: "none", padding: "10px 20px", borderRadius: 12, cursor: "pointer", 
+            style={{
+              position: "fixed", bottom: 20, right: 20, background: "#ef4444", color: "#fff",
+              border: "none", padding: "10px 20px", borderRadius: 12, cursor: "pointer",
               fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
               fontFamily: "Inter, sans-serif"
             }}
@@ -327,7 +328,7 @@ function InnerApp() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
-          <style>{`
+      <style>{`
           body { margin: 0; padding: 0; overflow: hidden; }
           @keyframes chatui-blink { 50% { opacity: 0; } }
           @keyframes chatui-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
@@ -336,105 +337,118 @@ function InnerApp() {
           .chatui-textarea { scrollbar-width: thin; }
         `}</style>
 
-          <div
+      <div
 
-            className="chatui-shell"
-            style={{
-              width: shellWidth,
-              maxWidth: "100%",
-              height: shellHeight,
-              background: theme.bg,
-              borderRadius: isMobileView ? 28 : 0,
-              border: isMobileView ? `1px solid ${theme.border}` : "none",
-              overflow: "hidden",
-              display: "flex",
-              position: "relative",
-              boxShadow: isMobileView ? theme.shellShadow : "none",
+        className="chatui-shell"
+        style={{
+          width: shellWidth,
+          maxWidth: "100%",
+          height: shellHeight,
+          background: theme.bg,
+          borderRadius: isMobileView ? 28 : 0,
+          border: isMobileView ? `1px solid ${theme.border}` : "none",
+          overflow: "hidden",
+          display: "flex",
+          position: "relative",
+          boxShadow: isMobileView ? theme.shellShadow : "none",
+        }}
+      >
+        <Sidebar
+          theme={theme}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          isMobileView={isMobileView}
+          currentView={currentView}
+          onNavigate={setCurrentView}
+          walletState={walletState}
+          onOpenBilling={() => setBillingOpen(true)}
+          activeConnectors={activeConnectors}
+        />
+
+        {billingOpen && (
+          <BillingModal
+            theme={theme}
+            walletState={walletState}
+            onClose={() => setBillingOpen(false)}
+          />
+        )}
+
+        {currentView === "profile" ? <ProfilePage
+          theme={theme}
+          walletState={walletState}
+          isMobileView={isMobileView}
+          mode={mode}
+          onModeChange={setMode}
+          onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          onManageWallet={() => open()}
+          onDisconnect={() => {
+            if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
+            socket?.emit('auth:logout');
+            disconnect();
+          }}
+          onLinkWallet={isBypassed ? undefined : startWalletLink}
+          isLinkingWallet={Boolean(walletLinkSourceAddress)}
+          memoryVault={memoryVault}
+          deviceVault={deviceVault}
+          onDeleteDeviceMemory={deleteDeviceMemory}
+          googleDrive={googleDrive}
+          onConnectGoogleDrive={connectGoogleDrive}
+          onDisconnectGoogleDrive={disconnectGoogleDrive}
+        /> : currentView === "wallet" ? (
+          <WalletPage
+            theme={theme}
+            walletState={walletState}
+            socket={socket}
+            isMobileView={isMobileView}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
+        ) : currentView === "connections" ? (
+          <ConnectionsPage
+            theme={theme}
+            walletState={walletState}
+            socket={socket}
+            isMobileView={isMobileView}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
+        ) : currentView === "automations" ? (
+          <AutomationsPage
+            theme={theme}
+            socket={socket}
+            isMobileView={isMobileView}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
+        ) : currentView === "polymarket" ? (
+          <PolymarketPage
+            theme={theme}
+            socket={socket}
+            isMobileView={isMobileView}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+            onTradeMarket={(market, outcomeLabel, price) => {
+              const text = `I want to buy 10 USDC of "${outcomeLabel}" on the Polymarket: "${market.title}". Current probability is ${Math.round(parseFloat(price) * 100)}%. Please prepare a trade proposal for me to approve.`;
+              handleSend(text);
+              setCurrentView("chat");
+              setSidebarOpen(true);
             }}
-          >
-            <Sidebar
-              theme={theme}
-              open={sidebarOpen}
-              onClose={() => setSidebarOpen(false)}
-              onToggle={() => setSidebarOpen(!sidebarOpen)}
-              isMobileView={isMobileView}
-              currentView={currentView}
-              onNavigate={setCurrentView}
-              walletState={walletState}
-              onOpenBilling={() => setBillingOpen(true)}
-              activeConnectors={activeConnectors}
-            />
-
-            {billingOpen && (
-              <BillingModal
-                theme={theme}
-                walletState={walletState}
-                onClose={() => setBillingOpen(false)}
-              />
-            )}
-
-            {currentView === "profile" ? <ProfilePage
-              theme={theme}
-              walletState={walletState}
-              isMobileView={isMobileView}
-              mode={mode}
-              onModeChange={setMode}
-              onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-              onManageWallet={() => open()}
-              onDisconnect={() => {
-                if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
-                socket?.emit('auth:logout');
-                disconnect();
-              }}
-              onLinkWallet={isBypassed ? undefined : startWalletLink}
-              isLinkingWallet={Boolean(walletLinkSourceAddress)}
-              memoryVault={memoryVault}
-              deviceVault={deviceVault}
-              onDeleteDeviceMemory={deleteDeviceMemory}
-              googleDrive={googleDrive}
-              onConnectGoogleDrive={connectGoogleDrive}
-              onDisconnectGoogleDrive={disconnectGoogleDrive}
-            /> : currentView === "wallet" ? (
-              <WalletPage
-                theme={theme}
-                walletState={walletState}
-                socket={socket}
-                isMobileView={isMobileView}
-                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-              />
-            ) : currentView === "connections" ? (
-              <ConnectionsPage
-                theme={theme}
-                walletState={walletState}
-                socket={socket}
-                isMobileView={isMobileView}
-                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-              />
-            ) : currentView === "automations" ? (
-              <AutomationsPage
-                theme={theme}
-                socket={socket}
-                isMobileView={isMobileView}
-                onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-              />
-            ) : (
-              <ChatView
-                theme={theme}
-                messages={messages}
-                setMessages={setMessages}
-                isMobileView={isMobileView}
-                onOpenSidebar={() => setSidebarOpen(true)}
-                onSend={handleSend}
-                socket={socket}
-                currentActivity={currentActivity}
-                onCancelChat={cancelChat}
-                walletState={walletState}
-                governanceRecommendations={governanceRecommendations}
-                onRespondGovernance={respondToGovernanceRecommendation}
-              />
-            )}
-          </div>
-        </div>
+          />
+        ) : (
+          <ChatView
+            theme={theme}
+            messages={messages}
+            setMessages={setMessages}
+            isMobileView={isMobileView}
+            onOpenSidebar={() => setSidebarOpen(true)}
+            onSend={handleSend}
+            socket={socket}
+            currentActivity={currentActivity}
+            onCancelChat={cancelChat}
+            walletState={walletState}
+            governanceRecommendations={governanceRecommendations}
+            onRespondGovernance={respondToGovernanceRecommendation}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 

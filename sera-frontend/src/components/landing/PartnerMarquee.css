@@ -1,0 +1,115 @@
+.partner-marquee-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 28px; /* Space between row 1 and row 2 (increased) */
+  width: 100%;
+  max-width: 800px;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  margin: 38px auto 0;
+}
+
+.partner-marquee-container {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  /* Fade edges for smooth entrance/exit */
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+
+.partner-marquee-content.reverse {
+  animation: scrollMarqueeReverse 15s linear infinite;
+}
+
+.partner-marquee-content {
+  display: flex;
+  flex-shrink: 0;
+  width: -webkit-max-content;
+  width: -moz-max-content;
+  width: max-content;
+  gap: 14px;
+  padding-right: 14px; /* Matches gap for seamless loop */
+  animation: scrollMarquee 35s linear infinite;
+  will-change: transform;
+}
+
+.partner-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 24px 8px 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+  font: 700 16px/1.2 Manrope, sans-serif;
+  cursor: default;
+  transition: transform 0.2s, color 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.partner-item:hover {
+  transform: translateY(-2px);
+  color: var(--ink);
+}
+
+.partner-img-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  /* Removed white background and shadow so native logo colors don't clash */
+}
+
+@keyframes scrollMarquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes scrollMarqueeReverse {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+
+/* Dark mode adjustments if LandingPage sets global dark classes */
+@media (prefers-color-scheme: dark) {
+  .partner-item {
+    color: #999;
+  }
+  .partner-item:hover {
+    color: #fff;
+  }
+}
+
+.partner-img-frame img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+/* Mobile Adjustments for High-Density Marquee */
+@media (max-width: 600px) {
+  .partner-item {
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .partner-img-frame {
+    width: 28px;
+    height: 28px;
+  }
+
+  .partner-img-frame img {
+    width: 28px;
+    height: 28px;
+  }
+}

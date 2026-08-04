@@ -67,3 +67,13 @@ button {
   cursor: pointer;
   outline: none;
 }
+
+/* Markdown Overrides */
+.markdown-content li > p {
+  margin-top: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0 !important;
+}

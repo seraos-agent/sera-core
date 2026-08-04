@@ -2404,33 +2404,47 @@
 
 @media(max-width:760px) {
   .idle-scene {
-    width: 100%;
-    transform: translateY(-30px);
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 16px !important;
+    box-sizing: border-box !important;
+    transform: translateY(-10px) !important;
   }
 
+  .room-kicker,
   .idle-kicker {
-    margin-bottom: 18px;
-    font-size: 9.5px;
-    letter-spacing: .12em;
+    margin-bottom: 12px !important;
+    font-size: 10px !important;
+    letter-spacing: .12em !important;
   }
 
-  .idle-headline {
-    max-width: 350px;
-    font-size: clamp(34px, 9.8vw, 48px) !important;
-    line-height: 1.05 !important;
-    white-space: normal;
-  }
-
+  .idle-headline,
   .idle-scene h1 {
-    max-width: 350px;
-    white-space: normal;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: clamp(24px, 7vw, 34px) !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
+  .idle-word {
+    display: inline !important;
+    white-space: normal !important;
+  }
+
+  .idle-copy,
   .idle-sub {
-    max-width: 330px;
-    margin-top: 20px;
-    font-size: 12px;
-    line-height: 1.6;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 14px !important;
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+    white-space: normal !important;
+    padding: 0 4px !important;
+    box-sizing: border-box !important;
   }
 
   .idle-ecosystem {

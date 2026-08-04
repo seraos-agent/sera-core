@@ -63,13 +63,18 @@ export class PolymarketService {
             try { clobTokenIds = JSON.parse(m.clobTokenIds || '[]'); } catch (e) {}
             let outcomes = [];
             try { outcomes = JSON.parse(m.outcomes || '[]'); } catch (e) {}
+            let outcomePrices = [];
+            try { outcomePrices = JSON.parse(m.outcomePrices || '[]'); } catch (e) {}
             
             results.push({
               title: event.title || m.question,
               question: m.question,
               conditionId: m.conditionId,
               outcomes: outcomes,
+              outcomePrices: outcomePrices,
               clobTokenIds: clobTokenIds,
+              yesTokenId: clobTokenIds[0] || null,
+              noTokenId: clobTokenIds[1] || null,
               volume: m.volumeNum
             });
           }
@@ -126,7 +131,7 @@ export class PolymarketService {
         price: finalPrice,
         side: side === 'BUY' ? Side.BUY : Side.SELL,
         size: amountShares,
-        feeRateBps: 0,
+        feeRateBps: 1000,
       });
     } catch (error: any) {
       throw new Error(`Failed to submit order: ${error.message}`);
@@ -142,6 +147,33 @@ export class PolymarketService {
       return await this.client!.getOrderBook(tokenId);
     } catch (error: any) {
       throw new Error(`Failed to get orderbook: ${error.message}`);
+    }
+  }
+
+  /**
+   * Gets the USDC balance and allowance for the agentic wallet.
+   */
+  public async getPortfolio(): Promise<any> {
+    await this.initialize();
+    try {
+      // SDK might require { params: {} } or similar, but ClobClient's getBalanceAllowance is usually parameterless
+      return await this.client!.getBalanceAllowance({ assetType: 'USDC' } as any);
+    } catch (error: any) {
+      console.warn(`[PolymarketService] Failed to get portfolio: ${error.message}`);
+      return { balance: '0', allowance: '0' }; // fallback
+    }
+  }
+
+  /**
+   * Gets the user's active open orders.
+   */
+  public async getOpenOrders(): Promise<any[]> {
+    await this.initialize();
+    try {
+      return await this.client!.getOpenOrders();
+    } catch (error: any) {
+      console.warn(`[PolymarketService] Failed to get open orders: ${error.message}`);
+      return []; // fallback
     }
   }
 }

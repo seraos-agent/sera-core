@@ -72,6 +72,7 @@ export class Runtime {
   public proposalManager!: ProposalManager;
   public memoryStore: IWorkingMemory;
   public chatHistoryStore: any;
+  public polymarketService!: PolymarketService;
   public readonly productContracts = new DomainProductContractRegistry();
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
@@ -233,8 +234,8 @@ export class Runtime {
     const autonomyAgreementCap = new AutonomyAgreementCapability();
     
     const secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
-    const polymarketService = new PolymarketService(secretManager);
-    const polymarketCap = new PolymarketToolCapability(polymarketService);
+    this.polymarketService = new PolymarketService(secretManager);
+    const polymarketCap = new PolymarketToolCapability(this.polymarketService);
 
     this.productContracts.assertCapabilitiesAvailable(
       HyperliquidTradingProductContract.id,

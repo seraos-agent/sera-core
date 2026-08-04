@@ -114,7 +114,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
             fontFamily: "Inter, sans-serif",
             fontSize: 14.5,
             lineHeight: 1.65,
-            whiteSpace: "pre-wrap",
+            whiteSpace: isUser ? "pre-wrap" : "normal",
             wordBreak: "break-word",
           }}
         >

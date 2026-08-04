@@ -71,7 +71,12 @@ export class TreasuryDepositWatcher {
       const latestBlock = await this.client.getBlockNumber();
       if (latestBlock <= this.lastProcessedBlock) return;
 
-      const fromBlock = this.lastProcessedBlock + 1n;
+      // Ensure we don't query more than 9000 blocks at once (Base limit is 10,000)
+      const maxRange = 9000n;
+      const fromBlock = (latestBlock - this.lastProcessedBlock > maxRange) 
+        ? latestBlock - maxRange 
+        : this.lastProcessedBlock + 1n;
+
       const logs = await this.client.getLogs({
         address: this.usdcContractAddress as `0x${string}`,
         event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)'),

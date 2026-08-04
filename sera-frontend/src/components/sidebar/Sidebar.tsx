@@ -1,9 +1,9 @@
-import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet } from "lucide-react";
+import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet, Clock } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
-export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile";
+export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "polymarket";
 
 interface ConnectorSummary {
   id: string;
@@ -128,6 +128,30 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               )}
             </div>
 
+            <div
+              onClick={() => {
+                navigate("automations" as SidebarView);
+              }}
+              title={!open ? "Active Intents" : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: open ? "8px 6px" : "12px", borderRadius: 8,
+                cursor: "pointer", transition: "background 150ms",
+                marginBottom: 2,
+                justifyContent: open ? "flex-start" : "center",
+                background: currentView === "automations" ? theme.accentSoft : "transparent"
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = currentView === "automations" ? theme.accentSoft : theme.surface; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "automations" ? theme.accentSoft : "transparent"; }}
+            >
+              <Clock size={18} color={currentView === "automations" ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
+              {open && (
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: currentView === "automations" ? theme.accent : theme.inkSoft, fontWeight: currentView === "automations" ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Active Intents
+                </span>
+              )}
+            </div>
+
             {activeConnectors?.filter(c => c.isActive || c.alwaysActive).map((c) => {
               // Hide internal connectors from sidebar
               if (c.id === 'wallet' || c.id === 'autonomy' || c.id === 'communication') return null;
@@ -135,28 +159,33 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               // Hide any unrecognized connectors that don't have UI icons
               if (c.id !== 'polymarket' && c.id !== 'hyperliquid-market-data') return null;
 
+              const isPolymarket = c.id === 'polymarket';
+
               return (
                 <div
                   key={c.id}
+                  onClick={() => {
+                    if (isPolymarket) navigate("polymarket" as SidebarView);
+                  }}
                   title={!open ? c.name : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: "default", transition: "background 150ms",
+                    cursor: isPolymarket ? "pointer" : "default", transition: "background 150ms",
                     marginBottom: 2,
                     justifyContent: open ? "flex-start" : "center",
-                    background: "transparent"
+                    background: currentView === "polymarket" && isPolymarket ? theme.accentSoft : "transparent"
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = currentView === "polymarket" && isPolymarket ? theme.accentSoft : theme.surface; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "polymarket" && isPolymarket ? theme.accentSoft : "transparent"; }}
                 >
-                  {c.id === 'polymarket' ? (
+                  {isPolymarket ? (
                      <img src="/polymarket.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   ) : (
                      <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   )}
                   {open && (
-                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: (currentView === "polymarket" && isPolymarket) ? theme.accent : theme.inkSoft, fontWeight: (currentView === "polymarket" && isPolymarket) ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {c.name.split(' (')[0]}
                     </span>
                   )}

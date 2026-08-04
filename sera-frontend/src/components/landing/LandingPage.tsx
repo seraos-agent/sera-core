@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { FormEvent } from 'react';
-import { Activity, Database, Plug, Terminal, Wallet } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './LandingPage.css';
 import './PremiumPalette.css';
 import seraLogo from '../../assets/sera-logo.png';
-import globeMapSrc from '../../assets/globe-map.png';
+import { PartnerMarquee } from './PartnerMarquee';
 import { getReceptionReply } from '../../services/reception/receptionClient';
 import type { ReceptionReply, ReceptionVisual } from '../../services/reception/receptionClient';
 import type { ReceptionTurn } from '../../services/reception/receptionClient';
+import { Sun, Moon } from 'lucide-react';
 
 type Scene = 'reception' | ReceptionVisual;
 
@@ -229,6 +229,28 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button 
+            className="theme-toggle-header" 
+            onClick={() => setIsDark(!isDark)}
+            aria-label="Toggle theme"
+            title="Toggle theme"
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              fontSize: '18px', 
+              cursor: 'pointer',
+              padding: '6px',
+              display: 'grid',
+              placeItems: 'center',
+              color: 'var(--ink)',
+              opacity: 0.75,
+              transition: 'opacity 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+            onMouseOut={(e) => e.currentTarget.style.opacity = '0.75'}
+          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button className="header-launch" onClick={launchApp}>Launch SERA</button>
         </div>
       </header>
@@ -238,12 +260,7 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
           {/* SECTION 1: HERO SECTION */}
           <section className="landing-section hero-section" id="hero">
             {/* Animated gradient mesh background */}
-            <div className="hero-mesh" aria-hidden="true">
-              <span className="hero-blob hero-blob-1" />
-              <span className="hero-blob hero-blob-2" />
-              <span className="hero-blob hero-blob-3" />
-              <span className="hero-blob hero-blob-4" />
-            </div>
+            <DelayedMesh />
             <div className="landing-container">
               <div className="section-badge">SERA OS · Universal AI Agent Engine</div>
               <h1 className="hero-title">
@@ -281,23 +298,17 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
               </p>
               <div className="about-grid reveal-child reveal-delay-4">
                 <div className="about-card">
-                  <div className="card-icon">
-                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle className="icon-ring" cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M16 20c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path className="icon-draw icon-draw-2" d="M14 30l4-4m16-4l-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                  </div>
+
                   <h3>Zero Technical Friction</h3>
                   <p>No syntax or complex commands to memorize. Simply express your goals in everyday human language.</p>
                 </div>
                 <div className="about-card">
-                  <div className="card-icon">
-                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect className="icon-ring" x="8" y="8" width="32" height="32" rx="8" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M18 24h12M24 18v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle className="icon-pulse" cx="24" cy="24" r="6" stroke="currentColor" strokeWidth="1" /></svg>
-                  </div>
+
                   <h3>Real-World Execution</h3>
                   <p>Most AI tools stop at generating text. SERA constructs structured action plans and executes them for real.</p>
                 </div>
                 <div className="about-card">
-                  <div className="card-icon">
-                    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle className="icon-ring" cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="1.5" /><circle className="icon-pulse" cx="24" cy="24" r="10" stroke="currentColor" strokeWidth="1" /><circle className="icon-pulse icon-pulse-2" cx="24" cy="24" r="4" fill="currentColor" opacity="0.6" /><path className="icon-draw" d="M24 6v6M24 36v6M6 24h6M36 24h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                  </div>
+
                   <h3>Real-Time State Awareness</h3>
                   <p>SERA inspects live system state before acting, ensuring zero false assumptions during task execution.</p>
                 </div>
@@ -316,36 +327,28 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
               <div className="features-grid reveal-child reveal-delay-4">
                 <div className="feature-card">
                   <div className="feature-card-header">
-                    <div className="card-icon card-icon-sm">
-                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path className="icon-draw" d="M10 28c0-2 2-3 4-3h12c2 0 4 1 4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle className="icon-ring" cx="20" cy="15" r="7" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw icon-draw-2" d="M8 20h4M28 20h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                    </div>
+
                     <h3>Natural Language Interaction</h3>
                   </div>
                   <p>Describe goals in your own words. SERA understands context and intent accurately.</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
-                    <div className="card-icon card-icon-sm">
-                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect className="icon-ring" x="6" y="6" width="28" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M14 20l4 4 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </div>
+
                     <h3>Autonomous Planner</h3>
                   </div>
                   <p>Decomposes complex requests into structured, step-by-step proposals automatically.</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
-                    <div className="card-icon card-icon-sm">
-                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle className="icon-pulse" cx="20" cy="20" r="4" fill="currentColor" opacity="0.5" /><circle className="icon-ring" cx="20" cy="20" r="12" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw" d="M8 14l4 2M28 14l-4 2M8 26l4-2M28 26l-4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                    </div>
+
                     <h3>Multi-System & Web3 Connectors</h3>
                   </div>
                   <p>Integrates seamlessly with wallets, external APIs, data services, and automated tasks.</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
-                    <div className="card-icon card-icon-sm">
-                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path className="icon-draw" d="M20 6v6M20 28v6M6 20h6M28 20h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle className="icon-ring" cx="20" cy="20" r="10" stroke="currentColor" strokeWidth="1.5" /><path className="icon-draw icon-draw-2" d="M16 20l2.5 2.5L23 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </div>
+
                     <h3>Verifiable Control & Safeguards</h3>
                   </div>
                   <p>Critical actions require your explicit review and approval before execution.</p>
@@ -477,11 +480,8 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
         </>
       )}
 
-      {/* SECTION 6: INTERACTIVE TERMINAL EXPERIENCE (Globe, Reception Chat & Footer) */}
+      {/* SECTION 6: INTERACTIVE TERMINAL EXPERIENCE (Reception Chat & Footer) */}
       <div id="interactive" className="interactive-section">
-        {scene === 'reception' && (
-          <GlobeAccent isDark={isDark} onToggle={() => setIsDark(value => !value)} />
-        )}
 
         <section className="room-stage" id="reception">
           {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
@@ -531,100 +531,26 @@ export function LandingPage({ onLaunchApp }: { onLaunchApp: (theme: 'light' | 'd
 }
 
 
-function GlobeAccent({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
-  const rotationRef = useRef<SVGAnimateTransformElement | null>(null);
-  const modeToggleRef = useRef<HTMLButtonElement | null>(null);
+
+
+function DelayedMesh() {
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => rotationRef.current?.beginElement());
-    return () => window.cancelAnimationFrame(frame);
+    // Delay rendering the heavy CSS blur filters so they don't block the initial text paint (LCP)
+    const timer = setTimeout(() => setIsMounted(true), 150);
+    return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    const orbitDuration = 20_000;
-    const startedAt = performance.now();
-    let frame = 0;
-
-    const renderOrbit = (now: number) => {
-      const button = modeToggleRef.current;
-      if (button) {
-        const progress = ((now - startedAt) % orbitDuration) / orbitDuration;
-        const angle = Math.PI + progress * Math.PI * 2;
-        const xRadius = Math.min(window.innerWidth * .46, 520);
-        const x = Math.cos(angle) * xRadius;
-        const y = -300 + Math.sin(angle) * 50;
-        const behindGlobe = Math.sin(angle) < 0;
-        const centralBehindGlobe = behindGlobe ? Math.max(0, 1 - Math.abs(x) / (xRadius * .6)) : 0;
-        const edgeDistance = Math.min(1, Math.abs(x) / xRadius);
-        const scale = (1 - edgeDistance * .3) * (behindGlobe ? .78 : 1);
-
-        button.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-        button.style.opacity = String(1 - centralBehindGlobe);
-      }
-      frame = window.requestAnimationFrame(renderOrbit);
-    };
-
-    frame = window.requestAnimationFrame(renderOrbit);
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  if (!isMounted) return <div className="hero-mesh" aria-hidden="true" style={{ opacity: 0 }} />;
 
   return (
-    <>
-      <div className="globe-accent">
-        <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs>
-            <clipPath id="globe-clip">
-              <circle cx="250" cy="250" r="248" />
-            </clipPath>
-            <radialGradient id="pixel-globe-sphere" cx="38%" cy="30%" r="68%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
-              <stop offset="60%" stopColor="#7889ca" stopOpacity="0.06" />
-              <stop offset="100%" stopColor="#4056ab" stopOpacity="0.16" />
-            </radialGradient>
-            <radialGradient id="pixel-globe-vignette" cx="50%" cy="50%" r="50%">
-              <stop offset="68%" stopColor="#ffffff" stopOpacity="0" />
-              <stop offset="100%" stopColor="#5266ba" stopOpacity="0.28" />
-            </radialGradient>
-            <pattern id="pixel-globe-base-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-              <circle cx="3" cy="3" r="1.05" fill="#7182c8" />
-            </pattern>
-            <pattern id="pixel-globe-land-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-              <circle cx="3" cy="3" r="1.25" fill="#4d60b5" />
-            </pattern>
-            <filter id="pixel-globe-contrast" colorInterpolationFilters="sRGB">
-              <feColorMatrix type="saturate" values="0" />
-              <feComponentTransfer>
-                <feFuncR type="discrete" tableValues="0 0 0 1 1" />
-                <feFuncG type="discrete" tableValues="0 0 0 1 1" />
-                <feFuncB type="discrete" tableValues="0 0 0 1 1" />
-              </feComponentTransfer>
-            </filter>
-            <mask id="pixel-globe-land-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="500" height="500">
-              <rect width="500" height="500" fill="#000" />
-              <g filter="url(#pixel-globe-contrast)">
-                <animateTransform ref={rotationRef} attributeName="transform" type="translate" from="0 0" to="-996 0" dur="40s" begin="indefinite" repeatCount="indefinite" />
-                <image href={globeMapSrc} x="-248" y="0" width="996" height="500" preserveAspectRatio="none" />
-                <image href={globeMapSrc} x="718" y="0" width="996" height="500" preserveAspectRatio="none" />
-              </g>
-            </mask>
-          </defs>
-
-          <g clipPath="url(#globe-clip)">
-            <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-sphere)" />
-            <rect width="500" height="500" fill="url(#pixel-globe-base-grid)" opacity=".48" />
-            <rect width="500" height="500" fill="url(#pixel-globe-land-grid)" mask="url(#pixel-globe-land-mask)" opacity=".88" />
-            <circle cx="250" cy="250" r="248" fill="url(#pixel-globe-vignette)" />
-          </g>
-        </svg>
-      </div>
-      <div className="globe-mode-orbit">
-        <button ref={modeToggleRef} type="button" className={`globe-mode-toggle ${isDark ? 'is-dark' : 'is-light'}`} onClick={onToggle} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-          {isDark
-            ? <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 15.1A8.25 8.25 0 0 1 8.9 3.8 8.25 8.25 0 1 0 20.2 15.1Z" fill="currentColor" /></svg>
-            : <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.1" fill="currentColor" /><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.72 5.28l-1.42 1.42M6.7 17.3l-1.42 1.42M18.72 18.72 17.3 17.3M6.7 6.7 5.28 5.28" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" /></svg>}
-        </button>
-      </div>
-    </>
+    <div className="hero-mesh" aria-hidden="true">
+      <span className="hero-blob hero-blob-1" />
+      <span className="hero-blob hero-blob-2" />
+      <span className="hero-blob hero-blob-3" />
+      <span className="hero-blob hero-blob-4" />
+    </div>
   );
 }
 
@@ -661,14 +587,6 @@ function MetricsStrip() {
   );
 }
 
-const ecosystemTokens = [
-  { key: 'wallets', label: 'Wallet Access', icon: Wallet },
-  { key: 'trading', label: 'Market Context', icon: Activity },
-  { key: 'finance', label: 'Financial Systems', icon: Database },
-  { key: 'automation', label: 'Automation', icon: Terminal },
-  { key: 'tools', label: 'Connectors', icon: Plug },
-];
-
 function IdleScene() {
   return (
     <div className="idle-scene">
@@ -682,16 +600,7 @@ function IdleScene() {
         Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
       </p>
 
-      <div className="idle-ecosystem" aria-label="SERA capability areas">
-        <div className="idle-token-row">
-          {ecosystemTokens.map((token) => (
-            <div key={token.key} className="idle-token">
-              <div className="idle-token-icon"><token.icon strokeWidth={1.65} /></div>
-              <span>{token.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <PartnerMarquee />
     </div>
   );
 }

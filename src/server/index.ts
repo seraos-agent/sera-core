@@ -601,6 +601,54 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  socket.on('polymarket:direct_trade', async (payload: { tokenId: string, amount: number }) => {
+    if (!requireAuthenticatedSession(socket, 'polymarket:direct_trade', instance?.eventBus)) return;
+    try {
+      if (!instance || !instance.runtime.polymarketService) {
+        throw new Error("Polymarket service not available.");
+      }
+      if (!payload.tokenId) throw new Error("Invalid Token ID.");
+      if (payload.amount <= 0) throw new Error("Invalid amount.");
+
+      console.log(`[Server] Executing direct Polymarket trade for ${socket.data.sessionId}: ${payload.amount} shares on ${payload.tokenId}`);
+      
+      const result = await instance.runtime.polymarketService.submitOrder(
+        payload.tokenId,
+        'BUY', // Always BUY for UI simplicty
+        payload.amount,
+        'MARKET'
+      );
+      
+      socket.emit('polymarket:direct_trade_result', { success: true, message: 'Trade executed successfully!' });
+    } catch (error: any) {
+      console.error('[Server] Direct trade failed:', error);
+      socket.emit('polymarket:direct_trade_result', { success: false, message: `Trade failed: ${error.message}` });
+    }
+  });
+
+  socket.on('polymarket:fetch_portfolio', async () => {
+    if (!requireAuthenticatedSession(socket, 'polymarket:fetch_portfolio', instance?.eventBus)) return;
+    try {
+      if (!instance || !instance.runtime.polymarketService) {
+        throw new Error("Polymarket service not available.");
+      }
+      
+      const portfolio = await instance.runtime.polymarketService.getPortfolio();
+      const openOrders = await instance.runtime.polymarketService.getOpenOrders();
+      
+      console.log(`[Server] Emitting polymarket:portfolio_data for ${socket.data.sessionId}`);
+      socket.emit('polymarket:portfolio_data', {
+        success: true,
+        usdcBalance: portfolio.balance || '0',
+        allowance: portfolio.allowance || '0',
+        openOrders: openOrders || []
+      });
+    } catch (error: any) {
+      console.error('[Server] Fetch portfolio failed:', error);
+      socket.emit('polymarket:portfolio_data', { success: false, message: error.message });
+    }
+  });
+
   socket.on('billing:fetch', (payload: { address: string }) => {
     if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(socket.data.sessionId);

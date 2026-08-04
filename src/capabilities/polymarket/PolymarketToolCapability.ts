@@ -12,7 +12,7 @@ export class PolymarketToolCapability {
     return [
       {
         name: 'POLYMARKET_SEARCH_MARKETS',
-        description: 'Search for active prediction markets on Polymarket based on a query (e.g. "election", "sports"). Returns a list of markets, their questions, and their token IDs which can be used to view the orderbook.',
+        description: 'Search for active prediction markets on Polymarket based on a query (e.g. "election", "sports"). Returns a list of markets, their questions, token IDs (yesTokenId/noTokenId), and outcomePrices (the current probability/price). You DO NOT need to call GET_ORDERBOOK just to get the current price, as it is already included here.',
         parameters: {
           type: 'object',
           properties: {
@@ -37,7 +37,7 @@ export class PolymarketToolCapability {
           properties: {
             tokenId: {
               type: 'string',
-              description: 'The specific token ID of the market share.'
+              description: 'The specific token ID of the market share. You must pass a single string (e.g. from yesTokenId or noTokenId), do NOT pass an array.'
             }
           },
           required: ['tokenId']
@@ -52,7 +52,7 @@ export class PolymarketToolCapability {
           properties: {
             tokenId: {
               type: 'string',
-              description: 'The specific token ID of the market share.'
+              description: 'The specific token ID of the market share. You must pass a single string (e.g. from yesTokenId or noTokenId), do NOT pass an array.'
             },
             side: {
               type: 'string',
