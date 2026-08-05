@@ -263,36 +263,36 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
         {/* Left Column: Chart & Order Book */}
         <div style={{
           flex: 1,
-          padding: 24,
+          padding: isMobileView ? "16px 0" : 24,
           display: "flex",
           flexDirection: "column",
-          gap: 24,
+          gap: isMobileView ? 16 : 24,
           minWidth: 0,
           borderRight: isMobileView ? "none" : `1px solid ${theme.border}`
         }}>
           {/* Market Title and Stats */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={{ display: "flex", gap: 16 }}>
-              <div style={{ width: 48, height: 48, background: "#f59e0b", borderRadius: "50%", display: "flex", justifyContent: "center", alignItems: "center", color: "white", fontSize: 24, fontWeight: "bold", flexShrink: 0 }}>
+          <div style={{ padding: isMobileView ? "0 16px" : 0, display: "flex", flexDirection: isMobileView ? "column" : "row", justifyContent: "space-between", alignItems: isMobileView ? "flex-start" : "flex-start", gap: isMobileView ? 16 : 0 }}>
+            <div style={{ display: "flex", gap: isMobileView ? 12 : 16 }}>
+              <div style={{ width: isMobileView ? 28 : 48, height: isMobileView ? 28 : 48, background: "#f59e0b", borderRadius: "50%", display: "flex", justifyContent: "center", alignItems: "center", color: "white", fontSize: isMobileView ? 16 : 24, fontWeight: "bold", flexShrink: 0 }}>
                 ₿
               </div>
               <div>
-                <h1 style={{ margin: "0 0 16px 0", fontSize: 24, fontWeight: 700, color: theme.ink }}>{market.title}</h1>
-                <div style={{ display: "flex", gap: 40 }}>
+                <h1 style={{ margin: "0 0 12px 0", fontSize: isMobileView ? 18 : 24, fontWeight: 700, color: theme.ink }}>{market.title}</h1>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: isMobileView ? 16 : 40 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 13, color: theme.inkSoft }}>Price To Beat</span>
-                    <span style={{ fontSize: 22, fontWeight: 600, color: theme.inkSoft }}>
+                    <span style={{ fontSize: isMobileView ? 12 : 13, color: theme.inkSoft }}>Price To Beat</span>
+                    <span style={{ fontSize: isMobileView ? 18 : 22, fontWeight: 600, color: theme.inkSoft }}>
                       ${market.strikePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, color: '#f59e0b' }}>Current Price</span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 13, color: isUp ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                      <span style={{ fontSize: isMobileView ? 12 : 13, color: '#f59e0b' }}>Current Price</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: isMobileView ? 12 : 13, color: isUp ? '#10b981' : '#ef4444', fontWeight: 600 }}>
                         {isUp ? "▲" : "▼"} ${priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <span style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>
+                    <span style={{ fontSize: isMobileView ? 18 : 22, fontWeight: 700, color: '#f59e0b' }}>
                       ${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -300,19 +300,20 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
               </div>
             </div>
             
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <CountdownTimer expiryTime={market.expiryTime} resolved={market.resolved} size={18} />
-              {!market.resolved && <span style={{ fontSize: 11, color: theme.inkSoft, marginTop: 4, letterSpacing: 1 }}>MINS SECS</span>}
+            <div style={{ display: "flex", flexDirection: isMobileView ? "row" : "column", alignItems: "center", gap: isMobileView ? 8 : 0, alignSelf: isMobileView ? "flex-start" : "auto", background: isMobileView ? theme.surface : "transparent", padding: isMobileView ? "8px 12px" : 0, borderRadius: isMobileView ? 8 : 0, border: isMobileView ? `1px solid ${theme.border}` : "none" }}>
+              <CountdownTimer expiryTime={market.expiryTime} resolved={market.resolved} size={isMobileView ? 14 : 18} />
+              {!market.resolved && <span style={{ fontSize: 11, color: theme.inkSoft, marginTop: isMobileView ? 0 : 4, letterSpacing: 1 }}>MINS SECS</span>}
             </div>
           </div>
 
           {/* Chart Container */}
           <div style={{
+            margin: isMobileView ? "0 8px" : 0,
             background: theme.surface,
             borderRadius: 12,
             border: `1px solid ${theme.border}`,
-            padding: 16,
-            height: 440,
+            padding: isMobileView ? 12 : 16,
+            height: isMobileView ? 280 : 440,
             display: "flex",
             flexDirection: "column"
           }}>
@@ -322,13 +323,14 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
 
           {/* Order Book */}
           <div style={{
+            margin: isMobileView ? "0 8px" : 0,
             background: theme.surface,
             borderRadius: 12,
             border: `1px solid ${theme.border}`,
-            padding: 16
+            padding: isMobileView ? 12 : 16
           }}>
             <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: theme.ink }}>Order Book</h3>
-            <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ display: "flex", gap: isMobileView ? 12 : 24, flexDirection: isMobileView ? "column" : "row" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: "#10b981", fontWeight: 600, marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${theme.border}` }}>
                   Pending UP (${totalUp.toFixed(2)})
@@ -365,13 +367,16 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
 
         {/* Right Column: Bet Slip Sidebar */}
         <div style={{
-          width: isMobileView ? "100%" : 360,
+          width: isMobileView ? "auto" : 360,
+          margin: isMobileView ? "16px 8px 24px 8px" : 0,
+          borderRadius: isMobileView ? 12 : 0,
           background: theme.surface,
-          padding: 24,
+          padding: isMobileView ? 16 : 24,
           display: "flex",
           flexDirection: "column",
           gap: 20,
-          borderLeft: isMobileView ? "none" : `1px solid ${theme.border}`
+          border: isMobileView ? `1px solid ${theme.border}` : "none",
+          borderLeft: `1px solid ${theme.border}`
         }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: theme.ink }}>Place Order</h2>
 

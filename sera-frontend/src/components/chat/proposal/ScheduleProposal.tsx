@@ -15,6 +15,14 @@ export function ScheduleProposal({
   const isTransfer = p.actionIntent === 'TRANSFER_FUNDS';
   const actionParams = p.actionParameters || {};
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const bannerSize = isMobile ? 18 : 22;
+  const bannerLabelSize = isMobile ? 10 : 12;
+  const detailLabelSize = isMobile ? 10 : 11;
+  const detailValueSize = isMobile ? 11 : 13;
+  const badgeSize = isMobile ? 10 : 11;
+  const iconSize = isMobile ? 12 : 14;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
       
@@ -30,23 +38,23 @@ export function ScheduleProposal({
         <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', width: 80, height: 80, background: theme.accent, filter: 'blur(40px)', opacity: 0.15 }} />
         
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, zIndex: 1 }}>
-          {isRecurring ? <Repeat size={14} color={theme.accent} /> : <Clock size={14} color={theme.accent} />}
-          <span style={{ fontSize: 12, color: theme.inkSoft, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+          {isRecurring ? <Repeat size={iconSize} color={theme.accent} /> : <Clock size={iconSize} color={theme.accent} />}
+          <span style={{ fontSize: bannerLabelSize, color: theme.inkSoft, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
             {isRecurring ? 'Recurring Schedule' : 'Scheduled Event'}
           </span>
         </div>
         
-        <span style={{ fontSize: 22, color: theme.ink, fontWeight: 800, letterSpacing: -0.5, zIndex: 1, textAlign: 'center' }}>
+        <span style={{ fontSize: bannerSize, color: theme.ink, fontWeight: 800, letterSpacing: -0.5, zIndex: 1, textAlign: 'center' }}>
           {p.humanIntent || 'Future Execution'}
         </span>
       </div>
 
       {/* Action Details */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 12, background: theme.isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: `1px solid ${theme.border}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Schedule Type</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: detailLabelSize, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Schedule Type</span>
           <span style={{ 
-            fontSize: 11, fontWeight: 700, 
+            fontSize: badgeSize, fontWeight: 700, 
             color: isRecurring ? '#10b981' : theme.accent, 
             background: isRecurring ? 'rgba(16, 185, 129, 0.1)' : theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', 
             padding: '3px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 
@@ -56,26 +64,26 @@ export function ScheduleProposal({
           </span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Target Action</span>
-          <span style={{ fontSize: 13, color: theme.accent, fontWeight: 700, background: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', padding: '4px 10px', borderRadius: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: detailLabelSize, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Target Action</span>
+          <span style={{ fontSize: detailValueSize, color: theme.accent, fontWeight: 700, background: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', padding: '4px 10px', borderRadius: 6 }}>
             {p.actionIntent?.replace(/_/g, ' ') || 'Execute action'}
           </span>
         </div>
 
         {actionParams.coin && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Asset</span>
-            <span style={{ fontSize: 13, color: theme.ink, fontWeight: 700 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: detailLabelSize, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Asset</span>
+            <span style={{ fontSize: detailValueSize, color: theme.ink, fontWeight: 700 }}>
               {actionParams.coin}
             </span>
           </div>
         )}
         
         {isTransfer && actionParams.amount && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Value</span>
-            <span style={{ fontSize: 14, color: theme.ink, fontWeight: 700 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: detailLabelSize, color: theme.inkSoft, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Value</span>
+            <span style={{ fontSize: isMobile ? 12 : 14, color: theme.ink, fontWeight: 700 }}>
               {actionParams.amount === 'all' ? 'Entire Balance' : actionParams.amount} {actionParams.asset?.toUpperCase()}
             </span>
           </div>

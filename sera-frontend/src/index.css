@@ -77,3 +77,10 @@ button {
 .markdown-content p:last-child {
   margin-bottom: 0 !important;
 }
+
+/* TradingView Logo Tweaks */
+#tv-attr-logo, a[href*='tradingview.com'] {
+  transform: scale(0.6) !important;
+  transform-origin: bottom left !important;
+  opacity: 0.5 !important;
+}

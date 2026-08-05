@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft as CloseIcon, X, Check, Copy } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check, Copy, ChevronDown, ChevronUp } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -33,6 +33,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
 
   const [copiedAgent, setCopiedAgent] = useState(false);
   const [copiedVault, setCopiedVault] = useState(false);
+  const [showNetworks, setShowNetworks] = useState(false);
 
   const handleCopy = (text: string, type: "agent" | "vault") => {
     navigator.clipboard.writeText(text);
@@ -241,34 +242,37 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 {/* Gas Sponsoring & Web3 Agent Credits Banner */}
                 <div style={{
                   marginTop: 16,
-                  padding: "12px 16px",
+                  padding: "14px 16px",
                   borderRadius: 14,
                   background: theme.isDark ? 'rgba(52, 82, 224, 0.15)' : 'rgba(52, 82, 224, 0.08)',
                   border: `1px solid ${theme.isDark ? 'rgba(52, 82, 224, 0.3)' : 'rgba(52, 82, 224, 0.2)'}`,
                   display: "flex",
-                  alignItems: "center",
+                  flexDirection: isMobileView ? "column" : "row",
+                  alignItems: isMobileView ? "flex-start" : "center",
                   justifyContent: "space-between",
                   gap: 12,
                   fontFamily: "Inter, sans-serif"
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>⚡</span>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: theme.ink }}>Gas Sponsoring & 0.20% Volume Cut Active</div>
-                      <div style={{ fontSize: 11, color: theme.inkSoft }}>ETH gas fees & $0.05 transfer fee paid in USDC • 0.20% DEX Swap Take Rate.</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.ink }}>
+                      Gas Sponsoring & 0.20% Volume Cut
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.inkSoft, lineHeight: 1.4 }}>
+                      ETH gas & $0.05 transfer fee paid in USDC • 0.20% DEX Swap Take Rate.
                     </div>
                   </div>
                   <div style={{
                     padding: "4px 10px", borderRadius: 20,
                     background: theme.accent, color: "#FFF",
-                    fontSize: 11, fontWeight: 700, letterSpacing: "0.05em"
+                    fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+                    alignSelf: isMobileView ? "flex-start" : "auto"
                   }}>
                     PAY-AS-YOU-GO
                   </div>
                 </div>
 
                 {/* Nested Bento for accounts */}
-                <div style={{ display: "flex", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 16 : 24 }}>
+                <div style={{ display: "flex", flexDirection: isMobileView ? "column" : "row", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 16 : 24 }}>
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
@@ -297,41 +301,57 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                       {(parseFloat(walletState.vaultBalances.base) + parseFloat(walletState.vaultBalances.polygon) + parseFloat(walletState.vaultBalances.ethereum)).toFixed(2)} USDC
                     </div>
 
+                    {/* Multi-Network Toggle */}
+                    <button 
+                      onClick={() => setShowNetworks(!showNetworks)}
+                      style={{ 
+                        background: "transparent", border: "none", padding: 0, 
+                        display: "flex", alignItems: "center", gap: 4, cursor: "pointer", 
+                        fontFamily: "Inter, sans-serif", fontSize: 11, color: theme.inkSoft,
+                        marginBottom: showNetworks ? 8 : 0
+                      }}
+                    >
+                      {showNetworks ? "Hide Network Balances" : "Show Network Balances"}
+                      {showNetworks ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
+
                     {/* Multi-Network Breakdown */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {/* Base */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(0,82,255,0.1)" : "rgba(0,82,255,0.06)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#0052FF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                            <img src="/base.svg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    {showNetworks && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {/* Base */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(0,82,255,0.1)" : "rgba(0,82,255,0.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#0052FF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                              <img src="/base.svg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </div>
+                            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Base</span>
                           </div>
-                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Base</span>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.base).toFixed(2)}</span>
                         </div>
-                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.base).toFixed(2)}</span>
-                      </div>
 
-                      {/* Polygon */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(130,71,229,0.1)" : "rgba(130,71,229,0.06)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#8247E5", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                            <img src="/polygon.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        {/* Polygon */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(130,71,229,0.1)" : "rgba(130,71,229,0.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#8247E5", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                              <img src="/polygon.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </div>
+                            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Polygon</span>
                           </div>
-                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Polygon</span>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.polygon).toFixed(2)}</span>
                         </div>
-                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.polygon).toFixed(2)}</span>
-                      </div>
 
-                      {/* Ethereum */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(98,126,234,0.1)" : "rgba(98,126,234,0.06)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#627EEA", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                            <img src="/ethereum.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        {/* Ethereum */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderRadius: 10, background: theme.isDark ? "rgba(98,126,234,0.1)" : "rgba(98,126,234,0.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#627EEA", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                              <img src="/ethereum.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </div>
+                            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Ethereum</span>
                           </div>
-                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.ink }}>Ethereum</span>
+                          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.ethereum).toFixed(2)}</span>
                         </div>
-                        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 400, color: theme.ink }}>{parseFloat(walletState.vaultBalances.ethereum).toFixed(2)}</span>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>

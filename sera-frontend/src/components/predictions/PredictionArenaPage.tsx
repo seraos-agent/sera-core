@@ -19,6 +19,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
   
   const [portfolioData, setPortfolioData] = useState<{ balance: number, orders: any[] } | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
 
   useEffect(() => {
     if (activeTab === "Portfolio") {
@@ -65,7 +66,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
         socket={socket} 
         marketId={activeMarketId} 
         onBack={() => setActiveMarketId(null)} 
-        isMobileView={window.innerWidth < 768} 
+        isMobileView={isMobileView} 
       />
     );
   }
@@ -132,7 +133,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
                 {portfolioData?.orders && portfolioData.orders.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {portfolioData.orders.map((order: any, i: number) => (
-                      <div key={i} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 8, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div key={i} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 8, padding: 16, display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontWeight: 600, color: theme.ink }}>Market: {order.marketId}</div>
                           <div style={{ fontSize: 13, color: theme.inkSoft, marginTop: 4 }}>
