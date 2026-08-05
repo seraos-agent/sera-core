@@ -26,11 +26,14 @@ export interface ArenaOrder {
   amount: number;
   status: 'PENDING' | 'MATCHED' | 'SETTLED';
   matchedWith?: string; 
+  won?: boolean;
+  payout?: number;
 }
 
 export class PredictionEngineService {
   public markets: ArenaMarket[] = [];
   public orders: ArenaOrder[] = [];
+  public orderHistory: ArenaOrder[] = [];
   public priceHistory: Candle[] = [];
   
   // Mock balances for users (1000 Mock USDC default)
@@ -42,6 +45,11 @@ export class PredictionEngineService {
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
+    // Seed initial balance for users (in memory)
+    this.mockBalances['0xE657...3E12'] = 1000; 
+    
+    // Seed AMM with massive liquidity
+    this.mockBalances['SYSTEM_AMM'] = 1000000;
     this.initializeRollingMarkets();
   }
 
@@ -78,17 +86,21 @@ export class PredictionEngineService {
 
   public getPortfolio(userId: string) {
     const userOrders = this.orders.filter(o => o.userId === userId);
+    const userHistory = this.orderHistory.filter(o => o.userId === userId);
     return {
       balance: this.getBalance(userId),
-      orders: userOrders
+      orders: userOrders,
+      history: userHistory
     };
   }
 
   public getOrderBook(marketId: string) {
     const pendingOrders = this.orders.filter(o => o.marketId === marketId && o.status === 'PENDING');
+    const matchedOrders = this.orders.filter(o => o.marketId === marketId && o.status === 'MATCHED');
     return {
       up: pendingOrders.filter(o => o.side === 'UP'),
-      down: pendingOrders.filter(o => o.side === 'DOWN')
+      down: pendingOrders.filter(o => o.side === 'DOWN'),
+      recentMatches: matchedOrders.slice(-15) // last 15 matched orders
     };
   }
 
@@ -116,6 +128,18 @@ export class PredictionEngineService {
     };
 
     this.orders.push(order);
+
+    // [SYSTEM_AMM] Instantly create the opposite order to guarantee liquidity
+    const ammMockOrder: ArenaOrder = {
+      id: Math.random().toString(36).substring(7),
+      userId: 'SYSTEM_AMM',
+      marketId,
+      side: side === 'UP' ? 'DOWN' : 'UP',
+      amount,
+      status: 'PENDING'
+    };
+    this.orders.push(ammMockOrder);
+
     this.matchOrders(marketId);
     return order;
   }
@@ -216,16 +240,35 @@ export class PredictionEngineService {
             // Refund pending orders
             this.mockBalances[order.userId] += order.amount;
             order.status = 'SETTLED';
+            order.won = false;
+            order.payout = order.amount; // Refunded
+            this.orderHistory.push(order);
           } else if (order.status === 'MATCHED') {
             // Payout winners
             if (order.side === market.outcome) {
               // Winner gets their stake + opponent's stake (2x amount)
-              this.mockBalances[order.userId] += (order.amount * 2);
+              const payout = order.amount * 2;
+              this.mockBalances[order.userId] += payout;
+              order.won = true;
+              order.payout = payout;
+            } else {
+              order.won = false;
+              order.payout = 0;
             }
             order.status = 'SETTLED';
+            this.orderHistory.push(order);
           }
-          // Notify portfolio update
-          this.eventBus.emit(`arena:portfolio_updated:${order.userId}`, this.getPortfolio(order.userId));
+        }
+        
+        // Trim history
+        if (this.orderHistory.length > 1000) {
+          this.orderHistory = this.orderHistory.slice(-1000);
+        }
+
+        // Notify portfolio update
+        const uniqueUsers = Array.from(new Set(marketOrders.map(o => o.userId)));
+        for (const uid of uniqueUsers) {
+          this.eventBus.emit(`arena:portfolio_updated:${uid}`, this.getPortfolio(uid));
         }
 
         // Schedule auto-restart for this market

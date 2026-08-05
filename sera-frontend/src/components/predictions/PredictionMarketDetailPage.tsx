@@ -63,7 +63,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
   const [market, setMarket] = useState<Market | null>(null);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
-  const [orderBook, setOrderBook] = useState<{ up: Order[]; down: Order[] }>({ up: [], down: [] });
+  const [orderBook, setOrderBook] = useState<{ up: Order[]; down: Order[]; recentMatches?: Order[] }>({ up: [], down: [] });
   const [amount, setAmount] = useState<string>("10");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [balance, setBalance] = useState<number>(0);
@@ -78,14 +78,14 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
     socket.emit("arena:fetch_market_details", marketId);
     socket.emit("arena:fetch_portfolio");
 
-    const onDetails = (data: { market: Market, priceHistory: any[], orderBook: { up: Order[], down: Order[] } }) => {
+    const onDetails = (data: { market: Market, priceHistory: any[], orderBook: { up: Order[], down: Order[], recentMatches?: Order[] } }) => {
       setMarket(data.market);
       setOrderBook(data.orderBook);
       setPriceHistory(data.priceHistory);
       if (data.priceHistory.length > 0) {
         setCurrentPrice(data.priceHistory[data.priceHistory.length - 1].close);
       }
-      
+
       if (seriesRef.current && data.priceHistory.length > 0) {
         // lightweight-charts requires time to be sorted and unique
         const uniqueData = data.priceHistory.filter((v, i, a) => a.findIndex(t => t.time === v.time) === i);
@@ -282,24 +282,24 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: isMobileView ? 12 : 13, color: theme.inkSoft }}>Price To Beat</span>
                     <span style={{ fontSize: isMobileView ? 18 : 22, fontWeight: 600, color: theme.inkSoft }}>
-                      ${market.strikePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {market.strikePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
                     </span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: isMobileView ? 12 : 13, color: '#f59e0b' }}>Current Price</span>
                       <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: isMobileView ? 12 : 13, color: isUp ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                        {isUp ? "▲" : "▼"} ${priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {isUp ? "▲" : "▼"} {priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
                       </span>
                     </div>
                     <span style={{ fontSize: isMobileView ? 18 : 22, fontWeight: 700, color: '#f59e0b' }}>
-                      ${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <div style={{ display: "flex", flexDirection: isMobileView ? "row" : "column", alignItems: "center", gap: isMobileView ? 8 : 0, alignSelf: isMobileView ? "flex-start" : "auto", background: isMobileView ? theme.surface : "transparent", padding: isMobileView ? "8px 12px" : 0, borderRadius: isMobileView ? 8 : 0, border: isMobileView ? `1px solid ${theme.border}` : "none" }}>
               <CountdownTimer expiryTime={market.expiryTime} resolved={market.resolved} size={isMobileView ? 14 : 18} />
               {!market.resolved && <span style={{ fontSize: 11, color: theme.inkSoft, marginTop: isMobileView ? 0 : 4, letterSpacing: 1 }}>MINS SECS</span>}
@@ -333,7 +333,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
             <div style={{ display: "flex", gap: isMobileView ? 12 : 24, flexDirection: isMobileView ? "column" : "row" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: "#10b981", fontWeight: 600, marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${theme.border}` }}>
-                  Pending UP (${totalUp.toFixed(2)})
+                  Pending UP ({totalUp.toFixed(2)} USDC)
                 </div>
                 {orderBook.up.length === 0 ? (
                   <div style={{ color: theme.inkSoft, fontSize: 13, fontStyle: "italic" }}>No pending UP orders</div>
@@ -341,14 +341,14 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                   orderBook.up.map(o => (
                     <div key={o.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: theme.ink }}>
                       <span>User {o.userId.substring(0, 6)}...</span>
-                      <span>${o.amount.toFixed(2)}</span>
+                      <span>{o.amount.toFixed(2)} USDC</span>
                     </div>
                   ))
                 )}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ color: "#ef4444", fontWeight: 600, marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${theme.border}` }}>
-                  Pending DOWN (${totalDown.toFixed(2)})
+                  Pending DOWN ({totalDown.toFixed(2)} USDC)
                 </div>
                 {orderBook.down.length === 0 ? (
                   <div style={{ color: theme.inkSoft, fontSize: 13, fontStyle: "italic" }}>No pending DOWN orders</div>
@@ -356,12 +356,32 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                   orderBook.down.map(o => (
                     <div key={o.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: theme.ink }}>
                       <span>User {o.userId.substring(0, 6)}...</span>
-                      <span>${o.amount.toFixed(2)}</span>
+                      <span>{o.amount.toFixed(2)} USDC</span>
                     </div>
                   ))
                 )}
               </div>
             </div>
+            
+            {orderBook.recentMatches && orderBook.recentMatches.length > 0 && (
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px dashed ${theme.border}` }}>
+                <div style={{ color: theme.ink, fontWeight: 600, marginBottom: 12, fontSize: 14 }}>
+                  ⚡ Recent AMM Activity
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {orderBook.recentMatches.map(o => (
+                    <div key={o.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 8px", background: theme.surface2, borderRadius: 6 }}>
+                      <span style={{ color: theme.inkSoft }}>
+                        {o.userId === 'SYSTEM_AMM' ? '🤖 AMM matched' : `User ${o.userId.substring(0, 4)}... matched`}
+                      </span>
+                      <span style={{ color: o.side === 'UP' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                        {o.amount.toFixed(2)} USDC {o.side}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -374,29 +394,30 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
           padding: isMobileView ? 16 : 24,
           display: "flex",
           flexDirection: "column",
+          flexShrink: 0,
           gap: 20,
-          border: isMobileView ? `1px solid ${theme.border}` : "none",
-          borderLeft: `1px solid ${theme.border}`
+          borderTop: isMobileView ? `1px solid ${theme.border}` : "none",
+          borderRight: isMobileView ? `1px solid ${theme.border}` : "none",
+          borderBottom: isMobileView ? `1px solid ${theme.border}` : "none",
+          borderLeft: isMobileView ? "none" : `1px solid ${theme.border}`
         }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: theme.ink }}>Place Order</h2>
 
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 14 }}>
-              <span style={{ color: theme.inkSoft }}>Balance</span>
-              <span style={{ fontWeight: 600, color: theme.ink }}>${balance.toFixed(2)} USDC</span>
+              <span style={{ fontWeight: 600, color: theme.ink }}>{balance.toFixed(2)} USDC</span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={{ display: "block", fontSize: 13, color: theme.inkSoft, marginBottom: 6 }}>Amount (USDC)</label>
                 <div style={{ position: "relative" }}>
-                  <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: theme.inkSoft }}>$</span>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     style={{
-                      width: "100%", padding: "10px 12px 10px 24px",
+                      width: "100%", padding: "10px 12px 10px 12px",
                       background: theme.surface2, border: `1px solid ${theme.border}`,
                       color: theme.ink, borderRadius: 8, fontSize: 16, outline: "none",
                       boxSizing: "border-box"
@@ -416,7 +437,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                       color: theme.inkSoft, fontSize: 13, cursor: "pointer"
                     }}
                   >
-                    +${val}
+                    +{val} USDC
                   </button>
                 ))}
               </div>
@@ -449,14 +470,14 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                   DOWN
                 </button>
               </div>
-              
+
               <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${theme.border}`, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ fontSize: 13, color: theme.ink, fontWeight: 500 }}>To win 💸</span>
                   <span style={{ fontSize: 12, color: theme.inkSoft }}>Avg. Price 50¢</span>
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#10b981" }}>
-                  ${(parseFloat(amount) * 2 || 0).toFixed(2)}
+                  {(parseFloat(amount) * 2 || 0).toFixed(2)} USDC
                 </div>
               </div>
 

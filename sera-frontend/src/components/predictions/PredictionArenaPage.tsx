@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw, Share2 } from "lucide-react";
 import { CountdownTimer } from "./CountdownTimer";
 import type { ThemeType } from "../../theme";
 import type { Socket } from "socket.io-client";
 import { PredictionMarketDetailPage } from "./PredictionMarketDetailPage";
+import { PnLShareModal } from "./PnLShareModal";
 
 interface PredictionArenaPageProps {
   theme: ThemeType;
@@ -17,9 +18,10 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
   const [loading, setLoading] = useState(true);
   const [activeMarketId, setActiveMarketId] = useState<string | null>(null);
   
-  const [portfolioData, setPortfolioData] = useState<{ balance: number, orders: any[] } | null>(null);
+  const [portfolioData, setPortfolioData] = useState<{ balance: number, orders: any[], history?: any[] } | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
+  const [shareOrder, setShareOrder] = useState<any>(null);
+  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 1100;
 
   useEffect(() => {
     if (activeTab === "Portfolio") {
@@ -123,7 +125,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
               <div style={{ background: theme.surface2, padding: 24, borderRadius: 12, border: `1px solid ${theme.border}`, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 13, color: theme.inkSoft, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Mock USDC Balance</div>
                 <span style={{ color: theme.ink, fontSize: 36, fontWeight: 700 }}>
-                  ${(portfolioData?.balance || 0).toFixed(2)}
+                  {(portfolioData?.balance || 0).toFixed(2)} USDC
                 </span>
                 <div style={{ fontSize: 12, color: theme.inkFaint }}>Simulation Funds Only</div>
               </div>
@@ -138,7 +140,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
                           <div style={{ fontWeight: 600, color: theme.ink }}>Market: {order.marketId}</div>
                           <div style={{ fontSize: 13, color: theme.inkSoft, marginTop: 4 }}>
                             Side: <span style={{ color: order.side === 'UP' ? '#2ecc71' : '#e74c3c', fontWeight: 600 }}>{order.side}</span> | 
-                            Amount: ${order.amount}
+                            Amount: {order.amount} USDC
                           </div>
                         </div>
                         <div style={{ 
@@ -154,6 +156,47 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
                 ) : (
                   <div style={{ textAlign: "center", padding: 40, color: theme.inkSoft, background: theme.surface, borderRadius: 12, border: `1px dashed ${theme.border}` }}>
                     No orders found. Go to Markets to place a prediction!
+                  </div>
+                )}
+              </div>
+
+              {/* History Section */}
+              <div style={{ marginTop: 16 }}>
+                <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: theme.ink }}>Order History</h3>
+                {portfolioData?.history && portfolioData.history.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {portfolioData.history.slice().reverse().map((order: any, i: number) => (
+                      <div key={i} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 8, padding: 16, display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: theme.ink }}>Market: {order.marketId}</div>
+                          <div style={{ fontSize: 13, color: theme.inkSoft, marginTop: 4 }}>
+                            Side: <span style={{ color: order.side === 'UP' ? '#2ecc71' : '#e74c3c', fontWeight: 600 }}>{order.side}</span> | 
+                            Amount: {order.amount.toFixed(2)} USDC
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <div style={{ 
+                            padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, textTransform: "uppercase",
+                            background: order.won ? '#2ecc7120' : '#ef444420',
+                            color: order.won ? '#2ecc71' : '#ef4444',
+                            textAlign: "right"
+                          }}>
+                            {order.won ? `WIN (+${order.payout?.toFixed(2)} USDC)` : "LOSS"}
+                          </div>
+                          <button 
+                            onClick={() => setShareOrder(order)}
+                            style={{ background: "none", border: "none", color: theme.inkSoft, cursor: "pointer", display: "flex", alignItems: "center" }}
+                            title="Share Result"
+                          >
+                            <Share2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: 40, color: theme.inkSoft, background: theme.surface, borderRadius: 12, border: `1px dashed ${theme.border}` }}>
+                    No history found.
                   </div>
                 )}
               </div>
@@ -217,6 +260,14 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
           )
         )}
       </div>
+
+      {shareOrder && (
+        <PnLShareModal 
+          order={shareOrder} 
+          theme={theme} 
+          onClose={() => setShareOrder(null)} 
+        />
+      )}
     </div>
   );
 }
