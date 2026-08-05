@@ -71,6 +71,14 @@ export class PredictionEngineService {
       expiryTime: now + 15 * 60 * 1000,
       resolved: false
     });
+    this.injectSeedLiquidity('btc-5m-rolling');
+    this.injectSeedLiquidity('btc-15m-rolling');
+  }
+
+  private injectSeedLiquidity(marketId: string) {
+    const seedAmount = 50; // 50 USDC seed on each side to prevent extreme odds
+    this.orders.push({ id: Math.random().toString(36).substring(7), userId: 'SYSTEM_SEED', marketId, side: 'UP', amount: seedAmount, status: 'PENDING' });
+    this.orders.push({ id: Math.random().toString(36).substring(7), userId: 'SYSTEM_SEED', marketId, side: 'DOWN', amount: seedAmount, status: 'PENDING' });
   }
 
   public getBalance(userId: string): number {
@@ -100,14 +108,14 @@ export class PredictionEngineService {
     return {
       up: pendingOrders.filter(o => o.side === 'UP'),
       down: pendingOrders.filter(o => o.side === 'DOWN'),
-      recentMatches: matchedOrders.slice(-15) // last 15 matched orders
+      recentMatches: [] // Parimutuel has no real-time matches
     };
   }
 
   public async placeOrder(userId: string, marketId: string, side: 'UP' | 'DOWN', amount: number) {
     const balance = this.getBalance(userId);
     if (balance < amount) throw new Error("Insufficient mock balance.");
-    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (amount < 1) throw new Error("Minimum bet is 1 USDC.");
 
     const market = this.markets.find(m => m.id === marketId);
     if (!market) throw new Error("Market not found.");
@@ -128,40 +136,7 @@ export class PredictionEngineService {
     };
 
     this.orders.push(order);
-
-    // [SYSTEM_AMM] Instantly create the opposite order to guarantee liquidity
-    const ammMockOrder: ArenaOrder = {
-      id: Math.random().toString(36).substring(7),
-      userId: 'SYSTEM_AMM',
-      marketId,
-      side: side === 'UP' ? 'DOWN' : 'UP',
-      amount,
-      status: 'PENDING'
-    };
-    this.orders.push(ammMockOrder);
-
-    this.matchOrders(marketId);
     return order;
-  }
-
-  private matchOrders(marketId: string) {
-    // Find all pending UP orders and DOWN orders for this market
-    const pendingUp = this.orders.filter(o => o.marketId === marketId && o.status === 'PENDING' && o.side === 'UP');
-    const pendingDown = this.orders.filter(o => o.marketId === marketId && o.status === 'PENDING' && o.side === 'DOWN');
-
-    // Simple FIFO matching of EXACT amounts (to keep it simple for P2P simulation)
-    // In a real orderbook, we would do partial fills, but we keep it simple here.
-    for (const upOrder of pendingUp) {
-      if (upOrder.status !== 'PENDING') continue;
-      const match = pendingDown.find(d => d.status === 'PENDING' && d.amount === upOrder.amount);
-      if (match) {
-        upOrder.status = 'MATCHED';
-        upOrder.matchedWith = match.id;
-        match.status = 'MATCHED';
-        match.matchedWith = upOrder.id;
-        console.log(`[Arena] Matched order ${upOrder.id} (UP) with ${match.id} (DOWN) for $${upOrder.amount}`);
-      }
-    }
   }
 
   public async tick() {
@@ -233,45 +208,45 @@ export class PredictionEngineService {
         
         console.log(`[Arena] Resolved market ${market.id}. Outcome: ${market.outcome} (Price: ${this.currentBtcPrice})`);
 
-        // Settle orders
-        const marketOrders = this.orders.filter(o => o.marketId === market.id);
+        const marketOrders = this.orders.filter(o => o.marketId === market.id && o.status === 'PENDING');
+        const totalUp = marketOrders.filter(o => o.side === 'UP').reduce((sum, o) => sum + o.amount, 0);
+        const totalDown = marketOrders.filter(o => o.side === 'DOWN').reduce((sum, o) => sum + o.amount, 0);
+        
+        const grossPool = totalUp + totalDown;
+        const netPool = grossPool * 0.98;
+
         for (const order of marketOrders) {
-          if (order.status === 'PENDING') {
-            // Refund pending orders
-            this.mockBalances[order.userId] += order.amount;
+          if (totalUp === 0 || totalDown === 0) {
+            if (order.userId !== 'SYSTEM_SEED') this.mockBalances[order.userId] += order.amount;
             order.status = 'SETTLED';
             order.won = false;
-            order.payout = order.amount; // Refunded
-            this.orderHistory.push(order);
-          } else if (order.status === 'MATCHED') {
-            // Payout winners
-            if (order.side === market.outcome) {
-              // Winner gets their stake + opponent's stake (2x amount)
-              const payout = order.amount * 2;
-              this.mockBalances[order.userId] += payout;
-              order.won = true;
-              order.payout = payout;
-            } else {
-              order.won = false;
-              order.payout = 0;
-            }
-            order.status = 'SETTLED';
-            this.orderHistory.push(order);
+            order.payout = order.amount;
+            if (order.userId !== 'SYSTEM_SEED') this.orderHistory.push(order);
+            continue;
           }
+
+          if (order.side === market.outcome) {
+            const winningPool = market.outcome === 'UP' ? totalUp : totalDown;
+            const payout = (order.amount / winningPool) * netPool;
+            if (order.userId !== 'SYSTEM_SEED') this.mockBalances[order.userId] += payout;
+            order.won = true;
+            order.payout = payout;
+          } else {
+            order.won = false;
+            order.payout = 0;
+          }
+          
+          order.status = 'SETTLED';
+          if (order.userId !== 'SYSTEM_SEED') this.orderHistory.push(order);
         }
         
-        // Trim history
-        if (this.orderHistory.length > 1000) {
-          this.orderHistory = this.orderHistory.slice(-1000);
-        }
+        if (this.orderHistory.length > 1000) this.orderHistory = this.orderHistory.slice(-1000);
 
-        // Notify portfolio update
         const uniqueUsers = Array.from(new Set(marketOrders.map(o => o.userId)));
         for (const uid of uniqueUsers) {
           this.eventBus.emit(`arena:portfolio_updated:${uid}`, this.getPortfolio(uid));
         }
 
-        // Schedule auto-restart for this market
         setTimeout(() => {
           if (!market) return;
           market.strikePrice = this.currentBtcPrice;
@@ -279,13 +254,10 @@ export class PredictionEngineService {
           market.expiryTime = Date.now() + duration * 60 * 1000;
           market.resolved = false;
           market.outcome = undefined;
-          
-          // Clear settled orders from memory to avoid leak
-          this.orders = this.orders.filter(o => o.marketId !== market.id || o.status !== 'SETTLED');
-          
+          this.injectSeedLiquidity(market.id);
           console.log(`[Arena] Restarted market ${market.id} with new target $${market.strikePrice}`);
           this.eventBus.emit('arena:markets_updated', this.getActiveMarkets());
-        }, 5000);
+        }, 3000);
       }
     }
     return resolved;

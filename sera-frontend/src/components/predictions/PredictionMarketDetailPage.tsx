@@ -67,6 +67,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
   const [amount, setAmount] = useState<string>("10");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [balance, setBalance] = useState<number>(0);
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -103,6 +104,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
 
     const onPortfolio = (portfolio: { balance: number, orders: Order[] }) => {
       setBalance(portfolio.balance);
+      setMyOrders(portfolio.orders);
     };
 
     // Also update orderbook if global markets update (we could optimize this later)
@@ -192,8 +194,8 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
   const placeOrder = (side: "UP" | "DOWN") => {
     if (!market || isSubmitting) return;
     const val = parseFloat(amount);
-    if (isNaN(val) || val <= 0) {
-      setErrorMsg("Please enter a valid amount.");
+    if (isNaN(val) || val < 1) {
+      setErrorMsg("Minimum bet is 1 USDC.");
       return;
     }
     if (val > balance) {
@@ -223,13 +225,37 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
 
   // Extract timeLeft calculation if needed elsewhere, but CountdownTimer handles the display.
 
-  // Aggregate orderbook
-  const totalUp = orderBook.up.reduce((sum, o) => sum + o.amount, 0);
-  const totalDown = orderBook.down.reduce((sum, o) => sum + o.amount, 0);
+  // Aggregate orderbook (handled directly in parimutuel math now)
 
   const displayPrice = currentPrice || market.strikePrice;
   const isUp = displayPrice >= market.strikePrice;
   const priceDiff = Math.abs(displayPrice - market.strikePrice);
+
+  // --- Parimutuel Math ---
+  const val = parseFloat(amount) || 0;
+  const currentTotalUp = orderBook.up.reduce((sum, o) => sum + o.amount, 0) + 50; // Includes 50 seed liquidity
+  const currentTotalDown = orderBook.down.reduce((sum, o) => sum + o.amount, 0) + 50;
+  
+  // If user bets UP
+  const newUpPoolIfUp = currentTotalUp + val;
+  const grossPoolIfUp = newUpPoolIfUp + currentTotalDown;
+  const netPoolIfUp = grossPoolIfUp * 0.98;
+  const upPayout = val > 0 ? (val / newUpPoolIfUp) * netPoolIfUp : 0;
+  const upMultiplier = val > 0 ? upPayout / val : 0;
+
+  // If user bets DOWN
+  const newDownPoolIfDown = currentTotalDown + val;
+  const grossPoolIfDown = currentTotalUp + newDownPoolIfDown;
+  const netPoolIfDown = grossPoolIfDown * 0.98;
+  const downPayout = val > 0 ? (val / newDownPoolIfDown) * netPoolIfDown : 0;
+  const downMultiplier = val > 0 ? downPayout / val : 0;
+
+  // Sentiment Bar Math
+  const upPercent = (currentTotalUp / (currentTotalUp + currentTotalDown)) * 100;
+  const downPercent = 100 - upPercent;
+
+  // Personal active orders
+  const myActiveOrders = myOrders.filter(o => o.marketId === marketId && o.status === 'PENDING');
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -268,7 +294,7 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
           flexDirection: "column",
           gap: isMobileView ? 16 : 24,
           minWidth: 0,
-          borderRight: isMobileView ? "none" : `1px solid ${theme.border}`
+          borderRight: "none"
         }}>
           {/* Market Title and Stats */}
           <div style={{ padding: isMobileView ? "0 16px" : 0, display: "flex", flexDirection: isMobileView ? "column" : "row", justifyContent: "space-between", alignItems: isMobileView ? "flex-start" : "flex-start", gap: isMobileView ? 16 : 0 }}>
@@ -321,85 +347,49 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
             <div ref={chartContainerRef} style={{ flex: 1, width: "100%" }} />
           </div>
 
-          {/* Order Book */}
+          {/* Market Sentiment Bar */}
           <div style={{
             margin: isMobileView ? "0 8px" : 0,
             background: theme.surface,
             borderRadius: 12,
             border: `1px solid ${theme.border}`,
-            padding: isMobileView ? 12 : 16
+            padding: isMobileView ? 16 : 20
           }}>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: theme.ink }}>Order Book</h3>
-            <div style={{ display: "flex", gap: isMobileView ? 12 : 24, flexDirection: isMobileView ? "column" : "row" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: "#10b981", fontWeight: 600, marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${theme.border}` }}>
-                  Pending UP ({totalUp.toFixed(2)} USDC)
-                </div>
-                {orderBook.up.length === 0 ? (
-                  <div style={{ color: theme.inkSoft, fontSize: 13, fontStyle: "italic" }}>No pending UP orders</div>
-                ) : (
-                  orderBook.up.map(o => (
-                    <div key={o.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: theme.ink }}>
-                      <span>User {o.userId.substring(0, 6)}...</span>
-                      <span>{o.amount.toFixed(2)} USDC</span>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: "#ef4444", fontWeight: 600, marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${theme.border}` }}>
-                  Pending DOWN ({totalDown.toFixed(2)} USDC)
-                </div>
-                {orderBook.down.length === 0 ? (
-                  <div style={{ color: theme.inkSoft, fontSize: 13, fontStyle: "italic" }}>No pending DOWN orders</div>
-                ) : (
-                  orderBook.down.map(o => (
-                    <div key={o.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: theme.ink }}>
-                      <span>User {o.userId.substring(0, 6)}...</span>
-                      <span>{o.amount.toFixed(2)} USDC</span>
-                    </div>
-                  ))
-                )}
-              </div>
+            <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: theme.ink }}>Market Sentiment</h3>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+              <span style={{ color: "#10b981" }}>UP {upPercent.toFixed(0)}%</span>
+              <span style={{ color: "#ef4444" }}>{downPercent.toFixed(0)}% DOWN</span>
             </div>
             
-            {orderBook.recentMatches && orderBook.recentMatches.length > 0 && (
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px dashed ${theme.border}` }}>
-                <div style={{ color: theme.ink, fontWeight: 600, marginBottom: 12, fontSize: 14 }}>
-                  ⚡ Recent AMM Activity
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {orderBook.recentMatches.map(o => (
-                    <div key={o.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 8px", background: theme.surface2, borderRadius: 6 }}>
-                      <span style={{ color: theme.inkSoft }}>
-                        {o.userId === 'SYSTEM_AMM' ? '🤖 AMM matched' : `User ${o.userId.substring(0, 4)}... matched`}
-                      </span>
-                      <span style={{ color: o.side === 'UP' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                        {o.amount.toFixed(2)} USDC {o.side}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* The Bar */}
+            <div style={{ 
+              width: "100%", height: 12, borderRadius: 6, overflow: "hidden", 
+              display: "flex", background: theme.surface2 
+            }}>
+              <div style={{ width: `${upPercent}%`, height: "100%", background: "#10b981", transition: "width 0.3s ease" }} />
+              <div style={{ width: `${downPercent}%`, height: "100%", background: "#ef4444", transition: "width 0.3s ease" }} />
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12, color: theme.inkSoft }}>
+              <span>{currentTotalUp.toFixed(2)} USDC Pool</span>
+              <span>{currentTotalDown.toFixed(2)} USDC Pool</span>
+            </div>
           </div>
         </div>
 
         {/* Right Column: Bet Slip Sidebar */}
         <div style={{
           width: isMobileView ? "auto" : 360,
-          margin: isMobileView ? "16px 8px 24px 8px" : 0,
-          borderRadius: isMobileView ? 12 : 0,
+          margin: isMobileView ? "16px 8px 24px 8px" : "24px 24px 24px 0",
+          borderRadius: 12,
           background: theme.surface,
+          border: `1px solid ${theme.border}`,
           padding: isMobileView ? 16 : 24,
           display: "flex",
           flexDirection: "column",
           flexShrink: 0,
-          gap: 20,
-          borderTop: isMobileView ? `1px solid ${theme.border}` : "none",
-          borderRight: isMobileView ? `1px solid ${theme.border}` : "none",
-          borderBottom: isMobileView ? `1px solid ${theme.border}` : "none",
-          borderLeft: isMobileView ? "none" : `1px solid ${theme.border}`
+          gap: 20
         }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: theme.ink }}>Place Order</h2>
 
@@ -471,14 +461,41 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
                 </button>
               </div>
 
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${theme.border}`, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: 13, color: theme.ink, fontWeight: 500 }}>To win 💸</span>
-                  <span style={{ fontSize: 12, color: theme.inkSoft }}>Avg. Price 50¢</span>
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${theme.border}`, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: theme.inkSoft }}>Est. UP Payout</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "#10b981" }}>{upPayout.toFixed(2)} USDC <span style={{ fontSize: 13, color: theme.inkSoft, fontWeight: 400 }}>({(upMultiplier * 100).toFixed(0)}%)</span></span>
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#10b981" }}>
-                  {(parseFloat(amount) * 2 || 0).toFixed(2)} USDC
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: theme.inkSoft }}>Est. DOWN Payout</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "#ef4444" }}>{downPayout.toFixed(2)} USDC <span style={{ fontSize: 13, color: theme.inkSoft, fontWeight: 400 }}>({(downMultiplier * 100).toFixed(0)}%)</span></span>
                 </div>
+              </div>
+
+              {/* Personal Active Orders Section */}
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px dashed ${theme.border}` }}>
+                <h3 style={{ margin: "0 0 12px 0", fontSize: 15, color: theme.ink }}>Your Active Positions</h3>
+                {myActiveOrders.length === 0 ? (
+                  <div style={{ color: theme.inkSoft, fontSize: 13, fontStyle: "italic" }}>No active bets in this market.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 150, overflowY: "auto", paddingRight: 4 }}>
+                    {myActiveOrders.map(o => (
+                      <div key={o.id} style={{ 
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "8px 12px", background: theme.surface2, borderRadius: 8,
+                        borderLeft: `4px solid ${o.side === 'UP' ? '#10b981' : '#ef4444'}`
+                      }}>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: 11, color: theme.inkSoft, letterSpacing: 0.5 }}>{o.side}</span>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: theme.ink }}>{o.amount.toFixed(2)} USDC</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: theme.inkSoft, background: theme.surface, padding: "2px 6px", borderRadius: 4 }}>
+                          PENDING
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {market.resolved && (
