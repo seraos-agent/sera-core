@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { isAddress } from 'viem';
 import { randomUUID } from 'crypto';
+import { EventEmitter } from 'node:events';
 import { StandardEvent, EventTypes } from '../core/events/types';
 import { App as BoltApp } from '@slack/bolt';
 import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
@@ -22,8 +23,12 @@ import { GoogleDriveOAuthService } from '../core/integrations/google-drive/Googl
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
+import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 
 const mcpApiKeyStore = new McpApiKeyStore();
+const arenaEventBus = new EventEmitter();
+const predictionEngine = new PredictionEngineService(arenaEventBus);
+setInterval(() => predictionEngine.tick(), 1000); // 1 sec cron
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -216,6 +221,15 @@ app.post('/mcp/message', async (req, res) => {
 });
 
 let msgIdCounter = Date.now();
+
+// Arena Global Broadcasting
+arenaEventBus.on('arena:markets_updated', (markets) => {
+  io.emit('arena:markets', markets);
+});
+
+arenaEventBus.on('arena:price_tick', (payload) => {
+  io.emit('arena:price_tick', payload);
+});
 
 // ─── Socket.io Bridge (Sensory Layer) ────────────────────────────────────────
 io.on('connection', (socket: Socket) => {
@@ -649,6 +663,53 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  // --- Arena Events ---
+  socket.on('arena:fetch_markets', () => {
+    socket.emit('arena:markets', predictionEngine.getActiveMarkets());
+  });
+  
+  socket.on('arena:fetch_market_details', (marketId: string) => {
+    const markets = predictionEngine.getActiveMarkets();
+    const market = markets.find(m => m.id === marketId);
+    if (market) {
+      socket.emit('arena:market_details', {
+        market,
+        priceHistory: predictionEngine.priceHistory,
+        orderBook: predictionEngine.getOrderBook(marketId)
+      });
+    }
+  });
+
+  socket.on('arena:fetch_portfolio', () => {
+    if (!socket.data.sessionId) return;
+    socket.emit('arena:portfolio', predictionEngine.getPortfolio(socket.data.sessionId));
+  });
+  
+  // Listen for specific user portfolio updates
+  const onPortfolioUpdated = (portfolio: any) => {
+    socket.emit('arena:portfolio', portfolio);
+  };
+  
+  // Bind listener when socket connects (or authenticates)
+  if (socket.data.sessionId) {
+    arenaEventBus.on(`arena:portfolio_updated:${socket.data.sessionId}`, onPortfolioUpdated);
+  }
+
+  socket.on('arena:place_order', async (payload: { marketId: string, side: 'UP' | 'DOWN', amount: number }) => {
+    if (!requireAuthenticatedSession(socket, 'arena:place_order', instance?.eventBus)) return;
+    const userId = socket.data.sessionId!;
+    try {
+      await predictionEngine.placeOrder(userId, payload.marketId, payload.side, payload.amount);
+      socket.emit('arena:order_result', { success: true });
+      socket.emit('arena:portfolio', predictionEngine.getPortfolio(userId));
+      
+      // Broadcast to all sockets that markets/orders might have changed (for real-time orderbook feeling)
+      io.emit('arena:markets', predictionEngine.getActiveMarkets());
+    } catch (e: any) {
+      socket.emit('arena:order_result', { success: false, message: e.message });
+    }
+  });
+
   socket.on('billing:fetch', (payload: { address: string }) => {
     if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
     const periods = agentManager.getSubscriptionService().getRemainingPeriods(socket.data.sessionId);
@@ -904,8 +965,11 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('disconnect', () => {
-    unbindListeners();
     console.log(`[Server] UI Client disconnected: ${socket.id}`);
+    if (socket.data.sessionId) {
+      arenaEventBus.off(`arena:portfolio_updated:${socket.data.sessionId}`, onPortfolioUpdated);
+    }
+    unbindListeners();
   });
 });
 

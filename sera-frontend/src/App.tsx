@@ -9,6 +9,7 @@ import { ConnectionsPage } from "./components/connections/ConnectionsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
 import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
+import { PredictionArenaPage } from "./components/predictions/PredictionArenaPage";
 
 import { LandingPage } from "./components/landing/LandingPage";
 import { PolymarketPage } from "./components/polymarket/PolymarketPage";
@@ -91,7 +92,7 @@ function InnerApp() {
   const [billingOpen, setBillingOpen] = useState(false);
   const [currentView, setCurrentView] = useState<SidebarView>(() => {
     const saved = localStorage.getItem("sera_view") as SidebarView | null;
-    return saved && ["chat", "wallet", "connections", "automations", "profile"].includes(saved) ? saved : "chat";
+    return saved && ["chat", "wallet", "connections", "automations", "profile", "polymarket", "arena"].includes(saved) ? saved : "chat";
   });
 
   useEffect(() => {
@@ -430,6 +431,12 @@ function InnerApp() {
               setCurrentView("chat");
               setSidebarOpen(true);
             }}
+          />
+        ) : currentView === "arena" ? (
+          <PredictionArenaPage
+            theme={theme}
+            socket={socket}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : (
           <ChatView

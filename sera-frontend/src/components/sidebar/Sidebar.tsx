@@ -1,9 +1,9 @@
-import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet, Clock } from "lucide-react";
+import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet, Clock, Zap } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
-export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "polymarket";
+export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "polymarket" | "arena";
 
 interface ConnectorSummary {
   id: string;
@@ -148,6 +148,30 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               {open && (
                 <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: currentView === "automations" ? theme.accent : theme.inkSoft, fontWeight: currentView === "automations" ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                   Active Intents
+                </span>
+              )}
+            </div>
+
+            <div
+              onClick={() => {
+                navigate("arena" as SidebarView);
+              }}
+              title={!open ? "Sera Arena" : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: open ? "8px 6px" : "12px", borderRadius: 8,
+                cursor: "pointer", transition: "background 150ms",
+                marginBottom: 2,
+                justifyContent: open ? "flex-start" : "center",
+                background: currentView === "arena" ? theme.accentSoft : "transparent"
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = currentView === "arena" ? theme.accentSoft : theme.surface; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "arena" ? theme.accentSoft : "transparent"; }}
+            >
+              <Zap size={18} color={currentView === "arena" ? theme.accent : theme.inkSoft} style={{ flexShrink: 0 }} />
+              {open && (
+                <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: currentView === "arena" ? theme.accent : theme.inkSoft, fontWeight: currentView === "arena" ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Sera Arena
                 </span>
               )}
             </div>
