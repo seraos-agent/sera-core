@@ -61,7 +61,7 @@ import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { DomainProductContractRegistry } from '../core/products/DomainProductContractRegistry';
 import { HyperliquidTradingProductContract } from '../capabilities/hyperliquid/HyperliquidTradingProductContract';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
-import { predictionEngine } from '../server/index';
+import { predictionEngine } from '../server/predictionEngine';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';

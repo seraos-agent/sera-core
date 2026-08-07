@@ -24,11 +24,10 @@ import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
+import { predictionEngine } from './predictionEngine';
 
+export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
-const arenaEventBus = new EventEmitter();
-export const predictionEngine = new PredictionEngineService(arenaEventBus);
-setInterval(() => predictionEngine.tick(), 1000); // 1 sec cron
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
