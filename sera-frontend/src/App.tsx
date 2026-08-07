@@ -160,9 +160,28 @@ function InnerApp() {
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { open } = useAppKit();
-  const [isBypassed, setIsBypassed] = useState(false);
+  const [isBypassed, setIsBypassed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).has('bypass');
+    }
+    return false;
+  });
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
   const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
+
+  // Automatically emit login if bypass was passed via URL
+  useEffect(() => {
+    if (isBypassed && socket) {
+      socket.emit("auth:login", {});
+      
+      // Cleanup URL so it looks clean
+      if (typeof window !== 'undefined' && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('bypass');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  }, [isBypassed, socket]);
 
   const startWalletLink = () => {
     if (!socket || !address || isBypassed) return;

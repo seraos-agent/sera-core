@@ -1,11 +1,11 @@
 .sera-room {
-  --paper: #ded8cd;
+  --paper: #ffffff;
   --ink: #24231f;
   --muted: #706b62;
   --line: rgba(44, 40, 33, .16);
   --violet: #6b6177;
   --blue: #657382;
-  background: #ded8cd
+  background: #ffffff
 }
 
 .sera-room,
@@ -18,17 +18,17 @@
 }
 
 .sera-room.is-dark {
-  --paper: #11131a;
+  --paper: #000000;
   --ink: #f0eee9;
   --muted: #aaa8b1;
   --line: rgba(220, 223, 240, .13);
   --violet: #a89cf3;
   --blue: #8796dc;
-  background: #11131a;
+  background: #000000;
 }
 
 .sera-room.is-dark::after { opacity: .25; filter: invert(1) hue-rotate(166deg) saturate(.58); }
-.sera-room.is-dark .room-header { border-color: rgba(222, 225, 243, .12); background: rgba(20, 23, 33, .74); }
+.sera-room.is-dark .room-header { border-bottom: 1px solid rgba(255, 255, 255, 0.05); background: #0a0b0f; }
 .sera-room.is-dark .room-brand span,
 .sera-room.is-dark .idle-headline,
 .sera-room.is-dark .conversation-column { color: var(--ink); }
@@ -68,12 +68,13 @@
 }
 
 .room-header {
-  background: linear-gradient(to bottom, rgba(222, 216, 205, .96), rgba(222, 216, 205, .62), transparent)
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
 }
 
 .header-launch {
-  background: #272621;
-  color: #f1ece2
+  background: #0046d1;
+  color: #ffffff;
 }
 
 .header-launch span {
@@ -238,8 +239,8 @@
 }
 
 .header-launch:hover {
-  background: #4c61b5;
-  color: #fffdf8;
+  background: #0038a8;
+  color: #ffffff;
   box-shadow: none
 }
 
@@ -288,14 +289,7 @@
 }
 
 .sera-room::after {
-  content: '';
-  position: fixed;
-  z-index: 0;
-  inset: 0;
-  pointer-events: none;
-  opacity: .54;
-  background-image: radial-gradient(circle, rgba(67, 62, 53, .22) .8px, transparent .95px);
-  background-size: 24px 24px
+  display: none;
 }
 
 @media(max-width:760px) {

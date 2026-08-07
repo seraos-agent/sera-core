@@ -195,7 +195,11 @@ export function LandingPage() {
   const isClosing = remaining <= 10;
   const [showNotice, setShowNotice] = useState(false);
   const launchApp = () => {
-    setShowNotice(true);
+    if (import.meta.env?.DEV) {
+      window.location.href = 'http://localhost:5173/?bypass=true';
+    } else {
+      setShowNotice(true);
+    }
   };
 
   /* Scroll reveal refs for each section */
@@ -371,7 +375,7 @@ export function LandingPage() {
               </p>
               <div className="steps-wrapper reveal-child reveal-delay-4">
                 <div className="step-card">
-                  <div className="step-number">01</div>
+
                   <h3>Express Your Intent</h3>
                   <p>Type your request or question in SERA's interactive console at the bottom of this page.</p>
                 </div>
@@ -382,7 +386,7 @@ export function LandingPage() {
                   </svg>
                 </div>
                 <div className="step-card">
-                  <div className="step-number">02</div>
+
                   <h3>SERA Formulates a Plan</h3>
                   <p>SERA evaluates real-time state, checks policy constraints, and builds a proposed action workflow.</p>
                 </div>
@@ -393,7 +397,7 @@ export function LandingPage() {
                   </svg>
                 </div>
                 <div className="step-card">
-                  <div className="step-number">03</div>
+
                   <h3>Execute & Verify</h3>
                   <p>Upon review, SERA completes the task safely and delivers transparent execution reports.</p>
                 </div>
@@ -401,35 +405,16 @@ export function LandingPage() {
             </div>
           </section>
 
-          {/* SECTION 5: SAMPLE USE CASES */}
-          <section className="landing-section" id="use-cases" ref={reveal4}>
-            <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">SAMPLE USE CASES</div>
-              <h2 className="section-title reveal-child reveal-delay-2">What Can You Ask SERA To Do?</h2>
-              <p className="section-subtitle reveal-child reveal-delay-3">
-                Click any sample prompt below to populate the interactive console at the bottom and try it out!
+          {/* SECTION 5: THE UNIVERSAL AGENT OS */}
+          <section className="landing-section" id="universal-os" ref={reveal4}>
+            <div className="landing-container" style={{ textAlign: 'center' }}>
+              <div className="section-badge reveal-child reveal-delay-1">THE UNIVERSAL AGENT OS</div>
+              <h2 className="section-title reveal-child reveal-delay-2">An intelligence for every system</h2>
+              <p className="section-subtitle reveal-child reveal-delay-3" style={{ margin: '0 auto 48px auto' }}>
+                Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
               </p>
-              <div className="prompts-grid reveal-child reveal-delay-4">
-                <div className="prompt-card" onClick={() => handleSamplePromptClick('What is SERA?')}>
-                  <div className="prompt-card-category">INTRODUCTION</div>
-                  <p className="prompt-card-text">"What is SERA?"</p>
-                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
-                </div>
-                <div className="prompt-card" onClick={() => handleSamplePromptClick('What can SERA help me accomplish?')}>
-                  <div className="prompt-card-category">CAPABILITIES</div>
-                  <p className="prompt-card-text">"What can SERA help me accomplish?"</p>
-                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
-                </div>
-                <div className="prompt-card" onClick={() => handleSamplePromptClick('How does SERA stay safe?')}>
-                  <div className="prompt-card-category">SECURITY</div>
-                  <p className="prompt-card-text">"How does SERA stay safe?"</p>
-                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
-                </div>
-                <div className="prompt-card" onClick={() => handleSamplePromptClick('What can SERA connect to?')}>
-                  <div className="prompt-card-category">INTEGRATIONS</div>
-                  <p className="prompt-card-text">"What can SERA connect to?"</p>
-                  <div className="prompt-card-action">Try This Prompt <span>→</span></div>
-                </div>
+              <div className="reveal-child reveal-delay-4">
+                <PartnerMarquee />
               </div>
             </div>
           </section>
@@ -488,7 +473,7 @@ export function LandingPage() {
       <div id="interactive" className="interactive-section">
 
         <section className="room-stage" id="reception">
-          {scene === 'reception' ? <IdleScene /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
+          {scene === 'reception' ? <IdleScene onSuggestion={handleSamplePromptClick} /> : <IntentScene scene={scene} question={question} content={content} streamedResponse={streamedResponse} isThinking={isThinking} activeVisual={activeVisual} isVisualTransitioning={isVisualTransitioning} onSuggestion={send} onLaunchApp={launchApp} />}
         </section>
 
 
@@ -499,37 +484,51 @@ export function LandingPage() {
           <button type="button" onClick={endSession}>{isClosing ? 'End now' : 'End session'}</button>
         </div>}
 
-        <footer className="landing-footer" aria-label="SERA information">
-          {scene === 'reception' && (
-            <div className="landing-footer-identity">
-              <span>SERA OS · 2026</span>
-              <span className="landing-footer-trust">Public reception · Read-only</span>
-            </div>
-          )}
-
-          {scene === 'reception' && (
-            <div className="landing-footer-links">
-              <a className="landing-footer-social" href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer" aria-label="SERA OS on GitHub" title="Open GitHub">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" /></svg>
-              </a>
-              <a className="landing-footer-social" href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer" aria-label="Follow SERA on X">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" /></svg>
-              </a>
-              <a className="landing-footer-social" href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer" aria-label="Contact SERA on Telegram" title="Open Telegram">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 3.4a1.45 1.45 0 0 0-1.5-.22L2.95 9.8a1.44 1.44 0 0 0 .12 2.72l4.2 1.32 1.6 5.07a1.42 1.42 0 0 0 2.4.53l2.34-2.35 4.17 3.05a1.44 1.44 0 0 0 2.26-.85l2.18-14.4a1.43 1.43 0 0 0-.82-1.48ZM9.42 13.02l8.24-5.1-6.75 6.53-.26 2.62-1.23-3.9Z" /></svg>
-              </a>
-              <a className="landing-footer-gmail" href="https://mail.google.com/mail/?view=cm&fs=1&to=seraos.agent%40gmail.com" target="_blank" rel="noreferrer" aria-label="Email SERA with Gmail" title="Open Gmail">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.25 18V6.25" stroke="#4285F4" strokeWidth="3.1" strokeLinecap="round" /><path d="m4.25 6.25 7.75 5.8" stroke="#EA4335" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="m12 12.05 7.75-5.8" stroke="#FBBC04" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="M19.75 6.25V18" stroke="#34A853" strokeWidth="3.1" strokeLinecap="round" /></svg>
-              </a>
-            </div>
-          )}
-        </footer>
-
         <form className={`room-input ${scene !== 'reception' ? 'is-engaged' : ''}`} onSubmit={submit}>
           <input ref={inputRef} value={message} onChange={event => setMessage(event.target.value)} disabled={isThinking} placeholder={scene === 'reception' ? inputPrompts[inputPromptIndex] : 'Continue the conversation…'} aria-label="Message SERA" />
           <button type="submit" disabled={!message.trim() || isThinking} aria-label="Send message">{isThinking ? <i /> : '↑'}</button>
         </form>
       </div>
+
+      <footer className="landing-footer-pro">
+        <div className="landing-footer-content">
+          <div className="footer-col">
+            <h4 style={{ color: 'var(--ink)' }}>SERA OS</h4>
+            <p>The universal AI agent engine. Secure, autonomous, and verifiable.</p>
+            <div className="system-status">
+              <span className="status-dot"></span>
+              All Systems Operational
+            </div>
+          </div>
+          <div className="footer-col">
+            <h4 style={{ color: 'var(--ink)' }}>Products</h4>
+            <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Agent Engine</a>
+            <a href="https://docs.seraos.xyz/docs/mpc" target="_blank" rel="noreferrer">MPC Wallet</a>
+            <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">Action Workflows</a>
+            <a href="https://docs.seraos.xyz/docs/compute" target="_blank" rel="noreferrer">Verifiable Compute</a>
+          </div>
+          <div className="footer-col">
+            <h4 style={{ color: 'var(--ink)' }}>Developers</h4>
+            <a href="https://docs.seraos.xyz/docs/intro" target="_blank" rel="noreferrer">Documentation</a>
+            <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">API Reference</a>
+            <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Architecture Overview</a>
+            <a href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+          <div className="footer-col">
+            <h4 style={{ color: 'var(--ink)' }}>Community</h4>
+            <a href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer">Twitter (X)</a>
+            <a href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer">Telegram</a>
+          </div>
+        </div>
+        <div className="landing-footer-bottom">
+          <span className="copyright">&copy; 2026 SERA OS. All rights reserved.</span>
+          <div className="footer-legal">
+            <a href="#privacy">Privacy Policy</a>
+            <a href="#terms">Terms of Service</a>
+          </div>
+        </div>
+      </footer>
+
       {showNotice && <LaunchNotice onClose={() => setShowNotice(false)} />}
     </main>
   );
@@ -592,20 +591,41 @@ function MetricsStrip() {
   );
 }
 
-function IdleScene() {
+function IdleScene({ onSuggestion }: { onSuggestion: (prompt: string) => void }) {
   return (
     <div className="idle-scene">
-      <p className="room-kicker">The Universal Agent OS</p>
+      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <div className="section-badge" style={{ margin: '0 auto 14px' }}>SAMPLE USE CASES</div>
+        <h2 className="section-title" style={{ fontSize: 'clamp(22px, 3vw, 32px)', marginBottom: '12px' }}>
+          What Can You Ask SERA To Do?
+        </h2>
+        <p className="section-subtitle" style={{ margin: '0 auto' }}>
+          Click any sample prompt below to populate the input box and try it out!
+        </p>
+      </div>
 
-      <h1 className="idle-headline">
-        <span className="idle-word idle-word-1">An intelligence for every system</span>
-      </h1>
-
-      <p className="idle-copy">
-        Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
-      </p>
-
-      <PartnerMarquee />
+      <div className="prompts-grid" style={{ position: 'relative', zIndex: 10 }}>
+        <div className="prompt-card" onClick={() => onSuggestion('What is SERA?')}>
+          <div className="prompt-card-category">INTRODUCTION</div>
+          <p className="prompt-card-text">"What is SERA?"</p>
+          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+        </div>
+        <div className="prompt-card" onClick={() => onSuggestion('What can SERA help me accomplish?')}>
+          <div className="prompt-card-category">CAPABILITIES</div>
+          <p className="prompt-card-text">"What can SERA help me accomplish?"</p>
+          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+        </div>
+        <div className="prompt-card" onClick={() => onSuggestion('How does SERA stay safe?')}>
+          <div className="prompt-card-category">SECURITY</div>
+          <p className="prompt-card-text">"How does SERA stay safe?"</p>
+          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+        </div>
+        <div className="prompt-card" onClick={() => onSuggestion('What can SERA connect to?')}>
+          <div className="prompt-card-category">INTEGRATIONS</div>
+          <p className="prompt-card-text">"What can SERA connect to?"</p>
+          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+        </div>
+      </div>
     </div>
   );
 }

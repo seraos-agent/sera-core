@@ -12,6 +12,7 @@
     "start": "ts-node --transpile-only src/server/index.ts",
     "start:server": "ts-node --transpile-only src/server/index.ts",
     "start:reception": "npm --prefix sera-reception run start",
+    "dev:docs": "npm --prefix sera-docs run start -- --port 3003",
     "build": "tsc"
   },
   "author": "",

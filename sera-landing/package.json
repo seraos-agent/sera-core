@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3001 --strictPort",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {

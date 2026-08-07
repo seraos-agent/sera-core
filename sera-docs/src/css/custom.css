@@ -1,0 +1,68 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #0046d1;
+  --ifm-color-primary-dark: #003fbc;
+  --ifm-color-primary-darker: #003aba;
+  --ifm-color-primary-darkest: #00309a;
+  --ifm-color-primary-light: #1a5ae5;
+  --ifm-color-primary-lighter: #2663e7;
+  --ifm-color-primary-lightest: #4c7eec;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #4f8eff;
+  --ifm-color-primary-dark: #3077ff;
+  --ifm-color-primary-darker: #216cff;
+  --ifm-color-primary-darkest: #004cef;
+  --ifm-color-primary-light: #6ea2ff;
+  --ifm-color-primary-lighter: #7eacff;
+  --ifm-color-primary-lightest: #adccff;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Mobile Footer Adjustments */
+@media (max-width: 768px) {
+  .footer {
+    padding: 2rem 1rem;
+  }
+  
+  .footer__links {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px 16px;
+    text-align: left;
+  }
+  
+  .footer__col {
+    margin-bottom: 0 !important;
+  }
+  
+  .footer__title {
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    opacity: 0.9;
+  }
+
+  .footer__item {
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  
+  .footer__bottom {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    font-size: 0.8rem;
+  }
+}

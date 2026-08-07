@@ -13,6 +13,7 @@ const row1 = [...row1Base, ...row1Base, ...row1Base];
 const row2Base = [
   { name: 'WalletConnect', src: 'https://raw.githubusercontent.com/WalletConnect/walletconnect-assets/master/Logo/Blue%20(Default)/Logo.svg' },
   { name: 'Thirdweb', src: 'https://thirdweb.com/favicon.ico' },
+  { name: 'Cloudflare', src: 'https://cdn.simpleicons.org/cloudflare/F38020' },
 ];
 const row2 = [...row2Base, ...row2Base, ...row2Base];
 
