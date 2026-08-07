@@ -20,7 +20,8 @@ export class VectorMemoryStore {
 
   constructor(sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
     this.persistLocally = options.persistLocally ?? true;
-    this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'vector_memory.json');
+    const safeSessionId = sessionId.replace(/:/g, '-');
+    this.filePath = path.join(process.cwd(), '.data', 'sessions', safeSessionId, 'vector_memory.json');
     this.load();
   }
 

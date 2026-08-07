@@ -139,6 +139,32 @@ export class PredictionEngineService {
     return order;
   }
 
+  public getMarketDetails(marketId: string) {
+    const market = this.markets.find(m => m.id === marketId);
+    if (!market) throw new Error("Market not found.");
+    
+    const marketOrders = this.orders.filter(o => o.marketId === marketId && o.status === 'PENDING');
+    const totalUp = marketOrders.filter(o => o.side === 'UP').reduce((sum, o) => sum + o.amount, 0);
+    const totalDown = marketOrders.filter(o => o.side === 'DOWN').reduce((sum, o) => sum + o.amount, 0);
+    const grossPool = totalUp + totalDown;
+    const netPool = grossPool * 0.98;
+    
+    return {
+      marketId: market.id,
+      title: market.title,
+      strikePrice: market.strikePrice,
+      expiryTime: market.expiryTime,
+      totalUp,
+      totalDown,
+      oddsUp: totalUp > 0 ? (netPool / totalUp).toFixed(2) + 'x' : '1.00x',
+      oddsDown: totalDown > 0 ? (netPool / totalDown).toFixed(2) + 'x' : '1.00x'
+    };
+  }
+
+  public async agentPlaceOrder(agentId: string, marketId: string, side: 'UP' | 'DOWN', amount: number) {
+    return this.placeOrder(agentId, marketId, side, amount);
+  }
+
   public async tick() {
     await this.updateBtcPrice();
     const resolvedCount = this.resolveExpiredMarkets();

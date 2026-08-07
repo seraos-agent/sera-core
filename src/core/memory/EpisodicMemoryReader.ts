@@ -7,7 +7,8 @@ export class EpisodicMemoryReader {
 
   constructor(sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
     this.persistLocally = options.persistLocally ?? true;
-    this.filePath = path.join(process.cwd(), '.data', 'sessions', sessionId, 'episodic_memory.jsonl');
+    const safeSessionId = sessionId.replace(/:/g, '-');
+    this.filePath = path.join(process.cwd(), '.data', 'sessions', safeSessionId, 'episodic_memory.jsonl');
   }
 
   /**

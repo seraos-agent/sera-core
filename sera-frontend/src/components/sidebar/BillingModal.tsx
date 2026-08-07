@@ -47,13 +47,13 @@ export function BillingModal({ theme, walletState, onClose }: BillingModalProps)
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div 
+      <div
         onClick={onClose}
         style={{ position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.5)", backdropFilter: "blur(4px)" }}
       />
-      <div style={{ 
+      <div style={{
         position: "relative",
-        background: theme.surface, 
+        background: theme.surface,
         border: `1px solid ${theme.border}`,
         borderRadius: 16,
         width: 400,
@@ -61,7 +61,7 @@ export function BillingModal({ theme, walletState, onClose }: BillingModalProps)
         padding: 24,
         boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
       }}>
-        <button 
+        <button
           onClick={onClose}
           style={{ position: "absolute", top: 16, right: 16, background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft }}
         >
@@ -69,11 +69,11 @@ export function BillingModal({ theme, walletState, onClose }: BillingModalProps)
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-          <div style={{ 
-            width: 40, height: 40, borderRadius: 10, 
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
             background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.1))",
             border: "1px solid rgba(34, 197, 94, 0.3)",
-            display: "flex", alignItems: "center", justifyContent: "center" 
+            display: "flex", alignItems: "center", justifyContent: "center"
           }}>
             <Zap size={20} color="#22c55e" />
           </div>
@@ -83,10 +83,10 @@ export function BillingModal({ theme, walletState, onClose }: BillingModalProps)
           </div>
         </div>
 
-        <div style={{ 
-          background: theme.surface2, 
-          borderRadius: 12, 
-          padding: 20, 
+        <div style={{
+          background: theme.surface2,
+          borderRadius: 12,
+          padding: 20,
           display: "flex", flexDirection: "column", gap: 8,
           marginBottom: 24,
           border: `1px solid ${theme.border}`
@@ -102,10 +102,10 @@ export function BillingModal({ theme, walletState, onClose }: BillingModalProps)
         <div style={{ marginBottom: 24 }}>
           <h3 style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 600, color: theme.ink }}>Top Up Tokens</h3>
           <p style={{ margin: "0 0 16px 0", fontSize: 13, color: theme.inkSoft, lineHeight: 1.5 }}>
-            Base rate: 1 USDC = 200,000 Tokens.<br/>
+            Base rate: 1 USDC = 200,000 Tokens.<br />
             Tokens never expire.
           </p>
-          
+
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             {[1, 5, 10, 20].map(val => {
               let bonusTag = null;

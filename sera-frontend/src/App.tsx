@@ -11,7 +11,7 @@ import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
 import { PredictionArenaPage } from "./components/predictions/PredictionArenaPage";
 
-import { LandingPage } from "./components/landing/LandingPage";
+import { ConnectGateway } from "./components/auth/ConnectGateway";
 import { PolymarketPage } from "./components/polymarket/PolymarketPage";
 import { BillingModal } from "./components/sidebar/BillingModal";
 import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
@@ -295,12 +295,12 @@ function InnerApp() {
 
   if (!isMounted) return null;
 
+  // 1. If not connected, show ConnectGateway
   if (!isConnected && !isBypassed) {
     return (
       <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
-        <LandingPage onLaunchApp={(landingMode) => {
-          setMode(landingMode);
-          setThemeMode(landingMode);
+        <ConnectGateway theme={THEME[mode]} onConnect={() => {
+          setThemeMode(mode);
           window.requestAnimationFrame(() => open());
         }} />
 

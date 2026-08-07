@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import type { WalletState } from "./useWallet";
-import type { MemoryVaultDescriptor } from "../../../src/core/memory/MemoryVault";
+import type { MemoryVaultDescriptor } from "../types/MemoryVault";
 import { deviceMemoryVault, deviceVaultDescriptor, type DeviceVaultDescriptor } from '../storage/DeviceMemoryVault';
 
 export interface GoogleDriveConnectionState {

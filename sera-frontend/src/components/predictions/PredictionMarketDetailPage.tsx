@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ArrowLeft, Zap } from "lucide-react";
+import { ArrowLeft, Zap, BarChart2 } from "lucide-react";
 import { CountdownTimer } from "./CountdownTimer";
 import { createChart, ColorType, AreaSeries, LineType, LineStyle } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, IPriceLine, LineData, Time } from "lightweight-charts";
@@ -371,9 +371,16 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
               <div style={{ width: `${downPercent}%`, height: "100%", background: "#ef4444", transition: "width 0.3s ease" }} />
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12, color: theme.inkSoft }}>
-              <span>{currentTotalUp.toFixed(2)} USDC Pool</span>
-              <span>{currentTotalDown.toFixed(2)} USDC Pool</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, fontSize: 12, color: theme.inkSoft, fontWeight: 500 }}>
+              <span>
+                {(() => {
+                  const vol = currentTotalUp + currentTotalDown;
+                  if (vol >= 1000000) return `$${(vol / 1000000).toFixed(1)}M`;
+                  if (vol >= 1000) return `$${(vol / 1000).toFixed(1)}k`;
+                  return `$${vol.toFixed(0)}`;
+                })()} Vol.
+              </span>
+              <BarChart2 size={14} />
             </div>
           </div>
         </div>

@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowLeft, BadgeCheck, Cloud, HardDrive, Link2, ShieldCheck, Trash2, Wallet } from 'lucide-react';
 import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
-import type { MemoryVaultDescriptor } from '../../../../src/core/memory/MemoryVault';
+import type { MemoryVaultDescriptor } from '../../types/MemoryVault';
 import type { DeviceVaultDescriptor } from '../../storage/DeviceMemoryVault';
 import type { GoogleDriveConnectionState } from '../../hooks/useSocket';
 

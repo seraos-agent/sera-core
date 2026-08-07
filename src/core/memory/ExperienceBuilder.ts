@@ -28,7 +28,8 @@ export class ExperienceBuilder {
 
   constructor(private eventBus: EventEmitter, private sessionId: string = 'default', options: { persistLocally?: boolean } = {}) {
     this.persistLocally = options.persistLocally ?? true;
-    const dataDir = path.join(process.cwd(), '.data', 'sessions', sessionId);
+    const safeSessionId = sessionId.replace(/:/g, '-');
+    const dataDir = path.join(process.cwd(), '.data', 'sessions', safeSessionId);
     if (this.persistLocally && !fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
