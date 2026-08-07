@@ -24,7 +24,7 @@ import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
-import { predictionEngine } from './predictionEngine';
+import { predictionEngine, arenaEventBus } from './predictionEngine';
 
 export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
