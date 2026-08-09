@@ -18,17 +18,17 @@
 }
 
 .sera-room.is-dark {
-  --paper: #000000;
+  --paper: #0f111a;
   --ink: #f0eee9;
   --muted: #aaa8b1;
   --line: rgba(220, 223, 240, .13);
   --violet: #a89cf3;
   --blue: #8796dc;
-  background: #000000;
+  background: #0f111a;
 }
 
-.sera-room.is-dark::after { opacity: .25; filter: invert(1) hue-rotate(166deg) saturate(.58); }
-.sera-room.is-dark .room-header { border-bottom: 1px solid rgba(255, 255, 255, 0.05); background: #0a0b0f; }
+.sera-room.is-dark::after { opacity: .15; filter: invert(1) hue-rotate(166deg) saturate(.58); }
+.sera-room.is-dark .room-header { border-bottom: 1px solid rgba(255, 255, 255, 0.05); background: #1a1d2d; }
 .sera-room.is-dark .room-brand span,
 .sera-room.is-dark .idle-headline,
 .sera-room.is-dark .conversation-column { color: var(--ink); }

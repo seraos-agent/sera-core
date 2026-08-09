@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { FormEvent } from 'react';
+import { useTranslation } from '../../i18n/LanguageContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './LandingPage.css';
@@ -10,7 +11,7 @@ import { PartnerMarquee } from './PartnerMarquee';
 import { getReceptionReply } from '../../services/reception/receptionClient';
 import type { ReceptionReply, ReceptionVisual } from '../../services/reception/receptionClient';
 import type { ReceptionTurn } from '../../services/reception/receptionClient';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Globe, MoreVertical } from 'lucide-react';
 
 type Scene = 'reception' | ReceptionVisual;
 
@@ -37,39 +38,6 @@ function useScrollReveal() {
   return observe;
 }
 
-/* ─── Animated Counter Hook ─── */
-function useCountUp(target: number, duration = 2000) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const started = useRef(false);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !started.current) {
-          started.current = true;
-          const start = performance.now();
-          const animate = (now: number) => {
-            const progress = Math.min((now - start) / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            setCount(Math.round(eased * target));
-            if (progress < 1) requestAnimationFrame(animate);
-          };
-          requestAnimationFrame(animate);
-          observer.unobserve(node);
-        }
-      },
-      { threshold: 0.3 }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [target, duration]);
-
-  return { count, ref };
-}
-
 const inputPrompts = [
   'What is SERA?',
   'What can SERA help me accomplish?',
@@ -81,6 +49,7 @@ const inputPrompts = [
 const visualScenes = new Set<Scene>(['operating', 'security', 'automation', 'crypto']);
 
 export function LandingPage() {
+  const { t, setLanguage } = useTranslation();
   const [scene, setScene] = useState<Scene>('reception');
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -90,10 +59,43 @@ export function LandingPage() {
     }
     return false;
   });
+  const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const langRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem('sera-landing-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDocsOpen(false);
+      }
+    }
+    if (isDocsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDocsOpen]);
+
+  useEffect(() => {
+    function handleLangClickOutside(event: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(event.target as Node)) {
+        setIsLangOpen(false);
+      }
+    }
+    if (isLangOpen) {
+      document.addEventListener('mousedown', handleLangClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleLangClickOutside);
+    };
+  }, [isLangOpen]);
 
   const [message, setMessage] = useState('');
   const [question, setQuestion] = useState('');
@@ -224,44 +226,116 @@ export function LandingPage() {
     <main className={`sera-room scene-${scene} ${isDark ? 'is-dark' : ''}`}>
       <div className="room-glow room-glow-one" /><div className="room-glow room-glow-two" />
 
-      <header className="room-header">
-        <a href="#hero" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
+      {scene === 'reception' && (
+        <header className="room-header">
+          <a href="#hero" className="room-brand" onClick={endSession}><img src={seraLogo} alt="SERA" /><span>SERA</span></a>
 
-        <nav className="room-header-nav" aria-label="Main Navigation">
-          <a href="#hero" className="nav-link">Home</a>
-          <a href="#about" className="nav-link">Why SERA</a>
-          <a href="#features" className="nav-link">Features</a>
-          <a href="#how-it-works" className="nav-link">How It Works</a>
-          <a href="#use-cases" className="nav-link">Use Cases</a>
-          <a href="#interactive" className="nav-link">Try SERA</a>
-        </nav>
+          <nav className="room-header-nav" aria-label="Main Navigation">
+            <a href="#hero" className="nav-link">{t('nav.home')}</a>
+            <a href="#about" className="nav-link">{t('nav.why')}</a>
+            <a href="#features" className="nav-link">{t('nav.features')}</a>
+            <a href="#how-it-works" className="nav-link">{t('nav.how')}</a>
+            <a href="#interactive" className="nav-link">{t('nav.try')}</a>
+          </nav>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            className="theme-toggle-header"
-            onClick={() => setIsDark(!isDark)}
-            aria-label="Toggle theme"
-            title="Toggle theme"
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '18px',
-              cursor: 'pointer',
-              padding: '6px',
-              display: 'grid',
-              placeItems: 'center',
-              color: 'var(--ink)',
-              opacity: 0.75,
-              transition: 'opacity 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-            onMouseOut={(e) => e.currentTarget.style.opacity = '0.75'}
-          >
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button className="header-launch" onClick={launchApp}>Launch SERA</button>
-        </div>
-      </header>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ position: 'relative' }} ref={langRef}>
+              <button
+                className="theme-toggle-header"
+                onClick={() => setIsLangOpen(!isLangOpen)}
+                aria-label={t('nav.select_language')}
+                title={t('nav.select_language')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: 'var(--ink)',
+                  opacity: 0.75,
+                  transition: 'opacity 0.2s',
+                  textDecoration: 'none'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '0.75'}
+              >
+                <Globe size={18} />
+              </button>
+              {isLangOpen && (
+                <div className="header-dropdown" style={{ minWidth: '160px' }}>
+                  <div className="dropdown-section-title">{t('nav.select_language')}</div>
+                  <button className="dropdown-link" style={{ textAlign: 'left', background: 'none', border: 'none', width: '100%', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => { setLanguage('en'); setIsLangOpen(false); }}>English (EN)</button>
+                  <button className="dropdown-link" style={{ textAlign: 'left', background: 'none', border: 'none', width: '100%', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => { setLanguage('id'); setIsLangOpen(false); }}>Indonesia (ID)</button>
+                  <button className="dropdown-link" style={{ textAlign: 'left', background: 'none', border: 'none', width: '100%', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => { setLanguage('zh'); setIsLangOpen(false); }}>中文 (ZH)</button>
+                </div>
+              )}
+            </div>
+            <button
+              className="theme-toggle-header"
+              onClick={() => setIsDark(!isDark)}
+              aria-label="Toggle theme"
+              title="Toggle theme"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                display: 'grid',
+                placeItems: 'center',
+                color: 'var(--ink)',
+                opacity: 0.75,
+                transition: 'opacity 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseOut={(e) => e.currentTarget.style.opacity = '0.75'}
+            >
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <div style={{ position: 'relative' }} ref={dropdownRef}>
+              <button
+                className="theme-toggle-header"
+                onClick={() => setIsDocsOpen(!isDocsOpen)}
+                aria-label="Documentation"
+                title="Documentation"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: 'var(--ink)',
+                  opacity: 0.75,
+                  transition: 'opacity 0.2s',
+                  textDecoration: 'none'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '0.75'}
+              >
+                <MoreVertical size={18} />
+              </button>
+              {isDocsOpen && (
+                <div className="header-dropdown">
+                  <div className="dropdown-section-title">{t('nav.products')}</div>
+                  <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Agent Engine</a>
+                  <a href="https://docs.seraos.xyz/docs/mpc" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>MPC Wallet</a>
+                  <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Action Workflows</a>
+                  <a href="https://docs.seraos.xyz/docs/compute" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Verifiable Compute</a>
+                  
+                  <div className="dropdown-divider"></div>
+                  
+                  <div className="dropdown-section-title">{t('nav.developers')}</div>
+                  <a href="https://docs.seraos.xyz/docs/intro" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Documentation</a>
+                  <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>API Reference</a>
+                  <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Architecture Overview</a>
+                  <a href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>GitHub</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+      )}
 
       {scene === 'reception' && (
         <>
@@ -269,56 +343,126 @@ export function LandingPage() {
           <section className="landing-section hero-section" id="hero">
             {/* Animated gradient mesh background */}
             <DelayedMesh />
+            <ConnectorFlowBackground />
             <div className="landing-container">
-              <div className="section-badge">SERA OS · Universal AI Agent Engine</div>
-              <h1 className="hero-title">
-                Autonomous Intelligence That Executes Your Intent
-              </h1>
-              <p className="hero-subtitle">
-                Beyond standard text responses. SERA evaluates real-world state, formulates actionable plans, and securely executes workflows for you.
-              </p>
-              <div className="hero-cta-group">
-                <a href="#interactive" className="cta-button cta-primary">
-                  Try SERA Now
-                </a>
-                <a href="#about" className="cta-button cta-secondary">
-                  Learn More
-                </a>
-              </div>
-              <div className="hero-stats-row">
-                <div className="hero-stat-item"><span>100% Autonomous Planning</span></div>
-                <div className="hero-stat-item"><span>Real-Time WorldState Integration</span></div>
-                <div className="hero-stat-item"><span>Verifiable Safeguards & Security</span></div>
+              <div className="hero-split-layout">
+                <div className="hero-content-left">
+                  <div className="section-badge">SERA OS · Universal AI Agent Engine</div>
+                  <h1 className="hero-title">
+                    {t('hero.title')}
+                  </h1>
+                  <p className="hero-subtitle">
+                    {t('hero.subtitle')}
+                  </p>
+                  <div className="hero-cta-group">
+                    <a href="http://localhost:5174/" target="_blank" rel="noopener noreferrer" className="cta-button cta-primary">
+                      {t('hero.launch')}
+                    </a>
+                    <a href="#about" className="cta-button cta-secondary">
+                      {t('hero.learn')}
+                    </a>
+                  </div>
+                  <div className="hero-stats-row" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-gray)', marginTop: '8px' }}>
+                    {t('hero.stats')}
+                  </div>
+                </div>
+
+                <div className="hero-graphic-right">
+                  <div className="hero-workflow-tree">
+                    <svg className="workflow-lines" width="500" height="340" viewBox="0 0 500 340" fill="none">
+                      <defs>
+                        <linearGradient id="tree-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="rgba(79, 107, 255, 0)" />
+                          <stop offset="50%" stopColor="rgba(79, 107, 255, 0.6)" />
+                          <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
+                        </linearGradient>
+                      </defs>
+                      {/* Top to Left (curved) */}
+                      <path d="M250 60 C250 160, 80 140, 80 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
+                      {/* Top to Center (curved) */}
+                      <path d="M250 60 C250 160, 250 160, 250 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
+                      {/* Top to Right (curved) */}
+                      <path d="M250 60 C250 160, 420 140, 420 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
+
+                      {/* Animated flow pulses */}
+                      <path d="M250 60 C250 160, 80 140, 80 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" />
+                      <path d="M250 60 C250 160, 250 160, 250 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" style={{ animationDelay: '1s' }} />
+                      <path d="M250 60 C250 160, 420 140, 420 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" style={{ animationDelay: '2s' }} />
+                    </svg>
+
+                    <div className="workflow-node node-top">
+                      <div className="node-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                      </div>
+                      <span>{t('workflow.user_intent')}</span>
+                      <span className="node-status-dot dot-green"></span>
+                    </div>
+
+                    <div className="workflow-node node-bottom node-bottom-1">
+                      <div className="node-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      </div>
+                      <span>{t('workflow.read_state')}</span>
+                    </div>
+
+                    <div className="workflow-node node-bottom node-bottom-2">
+                      <div className="node-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                      </div>
+                      <span>{t('workflow.validate')}</span>
+                    </div>
+
+                    <div className="workflow-node node-bottom node-bottom-3">
+                      <div className="node-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                      </div>
+                      <span>{t('workflow.execute')}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
 
-          {/* SECTION 1.5: METRICS STRIP */}
-          <MetricsStrip />
+          {/* SECTION 1.5: METRICS STRIP REMOVED PER USER REQUEST */}
 
           {/* SECTION 2: WHY SERA */}
           <section className="landing-section" id="about" ref={reveal}>
             <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">WHY SERA</div>
-              <h2 className="section-title reveal-child reveal-delay-2">Bridging Natural Intent With Complex Execution</h2>
-              <p className="section-subtitle reveal-child reveal-delay-3">
-                Designed for non-technical users to orchestrate intelligent workflows without needing engineering skills.
-              </p>
+              <div className="about-header-block">
+                <div className="section-badge reveal-child reveal-delay-1" style={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff', background: 'rgba(255,255,255,0.1)' }}>{t('why.badge')}</div>
+                <h2 className="section-title reveal-child reveal-delay-2" style={{ color: '#fff' }}>{t('why.title')}</h2>
+                <p className="section-subtitle reveal-child reveal-delay-3" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                  {t('why.subtitle')}
+                </p>
+              </div>
               <div className="about-grid reveal-child reveal-delay-4">
                 <div className="about-card">
-
-                  <h3>Zero Technical Friction</h3>
-                  <p>No syntax or complex commands to memorize. Simply express your goals in everyday human language.</p>
+                  <div className="about-card-header">
+                    <div className="about-icon">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path><path d="M2 12h20"></path></svg>
+                    </div>
+                    <h3>{t('why.card1.title')}</h3>
+                  </div>
+                  <p>{t('why.card1.desc')}</p>
                 </div>
                 <div className="about-card">
-
-                  <h3>Real-World Execution</h3>
-                  <p>Most AI tools stop at generating text. SERA constructs structured action plans and executes them for real.</p>
+                  <div className="about-card-header">
+                    <div className="about-icon">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    </div>
+                    <h3>{t('why.card2.title')}</h3>
+                  </div>
+                  <p>{t('why.card2.desc')}</p>
                 </div>
                 <div className="about-card">
-
-                  <h3>Real-Time State Awareness</h3>
-                  <p>SERA inspects live system state before acting, ensuring zero false assumptions during task execution.</p>
+                  <div className="about-card-header">
+                    <div className="about-icon">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    </div>
+                    <h3>{t('why.card3.title')}</h3>
+                  </div>
+                  <p>{t('why.card3.desc')}</p>
                 </div>
               </div>
             </div>
@@ -327,39 +471,39 @@ export function LandingPage() {
           {/* SECTION 3: CORE CAPABILITIES */}
           <section className="landing-section" id="features" ref={reveal2}>
             <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">CORE CAPABILITIES</div>
-              <h2 className="section-title reveal-child reveal-delay-2">The Power Behind SERA OS</h2>
+              <div className="section-badge reveal-child reveal-delay-1">{t('core.badge')}</div>
+              <h2 className="section-title reveal-child reveal-delay-2">{t('core.title')}</h2>
               <p className="section-subtitle reveal-child reveal-delay-3">
-                Combining artificial intelligence, system automation, and verifiable human control.
+                {t('core.subtitle')}
               </p>
               <div className="features-grid reveal-child reveal-delay-4">
                 <div className="feature-card">
                   <div className="feature-card-header">
 
-                    <h3>Natural Language Interaction</h3>
+                    <h3>{t('core.card1.title')}</h3>
                   </div>
-                  <p>Describe goals in your own words. SERA understands context and intent accurately.</p>
+                  <p>{t('core.card1.desc')}</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
 
-                    <h3>Autonomous Planner</h3>
+                    <h3>{t('core.card2.title')}</h3>
                   </div>
-                  <p>Decomposes complex requests into structured, step-by-step proposals automatically.</p>
+                  <p>{t('core.card2.desc')}</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
 
-                    <h3>Multi-System & Web3 Connectors</h3>
+                    <h3>{t('core.card3.title')}</h3>
                   </div>
-                  <p>Integrates seamlessly with wallets, external APIs, data services, and automated tasks.</p>
+                  <p>{t('core.card3.desc')}</p>
                 </div>
                 <div className="feature-card">
                   <div className="feature-card-header">
 
-                    <h3>Verifiable Control & Safeguards</h3>
+                    <h3>{t('core.card4.title')}</h3>
                   </div>
-                  <p>Critical actions require your explicit review and approval before execution.</p>
+                  <p>{t('core.card4.desc')}</p>
                 </div>
               </div>
             </div>
@@ -368,50 +512,54 @@ export function LandingPage() {
           {/* SECTION 4: HOW IT WORKS */}
           <section className="landing-section" id="how-it-works" ref={reveal3}>
             <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">HOW IT WORKS</div>
-              <h2 className="section-title reveal-child reveal-delay-2">In 3 Simple Steps</h2>
-              <p className="section-subtitle reveal-child reveal-delay-3">
-                A transparent journey from initial instruction to verified outcome.
-              </p>
-              <div className="steps-wrapper reveal-child reveal-delay-4">
-                <div className="step-card">
-
-                  <h3>Express Your Intent</h3>
-                  <p>Type your request or question in SERA's interactive console at the bottom of this page.</p>
+              <div className="how-it-works-split reveal-child reveal-delay-2">
+                <div className="how-it-works-left">
+                  <div className="section-badge" style={{ borderColor: 'rgba(255,255,255,0.3)', color: '#fff', background: 'rgba(255,255,255,0.1)' }}>{t('how.badge')}</div>
+                  <h2 className="section-title" style={{ color: '#fff' }}>{t('how.title')}</h2>
+                  <p className="section-subtitle" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                    {t('how.subtitle')}
+                  </p>
                 </div>
-                <div className="step-connector" aria-hidden="true">
-                  <svg viewBox="0 0 80 20" fill="none">
-                    <path className="flow-line" d="M0 10h70" stroke="currentColor" strokeWidth="2" />
-                    <path className="arrow-head" d="M64 4l7 6-7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <div className="step-card">
-
-                  <h3>SERA Formulates a Plan</h3>
-                  <p>SERA evaluates real-time state, checks policy constraints, and builds a proposed action workflow.</p>
-                </div>
-                <div className="step-connector" aria-hidden="true">
-                  <svg viewBox="0 0 80 20" fill="none">
-                    <path className="flow-line" d="M0 10h70" stroke="currentColor" strokeWidth="2" />
-                    <path className="arrow-head" d="M64 4l7 6-7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <div className="step-card">
-
-                  <h3>Execute & Verify</h3>
-                  <p>Upon review, SERA completes the task safely and delivers transparent execution reports.</p>
+                <div className="how-it-works-right">
+                  <div className="split-step-card reveal-child reveal-delay-3">
+                    <div className="split-step-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    </div>
+                    <div className="split-step-content">
+                      <h3>{t('how.step1.title')}</h3>
+                      <p>{t('how.step1.desc')}</p>
+                    </div>
+                  </div>
+                  <div className="split-step-card reveal-child reveal-delay-4">
+                    <div className="split-step-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    </div>
+                    <div className="split-step-content">
+                      <h3>{t('how.step2.title')}</h3>
+                      <p>{t('how.step2.desc')}</p>
+                    </div>
+                  </div>
+                  <div className="split-step-card reveal-child reveal-delay-5">
+                    <div className="split-step-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div className="split-step-content">
+                      <h3>{t('how.step3.title')}</h3>
+                      <p>{t('how.step3.desc')}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </section>
 
           {/* SECTION 5: THE UNIVERSAL AGENT OS */}
-          <section className="landing-section" id="universal-os" ref={reveal4}>
+          <section className="landing-section" id="use-cases" ref={reveal4}>
             <div className="landing-container" style={{ textAlign: 'center' }}>
-              <div className="section-badge reveal-child reveal-delay-1">THE UNIVERSAL AGENT OS</div>
-              <h2 className="section-title reveal-child reveal-delay-2">An intelligence for every system</h2>
+              <div className="section-badge reveal-child reveal-delay-1">{t('os.badge')}</div>
+              <h2 className="section-title reveal-child reveal-delay-2">{t('os.title')}</h2>
               <p className="section-subtitle reveal-child reveal-delay-3" style={{ margin: '0 auto 48px auto' }}>
-                Connect the systems that matter. SERA turns context into clear, considered action, never without your intent.
+                {t('os.subtitle')}
               </p>
               <div className="reveal-child reveal-delay-4">
                 <PartnerMarquee />
@@ -422,10 +570,10 @@ export function LandingPage() {
           {/* SECTION 5.5: DEMO SHOWCASE */}
           <section className="landing-section demo-section" id="demo" ref={reveal5}>
             <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">PRODUCT DEMO</div>
-              <h2 className="section-title reveal-child reveal-delay-2">See SERA in Action</h2>
+              <div className="section-badge reveal-child reveal-delay-1">{t('demo.badge')}</div>
+              <h2 className="section-title reveal-child reveal-delay-2">{t('demo.title')}</h2>
               <p className="section-subtitle reveal-child reveal-delay-3">
-                Watch how SERA transforms natural language into real, verified execution.
+                {t('demo.subtitle')}
               </p>
               <div className="demo-showcase reveal-child reveal-delay-4">
                 <div className="demo-frame">
@@ -460,7 +608,7 @@ export function LandingPage() {
                     <div className="demo-play-ring">
                       <svg viewBox="0 0 48 48" fill="none"><polygon points="18,12 38,24 18,36" fill="currentColor" /></svg>
                     </div>
-                    <span>Play Demo</span>
+                    <span>{t('demo.play')}</span>
                   </div>
                 </div>
               </div>
@@ -490,51 +638,82 @@ export function LandingPage() {
         </form>
       </div>
 
-      <footer className="landing-footer-pro">
-        <div className="landing-footer-content">
-          <div className="footer-col">
-            <h4 style={{ color: 'var(--ink)' }}>SERA OS</h4>
-            <p>The universal AI agent engine. Secure, autonomous, and verifiable.</p>
-            <div className="system-status">
-              <span className="status-dot"></span>
-              All Systems Operational
+      {scene === 'reception' && (
+        <footer className="landing-footer-pro">
+          <div className="landing-footer-content">
+            <div className="footer-col">
+              <h4 style={{ color: 'var(--ink)' }}>SERA OS</h4>
+              <p>{t('footer.description')}</p>
+              <div className="system-status">
+                <span className="status-dot"></span>
+                {t('footer.system_operational')}
+              </div>
+            </div>
+            <div className="footer-col">
+              <h4 style={{ color: 'var(--ink)' }}>{t('nav.products')}</h4>
+              <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Agent Engine</a>
+              <a href="https://docs.seraos.xyz/docs/mpc" target="_blank" rel="noreferrer">MPC Wallet</a>
+              <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">Action Workflows</a>
+              <a href="https://docs.seraos.xyz/docs/compute" target="_blank" rel="noreferrer">Verifiable Compute</a>
+            </div>
+            <div className="footer-col">
+              <h4 style={{ color: 'var(--ink)' }}>{t('nav.developers')}</h4>
+              <a href="https://docs.seraos.xyz/docs/intro" target="_blank" rel="noreferrer">Documentation</a>
+              <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">API Reference</a>
+              <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Architecture Overview</a>
+              <a href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer">GitHub</a>
+            </div>
+            <div className="footer-col">
+              <h4 style={{ color: 'var(--ink)' }}>{t('footer.community')}</h4>
+              <a href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer">Twitter (X)</a>
+              <a href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer">Telegram</a>
             </div>
           </div>
-          <div className="footer-col">
-            <h4 style={{ color: 'var(--ink)' }}>Products</h4>
-            <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Agent Engine</a>
-            <a href="https://docs.seraos.xyz/docs/mpc" target="_blank" rel="noreferrer">MPC Wallet</a>
-            <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">Action Workflows</a>
-            <a href="https://docs.seraos.xyz/docs/compute" target="_blank" rel="noreferrer">Verifiable Compute</a>
+          <div className="landing-footer-bottom">
+            <span className="copyright">{t('footer.rights')}</span>
+            <div className="footer-legal">
+              <a href="#privacy">Privacy Policy</a>
+              <a href="#terms">Terms of Service</a>
+            </div>
           </div>
-          <div className="footer-col">
-            <h4 style={{ color: 'var(--ink)' }}>Developers</h4>
-            <a href="https://docs.seraos.xyz/docs/intro" target="_blank" rel="noreferrer">Documentation</a>
-            <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer">API Reference</a>
-            <a href="https://docs.seraos.xyz/docs/engine" target="_blank" rel="noreferrer">Architecture Overview</a>
-            <a href="https://github.com/seraos-agent/sera-core" target="_blank" rel="noreferrer">GitHub</a>
-          </div>
-          <div className="footer-col">
-            <h4 style={{ color: 'var(--ink)' }}>Community</h4>
-            <a href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer">Twitter (X)</a>
-            <a href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer">Telegram</a>
-          </div>
-        </div>
-        <div className="landing-footer-bottom">
-          <span className="copyright">&copy; 2026 SERA OS. All rights reserved.</span>
-          <div className="footer-legal">
-            <a href="#privacy">Privacy Policy</a>
-            <a href="#terms">Terms of Service</a>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {showNotice && <LaunchNotice onClose={() => setShowNotice(false)} />}
     </main>
   );
 }
 
+function ConnectorFlowBackground() {
+  return (
+    <div className="connector-flow-bg">
+      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="flow-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(79, 107, 255, 0)" />
+            <stop offset="50%" stopColor="rgba(79, 107, 255, 0.8)" />
+            <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
+          </linearGradient>
+          <linearGradient id="flow-glow-vert" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="rgba(79, 107, 255, 0)" />
+            <stop offset="50%" stopColor="rgba(79, 107, 255, 0.8)" />
+            <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
+          </linearGradient>
+        </defs>
 
+        {/* Base Grid/Network Lines Removed Per User Request */}
+
+        {/* Animated Pulses */}
+        <line x1="0" y1="20%" x2="100%" y2="20%" className="pulse-line pulse-horizontal" stroke="url(#flow-glow)" />
+        <line x1="0" y1="50%" x2="100%" y2="50%" className="pulse-line pulse-horizontal" stroke="url(#flow-glow)" style={{ animationDelay: '2s', animationDuration: '7s' }} />
+        <line x1="0" y1="80%" x2="100%" y2="80%" className="pulse-line pulse-horizontal" stroke="url(#flow-glow)" style={{ animationDelay: '4s' }} />
+
+        <line x1="30%" y1="0" x2="30%" y2="100%" className="pulse-line pulse-vertical" stroke="url(#flow-glow-vert)" />
+        <line x1="70%" y1="0" x2="70%" y2="100%" className="pulse-line pulse-vertical" stroke="url(#flow-glow-vert)" style={{ animationDelay: '3s' }} />
+      </svg>
+    </div>
+  );
+}
 
 
 function DelayedMesh() {
@@ -559,71 +738,76 @@ function DelayedMesh() {
 }
 
 /* ─── Metrics Strip Component ─── */
-const metricsData = [
-  { value: 100, suffix: '+', label: 'Systems Connected' },
-  { value: 24, suffix: '/7', label: 'Autonomous Operation' },
-  { value: 2, prefix: '< ', suffix: 's', label: 'Average Response' },
-  { value: 0, suffix: '', label: 'Unauthorized Actions', display: 'Zero' },
-];
-
-function MetricCard({ value, suffix, prefix, label, display }: { value: number; suffix: string; prefix?: string; label: string; display?: string }) {
-  const { count, ref } = useCountUp(value, 1800);
-  return (
-    <div className="metric-card" ref={ref}>
-      <span className="metric-number">{display || `${prefix || ''}${count}${suffix}`}</span>
-      <span className="metric-label">{label}</span>
-    </div>
-  );
-}
-
-function MetricsStrip() {
-  const reveal = useScrollReveal();
-  return (
-    <section className="metrics-strip" ref={reveal}>
-      <div className="landing-container">
-        <div className="metrics-row reveal-child reveal-delay-2">
-          {metricsData.map((m) => (
-            <MetricCard key={m.label} {...m} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function IdleScene({ onSuggestion }: { onSuggestion: (prompt: string) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="idle-scene">
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <div className="section-badge" style={{ margin: '0 auto 14px' }}>SAMPLE USE CASES</div>
+        <div className="section-badge" style={{ margin: '0 auto 14px' }}>{t('idle.badge')}</div>
         <h2 className="section-title" style={{ fontSize: 'clamp(22px, 3vw, 32px)', marginBottom: '12px' }}>
-          What Can You Ask SERA To Do?
+          {t('idle.title')}
         </h2>
         <p className="section-subtitle" style={{ margin: '0 auto' }}>
-          Click any sample prompt below to populate the input box and try it out!
+          {t('idle.subtitle')}
         </p>
       </div>
 
       <div className="prompts-grid" style={{ position: 'relative', zIndex: 10 }}>
-        <div className="prompt-card" onClick={() => onSuggestion('What is SERA?')}>
-          <div className="prompt-card-category">INTRODUCTION</div>
-          <p className="prompt-card-text">"What is SERA?"</p>
-          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+        <div className="prompt-card" onClick={() => onSuggestion(t('idle.prompt1'))}>
+          <div className="prompt-card-bg"></div>
+          <div className="prompt-card-content">
+            <div className="prompt-card-header">
+              <div className="prompt-icon icon-intro">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+              <div className="prompt-card-category">{t('idle.cat.intro')}</div>
+            </div>
+            <p className="prompt-card-text">"{t('idle.prompt1')}"</p>
+            <div className="prompt-card-action">{t('idle.try')} <span className="arrow">→</span></div>
+          </div>
         </div>
-        <div className="prompt-card" onClick={() => onSuggestion('What can SERA help me accomplish?')}>
-          <div className="prompt-card-category">CAPABILITIES</div>
-          <p className="prompt-card-text">"What can SERA help me accomplish?"</p>
-          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+
+        <div className="prompt-card" onClick={() => onSuggestion(t('idle.prompt2'))}>
+          <div className="prompt-card-bg"></div>
+          <div className="prompt-card-content">
+            <div className="prompt-card-header">
+              <div className="prompt-icon icon-cap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              </div>
+              <div className="prompt-card-category">{t('idle.cat.cap')}</div>
+            </div>
+            <p className="prompt-card-text">"{t('idle.prompt2')}"</p>
+            <div className="prompt-card-action">{t('idle.try')} <span className="arrow">→</span></div>
+          </div>
         </div>
-        <div className="prompt-card" onClick={() => onSuggestion('How does SERA stay safe?')}>
-          <div className="prompt-card-category">SECURITY</div>
-          <p className="prompt-card-text">"How does SERA stay safe?"</p>
-          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+
+        <div className="prompt-card" onClick={() => onSuggestion(t('idle.prompt3'))}>
+          <div className="prompt-card-bg"></div>
+          <div className="prompt-card-content">
+            <div className="prompt-card-header">
+              <div className="prompt-icon icon-sec">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              </div>
+              <div className="prompt-card-category">{t('idle.cat.sec')}</div>
+            </div>
+            <p className="prompt-card-text">"{t('idle.prompt3')}"</p>
+            <div className="prompt-card-action">{t('idle.try')} <span className="arrow">→</span></div>
+          </div>
         </div>
-        <div className="prompt-card" onClick={() => onSuggestion('What can SERA connect to?')}>
-          <div className="prompt-card-category">INTEGRATIONS</div>
-          <p className="prompt-card-text">"What can SERA connect to?"</p>
-          <div className="prompt-card-action">Try This Prompt <span>→</span></div>
+
+        <div className="prompt-card" onClick={() => onSuggestion(t('idle.prompt4'))}>
+          <div className="prompt-card-bg"></div>
+          <div className="prompt-card-content">
+            <div className="prompt-card-header">
+              <div className="prompt-icon icon-int">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              </div>
+              <div className="prompt-card-category">{t('idle.cat.int')}</div>
+            </div>
+            <p className="prompt-card-text">"{t('idle.prompt4')}"</p>
+            <div className="prompt-card-action">{t('idle.try')} <span className="arrow">→</span></div>
+          </div>
         </div>
       </div>
     </div>
