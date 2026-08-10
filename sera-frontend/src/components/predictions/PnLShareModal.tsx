@@ -15,7 +15,18 @@ export function PnLShareModal({ order, theme: _theme, onClose }: PnLShareModalPr
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 500;
 
   const isWin = order.won;
-  const roi = isWin ? "+100.00%" : "-100.00%";
+  
+  let displayPercentage = -100;
+  if (isWin && order.payout !== undefined && order.amount !== undefined) {
+    const payoutNum = typeof order.payout === 'string' ? parseFloat(order.payout) : order.payout;
+    const amountNum = typeof order.amount === 'string' ? parseFloat(order.amount) : order.amount;
+    if (amountNum > 0) {
+      // Calculate Total Payout Percentage for a more attractive display
+      displayPercentage = (payoutNum / amountNum) * 100;
+    }
+  }
+  const roi = isWin ? `${displayPercentage.toFixed(2)}%` : "-100.00%";
+
   const pnlColor = isWin ? "#00FFA3" : "#FF3366"; // Cyberpunk green/red
   const bgGradient = isWin
     ? "linear-gradient(135deg, #0A1913 0%, #050A08 100%)"

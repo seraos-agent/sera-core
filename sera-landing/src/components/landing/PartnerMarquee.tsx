@@ -4,7 +4,6 @@ const row1Base = [
   { name: 'Ethereum', src: '/ethereum.png' },
   { name: 'Base', src: '/base.svg' },
   { name: 'Polygon', src: '/polygon.png' },
-  { name: 'Polymarket', src: '/polymarket.png' },
   { name: 'Hyperliquid', src: '/hyperliquid.png' },
 ];
 const row1 = [...row1Base, ...row1Base, ...row1Base];

@@ -76,9 +76,9 @@ export class PredictionEngineService {
   }
 
   private injectSeedLiquidity(marketId: string) {
-    const seedAmount = 50; // 50 USDC seed on each side to prevent extreme odds
-    this.orders.push({ id: Math.random().toString(36).substring(7), userId: 'SYSTEM_SEED', marketId, side: 'UP', amount: seedAmount, status: 'PENDING' });
-    this.orders.push({ id: Math.random().toString(36).substring(7), userId: 'SYSTEM_SEED', marketId, side: 'DOWN', amount: seedAmount, status: 'PENDING' });
+    // Zero seed liquidity per user request.
+    // The market will only resolve with a winner if real users bet on both sides.
+    // Otherwise, bets will be fully refunded at expiry.
   }
 
   public getBalance(userId: string): number {

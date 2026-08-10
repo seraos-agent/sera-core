@@ -12,7 +12,7 @@ import type { SidebarView } from "./components/sidebar/Sidebar";
 import { PredictionArenaPage } from "./components/predictions/PredictionArenaPage";
 
 import { ConnectGateway } from "./components/auth/ConnectGateway";
-import { PolymarketPage } from "./components/polymarket/PolymarketPage";
+
 import { BillingModal } from "./components/sidebar/BillingModal";
 import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
@@ -437,19 +437,6 @@ function InnerApp() {
             socket={socket}
             isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          />
-        ) : currentView === "polymarket" ? (
-          <PolymarketPage
-            theme={theme}
-            socket={socket}
-            isMobileView={isMobileView}
-            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-            onTradeMarket={(market, outcomeLabel, price) => {
-              const text = `I want to buy 10 USDC of "${outcomeLabel}" on the Polymarket: "${market.title}". Current probability is ${Math.round(parseFloat(price) * 100)}%. Please prepare a trade proposal for me to approve.`;
-              handleSend(text);
-              setCurrentView("chat");
-              setSidebarOpen(true);
-            }}
           />
         ) : currentView === "arena" ? (
           <PredictionArenaPage

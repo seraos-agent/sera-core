@@ -61,7 +61,7 @@ export function LandingPage() {
   });
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   const [isLangOpen, setIsLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
 
@@ -322,9 +322,9 @@ export function LandingPage() {
                   <a href="https://docs.seraos.xyz/docs/mpc" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>MPC Wallet</a>
                   <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Action Workflows</a>
                   <a href="https://docs.seraos.xyz/docs/compute" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Verifiable Compute</a>
-                  
+
                   <div className="dropdown-divider"></div>
-                  
+
                   <div className="dropdown-section-title">{t('nav.developers')}</div>
                   <a href="https://docs.seraos.xyz/docs/intro" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>Documentation</a>
                   <a href="https://docs.seraos.xyz/docs/workflows" target="_blank" rel="noreferrer" className="dropdown-link" onClick={() => setIsDocsOpen(false)}>API Reference</a>
@@ -347,7 +347,7 @@ export function LandingPage() {
             <div className="landing-container">
               <div className="hero-split-layout">
                 <div className="hero-content-left">
-                  <div className="section-badge">SERA OS · Universal AI Agent Engine</div>
+                  <div className="section-badge">{t('hero.badge')}</div>
                   <h1 className="hero-title">
                     {t('hero.title')}
                   </h1>
@@ -355,9 +355,9 @@ export function LandingPage() {
                     {t('hero.subtitle')}
                   </p>
                   <div className="hero-cta-group">
-                    <a href="http://localhost:5174/" target="_blank" rel="noopener noreferrer" className="cta-button cta-primary">
+                    <button onClick={launchApp} className="cta-button cta-primary">
                       {t('hero.launch')}
-                    </a>
+                    </button>
                     <a href="#about" className="cta-button cta-secondary">
                       {t('hero.learn')}
                     </a>
@@ -369,28 +369,37 @@ export function LandingPage() {
 
                 <div className="hero-graphic-right">
                   <div className="hero-workflow-tree">
-                    <svg className="workflow-lines" width="500" height="340" viewBox="0 0 500 340" fill="none">
+                    {/* Desktop Snake Lines (Wide) */}
+                    <svg className="workflow-lines-snake workflow-lines-desktop" preserveAspectRatio="none" viewBox="0 0 340 100" fill="none" style={{ overflow: 'visible' }}>
                       <defs>
-                        <linearGradient id="tree-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <linearGradient id="snake-grad-desktop" x1="0%" y1="0%" x2="0%" y2="100%">
                           <stop offset="0%" stopColor="rgba(79, 107, 255, 0)" />
-                          <stop offset="50%" stopColor="rgba(79, 107, 255, 0.6)" />
+                          <stop offset="50%" stopColor="rgba(79, 107, 255, 0.8)" />
                           <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
                         </linearGradient>
                       </defs>
-                      {/* Top to Left (curved) */}
-                      <path d="M250 60 C250 160, 80 140, 80 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
-                      {/* Top to Center (curved) */}
-                      <path d="M250 60 C250 160, 250 160, 250 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
-                      {/* Top to Right (curved) */}
-                      <path d="M250 60 C250 160, 420 140, 420 260" stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" />
-
-                      {/* Animated flow pulses */}
-                      <path d="M250 60 C250 160, 80 140, 80 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" />
-                      <path d="M250 60 C250 160, 250 160, 250 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" style={{ animationDelay: '1s' }} />
-                      <path d="M250 60 C250 160, 420 140, 420 260" className="tree-flow-pulse" stroke="url(#tree-grad)" strokeWidth="2" fill="none" style={{ animationDelay: '2s' }} />
+                      <path pathLength="1000" vectorEffect="non-scaling-stroke" d="M 170 10 L 290 10 C 450 10, 450 37, 290 37 L 50 37 C -110 37, -110 63, 50 63 L 290 63 C 450 63, 450 90, 290 90 L 170 90" 
+                            stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" strokeDasharray="10 10" />
+                      <path pathLength="1000" vectorEffect="non-scaling-stroke" d="M 170 10 L 290 10 C 450 10, 450 37, 290 37 L 50 37 C -110 37, -110 63, 50 63 L 290 63 C 450 63, 450 90, 290 90 L 170 90" 
+                            className="tree-flow-pulse-snake" stroke="url(#snake-grad-desktop)" strokeWidth="2" fill="none" />
                     </svg>
 
-                    <div className="workflow-node node-top">
+                    {/* Mobile Snake Lines (Narrow) */}
+                    <svg className="workflow-lines-snake workflow-lines-mobile" preserveAspectRatio="none" viewBox="0 0 320 100" fill="none" style={{ overflow: 'visible' }}>
+                      <defs>
+                        <linearGradient id="snake-grad-mobile" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="rgba(79, 107, 255, 0)" />
+                          <stop offset="50%" stopColor="rgba(79, 107, 255, 0.8)" />
+                          <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
+                        </linearGradient>
+                      </defs>
+                      <path pathLength="1000" vectorEffect="non-scaling-stroke" d="M 160 10 L 270 10 C 330 10, 330 37, 270 37 L 50 37 C -10 37, -10 63, 50 63 L 270 63 C 330 63, 330 90, 270 90 L 160 90" 
+                            stroke="rgba(79, 107, 255, 0.15)" strokeWidth="1.5" fill="none" strokeDasharray="10 10" />
+                      <path pathLength="1000" vectorEffect="non-scaling-stroke" d="M 160 10 L 270 10 C 330 10, 330 37, 270 37 L 50 37 C -10 37, -10 63, 50 63 L 270 63 C 330 63, 330 90, 270 90 L 160 90" 
+                            className="tree-flow-pulse-snake" stroke="url(#snake-grad-mobile)" strokeWidth="2" fill="none" />
+                    </svg>
+
+                    <div className="workflow-node">
                       <div className="node-icon">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                       </div>
@@ -398,21 +407,21 @@ export function LandingPage() {
                       <span className="node-status-dot dot-green"></span>
                     </div>
 
-                    <div className="workflow-node node-bottom node-bottom-1">
+                    <div className="workflow-node">
                       <div className="node-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                       </div>
                       <span>{t('workflow.read_state')}</span>
                     </div>
 
-                    <div className="workflow-node node-bottom node-bottom-2">
+                    <div className="workflow-node">
                       <div className="node-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                       </div>
                       <span>{t('workflow.validate')}</span>
                     </div>
 
-                    <div className="workflow-node node-bottom node-bottom-3">
+                    <div className="workflow-node">
                       <div className="node-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                       </div>
@@ -423,8 +432,6 @@ export function LandingPage() {
               </div>
             </div>
           </section>
-
-          {/* SECTION 1.5: METRICS STRIP REMOVED PER USER REQUEST */}
 
           {/* SECTION 2: WHY SERA */}
           <section className="landing-section" id="about" ref={reveal}>
@@ -700,8 +707,6 @@ function ConnectorFlowBackground() {
             <stop offset="100%" stopColor="rgba(79, 107, 255, 0)" />
           </linearGradient>
         </defs>
-
-        {/* Base Grid/Network Lines Removed Per User Request */}
 
         {/* Animated Pulses */}
         <line x1="0" y1="20%" x2="100%" y2="20%" className="pulse-line pulse-horizontal" stroke="url(#flow-glow)" />
@@ -1039,18 +1044,19 @@ function ProposalCard() {
 }
 
 function LaunchNotice({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   return <div className="launch-notice-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="launch-notice" role="dialog" aria-modal="true" aria-labelledby="launch-notice-title" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="launch-notice-status"><div className="launch-notice-mark"><img src={seraLogo} alt="SERA" /></div><p className="launch-notice-kicker">SERA · CONTROLLED RELEASE</p></div>
-      <h1 id="launch-notice-title">Your Operational Partner is preparing for public access.</h1>
-      <p>The private application is currently in a controlled release. You can continue exploring SERA through the public Reception, or contact us directly.</p>
+      <div className="launch-notice-status"><div className="launch-notice-mark"><img src={seraLogo} alt="SERA" /></div><p className="launch-notice-kicker">{t('modal.badge')}</p></div>
+      <h1 id="launch-notice-title">{t('modal.title')}</h1>
+      <p>{t('modal.desc')}</p>
       <div className="launch-notice-actions">
         <div className="launch-notice-contacts" aria-label="Contact SERA">
           <a href="https://mail.google.com/mail/?view=cm&fs=1&to=seraos.agent%40gmail.com" target="_blank" rel="noreferrer" aria-label="Email SERA with Gmail" title="Open Gmail"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.25 18V6.25" stroke="#4285F4" strokeWidth="3.1" strokeLinecap="round" /><path d="m4.25 6.25 7.75 5.8" stroke="#EA4335" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="m12 12.05 7.75-5.8" stroke="#FBBC04" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" /><path d="M19.75 6.25V18" stroke="#34A853" strokeWidth="3.1" strokeLinecap="round" /></svg></a>
           <a className="launch-notice-x" href="https://x.com/seraos_agent?t=s86TFhszPI6ETJhYXO_L6A&s=09" target="_blank" rel="noreferrer" aria-label="Follow SERA on X" title="Open X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.042 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932Zm-1.29 19.468h2.039L6.486 3.259H4.298L17.61 20.62Z" /></svg></a>
           <a className="launch-notice-telegram" href="https://t.me/Seraos_agent" target="_blank" rel="noreferrer" aria-label="Contact SERA on Telegram" title="Open Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 3.4a1.45 1.45 0 0 0-1.5-.22L2.95 9.8a1.44 1.44 0 0 0 .12 2.72l4.2 1.32 1.6 5.07a1.42 1.42 0 0 0 2.4.53l2.34-2.35 4.17 3.05a1.44 1.44 0 0 0 2.26-.85l2.18-14.4a1.43 1.43 0 0 0-.82-1.48ZM9.42 13.02l8.24-5.1-6.75 6.53-.26 2.62-1.23-3.9Z" /></svg></a>
         </div>
-        <button type="button" onClick={onClose}>Return to Reception</button>
+        <button type="button" onClick={onClose}>{t('modal.button')}</button>
       </div>
     </section>
   </div>;

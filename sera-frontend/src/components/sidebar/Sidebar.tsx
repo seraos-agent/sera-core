@@ -3,7 +3,7 @@ import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
-export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "polymarket" | "arena";
+export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "arena";
 
 interface ConnectorSummary {
   id: string;
@@ -187,35 +187,26 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               if (c.id === 'wallet' || c.id === 'autonomy' || c.id === 'communication') return null;
 
               // Hide any unrecognized connectors that don't have UI icons
-              if (c.id !== 'polymarket' && c.id !== 'hyperliquid-market-data') return null;
-
-              const isPolymarket = c.id === 'polymarket';
+              if (c.id !== 'hyperliquid-market-data') return null;
 
               return (
                 <div
                   key={c.id}
-                  onClick={() => {
-                    if (isPolymarket) navigate("polymarket" as SidebarView);
-                  }}
                   title={!open ? c.name : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: isPolymarket ? "pointer" : "default", transition: "background 150ms",
+                    cursor: "default", transition: "background 150ms",
                     marginBottom: 2,
                     justifyContent: open ? "flex-start" : "center",
-                    background: currentView === "polymarket" && isPolymarket ? theme.accentSoft : "transparent"
+                    background: "transparent"
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = currentView === "polymarket" && isPolymarket ? theme.accentSoft : theme.surface; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = currentView === "polymarket" && isPolymarket ? theme.accentSoft : "transparent"; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  {isPolymarket ? (
-                    <img src="/polymarket.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
-                  ) : (
-                    <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
-                  )}
+                  <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
                   {open && (
-                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: (currentView === "polymarket" && isPolymarket) ? theme.accent : theme.inkSoft, fontWeight: (currentView === "polymarket" && isPolymarket) ? 600 : 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {c.name.split(' (')[0]}
                     </span>
                   )}

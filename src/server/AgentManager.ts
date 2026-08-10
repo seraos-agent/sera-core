@@ -16,7 +16,7 @@ export class AgentManager {
 
   constructor(
     private subscriptionService: SubscriptionService = new SubscriptionService(),
-    private billingPeriodMs: number = 30 * 24 * 60 * 60 * 1000 // 30 days, override in tests
+    private billingPeriodMs: number = 24 * 60 * 60 * 1000 // 1 day, override in tests
   ) {}
 
   /**

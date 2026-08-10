@@ -49,8 +49,7 @@ import { CommunicationToolCapability } from '../capabilities/communication/Commu
 import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
 import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
-import { PolymarketService } from '../capabilities/polymarket/PolymarketService';
-import { PolymarketToolCapability } from '../capabilities/polymarket/PolymarketToolCapability';
+
 import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
@@ -74,7 +73,7 @@ export class Runtime {
   public proposalManager!: ProposalManager;
   public memoryStore: IWorkingMemory;
   public chatHistoryStore: any;
-  public polymarketService!: PolymarketService;
+
   public readonly productContracts = new DomainProductContractRegistry();
   private authorityService: AuthorityService;
   private constitutionEngine: ConstitutionEngine;
@@ -236,8 +235,8 @@ export class Runtime {
     const autonomyAgreementCap = new AutonomyAgreementCapability();
     
     const secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
-    this.polymarketService = new PolymarketService(secretManager);
-    const polymarketCap = new PolymarketToolCapability(this.polymarketService);
+    // Removed Polymarket
+
     
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
 
@@ -301,17 +300,7 @@ export class Runtime {
       tools: paperTradingCap.getTools(),
     });
 
-    this.capabilityCatalog.registerConnector({
-      id: 'polymarket',
-      name: 'Polymarket (Polygon)',
-      category: 'finance',
-      description: 'Prediction markets & CLOB trading on Polygon',
-      riskSummary: 'Polymarket is a prediction market platform on the Polygon network. Activating this connector allows Sera to search active markets, view orderbooks with bid/ask spreads, and execute trades (buy/sell prediction shares) using your wallet funds. Trading on prediction markets involves real financial risk — you may lose your entire position if the outcome does not resolve in your favor.',
-      network: 'Polygon PoS',
-      alwaysActive: false,
-      tools: polymarketCap.getTools(),
-      executeTool: (name: string, args: any) => polymarketCap.executeTool(name, args),
-    });
+
 
     this.capabilityCatalog.registerConnector({
       id: 'sera-arena',

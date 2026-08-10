@@ -233,8 +233,8 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
 
   // --- Parimutuel Math ---
   const val = parseFloat(amount) || 0;
-  const currentTotalUp = orderBook.up.reduce((sum, o) => sum + o.amount, 0) + 50; // Includes 50 seed liquidity
-  const currentTotalDown = orderBook.down.reduce((sum, o) => sum + o.amount, 0) + 50;
+  const currentTotalUp = orderBook.up.reduce((sum, o) => sum + o.amount, 0); // Pure user liquidity
+  const currentTotalDown = orderBook.down.reduce((sum, o) => sum + o.amount, 0);
   
   // If user bets UP
   const newUpPoolIfUp = currentTotalUp + val;
@@ -250,8 +250,8 @@ function MarketDetailInner({ theme, socket, marketId, onBack, isMobileView }: Ma
   const downPayout = val > 0 ? (val / newDownPoolIfDown) * netPoolIfDown : 0;
   const downMultiplier = val > 0 ? downPayout / val : 0;
 
-  // Sentiment Bar Math
-  const upPercent = (currentTotalUp / (currentTotalUp + currentTotalDown)) * 100;
+  const totalVol = currentTotalUp + currentTotalDown;
+  const upPercent = totalVol > 0 ? (currentTotalUp / totalVol) * 100 : 50;
   const downPercent = 100 - upPercent;
 
   // Personal active orders

@@ -1,0 +1,122 @@
+.arena-tab {
+  padding: 16px 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.arena-tab:hover {
+  opacity: 0.8;
+}
+
+.arena-tab.active {
+  border-bottom-width: 2px;
+}
+
+.arena-tabs-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.arena-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.arena-tabs {
+  display: flex;
+  gap: 16px;
+  padding: 0 16px;
+  min-width: max-content;
+}
+
+.arena-content {
+  padding: 16px;
+}
+
+.arena-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.arena-card {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.arena-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.arena-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.arena-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.arena-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-family: 'Inter', sans-serif;
+}
+
+.arena-outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.arena-outcome-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.arena-outcome-label {
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+}
+
+.arena-trade-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.arena-trade-btn:hover {
+  opacity: 0.8;
+}
+
+.arena-card-footer {
+  padding-top: 12px;
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+}

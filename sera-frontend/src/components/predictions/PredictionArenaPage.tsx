@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, RefreshCw, Share2 } from "lucide-react";
+import { ChevronLeft, RefreshCw, Share2 } from "lucide-react";
+import './PredictionArenaPage.css';
 import { CountdownTimer } from "./CountdownTimer";
 import type { ThemeType } from "../../theme";
 import type { Socket } from "socket.io-client";
@@ -77,28 +78,24 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, height: "100%", overflowY: "auto" }}>
       
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.surface }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button 
-            onClick={onBack}
-            style={{ background: theme.surface2, border: `1px solid ${theme.border}`, borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: theme.inkSoft }}
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: theme.ink, fontFamily: "Inter, sans-serif" }}>Sera Arena</h2>
-            <div style={{ fontSize: 13, color: theme.inkSoft, marginTop: 4 }}>P2P Price Predictions</div>
-          </div>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.bg, flexShrink: 0 }}>
+        <button 
+          onClick={onBack}
+          style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6 }}
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Sera Arena</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: theme.inkSoft, background: theme.surface2, padding: "2px 8px", borderRadius: 12, border: `1px solid ${theme.border}`, marginLeft: 4 }}>P2P Price Predictions</span>
       </div>
 
       {/* Tabs */}
-      <div className="poly-tabs-scroll" style={{ borderBottom: `1px solid ${theme.border}` }}>
-        <div className="poly-tabs">
+      <div className="arena-tabs-scroll" style={{ borderBottom: `1px solid ${theme.border}` }}>
+        <div className="arena-tabs">
           {["Markets", "Portfolio"].map(tab => (
             <div
               key={tab}
-              className={`poly-tab ${activeTab === tab ? "active" : ""}`}
+              className={`arena-tab ${activeTab === tab ? "active" : ""}`}
               onClick={() => setActiveTab(tab)}
               style={{
                 color: activeTab === tab ? theme.ink : theme.inkSoft,
@@ -111,7 +108,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
         </div>
       </div>
 
-      <div className="poly-content">
+      <div className="arena-content">
         
         {/* Portfolio View */}
         {activeTab === "Portfolio" && (
@@ -216,34 +213,34 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
               No active markets found.
             </div>
           ) : (
-            <div className="poly-grid">
+            <div className="arena-grid">
               {markets.map((m: any) => (
-                <div key={m.id} className="poly-card" style={{ background: theme.surface2, borderColor: theme.border, cursor: "pointer" }} onClick={() => setActiveMarketId(m.id)}>
-                  <div className="poly-card-header">
+                <div key={m.id} className="arena-card" style={{ background: theme.surface2, borderColor: theme.border, cursor: "pointer" }} onClick={() => setActiveMarketId(m.id)}>
+                  <div className="arena-card-header">
                     <div style={{ display: "flex", gap: 12 }}>
-                      <div className="poly-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f39c12', color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
+                      <div className="arena-card-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f39c12', color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
                         ₿
                       </div>
-                      <h3 className="poly-card-title">{m.title}</h3>
+                      <h3 className="arena-card-title">{m.title}</h3>
                     </div>
                   </div>
-                  <div className="poly-outcomes">
-                    <div className="poly-outcome-row">
-                      <span className="poly-outcome-label">Yes (UP)</span>
+                  <div className="arena-outcomes">
+                    <div className="arena-outcome-row">
+                      <span className="arena-outcome-label">Yes (UP)</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <button 
-                          className="poly-trade-btn" 
+                          className="arena-trade-btn" 
                           style={{ background: "#27ae6020", color: "#27ae60" }}
                         >
                           Trade
                         </button>
                       </div>
                     </div>
-                    <div className="poly-outcome-row">
-                      <span className="poly-outcome-label">No (DOWN)</span>
+                    <div className="arena-outcome-row">
+                      <span className="arena-outcome-label">No (DOWN)</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <button 
-                          className="poly-trade-btn" 
+                          className="arena-trade-btn" 
                           style={{ background: "#e74c3c20", color: "#e74c3c" }}
                         >
                           Trade
@@ -251,7 +248,7 @@ export function PredictionArenaPage({ theme, onBack, socket }: PredictionArenaPa
                       </div>
                     </div>
                   </div>
-                  <div className="poly-card-footer">
+                  <div className="arena-card-footer">
                     <CountdownTimer expiryTime={m.expiryTime} resolved={m.resolved} size={12} />
                   </div>
                 </div>
