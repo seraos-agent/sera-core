@@ -8,8 +8,6 @@ import { isAddress } from 'viem';
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'node:events';
 import { StandardEvent, EventTypes } from '../core/events/types';
-import { App as BoltApp } from '@slack/bolt';
-import { SlackAdapter } from '../capabilities/communication/adapters/SlackAdapter';
 import { agentManager, SubscriptionRequiredError } from './AgentManager';
 import { isAllowedOrigin, serverConfig } from './config';
 import { requireAuthenticatedSession } from './SessionGuard';
@@ -25,6 +23,7 @@ import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 import { predictionEngine, arenaEventBus } from './predictionEngine';
+import { createThreadsAuthRouter } from './auth/threadsAuth';
 
 export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
@@ -218,6 +217,9 @@ app.post('/mcp/message', async (req, res) => {
   
   await transport.handlePostMessage(req, res);
 });
+
+// ── Auth & OAuth Routes ──────────────────────────────────────────────────
+app.use('/api/auth/threads', createThreadsAuthRouter(agentManager.getOrCreateInstance('dev').runtime.secretManager));
 
 let msgIdCounter = Date.now();
 
@@ -924,33 +926,6 @@ io.on('connection', (socket: Socket) => {
     unbindListeners();
   });
 });
-
-// ── Slack Socket Mode Bootstrap ───────────────────────────────────────────────
-const slackBotToken = process.env.SLACK_BOT_TOKEN;
-const slackSocketToken = process.env.SERA_SLACK_SOCKET;
-
-// The Slack Bot exclusively connects to the DEV instance
-const devInstance = agentManager.getOrCreateInstance('dev');
-
-if (slackBotToken && slackSocketToken) {
-  const boltApp = new BoltApp({
-    token: slackBotToken,
-    appToken: slackSocketToken,
-    socketMode: true,
-    logLevel: 'error' as any
-  });
-
-  const slackAdapter = new SlackAdapter(boltApp, devInstance.eventBus);
-  devInstance.communicationBridge.registerAdapter('slack', slackAdapter);
-
-  boltApp.start()
-    .then(() => console.log('[SERA] Slack Socket Mode connected. Routed to DEV instance.'))
-    .catch((err: any) => console.error('[SERA] Slack Socket Mode failed to start:', err.message));
-} else {
-  console.warn('[SERA] SLACK_BOT_TOKEN or SERA_SLACK_SOCKET not set. Slack adapter running in MOCK mode.');
-  const slackAdapter = new SlackAdapter(null, devInstance.eventBus);
-  devInstance.communicationBridge.registerAdapter('slack', slackAdapter);
-}
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;

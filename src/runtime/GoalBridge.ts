@@ -16,6 +16,9 @@ import { PaperTradingSimulator, PaperSide } from '../core/paper-trading/PaperTra
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { BaseSpotMarketCapability } from '../capabilities/spot/BaseSpotMarketCapability';
 import { TokenResolverService } from '../capabilities/spot/TokenResolverService';
+import { SecretManager } from '../core/secrets/SecretManager';
+import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
+import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -42,6 +45,7 @@ export class GoalBridge {
   private readonly paperTrading = new PaperTradingSimulator();
   private readonly spotMarket = new BaseSpotMarketCapability();
   private readonly tokenResolver = new TokenResolverService();
+  private readonly threadsApi = new ThreadsAPI(new SecretManager(new EncryptedDatabaseSecretStore()));
 
   constructor(
     eventBus: EventEmitter,
@@ -222,6 +226,9 @@ export class GoalBridge {
         case 'ACTIVATE_AUTONOMY_AGREEMENT':
           this.handleActivateAutonomyAgreement(requestId, actionPayload);
           break;
+        case 'THREADS_PUBLISH':
+          await this.handleThreadsPublish(requestId, actionPayload);
+          break;
 
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
@@ -232,6 +239,17 @@ export class GoalBridge {
     }
   }
 
+  private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const text = parameters.text;
+    if (!text) throw new Error('Threads publish requires text parameter.');
+    const container = await this.threadsApi.createContainer(text, parameters.replyToId);
+    const published = await this.threadsApi.publishContainer(container.id);
+    this.emitResult(requestId, true, { 
+      provider: 'Meta Threads', 
+      id: published.id, 
+      summary: `Successfully published to Threads (ID: ${published.id})` 
+    });
+  }
 
   private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
     const coin = String(parameters.coin || '').toUpperCase();

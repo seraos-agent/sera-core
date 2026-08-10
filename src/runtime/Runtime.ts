@@ -48,6 +48,8 @@ import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapabilit
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
 import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
 import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
+import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
+import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 
 import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
@@ -106,6 +108,7 @@ export class Runtime {
   private cognitiveCoordinator: CognitiveCoordinator;
   private intentCoordinator: IntentCoordinator;
   public executionCoordinator: ExecutionCoordinator;
+  public secretManager!: SecretManager;
 
   private logger = new Logger('Runtime');
 
@@ -234,11 +237,12 @@ export class Runtime {
     const paperTradingCap = new PaperTradingCapability();
     const autonomyAgreementCap = new AutonomyAgreementCapability();
     
-    const secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
-    // Removed Polymarket
-
+    this.secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
     
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
+
+    const threadsApi = new ThreadsAPI(this.secretManager);
+    const threadsCap = new ThreadsCapability(threadsApi);
 
     this.productContracts.assertCapabilitiesAvailable(
       HyperliquidTradingProductContract.id,
@@ -258,15 +262,6 @@ export class Runtime {
       tools: walletCap.getTools(),
     });
 
-    this.capabilityCatalog.registerConnector({
-      id: 'communication',
-      name: 'Slack',
-      category: 'communication',
-      description: 'Interactive bot via Slack Socket Mode (@sera)',
-      riskSummary: 'Enables Sera to communicate through Slack channels. This connector is always active for core messaging capabilities.',
-      alwaysActive: true,
-      tools: commCap.getTools(),
-    });
 
     this.capabilityCatalog.registerConnector({
       id: 'autonomy',
@@ -312,6 +307,18 @@ export class Runtime {
       alwaysActive: false,
       tools: seraArenaCap.getTools(),
       executeTool: (name: string, args: any) => seraArenaCap.executeTool(name, args),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'threads',
+      name: 'Threads',
+      category: 'communication',
+      description: 'Autonomous posting and replies on Meta Threads',
+      riskSummary: 'Activating this connector allows Sera to read and publish posts on your connected Threads account. Sera will request approval before publishing unless autonomous mode is enabled.',
+      network: 'Web2',
+      alwaysActive: false,
+      tools: threadsCap.getTools(),
+      executeTool: (name: string, args: any) => threadsCap.executeTool(name, args),
     });
     
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);

@@ -69,8 +69,11 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--line);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
 }
 
 .room-brand {
@@ -3258,12 +3261,15 @@ html {
     stroke-dashoffset: 1100;
     opacity: 0;
   }
+
   5% {
     opacity: 1;
   }
+
   95% {
     opacity: 1;
   }
+
   100% {
     stroke-dashoffset: 0;
     opacity: 0;
@@ -3462,11 +3468,11 @@ html {
   .workflow-lines-desktop {
     display: none;
   }
-  
+
   .workflow-lines-mobile {
     display: block;
   }
-  
+
   .workflow-node {
     width: 240px;
   }

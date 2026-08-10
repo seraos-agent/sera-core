@@ -127,7 +127,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
         <button onClick={onBack} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6 }}>
           <CloseIcon size={18} />
         </button>
-        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Manage Money</span>
+        <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>Manage Value</span>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
@@ -137,7 +137,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
           {/* Title Area */}
           <div style={{ padding: `${isMobileView ? 24 : 32}px ${sidePad}px 8px`, flexShrink: 0 }}>
             <div style={{ marginBottom: 0 }}>
-              <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Money</h1>
+              <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 600, color: theme.ink, fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px" }}>Manage Value</h1>
               <p style={{ margin: "4px 0 0", fontSize: 14, color: theme.inkSoft, fontFamily: "Inter, sans-serif" }}>
                 Assets and transactions Sera is currently managing for you.
               </p>

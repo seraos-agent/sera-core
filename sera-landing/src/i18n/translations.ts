@@ -20,9 +20,9 @@ export const translations: TranslationDictionary = {
   'nav.developers': { en: 'Developers', id: 'Pengembang', zh: '开发者' },
 
   // Hero Section
-  'hero.badge': { en: 'SERA · Your AI Agent', id: 'SERA · Asisten AI Anda', zh: 'SERA · 您的 AI 助手' },
+  'hero.badge': { en: 'SERA · Your AI Agent', id: 'SERA · Agen AI Anda', zh: 'SERA · 您的 AI 代理' },
   'hero.title': { en: 'Your AI Agent That Actually Gets Things Done', id: 'Agen AI Anda yang Benar-Benar Bertindak', zh: '真正帮您完成任务的 AI 代理' },
-  'hero.subtitle': { en: 'Transfer money, automate payments, and connect your favorite apps just tell SERA what you need in plain language.', id: 'Transfer uang, otomatiskan pembayaran, dan hubungkan aplikasi favorit Anda cukup bilang ke SERA dengan bahasa sehari-hari.', zh: '转账、自动付款，并连接您最喜欢的应用程序 只需用日常语言告诉 SERA 您的需求。' },
+  'hero.subtitle': { en: 'Transfer value, automate payments, and connect your favorite apps just tell SERA what you need in plain language.', id: 'Transfer nilai, otomatiskan pembayaran, dan hubungkan aplikasi favorit Anda cukup bilang ke SERA dengan bahasa sehari-hari.', zh: '转移价值、自动付款，并连接您最喜欢的应用程序 只需用日常语言告诉 SERA 您的需求。' },
   'hero.launch': { en: 'Launch', id: 'Luncurkan', zh: '启动' },
   'hero.learn': { en: 'Learn More', id: 'Pelajari Lebih Lanjut', zh: '了解更多' },
   'hero.stats': { en: 'Instant Transfers  •  Auto-Pay Bills  •  Universal Connectors', id: 'Transfer Instan  •  Bayar Tagihan Otomatis  •  Konektor Universal', zh: '即时转账  •  自动支付账单  •  通用连接器' },
@@ -46,7 +46,7 @@ export const translations: TranslationDictionary = {
   'prompt.check': { en: 'Run compliance check...', id: 'Jalankan cek kepatuhan...', zh: '运行合规检查...' },
 
   // Footer
-  'footer.description': { en: 'Your AI assistant for transfers, payments, and portfolio management.', id: 'Asisten AI Anda untuk transfer, pembayaran, dan manajemen portofolio.', zh: '您的 AI 助手，用于转账、支付和投资组合管理。' },
+  'footer.description': { en: 'Your AI agent for transfers, payments, and portfolio management.', id: 'Agen AI Anda untuk transfer, pembayaran, dan manajemen portofolio.', zh: '您的 AI 代理，用于转账、支付和投资组合管理。' },
   'footer.system_operational': { en: 'All Systems Operational', id: 'Semua Sistem Beroperasi', zh: '所有系统运行正常' },
   'footer.community': { en: 'Community', id: 'Komunitas', zh: '社区' },
   'footer.rights': { en: '© 2026 SERA OS. All rights reserved.', id: '© 2026 SERA OS. Hak cipta dilindungi undang-undang.', zh: '© 2026 SERA OS. 保留所有权利。' },
@@ -55,7 +55,7 @@ export const translations: TranslationDictionary = {
   'why.badge': { en: 'WHAT SERA CAN DO', id: 'APA YANG BISA SERA LAKUKAN', zh: 'SERA 能做什么' },
   'why.title': { en: 'Real Solutions for Everyday Tasks', id: 'Solusi Nyata untuk Tugas Sehari-hari', zh: '日常任务的真实解决方案' },
   'why.subtitle': { en: 'No complicated apps or confusing steps. Just tell SERA what you need it handles the rest.', id: 'Tanpa aplikasi rumit atau langkah membingungkan. Cukup bilang ke SERA apa yang Anda butuhkan.', zh: '无需复杂的应用程序或令人困惑的步骤。只需告诉 SERA 您需要什么。' },
-  'why.card1.title': { en: 'Send & Receive Money', id: 'Kirim & Terima Uang', zh: '收发资金' },
+  'why.card1.title': { en: 'Send & Receive Value', id: 'Kirim & Terima Nilai', zh: '收发价值' },
   'why.card1.desc': { en: 'Transfer USDC to anyone, anytime. Just say who and how much SERA does the rest securely.', id: 'Transfer USDC ke siapapun, kapanpun. Cukup sebutkan tujuan dan jumlahnya SERA mengurusnya dengan aman.', zh: '随时向任何人转账 USDC。只需说明对象和金额 SERA 会安全完成。' },
   'why.card2.title': { en: 'Automate Recurring Payments', id: 'Otomatiskan Pembayaran Rutin', zh: '自动化定期付款' },
   'why.card2.desc': { en: "Pay bills every Friday, schedule weekly savings, or set up automatic transfers SERA remembers so you don't have to.", id: 'Bayar tagihan tiap Jumat, atur tabungan mingguan, atau jadwalkan transfer otomatis SERA yang ingat untuk Anda.', zh: '每周五支付账单、安排每周储蓄或设置自动转账 SERA 替您记住 切。' },
@@ -73,11 +73,11 @@ export const translations: TranslationDictionary = {
   'core.card3.title': { en: 'Works With Your Wallet', id: 'Terhubung dengan Dompet Anda', zh: '连接您的钱包' },
   'core.card3.desc': { en: 'Connected to your crypto wallet, payment tools, and more all in one place.', id: 'Terhubung ke dompet crypto, alat pembayaran, dan lainnya semua dalam satu tempat.', zh: '连接您的加密钱包、支付工具等 站式管理。' },
   'core.card4.title': { en: 'Always Asks Your Permission', id: 'Selalu Minta Izin Anda', zh: '始终征求您的许可' },
-  'core.card4.desc': { en: 'SERA never moves your money without showing you exactly what it will do first. You approve or reject.', id: 'SERA tidak pernah memindahkan uang Anda tanpa menunjukkan rencana terlebih dahulu. Anda yang setujui atau tolak.', zh: 'SERA 绝不会在未向您展示计划前动您的资金。由您批准或拒绝。' },
+  'core.card4.desc': { en: 'SERA never moves your value without showing you exactly what it will do first. You approve or reject.', id: 'SERA tidak pernah memindahkan nilai Anda tanpa menunjukkan rencana terlebih dahulu. Anda yang setujui atau tolak.', zh: 'SERA 绝不会在未向您展示计划前动您的价值。由您批准或拒绝。' },
 
   // Section 4: How It Works
   'how.badge': { en: 'HOW IT WORKS', id: 'CARA KERJANYA', zh: '工作原理' },
-  'how.title': { en: 'As Easy as 1-2-3', id: 'Semudah 1-2-3', zh: '简单三步' },
+  'how.title': { en: 'Turn Your Words into Action in Three Simple Steps', id: 'Ubah Kata-kata Anda Menjadi Tindakan dalam Tiga Langkah Sederhana', zh: '三个简单步骤，将您的语言转化为行动' },
   'how.subtitle': { en: 'From your request to real action in seconds.', id: 'Dari permintaan Anda menjadi aksi nyata dalam hitungan detik.', zh: '从您的请求到实际行动 只需几秒。' },
   'how.step1.title': { en: 'Tell SERA What You Need', id: 'Bilang ke SERA Apa yang Anda Butuhkan', zh: '告诉 SERA 您需要什么' },
   'how.step1.desc': { en: "Type something like 'Send 50 USDC to Alex' or 'Pay rent every month' in any language.", id: "Ketik sesuatu seperti 'Kirim 50 USDC ke Alex' atau 'Bayar sewa tiap bulan' dalam bahasa apapun.", zh: "输入类似'给 Alex 转 50 USDC'或'每月支付房租' 用任何语言。" },
@@ -98,16 +98,16 @@ export const translations: TranslationDictionary = {
   'demo.play': { en: 'Play Demo', id: 'Putar Demo', zh: '播放演示' },
 
   // Idle Scene
-  'idle.badge': { en: 'TRY IT YOURSELF', id: 'COBA SENDIRI', zh: '亲自体验' },
-  'idle.title': { en: 'See What SERA Can Do', id: 'Lihat Apa yang Bisa SERA Lakukan', zh: '看看 SERA 能做什么' },
-  'idle.subtitle': { en: "Tap a question below to try SERA's live Reception assistant.", id: 'Ketuk pertanyaan di bawah untuk mencoba asisten Resepsionis SERA.', zh: '点击下方问题体验 SERA 的实时接待助手。' },
+  'idle.badge': { en: 'ASK RECEPTION', id: 'TANYA RESEPSIONIS', zh: '询问接待员' },
+  'idle.title': { en: 'Learn More About SERA', id: 'Pelajari Lebih Lanjut Tentang SERA', zh: '了解更多关于 SERA 的信息' },
+  'idle.subtitle': { en: 'Tap a question below to chat with our Reception AI.', id: 'Ketuk pertanyaan di bawah untuk mengobrol dengan AI Resepsionis kami.', zh: '点击下方问题与我们的接待 AI 交谈。' },
   'idle.cat.intro': { en: 'GET STARTED', id: 'MULAI', zh: '开始' },
   'idle.cat.cap': { en: 'EVERYDAY USE', id: 'PENGGUNAAN HARIAN', zh: '日常使用' },
   'idle.cat.sec': { en: 'YOUR SAFETY', id: 'KEAMANAN ANDA', zh: '您的安全' },
   'idle.cat.int': { en: 'CONNECTIONS', id: 'KONEKSI', zh: '连接' },
   'idle.prompt1': { en: 'What is SERA and how can it help me?', id: 'Apa itu SERA dan bagaimana bisa membantu saya?', zh: '什么是 SERA，它如何帮助我？' },
-  'idle.prompt2': { en: 'Can SERA send money for me automatically?', id: 'Bisakah SERA mengirim uang untuk saya secara otomatis?', zh: 'SERA 能自动帮我转账吗？' },
-  'idle.prompt3': { en: 'How does SERA protect my money?', id: 'Bagaimana SERA melindungi uang saya?', zh: 'SERA 如何保护我的资金？' },
+  'idle.prompt2': { en: 'Can SERA send value for me automatically?', id: 'Bisakah SERA mengirim nilai untuk saya secara otomatis?', zh: 'SERA 能自动帮我转移价值吗？' },
+  'idle.prompt3': { en: 'How does SERA protect my value?', id: 'Bagaimana SERA melindungi nilai saya?', zh: 'SERA 如何保护我的价值？' },
   'idle.prompt4': { en: 'What apps and wallets work with SERA?', id: 'Aplikasi dan dompet apa saja yang bisa digunakan dengan SERA?', zh: 'SERA 支持哪些应用和钱包？' },
   'idle.try': { en: 'Try This Prompt', id: 'Coba Prompt Ini', zh: '尝试此提示' }
 };
