@@ -9,6 +9,13 @@ export interface ThreadsPublishResponse {
   id: string; // published post id
 }
 
+export interface ThreadsMention {
+  id: string;
+  text: string;
+  timestamp: string;
+  username: string;
+}
+
 export class ThreadsAPI {
   private readonly baseUrl = 'https://graph.threads.net/v1.0';
 
@@ -74,6 +81,32 @@ export class ThreadsAPI {
     const container = await this.createContainer(text, replyToId);
     const published = await this.publishContainer(container.id);
     return published.id;
+  }
+
+  /**
+   * Fetches the latest mentions for the authenticated user.
+   */
+  async getMentions(limit: number = 20): Promise<ThreadsMention[]> {
+    const token = await this.getAccessToken();
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    // Based on typical Meta Graph API structure for mentions
+    const url = new URL(`${this.baseUrl}/me/mentions`);
+    url.searchParams.append('fields', 'id,text,timestamp,username');
+    url.searchParams.append('limit', limit.toString());
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch Threads mentions: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.data || [];
   }
 
   private async getAccessToken(): Promise<string | null> {

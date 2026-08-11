@@ -227,6 +227,7 @@ export class GoalBridge {
           this.handleActivateAutonomyAgreement(requestId, actionPayload);
           break;
         case 'THREADS_PUBLISH':
+        case 'THREADS_REPLY':
           await this.handleThreadsPublish(requestId, actionPayload);
           break;
 

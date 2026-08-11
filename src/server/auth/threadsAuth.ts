@@ -15,7 +15,7 @@ export function createThreadsAuthRouter(secretManager: SecretManager): Router {
       return res.status(500).send('THREADS_APP_ID is not configured in the environment.');
     }
 
-    const scope = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions';
+    const scope = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions,threads_keyword_search,threads_manage_insights,threads_delete';
     const state = Math.random().toString(36).substring(7); // Prevent CSRF
     
     // Redirect user to Meta authorization page

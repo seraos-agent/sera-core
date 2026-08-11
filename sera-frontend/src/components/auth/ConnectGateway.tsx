@@ -13,11 +13,11 @@ export function ConnectGateway({ theme, onConnect }: ConnectGatewayProps) {
       const url = new URL(window.location.href);
       url.searchParams.delete('autoConnect');
       window.history.replaceState({}, '', url.toString());
-      
+
       const timer = setTimeout(() => {
         onConnect();
       }, 150);
-      
+
       return () => clearTimeout(timer);
     }
   }, [onConnect]);
@@ -48,10 +48,10 @@ export function ConnectGateway({ theme, onConnect }: ConnectGatewayProps) {
         textAlign: 'center',
         boxShadow: '0 12px 40px rgba(0,0,0,0.08)'
       }}>
-        <img 
-          src="/sera-logo.png" 
-          alt="SERA" 
-          style={{ width: '48px', height: '48px', objectFit: 'contain', marginBottom: '24px' }} 
+        <img
+          src="/sera-logo.png"
+          alt="SERA"
+          style={{ width: '48px', height: '48px', objectFit: 'contain', marginBottom: '24px' }}
         />
         <h1 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '12px', color: theme.ink }}>
           Welcome to SERA OS
@@ -59,7 +59,7 @@ export function ConnectGateway({ theme, onConnect }: ConnectGatewayProps) {
         <p style={{ fontSize: '15px', color: theme.inkSoft, marginBottom: '32px', lineHeight: 1.5 }}>
           Connect your wallet to access your agent, manage your intelligent portfolio, and enter the prediction arena.
         </p>
-        
+
         <button
           onClick={onConnect}
           style={{

@@ -50,6 +50,7 @@ import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/Hyp
 import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
 import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
+import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 
 import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
@@ -103,6 +104,7 @@ export class Runtime {
   private adaptationPlanner: AdaptationPlanner | undefined;
   private adaptationExecutor: AdaptationExecutor | undefined;
   private executionReflectionEngine: ExecutionReflectionEngine | undefined;
+  private threadsDaemon?: ThreadsDaemon;
 
   // Coordinators
   private cognitiveCoordinator: CognitiveCoordinator;
@@ -221,6 +223,7 @@ export class Runtime {
 
   public stop(): void {
     this.executionCoordinator.stop();
+    this.threadsDaemon?.stop();
   }
 
   // Replaced by ExecutionDispatcher's direct listening
@@ -243,6 +246,12 @@ export class Runtime {
 
     const threadsApi = new ThreadsAPI(this.secretManager);
     const threadsCap = new ThreadsCapability(threadsApi);
+
+    // Initialize and start the autonomous daemon for Threads
+    if (process.env.THREADS_APP_ID) {
+      this.threadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, options?.sessionId || 'default');
+      this.threadsDaemon.start(); // Defaults to 5-minute polling
+    }
 
     this.productContracts.assertCapabilitiesAvailable(
       HyperliquidTradingProductContract.id,
