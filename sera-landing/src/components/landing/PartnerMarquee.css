@@ -22,7 +22,7 @@
 }
 
 .partner-marquee-content.reverse {
-  animation: scrollMarqueeReverse 15s linear infinite;
+  animation: scrollMarqueeReverse 35s linear infinite;
 }
 
 .partner-marquee-content {

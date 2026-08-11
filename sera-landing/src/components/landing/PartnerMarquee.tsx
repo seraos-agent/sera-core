@@ -17,10 +17,10 @@ const row2Base = [
 const row2 = [...row2Base, ...row2Base, ...row2Base, ...row2Base];
 
 const row3Base = [
-  { name: 'Threads', src: 'https://cdn.simpleicons.org/threads/ffffff' },
+  { name: 'Threads', src: '/threads.svg' },
   { name: 'Telegram', src: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg' },
   { name: 'Instagram', src: 'https://upload.wikimedia.org/wikipedia/commons/e/e7/Instagram_logo_2016.svg' },
-  { name: 'X / Twitter', src: 'https://cdn.simpleicons.org/x/ffffff' },
+  { name: 'Twitter', src: '/x.svg' },
 ];
 const row3 = [...row3Base, ...row3Base, ...row3Base];
 
