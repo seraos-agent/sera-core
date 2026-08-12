@@ -98,6 +98,7 @@
 .launch-notice-contacts svg { width: 14px; height: 14px; display: block; }
 .launch-notice-contacts .launch-notice-x svg { width: 12px; height: 12px; fill: #5366c7; }
 .launch-notice-contacts .launch-notice-telegram svg { width: 13px; height: 13px; fill: #5b8fc9; }
+.launch-notice-contacts .launch-notice-threads svg { width: 14px; height: 14px; fill: #292620; }
 
 @keyframes launchNoticeBackdrop { from { opacity: 0; } to { opacity: 1; } }
 @keyframes launchNoticeCard { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }

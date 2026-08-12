@@ -97,7 +97,12 @@ export class DialogueResultNarrator {
       actionLinks.push({ label: 'View on Basescan', url: `https://basescan.org/tx/${txHash}` });
     }
 
-    emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: generatedText, actionLinks });
+    let finalOutput = generatedText;
+    if (result.success && result.data?.imageUrl) {
+      finalOutput += `\n\n![Generated Image](${result.data.imageUrl})`;
+    }
+
+    emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: finalOutput, actionLinks });
   }
 
   private renderReadOnlyHyperliquidResult(data: Record<string, any>): string {

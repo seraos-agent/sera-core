@@ -52,6 +52,7 @@ import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
 import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
+import { ImageGenerationCapability } from '../capabilities/media/ImageGenerationCapability';
 
 import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
 import { SecretManager } from '../core/secrets/SecretManager';
@@ -246,11 +247,12 @@ export class Runtime {
 
     const threadsApi = new ThreadsAPI(this.secretManager);
     const threadsCap = new ThreadsCapability(threadsApi);
+    const imageGenCap = new ImageGenerationCapability();
 
     // Initialize and start the autonomous daemon for Threads
     if (process.env.THREADS_APP_ID) {
       this.threadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, options?.sessionId || 'default');
-      this.threadsDaemon.start(); // Defaults to 5-minute polling
+      this.threadsDaemon.start(2 * 60 * 1000); // 2-minute polling for testing
     }
 
     this.productContracts.assertCapabilitiesAvailable(
@@ -272,6 +274,28 @@ export class Runtime {
     });
 
 
+    this.capabilityCatalog.registerConnector({
+      id: 'communication',
+      name: 'Agent Comm',
+      category: 'connectors',
+      description: 'Send messages to other AI Agents via XMT',
+      riskSummary: 'Inter-agent communication network (XMT). Used to send and receive text messages or payloads directly to other autonomous entities. Always active to allow cross-agent coordination.',
+      alwaysActive: true,
+      tools: commCap.getTools(),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'media_generation',
+      name: 'Media Studio',
+      category: 'connectors',
+      description: 'Generate high-quality images from text',
+      riskSummary: 'Uses Qwen-Image/Wanx to generate images. This consumes AI credits but is safe to be always active.',
+      alwaysActive: true,
+      tools: imageGenCap.getTools(),
+      executeTool: imageGenCap.executeTool.bind(imageGenCap),
+    });
+
+    // ── On-demand connectors: Can be toggled by users ─────────────────────activation
     this.capabilityCatalog.registerConnector({
       id: 'autonomy',
       name: 'Operating Agreements',

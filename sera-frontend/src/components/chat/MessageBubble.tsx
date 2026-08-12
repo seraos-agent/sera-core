@@ -1,4 +1,4 @@
-import { Activity, Copy, Check, ExternalLink } from "lucide-react";
+import { Activity, Copy, Check, ExternalLink, Download } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
@@ -147,6 +147,49 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                       return <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }} className={className} {...props} />;
                     }
                     return <code style={{ background: theme.surface2, padding: "3px 6px", borderRadius: 4, fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: "0.9em", color: theme.accent, border: `1px solid ${theme.border}` }} className={className} {...props} />;
+                  },
+                  img: ({ _node, ...props }: any) => {
+                    return (
+                      <div style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
+                        <img style={{ maxWidth: "100%", height: "auto", borderRadius: 12, display: "block", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }} {...props} />
+                        <a 
+                          href={props.src} 
+                          download={`Sera_Image_${Date.now()}.png`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            position: "absolute",
+                            bottom: 12,
+                            right: 12,
+                            background: "rgba(0, 0, 0, 0.6)",
+                            backdropFilter: "blur(4px)",
+                            WebkitBackdropFilter: "blur(4px)",
+                            color: "#FFF",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            borderRadius: "50%",
+                            width: 36,
+                            height: 36,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                            textDecoration: "none"
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "rgba(0, 0, 0, 0.8)";
+                            e.currentTarget.style.transform = "scale(1.05)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(0, 0, 0, 0.6)";
+                            e.currentTarget.style.transform = "scale(1)";
+                          }}
+                          title="Download Image"
+                        >
+                          <Download size={18} />
+                        </a>
+                      </div>
+                    );
                   }
                 }}
               >

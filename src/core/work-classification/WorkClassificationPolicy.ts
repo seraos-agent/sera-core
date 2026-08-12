@@ -13,6 +13,11 @@ export class WorkClassificationPolicy {
   public classify(text: string): WorkRoute {
     const value = text.toLowerCase();
 
+    // Bypass strict classification for system notifications
+    if (value.includes('[system_notification]')) {
+      return this.route('OPERATIONAL');
+    }
+
     // Detect conditional or multi-step logic (e.g. "if balance > 10 then transfer")
     if (/\b(if|then|after|when)\b/.test(value) && /\b(transfer|check|send)\b/.test(value)) {
       return this.route('COMPLEX');

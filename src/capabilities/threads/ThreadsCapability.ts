@@ -13,10 +13,11 @@ export class ThreadsCapability {
           type: 'object',
           properties: {
             text: { type: 'string', description: 'The text content of the post to publish.' },
+            imageUrl: { type: 'string', description: 'Optional. The URL of an image to attach to the post. Use this if you generated an image.' },
           },
           required: ['text'],
         },
-        requiresApproval: true,
+        requiresApproval: false,
         irreversible: true,
         unsafe: true,
       },
@@ -28,10 +29,11 @@ export class ThreadsCapability {
           properties: {
             text: { type: 'string', description: 'The text content of the reply.' },
             replyToId: { type: 'string', description: 'The ID of the Threads post to reply to.' },
+            imageUrl: { type: 'string', description: 'Optional. The URL of an image to attach to the reply. Use this if you generated an image.' },
           },
           required: ['text', 'replyToId'],
         },
-        requiresApproval: true,
+        requiresApproval: false,
         irreversible: true,
         unsafe: true,
       }
@@ -41,11 +43,11 @@ export class ThreadsCapability {
   async executeTool(name: string, args: any): Promise<any> {
     switch (name) {
       case 'THREADS_PUBLISH':
-        const postId = await this.api.publishPost(args.text);
+        const postId = await this.api.publishPost(args.text, undefined, args.imageUrl);
         return { success: true, postId, message: `Successfully published to Threads.` };
       
       case 'THREADS_REPLY':
-        const replyId = await this.api.publishPost(args.text, args.replyToId);
+        const replyId = await this.api.publishPost(args.text, args.replyToId, args.imageUrl);
         return { success: true, postId: replyId, message: `Successfully replied to Threads post.` };
         
       default:

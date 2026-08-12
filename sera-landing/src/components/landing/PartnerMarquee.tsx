@@ -13,9 +13,11 @@ const row2Base = [
   { name: 'Thirdweb', src: 'https://thirdweb.com/favicon.ico' },
   { name: 'Meta', src: 'https://cdn.simpleicons.org/meta/0668E1' },
   { name: 'Cloudflare', src: 'https://cdn.simpleicons.org/cloudflare/F38020' },
+  { name: 'Telegram', src: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg' },
 ];
 const row2 = [...row2Base, ...row2Base, ...row2Base, ...row2Base];
 
+/*
 const row3Base = [
   { name: 'Threads', src: '/threads.svg' },
   { name: 'Telegram', src: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg' },
@@ -23,6 +25,7 @@ const row3Base = [
   { name: 'Twitter', src: '/x.svg' },
 ];
 const row3 = [...row3Base, ...row3Base, ...row3Base];
+*/
 
 export function PartnerMarquee() {
   const content1 = row1.map((p, i) => (
@@ -43,6 +46,7 @@ export function PartnerMarquee() {
     </div>
   ));
 
+  /*
   const content3 = row3.map((p, i) => (
     <div key={`r3-${i}`} className="partner-item">
       <div className="partner-img-frame">
@@ -51,6 +55,7 @@ export function PartnerMarquee() {
       <span className="partner-name">{p.name}</span>
     </div>
   ));
+  */
 
   return (
     <div className="partner-marquee-wrapper">
@@ -74,7 +79,7 @@ export function PartnerMarquee() {
         </div>
       </div>
 
-      {/* Row 3: Web2 Socials */}
+      {/* Row 3: Web2 Socials (Temporarily Hidden)
       <div className="partner-marquee-container">
         <div className="partner-marquee-content">
           {content3}
@@ -83,6 +88,7 @@ export function PartnerMarquee() {
           {content3}
         </div>
       </div>
+      */}
     </div>
   );
 }
