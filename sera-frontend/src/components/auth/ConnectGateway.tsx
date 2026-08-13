@@ -57,7 +57,7 @@ export function ConnectGateway({ theme, onConnect }: ConnectGatewayProps) {
           Welcome to SERA OS
         </h1>
         <p style={{ fontSize: '15px', color: theme.inkSoft, marginBottom: '32px', lineHeight: 1.5 }}>
-          Connect your wallet to access your agent, manage your intelligent portfolio, and enter the prediction arena.
+          Connect your wallet to access your agent, manage your intelligent portfolio, and connect to the broader ecosystem.
         </p>
 
         <button

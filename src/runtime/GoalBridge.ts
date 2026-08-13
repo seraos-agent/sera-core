@@ -83,12 +83,12 @@ export class GoalBridge {
       const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
       this.walletInitialized = true;
       this.currentWalletId = walletId;
-      
+
       let primaryAddress = '';
       let vaultAddress = '';
       let primaryBalance = '0';
       let vaultBalance = '0';
-      
+
       // EMIT SYNCING FIRST
       if (!userAddress) {
         primaryAddress = walletId.address;
@@ -103,7 +103,7 @@ export class GoalBridge {
         // --- DEV BYPASS MODE (Legacy Behavior) ---
         primaryAddress = walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-        
+
         try {
           const pb = await this.walletAdapter.getBalance(walletId, 'usdc');
           primaryBalance = pb.toString();
@@ -123,7 +123,7 @@ export class GoalBridge {
         // --- 1:1 AGENT WALLET MODE ---
         primaryAddress = this.personalWalletAddress || '';
         vaultAddress = walletId.address; // The generated agent wallet for this user
-        
+
         // Fetch actual user balance instead of mocking
         try {
           if (primaryAddress) {
@@ -136,7 +136,7 @@ export class GoalBridge {
           console.warn('[GoalBridge] Failed to get user personal balance:', e);
           primaryBalance = '0';
         }
-        
+
         if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
           try {
             const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
@@ -183,7 +183,7 @@ export class GoalBridge {
   private async handleDispatchedAction(event: StandardEvent): Promise<void> {
     const { actionType, actionPayload, context } = event.payload;
     const requestId = context?.triggerId || `req-${Date.now()}`;
-    
+
     console.log(`\n[GoalBridge] Handling action: ${actionType} (requestId: ${requestId})`);
 
     try {
@@ -245,17 +245,17 @@ export class GoalBridge {
     if (!text) throw new Error('Threads publish requires text parameter.');
     const container = await this.threadsApi.createContainer(text, parameters.replyToId);
     const published = await this.threadsApi.publishContainer(container.id);
-    this.emitResult(requestId, true, { 
-      provider: 'Meta Threads', 
-      id: published.id, 
-      summary: `Successfully published to Threads (ID: ${published.id})` 
+    this.emitResult(requestId, true, {
+      provider: 'Meta Threads',
+      id: published.id,
+      summary: `Successfully published to Threads (ID: ${published.id})`
     });
   }
 
   private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
     const coin = String(parameters.coin || '').toUpperCase();
     const KNOWN_PERPS = ['BTC', 'ETH', 'SOL', 'ARB', 'HYPE', 'AVAX', 'OP', 'SUI', 'LINK'];
-    
+
     // If the token is a Base Spot token (e.g. BRETT, TOSHI, AERO, VIRTUAL) or not a perpetual contract
     if (!KNOWN_PERPS.includes(coin)) {
       const spotData = await this.tokenResolver.resolveToken(coin);
@@ -365,7 +365,7 @@ export class GoalBridge {
     }
 
     let { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
-    
+
     // Programmatic Safeguard: System minimum interval is 1 minute (60 seconds)
     const MINIMUM_SCHEDULE_SECONDS = 60;
     let sanitizedCron = cronExpression;
@@ -413,7 +413,7 @@ export class GoalBridge {
     try {
       const userAddress = this.sessionId !== 'dev' ? this.sessionId : undefined;
       const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
-      
+
       let primaryAddress = '';
       let vaultAddress = '';
       let primaryBalance = '0';
@@ -462,35 +462,35 @@ export class GoalBridge {
       this.cachedPersonal = primaryBalance;
       this.cachedVault = vaultBalance;
 
-    this.emitResult(requestId, true, {
-      asset: 'USDC',
-      personalBalance: primaryBalance,
-      vaultBalance,
-      vaultBalances,
-      totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
-      network: walletId.network || 'Base Mainnet',
-      personalAddress: primaryAddress,
-      vaultAddress,
-    });
-
-    this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-      id: `evt-wallet-${Date.now()}`,
-      type: EventTypes.DOMAIN_WALLET_STATE,
-      source: 'GoalBridge',
-      payload: {
-        address: primaryAddress,
-        vaultAddress,
-        balance: primaryBalance,
+      this.emitResult(requestId, true, {
+        asset: 'USDC',
+        personalBalance: primaryBalance,
         vaultBalance,
         vaultBalances,
+        totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
         network: walletId.network || 'Base Mainnet',
-        asset: 'USDC'
-      },
-      timestamp: Date.now()
-    });
+        personalAddress: primaryAddress,
+        vaultAddress,
+      });
+
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-wallet-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
+        payload: {
+          address: primaryAddress,
+          vaultAddress,
+          balance: primaryBalance,
+          vaultBalance,
+          vaultBalances,
+          network: walletId.network || 'Base Mainnet',
+          asset: 'USDC'
+        },
+        timestamp: Date.now()
+      });
     } catch (e: any) {
       console.error('[GoalBridge] Error checking balance:', e.message);
-      
+
       // Fallback to cache if RPC rate limits are hit
       if (this.currentWalletId) {
         console.log('[GoalBridge] Falling back to cached balance due to RPC error');
@@ -515,11 +515,11 @@ export class GoalBridge {
       this.emitResult(requestId, false, {}, 'Wallet not initialized.');
       return;
     }
-    
+
     try {
       const walletId = await this.walletAdapter.initializeAgentWallet();
       const { recipient, amount, asset } = parameters;
-      
+
       if (!recipient || !amount || !asset) {
         this.emitResult(requestId, false, {}, 'Missing recipient, amount, or asset for transfer.');
         return;
@@ -623,10 +623,10 @@ export class GoalBridge {
         console.log(`[GoalBridge] ❌ Transfer failed. Restoring original balance.`);
         this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
         this.emitResult(requestId, false, {
-           executionId: result.executionId,
-           amount: result.amountExecuted,
-           asset: result.asset,
-           reason: result.reason
+          executionId: result.executionId,
+          amount: result.amountExecuted,
+          asset: result.asset,
+          reason: result.reason
         });
       }
     } catch (err: any) {
@@ -685,14 +685,14 @@ export class GoalBridge {
       try {
         const actualVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
         const actualPersonal = await this.walletAdapter.getBalance(walletId, asset);
-        console.log(`[GoalBridge] 🔍 Poll ${i+1}/${maxRetries} — Vault: ${actualVault} (exp ${expectedVault}), Personal: ${actualPersonal} (exp ${expectedPersonal})`);
+        console.log(`[GoalBridge] 🔍 Poll ${i + 1}/${maxRetries} — Vault: ${actualVault} (exp ${expectedVault}), Personal: ${actualPersonal} (exp ${expectedPersonal})`);
         this.emitWalletState(walletId.address, vaultAddress, actualPersonal.toString(), actualVault.toString(), walletId.network, false);
         if (Math.abs(actualVault - expectedVault) < 0.001 && Math.abs(actualPersonal - expectedPersonal) < 0.001) {
-          console.log(`[GoalBridge] ✅ On-chain confirmed after ${i+1} poll(s).`);
+          console.log(`[GoalBridge] ✅ On-chain confirmed after ${i + 1} poll(s).`);
           return;
         }
       } catch (e) {
-        console.warn(`[GoalBridge] Poll ${i+1} failed:`, e);
+        console.warn(`[GoalBridge] Poll ${i + 1} failed:`, e);
       }
     }
     console.log(`[GoalBridge] ⚠️ Max polls reached.`);
@@ -736,8 +736,8 @@ export class GoalBridge {
       },
       intent: {
         recipient: {
-           type: params.recipientAddress === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
-           address: params.recipientAddress
+          type: params.recipientAddress === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
+          address: params.recipientAddress
         },
         amount: params.amount,
         asset: params.asset,
@@ -779,9 +779,9 @@ export class GoalBridge {
           console.warn('[GoalBridge] Failed to get vault balance during refresh, keeping cached:', e);
         }
       }
-      
+
       this.emitWalletState(this.currentWalletId.address, vaultAddress, balance.toString(), vaultBalance, this.currentWalletId.network);
-      
+
       return {
         address: this.currentWalletId.address,
         vaultAddress,

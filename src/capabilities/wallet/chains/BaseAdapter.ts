@@ -1,6 +1,7 @@
 import { createPublicClient, createWalletClient, http, formatEther, parseEther, formatUnits, parseUnits, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
+import { Attribution } from 'ox/erc8021';
 import { ExecutionContext } from '../../../core/execution/ExecutionContext';
 import { TransferIntentParameters } from '../../../core/intents/transfer.types';
 import { ExecutionReceipt } from '../types';
@@ -19,6 +20,7 @@ const VAULT_ABI = [
 export class BaseAdapter {
   private publicClient: any;
   private vaultAddress: `0x${string}` | null;
+  private builderDataSuffix?: `0x${string}`;
 
   constructor() {
     const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
@@ -27,6 +29,11 @@ export class BaseAdapter {
       transport: http(rpcUrl),
     });
     this.vaultAddress = (process.env.SERA_VAULT_ADDRESS as `0x${string}`) || null;
+    
+    const builderCode = process.env.BASE_BUILDER_CODE;
+    if (builderCode) {
+      this.builderDataSuffix = Attribution.toDataSuffix({ codes: [builderCode] }) as `0x${string}`;
+    }
   }
 
   public async getBalance(address: `0x${string}`, assetId: string): Promise<number> {
@@ -134,6 +141,7 @@ export class BaseAdapter {
           account: executorAccount,
           to: this.vaultAddress,
           data,
+          ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
         });
       } else {
         if (assetId === 'usdc') {
@@ -149,6 +157,7 @@ export class BaseAdapter {
             account,
             to: USDC_BASE_MAINNET,
             data,
+            ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
           });
         } else {
           const value = parseEther(finalAmount.toString());
@@ -158,6 +167,7 @@ export class BaseAdapter {
             account,
             to: recipientAddress as `0x${string}`,
             value,
+            ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
           });
         }
       }
@@ -224,6 +234,7 @@ export class BaseAdapter {
         const txHash = await ownerClient.sendTransaction({
           to: agentAddress,
           value: deficit,
+          ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
         });
 
         console.log(`[BaseAdapter] ⏳ Waiting for auto-fund confirmation... (TX: ${txHash})`);

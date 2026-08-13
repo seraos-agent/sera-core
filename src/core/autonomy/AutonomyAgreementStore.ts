@@ -21,6 +21,7 @@ export interface AutonomyAgreement {
   lastActionSummary?: string;
   nextActionSummary?: string;
   revocationReason?: string;
+  allowedToolChains?: ReadonlyArray<{ chain: readonly string[]; label?: string }>;
 }
 
 export interface CreateAutonomyAgreement {
@@ -32,6 +33,7 @@ export interface CreateAutonomyAgreement {
   permissions: readonly PermissionAction[];
   expiresAt?: number;
   nextActionSummary?: string;
+  allowedToolChains?: ReadonlyArray<{ chain: readonly string[]; label?: string }>;
 }
 
 export class AutonomyAgreementStore {
@@ -40,13 +42,21 @@ export class AutonomyAgreementStore {
   public activate(input: CreateAutonomyAgreement): AutonomyAgreement {
     if (!input.principalId.trim() || !input.title.trim() || !input.intent.trim()) throw new Error('Operating Agreement requires principal, title, and intent.');
     if (input.permissions.length === 0) throw new Error('Operating Agreement requires at least one permission.');
+    
+    if (input.mode === 'FULL_ACCESS' && input.permissions.includes('*')) {
+      if (!input.allowedToolChains || input.allowedToolChains.length === 0) {
+        throw new Error('Operating Agreement rejected: FULL_ACCESS with wildcard permission "*" requires explicitly defined allowedToolChains.');
+      }
+    }
+
     const id = input.id || `agreement-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     if (this.agreements.has(id)) throw new Error(`Operating Agreement ${id} already exists.`);
     const now = Date.now();
     const agreement: AutonomyAgreement = {
       id, principalId: input.principalId, title: input.title, intent: input.intent, mode: input.mode,
       permissions: [...new Set(input.permissions)], status: 'ACTIVE', createdAt: now, updatedAt: now,
-      expiresAt: input.expiresAt, nextActionSummary: input.nextActionSummary
+      expiresAt: input.expiresAt, nextActionSummary: input.nextActionSummary,
+      allowedToolChains: input.allowedToolChains
     };
     this.agreements.set(id, agreement);
     return { ...agreement, permissions: [...agreement.permissions] };
@@ -89,7 +99,8 @@ export class AutonomyAgreementStore {
       requiresApprovalPermissions: agreement.mode === 'ASSISTANT' ? agreement.permissions.map(action => ({ action })) : [],
       expiresAt: agreement.expiresAt,
       autonomyMode: agreement.mode,
-      agreementId: agreement.id
+      agreementId: agreement.id,
+      allowedToolChains: agreement.allowedToolChains
     };
   }
 

@@ -92,6 +92,26 @@ export class ExecutionCoordinator {
     // 1. Governance Pre-Check before Execution
     let allChecksPassed = true;
     let requiresApproval = workClass === 'HIGH_RISK' && scope.autonomyMode !== 'FULL_ACCESS';
+    
+    // --- Scoped Autonomy Policy: Pre-flight Chain Check ---
+    const requestedChain = plan.steps.map(s => s.action);
+    if (scope.allowedToolChains && scope.allowedToolChains.length > 0) {
+      const isSafeSubsetChain = (req: string[], allowed: readonly string[]) => {
+        if (req.length > allowed.length) return false;
+        for (let i = 0; i < req.length; i++) {
+          if (req[i] !== allowed[i]) return false;
+        }
+        return true;
+      };
+      
+      const chainMatches = scope.allowedToolChains.some(allowed => isSafeSubsetChain(requestedChain, allowed.chain));
+      if (!chainMatches) {
+        requiresApproval = true; // [CRITICAL] Override FULL_ACCESS leniency if outside approved chain
+        this.logger.warn(`Execution Coordinator: Scoped Autonomy violation. Requested chain [${requestedChain.join(',')}] is not a safe subset of any approved chain. Overriding to requiresApproval = true.`);
+      }
+    }
+    // ------------------------------------------------------
+
     for (const step of plan.steps) {
       const workItem: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).substring(7)}`,

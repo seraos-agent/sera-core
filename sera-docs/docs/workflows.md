@@ -79,7 +79,6 @@ SERA currently supports these built-in workflow actions:
 | `EXECUTE_UI_COMMAND` | Trigger a frontend UI action | Communication |
 | `MARKET_DATA_QUERY` | Fetch market data from Hyperliquid | Hyperliquid |
 | `PAPER_TRADE` | Execute simulated trades | Paper Trading |
-| `POLYMARKET_QUERY` | Query prediction market data | Polymarket |
 
 ## LLM-Powered Dynamic Planning
 

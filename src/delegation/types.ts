@@ -23,6 +23,7 @@ export interface DelegationScope {
   autonomyMode?: AutonomyMode;
   /** A one-time approved Operating Agreement backing Full Access. */
   agreementId?: string;
+  allowedToolChains?: ReadonlyArray<{ chain: readonly string[]; label?: string }>;
 }
 
 export interface AuthorityContext {

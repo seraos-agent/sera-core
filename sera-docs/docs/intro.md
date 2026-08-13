@@ -34,7 +34,7 @@ SERA OS is organized into layered components, each with a clear responsibility:
 │   GoalEngine · Reflection · Telemetry  │
 ├─────────────────────────────────────────┤
 │           Capabilities Layer            │
-│   Wallet · Hyperliquid · Polymarket     │
+│   Wallet · Hyperliquid                   │
 │   Communication · Paper Trading · MCP   │
 └─────────────────────────────────────────┘
 ```
