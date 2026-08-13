@@ -16,7 +16,7 @@ export class ExecutionWorker {
   constructor(
     public readonly id: string,
     private executor: ExecutionExecutor,
-    public readonly affinity: string[] = [] // e.g. ['slack', 'discord']
+    public readonly affinity: string[] = [] // e.g. ['threads', 'discord']
   ) {
     this.logger = new Logger(`Worker-${id}`);
   }

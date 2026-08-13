@@ -23,7 +23,7 @@ export class CommunicationBridge {
   }
 
   /**
-   * Register a platform adapter (e.g. SlackAdapter, DiscordAdapter).
+   * Register a platform adapter (e.g. ThreadsAdapter, DiscordAdapter).
    * This maintains the inversion of control: the bridge does not know
    * about specific platforms at compile time.
    */
@@ -111,7 +111,7 @@ export class CommunicationBridge {
     // We expect DialogueEngine to pass through the responseContext
     // If it's missing, this message might be intended for the UI/Socket layer
     if (!payload || !payload.responseContext || !payload.responseContext.platform) {
-      console.log(`[CommunicationBridge][DIAG] No platform responseContext — treating as UI-only reply. Skipping Slack routing.`);
+      console.log(`[CommunicationBridge][DIAG] No platform responseContext — treating as UI-only reply. Skipping external platform routing.`);
       return; // Not a communication platform message
     }
 

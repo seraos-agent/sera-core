@@ -52,7 +52,7 @@ export const SUGGESTIONS = [
   "Cek allowance saya di blockchain",
   "Jadwalkan pembayaran bulanan",
   "Analisa portofolio aset",
-  "Hubungkan ke Slack",
+  "Hubungkan ke Threads",
 ];
 
 export const FONT_LINK_ID = "chatui-fonts";

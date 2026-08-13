@@ -3,7 +3,7 @@
  * 
  * ARCHITECTURAL RULE:
  * These types define the universal language for ALL communication platforms.
- * The word "Slack", "Discord", "Teams" must NEVER appear in these type definitions.
+ * The word "Threads", "Discord", "Teams" must NEVER appear in these type definitions.
  * Platform identity is carried as metadata (string), not as structural types.
  * 
  * Identity Resolution:
@@ -21,7 +21,7 @@
 export interface UserIdentity {
   /** Platform-agnostic composite key: `${platform}:${platformUserId}` */
   id: string;
-  /** The platform this user belongs to (e.g. 'slack', 'discord', 'email') */
+  /** The platform this user belongs to (e.g. 'threads', 'discord', 'email') */
   platform: string;
   /** Raw platform-specific user ID (opaque to Core) */
   platformUserId: string;
@@ -64,7 +64,7 @@ export interface WorkspaceIdentity {
 
 /**
  * A platform-agnostic observation from any communication platform.
- * This is the universal object that Core sees — never a raw Slack/Discord event.
+ * This is the universal object that Core sees — never a raw Threads/Discord event.
  */
 export interface CommunicationObservation {
   /** The text content of the message */
@@ -130,7 +130,7 @@ export interface ResponseContext {
  * Adapters are translators, not thinkers.
  */
 export interface ICommunicationAdapter {
-  /** Unique platform identifier (e.g. 'slack', 'discord') */
+  /** Unique platform identifier (e.g. 'threads', 'discord') */
   readonly platform: string;
 
   /** Send a message to the platform */

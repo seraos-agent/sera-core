@@ -22,13 +22,13 @@ We are adopting a **Decoupled Monetization Architecture** modeled after an OS/Ap
    - **Key Principle**: *Cognition is not paywalled; scale and bandwidth are.* All tiers get memory and reflection; they just have different "fuel" limits.
 
 2. **Layer 2: The Applications (Marketplace Add-ons)**
-   - **What it is**: Integrations (e.g., Slack, Shopify, Telegram Bot Hosting) are standalone products in the "Workspace".
+   - **What it is**: Integrations (e.g., Threads, Shopify, Telegram Bot Hosting) are standalone products in the "Workspace".
    - **What it grants**: The webhook/polling infrastructure required to connect a 3rd-party service to the Sera EventBus.
-   - **Pricing**: Each product is priced individually (e.g., 10 USDC/month for Shopify, 5 USDC/month for Slack) based on its server load.
+   - **Pricing**: Each product is priced individually (e.g., 10 USDC/month for Shopify, 5 USDC/month for Threads) based on its server load.
    - **Key Principle**: Products operate on independent billing cycles. 
 
 ## Consequences
-- **Elegant Mid-Month Upgrades**: A user can buy a Slack integration mid-month. It runs on its own billing cycle (e.g., 15th to 15th).
-- **Symbiotic Dependency**: If a user's Agent Subscription (Engine) expires or runs out of tokens, their Slack Integration (Application) remains active, but the Agent will respond with an "Out of Cognitive Quota" message instead of processing the business logic. This acts as a natural upsell.
+- **Elegant Mid-Month Upgrades**: A user can buy a Threads integration mid-month. It runs on its own billing cycle (e.g., 15th to 15th).
+- **Symbiotic Dependency**: If a user's Agent Subscription (Engine) expires or runs out of tokens, their Threads Integration (Application) remains active, but the Agent will respond with an "Out of Cognitive Quota" message instead of processing the business logic. This acts as a natural upsell.
 - **Clean Architecture**: The execution layer (`CognitiveLoop`) does not need to check billing tiers to enable/disable memory. The Wallet/Execution modules do not need to calculate prorated refunds for app uninstalls.
 - **UI Impact**: The "Account/Billing" UI will exclusively handle the Agent Subscription (Engine). A separate "Workspace/Marketplace" UI will handle the a la carte purchasing of Integrations.

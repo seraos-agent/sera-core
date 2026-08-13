@@ -8,7 +8,7 @@ import { SeraTool } from '../../core/cognitive/Tool';
  * and the CommunicationBridge routes it to the correct platform adapter
  * based on the response context metadata.
  * 
- * No platform-specific tool names (e.g. SEND_SLACK_MESSAGE) — the platform
+ * No platform-specific tool names (e.g. SEND_THREADS_MESSAGE) — the platform
  * is metadata, not identity.
  */
 export class CommunicationToolCapability {
@@ -17,7 +17,7 @@ export class CommunicationToolCapability {
     return [
       {
         name: 'SEND_MESSAGE',
-        description: 'Send a message to a communication channel (Slack, Discord, etc). Use this when SERA needs to proactively communicate or reply to a user on an external platform.',
+        description: 'Send a message to a communication channel (Threads, Discord, etc). Use this when SERA needs to proactively communicate or reply to a user on an external platform.',
         parameters: {
           type: 'object',
           properties: {
@@ -35,7 +35,7 @@ export class CommunicationToolCapability {
             },
             platform: {
               type: 'string',
-              description: 'The target platform (e.g. slack, discord). Defaults to the platform of the current conversation context.'
+              description: 'The target platform (e.g. threads, discord). Defaults to the platform of the current conversation context.'
             }
           },
           required: ['text']
@@ -54,7 +54,7 @@ export class CommunicationToolCapability {
             },
             platform: {
               type: 'string',
-              description: 'The platform to read from (e.g. slack, discord)'
+              description: 'The platform to read from (e.g. threads, discord)'
             },
             limit: {
               type: 'number',

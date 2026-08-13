@@ -16,17 +16,17 @@ The absolute most important architectural principle for SERA is the strict separ
 ## 2. Universal Execution Context & Traceability
 To support robust execution across multiple parallel channels without platform bleed, every task is backed by an `ExecutionContext`.
 - It tracks the `executionId`, `parentExecutionId`, `origin`, `conversation`, `goal`, `plan`, `proposal`, `authority`, `priority`, `deadline`, and `createdAt`.
-- It is universally decoupled from platform specifics (e.g., Slack, Wallet).
+- It is universally decoupled from platform specifics (e.g., Threads, Wallet).
 
 ## 3. Execution State Machine & Execution Policies
 The execution lifecycle is a strict deterministic State Machine enforced by `ExecutionStateMachine`.
 - Valid states: `QUEUED`, `RUNNING`, `WAITING_CONDITION`, `WAITING_APPROVAL`, `RETRYING`, `COMPLETED`, `FAILED`, `CANCELLED`, `ARCHIVED`.
-- **Execution Policy:** Tasks are governed by decoupled objects (`RetryPolicy`, `TimeoutPolicy`, `CancellationPolicy`, `PriorityPolicy`) allowing, for example, Wallet tasks to have 0 retries while Slack tasks have infinite retries.
+- **Execution Policy:** Tasks are governed by decoupled objects (`RetryPolicy`, `TimeoutPolicy`, `CancellationPolicy`, `PriorityPolicy`) allowing, for example, Wallet tasks to have 0 retries while Threads tasks have infinite retries.
 
 ## 4. Priority Scheduler & Worker Pool
 The `ExecutionScheduler` sits inside the `ExecutionCoordinator`. 
 - **Integer Priority:** It uses integer-based priorities (e.g., 1000 = Critical, 500 = Normal) for ultimate scalability (Realtime, Immediate, Urgent, Interactive, Scheduled, Maintenance).
-- **Worker Pool Abstraction:** The Scheduler does NOT know about capabilities (Wallet, Slack, Email). It simply enqueues, dequeues, pauses, and dispatches to an `ExecutionWorker` pool. The Workers interact with the `CapabilityCatalog`.
+- **Worker Pool Abstraction:** The Scheduler does NOT know about capabilities (Wallet, Threads, Email). It simply enqueues, dequeues, pauses, and dispatches to an `ExecutionWorker` pool. The Workers interact with the `CapabilityCatalog`.
 - **Event-Driven:** It uses a `PriorityQueue` and only "wakes up" when a task is submitted or resumed.
 
 ## 5. Persistence via CheckpointStore
@@ -37,4 +37,4 @@ Checkpoints allow SERA to suspend long-running operations (e.g., waiting for blo
 ## 6. Execution Observability & Adaptive Scheduling
 SERA maintains comprehensive **Execution Traces** and **Execution Metrics**.
 - **Trace Timelines:** A full lifecycle event log (Task Created → Queued → Running → Paused → Resumed → Completed) is recorded.
-- **Adaptive Execution:** The Reflection Engine reads these metrics (queue length, latency, failure rates) and traces to learn patterns (e.g., "Slack tools timeout frequently at 3 PM") and proposes priority adjustments, which Governance approves. The Scheduler simply executes the newly approved policies.
+- **Adaptive Execution:** The Reflection Engine reads these metrics (queue length, latency, failure rates) and traces to learn patterns (e.g., "Threads tools timeout frequently at 3 PM") and proposes priority adjustments, which Governance approves. The Scheduler simply executes the newly approved policies.

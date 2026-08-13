@@ -36,7 +36,7 @@ export class ExecutionCancellationToken {
 export interface ExecutionContext {
   executionId: string;
   parentExecutionId?: string;
-  origin: string; // e.g., 'slack', 'cron', 'api'
+  origin: string; // e.g., 'threads', 'cron', 'api'
   conversationId?: string;
   goalId?: string;
   planId?: string;
