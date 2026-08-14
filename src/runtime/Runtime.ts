@@ -87,7 +87,7 @@ export class Runtime {
   private executionTraceStore?: ExecutionTraceStore;
   private eventBus?: EventEmitter;
   private executionDispatcher?: ExecutionDispatcher;
-  
+
   private planner?: Planner;
   private strategyStore?: StrategyStore;
   private strategyEngine?: StrategyEngine;
@@ -232,7 +232,7 @@ export class Runtime {
   public setGlobalEventBus(globalEventBus: any, options?: { disableMcp?: boolean, sessionId?: string, persistUserData?: boolean }): void {
     const persistUserData = options?.persistUserData ?? this.persistUserData;
     this.worldStateService = new WorldStateService(globalEventBus, options?.sessionId || 'default', { persistLocally: persistUserData });
-    
+
     const activationStore = new ConnectorActivationStore(persistUserData);
     this.capabilityCatalog = new CapabilityCatalog(activationStore);
     const walletCap = new WalletToolCapability();
@@ -240,9 +240,9 @@ export class Runtime {
     const hyperliquidCap = new HyperliquidMarketDataCapability();
     const paperTradingCap = new PaperTradingCapability();
     const autonomyAgreementCap = new AutonomyAgreementCapability();
-    
+
     this.secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
-    
+
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
 
     const threadsApi = new ThreadsAPI(this.secretManager);
@@ -351,11 +351,11 @@ export class Runtime {
       network: 'Web2',
       alwaysActive: false,
       tools: threadsCap.getTools(),
-      executeTool: (name: string, args: any) => threadsCap.executeTool(name, args),
+      executeTool: (name: string, args: any, context?: any) => threadsCap.executeTool(name, args, context),
     });
-    
+
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
-    
+
     // Initialize MCP Memory Server for testing/capabilities
     // Using npx -y @modelcontextprotocol/server-memory
     if (!options?.disableMcp) {
@@ -424,7 +424,7 @@ export class Runtime {
   public setExecutionDispatcher(dispatcher: ExecutionDispatcher): void {
     this.executionDispatcher = dispatcher;
   }
-  
+
   getWorldState() {
     if (!this.worldStateService) {
       return { wallet: {}, temporal: {} };
@@ -438,7 +438,7 @@ export class Runtime {
   private governProposals(temporalContext: TemporalContext): void {
     // Moved to IntentCoordinator
   }
-  
+
   getMemory() {
     return this.memoryStore.getHistory();
   }
@@ -451,7 +451,7 @@ export class Runtime {
       physicalTime: Date.now(),
       cognitiveCycleId: cycleId
     };
-    
+
     // 1. Intent & Proposal Pipeline (managed by IntentCoordinator)
     await this.intentCoordinator.runCycle(temporalContext, this.getWorldState());
 
@@ -467,7 +467,7 @@ export class Runtime {
           allowedPermissions: [{ action: '*' }],
           requiresApprovalPermissions: []
         };
-        
+
         // Mock ExecutionContext for now until fully propagated
         const executionContext = {
           executionId: `exec-${Date.now()}`,
@@ -479,16 +479,16 @@ export class Runtime {
         };
 
         this.executionCoordinator.submitTask(goal, plan, defaultScope, executionContext as any);
-        
+
         // Since it's queued asynchronously now, we just mark it as in progress (or let the queue handle it)
         this.goalEngine?.updateStatus(goal.id, 'IN_PROGRESS');
       } catch (err: any) {
         if (err.name === 'IntentInvalidationError') {
-           this.goalEngine?.invalidate(goal.id, err.invalidation);
+          this.goalEngine?.invalidate(goal.id, err.invalidation);
         } else if (err.message && err.message.includes('STRATEGY-ENFORCED')) {
-           this.goalEngine?.updateStatus(goal.id, 'ABANDONED', err.message);
+          this.goalEngine?.updateStatus(goal.id, 'ABANDONED', err.message);
         } else {
-           this.goalEngine?.updateStatus(goal.id, 'FAILED', err.message);
+          this.goalEngine?.updateStatus(goal.id, 'FAILED', err.message);
         }
       }
     }
@@ -496,7 +496,7 @@ export class Runtime {
     if (this.adaptationPlanner) {
       this.adaptationPlanner.removeExpiredProposals();
     }
-    
+
     this.logger.info(`Execution Cycle Terminated. Yielding back to TriggerEngine.`);
 
     if (this.executionReflectionEngine) {
@@ -513,7 +513,7 @@ export class Runtime {
       console.log(`[Runtime] Proposal ${proposalId} not found in Phase 4.1 ProposalStore. Ignoring (likely handled by ProposalManager).`);
       return;
     }
-    
+
     if (proposal.status !== 'PENDING_REVIEW') {
       console.log(`[Runtime] Proposal ${proposalId} is already ${proposal.status}.`);
       return;
@@ -557,7 +557,7 @@ export class Runtime {
     this.proposalStore.updateStatus(proposalId, 'APPROVED', candidateId);
     console.log(`\n[Human] Approved Proposal ${proposalId}, selected candidate ${candidateId}.`);
     console.log(`[Runtime] Registered new tactical Goal: ${newGoalId}\n`);
-    
+
     if (this.feedbackPipeline) {
       this.feedbackPipeline.processProposalTrace({
         id: `ptrace-${Date.now()}`,
@@ -576,7 +576,7 @@ export class Runtime {
     this.logger.info(`Received AdaptationProposal: ${proposal.id}`);
     this.logger.info(`  -> Target Subsystem: ${proposal.target.subsystem}`);
     this.logger.info(`  -> Scope: ${proposal.target.scope}`);
-    
+
     if (proposal.target.scope === 'PROTECTED') {
       this.logger.error(`FATAL: Adaptation targeting PROTECTED subsystem rejected by Runtime safeguard.`);
       proposal.status = 'REJECTED';
@@ -587,7 +587,7 @@ export class Runtime {
       this.logger.info(`INFO: Adaptation accepted for standard evaluation review.`);
       proposal.status = 'PENDING_REVIEW';
     }
-    
+
     return proposal;
   }
 }

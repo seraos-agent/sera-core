@@ -123,7 +123,11 @@ export class QwenAdapter implements ILLMAdapter {
           
           return {
             text: retryChoice.content || '',
-            usage: retryData.usage,
+            usage: {
+              input_tokens: retryData.usage?.prompt_tokens || 0,
+              output_tokens: retryData.usage?.completion_tokens || 0,
+              total_tokens: retryData.usage?.total_tokens || 0,
+            },
             toolCalls: retryToolCalls,
           };
         }
@@ -156,7 +160,11 @@ export class QwenAdapter implements ILLMAdapter {
 
     return {
       text: choice.content || '',
-      usage: data.usage,
+      usage: {
+        input_tokens: data.usage?.prompt_tokens || 0,
+        output_tokens: data.usage?.completion_tokens || 0,
+        total_tokens: data.usage?.total_tokens || 0,
+      },
       toolCalls,
     };
   }

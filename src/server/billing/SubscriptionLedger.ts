@@ -56,7 +56,14 @@ export class SubscriptionLedger {
   }
 
   hasCredit(address: string): boolean {
-    const entry = this.entries.get(address.toLowerCase());
-    return !!entry && entry.agentCredits > 0;
+    const key = address.toLowerCase();
+    let entry = this.entries.get(key);
+    
+    // Automatically grant a 100,000 credit free trial to new users
+    if (!entry) {
+      entry = this.credit(key, 100000, 0);
+    }
+    
+    return entry.agentCredits > 0;
   }
 }

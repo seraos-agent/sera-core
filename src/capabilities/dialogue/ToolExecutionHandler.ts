@@ -168,7 +168,7 @@ export class ToolExecutionHandler {
       const connector = capabilityCatalog?.getConnectorForTool?.(toolIntent);
       if (connector && typeof connector.executeTool === 'function') {
         try {
-          const data = await connector.executeTool(toolIntent, toolParams);
+          const data = await connector.executeTool(toolIntent, toolParams, { sessionId });
           result = { success: true, data };
         } catch (e: any) {
           result = { success: false, errorMessage: e.message };

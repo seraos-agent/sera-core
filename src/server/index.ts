@@ -33,6 +33,9 @@ const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
 const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
 
+console.log(`[Server] Supabase Services Init - URL: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Secret: ${process.env.SUPABASE_SECRET_KEY ? 'OK' : 'MISSING'}`);
+console.log(`[Server] reownWalletIdentityService is ${reownWalletIdentityService ? 'ACTIVE' : 'NULL (Falling back to local auth)'}`);
+
 interface SessionTokenPrincipal {
   userId: string;
   personalWalletAddress?: string;
@@ -418,6 +421,13 @@ io.on('connection', (socket: Socket) => {
     // Check token authentication
     if (payload.token) {
       const recoveredPrincipal = verifySessionToken(payload.token);
+      
+      // Reject legacy "wallet:" development tokens to force a fresh login and real UUID generation in Supabase
+      if (recoveredPrincipal?.userId.startsWith('wallet:')) {
+        socket.emit('auth:error', { message: 'Your session has been upgraded. Please sign in again to sync with the database.', code: 'INVALID_TOKEN' });
+        return;
+      }
+
       if (recoveredPrincipal && (!address || recoveredPrincipal.personalWalletAddress === address)) {
         address = recoveredPrincipal.personalWalletAddress;
         principal = {
@@ -454,26 +464,43 @@ io.on('connection', (socket: Socket) => {
         return;
       }
 
-      if (serverConfig.isProduction && address !== 'dev') {
-        if (!payload?.message || !payload?.signature || payload.message !== socket.data.loginMessage) {
+      if (address !== 'dev' && serverConfig.isProduction) {
+        console.log(`[Server] Validating signature for ${address} in production...`);
+        if (!payload?.message || !payload?.signature) {
+          console.log(`[Server] Missing message or signature`);
+          socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
+          return;
+        }
+        
+        if (payload.message !== socket.data.loginMessage) {
+          console.log(`[Server] Message mismatch. Expected: ${socket.data.loginMessage}, Got: ${payload.message}`);
           socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
           return;
         }
 
-        const isValidSignature = await verifyWalletSignature(
-          address as `0x${string}`,
-          payload.message,
-          payload.signature,
-        );
-        if (!isValidSignature) {
-          socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
+        try {
+          const isValidSignature = await verifyWalletSignature(
+            address as `0x${string}`,
+            payload.message,
+            payload.signature,
+          );
+          console.log(`[Server] Signature verification result: ${isValidSignature}`);
+          if (!isValidSignature) {
+            socket.emit('auth:error', { message: 'Wallet signature could not be verified.' });
+            return;
+          }
+        } catch (error) {
+          console.error(`[Server] Signature verification threw an error:`, error);
+          socket.emit('auth:error', { message: 'Wallet signature could not be verified due to a network error.' });
           return;
         }
+      } else if (address !== 'dev') {
+        console.log(`[Server] Bypassing strict signature validation for ${address} in development mode.`);
       }
 
       if (address === 'dev') {
         principal = { userId: 'dev' };
-      } else if (serverConfig.isProduction && reownWalletIdentityService) {
+      } else if (reownWalletIdentityService) {
         try {
           principal = await reownWalletIdentityService.resolveVerifiedWallet(address);
         } catch (error) {

@@ -61,7 +61,7 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   connectors: Server,
 };
 
-export function ConnectionsPage({ theme, onBack, isMobileView, socket }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, walletState, onBack, isMobileView, socket }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
 
@@ -86,8 +86,20 @@ export function ConnectionsPage({ theme, onBack, isMobileView, socket }: Workspa
 
     return () => {
       socket.off('connector:catalog', handleCatalog);
-      socket.off('connector:status_changed', handleStatusChanged);
+      socket.off("connector:status_changed");
     };
+  }, [socket]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_SUCCESS' && event.data?.connector) {
+        if (socket) {
+          socket.emit('connector:activate', { connectorId: event.data.connector });
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, [socket]);
 
   useEffect(() => {
@@ -100,7 +112,17 @@ export function ConnectionsPage({ theme, onBack, isMobileView, socket }: Workspa
 
   const handleActivate = (connectorId: string) => {
     if (!socket) return;
-    socket.emit('connector:activate', { connectorId });
+    
+    if (connectorId === 'threads') {
+      const authUrl = `https://localhost:3001/api/auth/threads?sessionId=${walletState?.sessionId}`;
+      const width = 600;
+      const height = 700;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      window.open(authUrl, 'Threads OAuth', `width=${width},height=${height},left=${left},top=${top}`);
+    } else {
+      socket.emit('connector:activate', { connectorId });
+    }
   };
 
   const handleDeactivate = (connectorId: string) => {

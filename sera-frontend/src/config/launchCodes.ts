@@ -1,0 +1,5 @@
+export const VALID_LAUNCH_CODE_HASHES = [
+  '033ea71b3ee69f30fa540912fda0049482ad0fb475f45d4df357b8962a8839a2',
+  'e4efa17e033e81c7de29ba031cbf0a7993d707a1c9b8f6c9c7cd78663db5c6bf',
+  '0f8e5dbf14e6ee008a3658dacaa29eb09b1412b8ac0cf03b0e459ab74bbebced'
+];

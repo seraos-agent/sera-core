@@ -43,7 +43,7 @@ export interface ConnectorDefinition {
    * delegate tool calls directly to the connector without going through
    * the GoalBridge / event pipeline.
    */
-  executeTool?: (toolName: string, args: Record<string, any>) => Promise<any>;
+  executeTool?: (toolName: string, args: Record<string, any>, context?: { sessionId: string }) => Promise<any>;
 }
 
 /**

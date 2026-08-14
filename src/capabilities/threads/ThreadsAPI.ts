@@ -31,8 +31,8 @@ export class ThreadsAPI {
   /**
    * Creates a text container for a Threads post.
    */
-  async createContainer(text: string, replyToId?: string, imageUrl?: string): Promise<ThreadsContainerResponse> {
-    const token = await this.getAccessToken();
+  async createContainer(sessionId: string, text: string, replyToId?: string, imageUrl?: string): Promise<ThreadsContainerResponse> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token. Please connect Threads first.');
 
     const url = new URL(`${this.baseUrl}/me/threads`);
@@ -69,8 +69,8 @@ export class ThreadsAPI {
   /**
    * Publishes a previously created container.
    */
-  async publishContainer(creationId: string): Promise<ThreadsPublishResponse> {
-    const token = await this.getAccessToken();
+  async publishContainer(sessionId: string, creationId: string): Promise<ThreadsPublishResponse> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     const url = new URL(`${this.baseUrl}/me/threads_publish`);
@@ -92,17 +92,17 @@ export class ThreadsAPI {
   /**
    * High-level method to create and publish a post immediately.
    */
-  async publishPost(text: string, replyToId?: string, imageUrl?: string): Promise<string> {
-    const container = await this.createContainer(text, replyToId, imageUrl);
-    const published = await this.publishContainer(container.id);
+  async publishPost(sessionId: string, text: string, replyToId?: string, imageUrl?: string): Promise<string> {
+    const container = await this.createContainer(sessionId, text, replyToId, imageUrl);
+    const published = await this.publishContainer(sessionId, container.id);
     return published.id;
   }
 
   /**
    * Fetches the latest mentions for the authenticated user.
    */
-  async getMentions(limit: number = 20): Promise<ThreadsMention[]> {
-    const token = await this.getAccessToken();
+  async getMentions(sessionId: string, limit: number = 20): Promise<ThreadsMention[]> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     // Based on typical Meta Graph API structure for mentions
@@ -127,8 +127,8 @@ export class ThreadsAPI {
   /**
    * Fetches a specific post by its ID.
    */
-  async getPost(postId: string): Promise<ThreadsMention> {
-    const token = await this.getAccessToken();
+  async getPost(sessionId: string, postId: string): Promise<ThreadsMention> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     const url = new URL(`${this.baseUrl}/${postId}`);
@@ -150,8 +150,8 @@ export class ThreadsAPI {
   /**
    * Fetches the latest threads/posts created by the authenticated user.
    */
-  async getUserThreads(limit: number = 5): Promise<{ id: string; text: string; timestamp: string }[]> {
-    const token = await this.getAccessToken();
+  async getUserThreads(sessionId: string, limit: number = 5): Promise<{ id: string; text: string; timestamp: string }[]> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     const url = new URL(`${this.baseUrl}/me/threads`);
@@ -175,8 +175,8 @@ export class ThreadsAPI {
   /**
    * Fetches the latest replies to a specific thread.
    */
-  async getThreadReplies(threadId: string, limit: number = 20): Promise<ThreadsMention[]> {
-    const token = await this.getAccessToken();
+  async getThreadReplies(sessionId: string, threadId: string, limit: number = 20): Promise<ThreadsMention[]> {
+    const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     const url = new URL(`${this.baseUrl}/${threadId}/replies`);
@@ -202,12 +202,18 @@ export class ThreadsAPI {
     return data.data || [];
   }
 
-  private async getAccessToken(): Promise<string | null> {
-    if (process.env.THREADS_ACCESS_TOKEN) {
+  private async getAccessToken(sessionId: string): Promise<string | null> {
+    // 1. Check for personal user token
+    const userToken = await this.secretManager.getSecret(`THREADS_TOKEN_${sessionId}`);
+    if (userToken) {
+      return userToken;
+    }
+    
+    // 2. Fallback to global bot token if explicitly allowed (e.g. for sera.agent bot)
+    if (process.env.THREADS_ACCESS_TOKEN && sessionId === process.env.THREADS_VIP_USERS?.split(',')[0]) {
       return process.env.THREADS_ACCESS_TOKEN;
     }
-    // For MVP, we use a global/app-level secret. 
-    // In production, this should be scoped to a specific user's identity.
-    return this.secretManager.getSecret('THREADS_ACCESS_TOKEN');
+    
+    return null;
   }
 }

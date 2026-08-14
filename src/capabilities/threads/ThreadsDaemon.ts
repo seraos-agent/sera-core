@@ -76,7 +76,7 @@ export class ThreadsDaemon {
     if (!this.isRunning) return;
 
     try {
-      const mentions = await this.api.getMentions(20);
+      const mentions = await this.api.getMentions(this.sessionId, 20);
       if (!mentions || mentions.length === 0) {
         console.log(`[ThreadsDaemon] Polled 0 mentions.`);
         return;
@@ -116,7 +116,7 @@ export class ThreadsDaemon {
 
     try {
       // 1. Get recent threads (Timeline Context)
-      const threads = await this.api.getUserThreads(5);
+      const threads = await this.api.getUserThreads(this.sessionId, 5);
       if (!threads || threads.length === 0) return;
 
       // Caches recent posts to inject into the AI context
@@ -128,7 +128,7 @@ export class ThreadsDaemon {
 
       // 3. For each recent thread, poll replies
       for (const thread of recentThreads) {
-        const replies = await this.api.getThreadReplies(thread.id, 20);
+        const replies = await this.api.getThreadReplies(this.sessionId, thread.id, 20);
         if (!replies || replies.length === 0) continue;
 
         // Ensure replies are sorted newest-first
@@ -210,11 +210,11 @@ ${this.timelineContext}
       let parentPostContext = '';
       try {
         // Fetch the mention details to see if it is a reply (is_reply, replied_to fields)
-        const mentionDetails = await this.api.getPost(mention.id);
+        const mentionDetails = await this.api.getPost(this.sessionId, mention.id);
         
         if (mentionDetails.is_reply && mentionDetails.replied_to?.id) {
           console.log(`[ThreadsDaemon] Mention is a reply. Fetching parent post context for ${mentionDetails.replied_to.id}...`);
-          const parentPost = await this.api.getPost(mentionDetails.replied_to.id);
+          const parentPost = await this.api.getPost(this.sessionId, mentionDetails.replied_to.id);
           parentPostContext = `\n[PARENT POST CONTEXT]: They are replying to a post by @${parentPost.username} which says:\n"${parentPost.text}"\n`;
         }
       } catch (err: any) {

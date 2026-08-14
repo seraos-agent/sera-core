@@ -12,6 +12,7 @@ import type { SidebarView } from "./components/sidebar/Sidebar";
 import { PredictionArenaPage } from "./components/predictions/PredictionArenaPage";
 
 import { ConnectGateway } from "./components/auth/ConnectGateway";
+import { LaunchCodeGateway } from './components/auth/LaunchCodeGateway';
 
 import { BillingModal } from "./components/sidebar/BillingModal";
 import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
@@ -100,7 +101,7 @@ function InnerApp() {
   }, [currentView]);
 
   const { walletState, setWalletState } = useWallet();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, isConnecting, isReconnecting } = useAccount();
   const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
@@ -166,6 +167,12 @@ function InnerApp() {
     }
     return false;
   });
+  const [isLaunchCodeVerified, setIsLaunchCodeVerified] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sera_launch_verified') === 'true';
+    }
+    return false;
+  });
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
   const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
 
@@ -173,7 +180,7 @@ function InnerApp() {
   useEffect(() => {
     if (isBypassed && socket) {
       socket.emit("auth:login", {});
-      
+
       // Cleanup URL so it looks clean
       if (typeof window !== 'undefined' && window.history.replaceState) {
         const url = new URL(window.location.href);
@@ -314,8 +321,48 @@ function InnerApp() {
 
   if (!isMounted) return null;
 
-  // 1. If not connected, show ConnectGateway
+  // Wait for wallet hydration to finish to prevent flashing the login screen on refresh
+  if (isConnecting || isReconnecting) {
+    return (
+      <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <div style={{ color: mode === "light" ? "#666" : "#888", fontFamily: "Inter, sans-serif", letterSpacing: "0.5px" }}>Restoring session...</div>
+      </div>
+    );
+  }
+
+  // 1. If not connected, check launch code then show ConnectGateway
   if (!isConnected && !isBypassed) {
+    if (!isLaunchCodeVerified) {
+      return (
+        <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
+          <LaunchCodeGateway theme={THEME[mode]} onVerify={() => {
+            localStorage.setItem('sera_launch_verified', 'true');
+            setIsLaunchCodeVerified(true);
+          }} />
+
+          {/* Tombol Bypass khusus Localhost */}
+          {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
+            <button
+              onClick={() => {
+                setIsBypassed(true);
+                if (socket) {
+                  socket.emit("auth:login", {});
+                }
+              }}
+              style={{
+                position: "fixed", bottom: 20, right: 20, background: "#ef4444", color: "#fff",
+                border: "none", padding: "10px 20px", borderRadius: 12, cursor: "pointer",
+                fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+                fontFamily: "Inter, sans-serif"
+              }}
+            >
+              🚧 Bypass Auth (Dev)
+            </button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
         <ConnectGateway theme={THEME[mode]} onConnect={() => {

@@ -40,14 +40,19 @@ export class ThreadsCapability {
     ];
   }
 
-  async executeTool(name: string, args: any): Promise<any> {
+  async executeTool(name: string, args: any, context?: any): Promise<any> {
+    const sessionId = context?.sessionId;
+    if (!sessionId) {
+      throw new Error(`[ThreadsCapability] Cannot execute ${name}: missing sessionId in context.`);
+    }
+
     switch (name) {
       case 'THREADS_PUBLISH':
-        const postId = await this.api.publishPost(args.text, undefined, args.imageUrl);
+        const postId = await this.api.publishPost(sessionId, args.text, undefined, args.imageUrl);
         return { success: true, postId, message: `Successfully published to Threads.` };
       
       case 'THREADS_REPLY':
-        const replyId = await this.api.publishPost(args.text, args.replyToId, args.imageUrl);
+        const replyId = await this.api.publishPost(sessionId, args.text, args.replyToId, args.imageUrl);
         return { success: true, postId: replyId, message: `Successfully replied to Threads post.` };
         
       default:

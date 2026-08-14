@@ -16,7 +16,14 @@ export function createThreadsAuthRouter(secretManager: SecretManager): Router {
     }
 
     const scope = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions,threads_keyword_search,threads_manage_insights,threads_delete';
-    const state = Math.random().toString(36).substring(7); // Prevent CSRF
+    
+    // Parse sessionId from query and encode it into state
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      return res.status(400).send('Missing sessionId parameter.');
+    }
+    const statePayload = JSON.stringify({ sessionId, nonce: Math.random().toString(36).substring(7) });
+    const state = Buffer.from(statePayload).toString('base64');
     
     // Redirect user to Meta authorization page
     const authUrl = new URL('https://threads.net/oauth/authorize');
@@ -40,11 +47,23 @@ export function createThreadsAuthRouter(secretManager: SecretManager): Router {
       return res.status(400).send('Authorization code missing.');
     }
 
+    if (!state || typeof state !== 'string') {
+      return res.status(400).send('State missing or invalid.');
+    }
+
     if (!appId || !appSecret) {
       return res.status(500).send('THREADS_APP_ID or THREADS_APP_SECRET is not configured.');
     }
 
     try {
+      // Decode state to get sessionId
+      const decodedState = JSON.parse(Buffer.from(state, 'base64').toString());
+      const sessionId = decodedState.sessionId;
+
+      if (!sessionId) {
+        throw new Error('sessionId not found in state payload.');
+      }
+
       // 1. Exchange authorization code for short-lived access token
       const tokenResponse = await fetch('https://graph.threads.net/oauth/access_token', {
         method: 'POST',
@@ -78,15 +97,18 @@ export function createThreadsAuthRouter(secretManager: SecretManager): Router {
       const longLivedToken = longLivedData.access_token;
 
       // 3. Persist the long-lived token using SecretManager
-      // For MVP, we save it globally.
-      await secretManager.setSecret('THREADS_ACCESS_TOKEN', longLivedToken);
+      // Scoped to the specific user session
+      await secretManager.setSecret(`THREADS_TOKEN_${sessionId}`, longLivedToken);
 
       res.send(`
         <html>
           <body>
             <h2>Threads Connected Successfully!</h2>
-            <p>Sera now has a long-lived access token to post to Threads.</p>
+            <p>Sera now has access to post to your personal Threads account.</p>
             <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_SUCCESS', connector: 'threads' }, '*');
+              }
               setTimeout(() => {
                 window.close();
               }, 3000);
