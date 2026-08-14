@@ -172,6 +172,14 @@ export class BaseAdapter {
         }
       }
 
+      try {
+        await context.onBroadcast?.(txHash);
+      } catch (error: any) {
+        // The transaction is already broadcast. Do not misreport it as failed
+        // because audit persistence is temporarily unavailable.
+        console.error(`[BaseAdapter] Failed to record transaction broadcast: ${error.message}`);
+      }
+
       console.log(`[BaseAdapter] ⏳ Waiting for transaction confirmation...`);
       const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
       console.log(`[BaseAdapter] ✅ Transfer confirmed. TX Hash: ${txHash}`);

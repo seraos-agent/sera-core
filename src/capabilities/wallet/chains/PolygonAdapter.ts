@@ -154,6 +154,14 @@ export class PolygonAdapter {
         }
       }
 
+      try {
+        await context.onBroadcast?.(txHash);
+      } catch (error: any) {
+        // The transaction is already broadcast. Do not misreport it as failed
+        // because audit persistence is temporarily unavailable.
+        console.error(`[PolygonAdapter] Failed to record transaction broadcast: ${error.message}`);
+      }
+
       console.log(`[PolygonAdapter] ⏳ Waiting for transaction confirmation...`);
       const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
       console.log(`[PolygonAdapter] ✅ Transfer confirmed. TX Hash: ${txHash}`);

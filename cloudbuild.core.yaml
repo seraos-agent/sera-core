@@ -1,12 +1,11 @@
 # Dedicated build path for the private SERA Core runtime. The existing
 # Dockerfile remains exclusively for the public reception service.
-substitutions:
-  # Keep private Core images in Singapore, alongside its Cloud Run service.
-  _IMAGE: asia-southeast1-docker.pkg.dev/$PROJECT_ID/sera-core-images/sera-core-api
-
 steps:
   - name: gcr.io/cloud-builders/docker
-    args: ['build', '--file', 'Dockerfile.core', '--tag', '${_IMAGE}', '.']
+    # Built-in substitutions are expanded in step arguments. Do not nest
+    # $PROJECT_ID inside a custom substitution value; Cloud Build keeps it
+    # literal there and rejects the resulting Artifact Registry image name.
+    args: ['build', '--file', 'Dockerfile.core', '--tag', 'asia-southeast1-docker.pkg.dev/$PROJECT_ID/sera-core-images/sera-core-api:latest', '.']
 
 images:
-  - '${_IMAGE}'
+  - 'asia-southeast1-docker.pkg.dev/$PROJECT_ID/sera-core-images/sera-core-api:latest'

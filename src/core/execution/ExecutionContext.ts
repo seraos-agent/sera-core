@@ -14,4 +14,6 @@ export interface ExecutionContext<T> {
   network: NetworkResolution;
   asset?: AssetDescriptor;
   intent: T;
+  /** Called after the network accepts a transaction and returns its hash. */
+  onBroadcast?: (transactionHash: string) => Promise<void> | void;
 }

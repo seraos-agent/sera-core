@@ -19,6 +19,11 @@ import { TokenResolverService } from '../capabilities/spot/TokenResolverService'
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
+import {
+  SupabaseTransferAuditRepository,
+  TransferAuditEvent,
+  TransferAuditRepository,
+} from '../core/persistence/SupabaseTransferAuditRepository';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -52,6 +57,7 @@ export class GoalBridge {
     sessionId: string = 'dev',
     private readonly personalWalletAddress?: string,
     private readonly autonomyAgreementStore?: AutonomyAgreementStore,
+    private readonly transferAudit: TransferAuditRepository | null = SupabaseTransferAuditRepository.fromEnvironment(),
   ) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
@@ -516,6 +522,8 @@ export class GoalBridge {
       return;
     }
 
+    let auditEvent: Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'> | null = null;
+
     try {
       const walletId = await this.walletAdapter.initializeAgentWallet();
       const { recipient, amount, asset } = parameters;
@@ -578,6 +586,23 @@ export class GoalBridge {
       }
       // ────────────────────────────────────────────────────────────────────────
 
+      const numericAmount = Number(transferAmount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        this.emitResult(requestId, false, {}, 'Transfer amount must be a positive number.');
+        return;
+      }
+
+      auditEvent = this.createTransferAuditEvent({
+        idempotencyKey: requestId,
+        approvalSource: 'GOVERNED_ACTION',
+        sourceWallet: (parameters.fromWallet === 'agent_vault' || parameters.fromWallet === 'sera_vault') ? vaultAddress : walletId.address,
+        destinationWallet: finalRecipient,
+        chain: this.auditChain(walletId.network),
+        asset,
+        amount: numericAmount.toString(),
+      });
+      await this.recordTransferApproval(auditEvent);
+
       // STEP 1: Show syncing indicator — current balance stays visible, spinner appears
       this.emitSyncing(walletId.address, vaultAddress, walletId.network);
       console.log(`[GoalBridge] ⏳ Syncing... sending ${transferAmount} ${asset} → ${finalRecipient}`);
@@ -599,12 +624,24 @@ export class GoalBridge {
           amount: transferAmount,
           asset,
           fromWallet: (parameters.fromWallet === 'agent_vault' || parameters.fromWallet === 'sera_vault') ? 'sera_vault' : 'user_main_wallet'
-        }
+        },
+        onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
+          ...auditEvent!,
+          status: 'BROADCAST',
+          transactionHash,
+          broadcastAt: new Date(),
+        }),
       };
 
       const result = await this.walletAdapter.execute(walletId, context as any);
 
       if (result.status === 'SUCCESS') {
+        await this.recordTransferOutcome({
+          ...auditEvent,
+          status: 'CONFIRMED',
+          transactionHash: result.executionId,
+          confirmedAt: new Date(result.timestamp),
+        });
         this.emitResult(requestId, true, {
           transactionHash: result.executionId,
           amount: result.amountExecuted,
@@ -619,6 +656,12 @@ export class GoalBridge {
         this.emitWalletState(walletId.address, vaultAddress, confirmedPersonal.toString(), confirmedVault.toString(), walletId.network);
         console.log(`[GoalBridge] ✅ TX confirmed. Balance updated — Vault: ${confirmedVault}, Personal: ${confirmedPersonal}`);
       } else {
+        await this.recordTransferOutcome({
+          ...auditEvent,
+          status: 'FAILED',
+          transactionHash: result.executionId,
+          failureReason: result.reason ?? 'Wallet provider did not confirm the transfer.',
+        });
         // TX failed — restore original balance (syncing=false, no changes)
         console.log(`[GoalBridge] ❌ Transfer failed. Restoring original balance.`);
         this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
@@ -630,6 +673,13 @@ export class GoalBridge {
         });
       }
     } catch (err: any) {
+      if (auditEvent) {
+        await this.recordTransferOutcome({
+          ...auditEvent,
+          status: 'FAILED',
+          failureReason: err.message,
+        });
+      }
       console.log(`[GoalBridge] ❌ Transfer threw error. Restoring original balance.`);
       if (this.currentWalletId) {
         this.emitWalletState(
@@ -712,6 +762,26 @@ export class GoalBridge {
       params.recipientAddress = vaultAddress;
     }
 
+    if (!Number.isFinite(params.amount) || params.amount <= 0) {
+      return { status: 'FAILED', error: 'Transfer amount must be a positive number.' };
+    }
+
+    const auditEvent = this.createTransferAuditEvent({
+      idempotencyKey: `direct-${this.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      approvalSource: 'DIRECT_UI',
+      sourceWallet: walletId.address,
+      destinationWallet: params.recipientAddress,
+      chain: this.auditChain(walletId.network),
+      asset: params.asset,
+      amount: params.amount.toString(),
+    });
+
+    try {
+      await this.recordTransferApproval(auditEvent);
+    } catch (error: any) {
+      return { status: 'FAILED', error: `Transfer audit could not be initialized: ${error.message}` };
+    }
+
     // Snapshot balances BEFORE transfer
     let prePersonal = parseFloat(this.cachedPersonal) || 0;
     let preVault = parseFloat(this.cachedVault) || 0;
@@ -745,9 +815,30 @@ export class GoalBridge {
       }
     };
 
-    const result = await this.walletAdapter.execute(walletId, context as any);
+    let result;
+    try {
+      result = await this.walletAdapter.execute(walletId, {
+        ...context,
+        onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
+          ...auditEvent,
+          status: 'BROADCAST',
+          transactionHash,
+          broadcastAt: new Date(),
+        }),
+      } as any);
+    } catch (error: any) {
+      await this.recordTransferOutcome({ ...auditEvent, status: 'FAILED', failureReason: error.message });
+      this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
+      return { status: 'FAILED', error: error.message };
+    }
 
     if (result.status === 'SUCCESS') {
+      await this.recordTransferOutcome({
+        ...auditEvent,
+        status: 'CONFIRMED',
+        transactionHash: result.executionId,
+        confirmedAt: new Date(result.timestamp),
+      });
       // TX confirmed on-chain — compute real final balance
       const sent = params.amount;
       const isToVault = vaultAddress && params.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
@@ -756,12 +847,47 @@ export class GoalBridge {
       this.emitWalletState(walletId.address, vaultAddress, confirmedPersonal.toString(), confirmedVault.toString(), walletId.network);
       console.log(`[GoalBridge] ✅ UI TX confirmed. Balance updated — Personal: ${confirmedPersonal}, Vault: ${confirmedVault}`);
     } else {
+      await this.recordTransferOutcome({
+        ...auditEvent,
+        status: 'FAILED',
+        transactionHash: result.executionId,
+        failureReason: result.reason ?? 'Wallet provider did not confirm the transfer.',
+      });
       // TX failed — restore original, no damage
       console.log(`[GoalBridge] ❌ UI Transfer failed. Restoring original balance.`);
       this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
     }
 
     return result;
+  }
+
+  private createTransferAuditEvent(event: Omit<TransferAuditEvent, 'userId' | 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'>): Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'> {
+    return { ...event, userId: this.sessionId };
+  }
+
+  private auditChain(network: string): string {
+    return network.toLowerCase().includes('base') || network === 'auto' ? 'base-mainnet' : network.toLowerCase();
+  }
+
+  private async recordTransferApproval(event: Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'>): Promise<void> {
+    if (!this.transferAudit) {
+      if (process.env.NODE_ENV === 'production' && this.sessionId !== 'dev') {
+        throw new Error('Transfer audit persistence is not configured.');
+      }
+      return;
+    }
+    await this.transferAudit.record({ ...event, status: 'APPROVED' });
+  }
+
+  private async recordTransferOutcome(event: TransferAuditEvent): Promise<void> {
+    if (!this.transferAudit) return;
+    try {
+      await this.transferAudit.record(event);
+    } catch (error: any) {
+      // Never tell a user that an already-broadcast transaction failed merely
+      // because the audit database had a transient error.
+      console.error(`[GoalBridge] Failed to persist transfer audit outcome: ${error.message}`);
+    }
   }
 
   /** Refresh on-chain balance and return the latest wallet state payload */
