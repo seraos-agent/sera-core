@@ -11,10 +11,10 @@ import { SeraTool } from '../cognitive/Tool';
  * available to the agent from the moment the system boots.
  */
 export interface ConnectorDefinition {
-  /** Unique machine identifier, e.g. 'polymarket', 'hyperliquid-market-data'. */
+  /** Unique machine identifier, e.g. 'sera-arena', 'threads'. */
   id: string;
 
-  /** Human-readable display name, e.g. 'Polymarket (Polygon)'. */
+  /** Human-readable display name, e.g. 'Sera Arena (Mainnet)'. */
   name: string;
 
   /** UI grouping category. */

@@ -9,7 +9,7 @@ import * as path from 'node:path';
  * they are always considered active by the CapabilityCatalog.
  *
  * Storage: `.data/connector_activations.json`
- * Format:  { "activatedIds": ["polymarket", "hyperliquid-trading"] }
+ * Format:  { "activatedIds": ["sera-arena", "threads"] }
  */
 export class ConnectorActivationStore {
   private activatedIds: Set<string> = new Set();

@@ -36,10 +36,7 @@ export class DialogueResultNarrator {
       return;
     }
 
-    if (result.success && result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY') {
-      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderReadOnlyHyperliquidResult(result.data) });
-      return;
-    }
+
 
     if (result.success && result.data?.provider === 'Base Network DEX Spot Market' && result.data?.mode === 'SPOT') {
       const d = result.data;
@@ -53,10 +50,7 @@ export class DialogueResultNarrator {
       return;
     }
 
-    if (result.success && result.data?.provider === 'SERA Paper Trading' && result.data?.mode === 'PAPER') {
-      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: this.renderPaperTradeResult(result.data) });
-      return;
-    }
+
 
     if (result.success && result.data?.transactionHash && result.data?.fromToken && result.data?.toToken) {
       emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
@@ -73,10 +67,7 @@ export class DialogueResultNarrator {
     sanitizedDataStr = sanitizedDataStr.replace(/"personalAddress"/g, '"userAddress"');
     sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
 
-    const isReadOnlyMarketData = result.data?.provider === 'Hyperliquid' && result.data?.mode === 'READ_ONLY';
-    const marketEvidencePolicy = isReadOnlyMarketData
-      ? ` MARKET EVIDENCE POLICY: Use only fields present in the retrieved data. State observations and limitations separately. Do NOT claim historical changes, breakout levels, institutional participation, support/resistance, causation, ETF flows, macro yields, price targets, future direction, or alerts. Order-book depth is a cancellable snapshot, not proof of buying/selling pressure. Funding and open interest are not standalone trade signals. If asked for unavailable analysis, say it requires the future research worker and historical validation.`
-      : '';
+    const marketEvidencePolicy = '';
     const narratePrompt = result.success
       ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.${marketEvidencePolicy}`
       : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
@@ -105,14 +96,5 @@ export class DialogueResultNarrator {
     emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: finalOutput, actionLinks });
   }
 
-  private renderReadOnlyHyperliquidResult(data: Record<string, any>): string {
-    if (data.latest) {
-      return `${data.coin} Hyperliquid read-only (${data.interval}, ${data.count} candle): close ${data.latest.close}, high ${data.latest.high}, low ${data.latest.low}, volume ${data.latest.volume}. This data does not constitute price direction analysis or trading signals.`;
-    }
-    return `${data.coin} Hyperliquid read-only: mid ${data.mid ?? data.markPrice ?? 'n/a'}; bid ${data.bestBid?.price ?? 'n/a'}; ask ${data.bestAsk?.price ?? 'n/a'}; funding ${data.funding ?? 'n/a'}; open interest ${data.openInterest ?? 'n/a'}; 24h notional volume ${data.dayNotionalVolume ?? 'n/a'}. This is a market snapshot; order book, funding, and open interest alone are insufficient to infer price direction, breakouts, or trading signals.`;
-  }
 
-  private renderPaperTradeResult(data: Record<string, any>): string {
-    return `Paper trade ${data.side} ${data.quantity} ${data.coin}: reference ${data.referencePrice}, simulated fill ${data.fillPrice}, fee ${data.fee}, slippage cost ${data.slippageCost}. No order was sent and no real balance changed.`;
-  }
 }

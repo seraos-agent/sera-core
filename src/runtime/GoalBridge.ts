@@ -10,9 +10,7 @@ import {
 } from '../capabilities/wallet/WalletCustodyProvider';
 import { createWalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProviderFactory';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
-import { HyperliquidMarketDataAdapter } from '../capabilities/hyperliquid/HyperliquidMarketDataAdapter';
-import { analyzeHyperliquidMarketSnapshot, formatHyperliquidMarketSummary } from '../capabilities/hyperliquid/formatMarketSummary';
-import { PaperTradingSimulator, PaperSide } from '../core/paper-trading/PaperTradingSimulator';
+
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { BaseSpotMarketCapability } from '../capabilities/spot/BaseSpotMarketCapability';
 import { TokenResolverService } from '../capabilities/spot/TokenResolverService';
@@ -46,8 +44,7 @@ export class GoalBridge {
   private cachedPersonal: string = '0';
   private cachedVault: string = '0';
   private sessionId: string;
-  private hyperliquid = new HyperliquidMarketDataAdapter();
-  private readonly paperTrading = new PaperTradingSimulator();
+
   private readonly spotMarket = new BaseSpotMarketCapability();
   private readonly tokenResolver = new TokenResolverService();
   private readonly threadsApi = new ThreadsAPI(new SecretManager(new EncryptedDatabaseSecretStore()));
@@ -58,6 +55,7 @@ export class GoalBridge {
     private readonly personalWalletAddress?: string,
     private readonly autonomyAgreementStore?: AutonomyAgreementStore,
     private readonly transferAudit: TransferAuditRepository | null = SupabaseTransferAuditRepository.fromEnvironment(),
+    private readonly triggerEngine?: TriggerEngine
   ) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
@@ -77,6 +75,23 @@ export class GoalBridge {
       this.walletAdapter = new UnavailableWalletCustodyProvider(error.message);
       this.walletInitializing = Promise.resolve();
       console.warn(`[GoalBridge] Wallet capability unavailable: ${error.message}`);
+
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-ws-fallback-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
+        payload: {
+          address: this.personalWalletAddress || '',
+          vaultAddress: '',
+          balance: '0',
+          vaultBalance: '0',
+          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
+          network: 'auto',
+          asset: 'USDC',
+          syncing: false
+        },
+        timestamp: Date.now()
+      });
     }
 
     console.log(`[GoalBridge] Initialized for session ${sessionId}. Listening for SPAWN_GOAL events.`);
@@ -100,7 +115,7 @@ export class GoalBridge {
         primaryAddress = walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
       } else {
-        primaryAddress = this.personalWalletAddress || '';
+        primaryAddress = this.personalWalletAddress || walletId.address;
         vaultAddress = walletId.address;
       }
       this.emitSyncing(primaryAddress, vaultAddress, walletId.network);
@@ -127,7 +142,7 @@ export class GoalBridge {
         }
       } else {
         // --- 1:1 AGENT WALLET MODE ---
-        primaryAddress = this.personalWalletAddress || '';
+        primaryAddress = this.personalWalletAddress || walletId.address;
         vaultAddress = walletId.address; // The generated agent wallet for this user
 
         // Fetch actual user balance instead of mocking
@@ -170,6 +185,22 @@ export class GoalBridge {
       });
     } catch (err: any) {
       console.error('[GoalBridge] Wallet initialization failed:', err.message);
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-ws-err-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
+        payload: {
+          address: this.personalWalletAddress || '',
+          vaultAddress: '',
+          balance: '0',
+          vaultBalance: '0',
+          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
+          network: 'auto',
+          asset: 'USDC',
+          syncing: false
+        },
+        timestamp: Date.now()
+      });
     }
   }
 
@@ -214,15 +245,7 @@ export class GoalBridge {
         case 'SCHEDULE_GOAL':
           await this.handleScheduleGoal(requestId, actionPayload);
           break;
-        case 'HYPERLIQUID_MARKET_SUMMARY':
-          await this.handleHyperliquidMarketSummary(requestId, actionPayload);
-          break;
-        case 'HYPERLIQUID_CANDLES':
-          await this.handleHyperliquidCandles(requestId, actionPayload);
-          break;
-        case 'PAPER_TRADE':
-          await this.handlePaperTrade(requestId, actionPayload);
-          break;
+
         case 'SPOT_SWAP':
           await this.handleSpotSwap(requestId, actionPayload);
           break;
@@ -258,60 +281,7 @@ export class GoalBridge {
     });
   }
 
-  private async handleHyperliquidMarketSummary(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || '').toUpperCase();
-    const KNOWN_PERPS = ['BTC', 'ETH', 'SOL', 'ARB', 'HYPE', 'AVAX', 'OP', 'SUI', 'LINK'];
 
-    // If the token is a Base Spot token (e.g. BRETT, TOSHI, AERO, VIRTUAL) or not a perpetual contract
-    if (!KNOWN_PERPS.includes(coin)) {
-      const spotData = await this.tokenResolver.resolveToken(coin);
-      this.emitResult(requestId, true, {
-        provider: 'Base Network DEX Spot Market',
-        mode: 'SPOT',
-        coin: spotData.symbol,
-        symbol: spotData.symbol,
-        name: spotData.name,
-        address: spotData.address,
-        priceUsdc: spotData.priceUsdc,
-        liquidityUsdc: spotData.liquidityUsdc,
-        volume24hUsdc: spotData.volume24hUsdc,
-        riskLevel: spotData.riskLevel,
-        riskEducationSummary: spotData.riskEducationSummary,
-        summary: `${spotData.symbol} (${spotData.name}) on Base DEX Spot: Price $${spotData.priceUsdc} USDC, 24h Volume $${spotData.volume24hUsdc}, Liquidity $${spotData.liquidityUsdc}. Risk Level: ${spotData.riskLevel}.`
-      });
-      return;
-    }
-
-    const [mids, book, asset] = await Promise.all([this.hyperliquid.getAllMids(), this.hyperliquid.getOrderBook(coin), this.hyperliquid.getAssetContext(coin)]);
-    const data = { provider: 'Hyperliquid Perpetual Futures', mode: 'PERPETUAL_FUTURES', coin, mid: mids[coin] || null, bestBid: book.bids[0] || null, bestAsk: book.asks[0] || null, funding: asset.funding, openInterest: asset.openInterest, markPrice: asset.markPrice, oraclePrice: asset.oraclePrice, dayNotionalVolume: asset.dayNotionalVolume, timestamp: book.timestamp };
-    this.emitResult(requestId, true, { ...data, summary: formatHyperliquidMarketSummary(data), analysis: analyzeHyperliquidMarketSnapshot(data) });
-  }
-
-  private async handleHyperliquidCandles(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || '').toUpperCase();
-    const interval = parameters.interval || '1h';
-    const hours = Math.min(720, Math.max(1, Number(parameters.hours || 24)));
-    const candles = await this.hyperliquid.getCandles(coin, interval, Date.now() - hours * 3_600_000, Date.now());
-    const latest = candles.at(-1);
-    this.emitResult(requestId, true, { provider: 'Hyperliquid', mode: 'READ_ONLY', coin, interval, hours, count: candles.length, latest, summary: latest ? `${coin} ${interval}: close ${latest.close}, high ${latest.high}, low ${latest.low}, volume ${latest.volume}.` : 'No candles returned.' });
-  }
-
-  private async handlePaperTrade(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || '').toUpperCase();
-    const side = String(parameters.side || '').toUpperCase() as PaperSide;
-    const quantity = Number(parameters.quantity);
-    if (side !== 'BUY' && side !== 'SELL') throw new Error('Paper trade side must be BUY or SELL.');
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Paper trade quantity must be positive.');
-    const mids = await this.hyperliquid.getAllMids();
-    const referencePrice = Number(mids[coin]);
-    if (!Number.isFinite(referencePrice) || referencePrice <= 0) throw new Error(`Hyperliquid perpetual asset not found: ${coin}.`);
-    const fill = this.paperTrading.fill({ id: `paper-${requestId}`, side, quantity, referencePrice });
-    this.emitResult(requestId, true, {
-      provider: 'SERA Paper Trading', mode: 'PAPER', coin, side, quantity, referencePrice,
-      ...fill,
-      disclaimer: 'Local simulation only. No order was sent and no real balance changed.'
-    });
-  }
 
   private async handleSpotSwap(requestId: string, parameters: Record<string, any>): Promise<void> {
     const fromToken = parameters.fromToken || 'USDC';
@@ -364,8 +334,7 @@ export class GoalBridge {
   }
 
   private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const triggerEngineInstance = (globalThis as any).__triggerEngine as TriggerEngine | undefined;
-    if (!triggerEngineInstance) {
+    if (!this.triggerEngine) {
       this.emitResult(requestId, false, {}, 'TriggerEngine is not initialized');
       return;
     }
@@ -388,7 +357,7 @@ export class GoalBridge {
       computedExecuteAfterUtc = new Date(Date.now() + safeDelay * 1000).toISOString();
     }
 
-    triggerEngineInstance.register({
+    this.triggerEngine.register({
       id: `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       type: 'TIME',
       state: 'ACTIVE',
@@ -413,12 +382,28 @@ export class GoalBridge {
   public async handleCheckBalance(requestId: string): Promise<void> {
     if (!this.walletInitialized) {
       this.emitResult(requestId, false, {}, 'Wallet not initialized. Check server logs for details.');
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-wallet-err-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
+        payload: {
+          address: this.personalWalletAddress || '',
+          vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
+          balance: '0',
+          vaultBalance: '0',
+          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
+          network: 'auto',
+          asset: 'USDC',
+          syncing: false
+        },
+        timestamp: Date.now()
+      });
       return;
     }
 
     try {
-      const userAddress = this.sessionId !== 'dev' ? this.sessionId : undefined;
-      const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
+      const userAddress = this.personalWalletAddress;
+      const walletId = await this.walletAdapter.initializeAgentWallet(this.sessionId !== 'dev' ? this.sessionId : undefined);
 
       let primaryAddress = '';
       let vaultAddress = '';
@@ -510,8 +495,27 @@ export class GoalBridge {
           personalAddress: this.currentWalletId.address,
           vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
         });
+        
+        this.emitWalletState(this.currentWalletId.address, process.env.SERA_VAULT_ADDRESS || '', this.cachedPersonal, this.cachedVault, 'Base Mainnet');
       } else {
         this.emitResult(requestId, false, {}, e.message);
+        
+        this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+          id: `evt-wallet-err-${Date.now()}`,
+          type: EventTypes.DOMAIN_WALLET_STATE,
+          source: 'GoalBridge',
+          payload: {
+            address: this.personalWalletAddress || '',
+            vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
+            balance: '0',
+            vaultBalance: '0',
+            vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
+            network: 'auto',
+            asset: 'USDC',
+            syncing: false
+          },
+          timestamp: Date.now()
+        });
       }
     }
   }
@@ -539,7 +543,7 @@ export class GoalBridge {
         finalRecipient = recipient;
       } else if (recipient && typeof recipient === 'object') {
         if (recipient.type === 'USER_MAIN_WALLET') {
-          finalRecipient = walletId.address;
+          finalRecipient = this.personalWalletAddress || walletId.address;
         } else if (recipient.type === 'SERA_VAULT') {
           finalRecipient = process.env.SERA_VAULT_ADDRESS || '';
         } else if (recipient.type === 'EXTERNAL_ADDRESS') {

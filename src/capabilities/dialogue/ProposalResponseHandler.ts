@@ -18,31 +18,7 @@ export class ProposalResponseHandler {
     return /^(?:no|n|tidak|batal|cancel|reject|deny|stop|jangan|gak|ga|tiada)[.!\s]*$/i.test(message.trim());
   }
 
-  public preparePaperTradingFullAccessProposal(userMessage: string): boolean {
-    const asksForPaperTrading = /\b(?:paper\s*(?:trading|trade))\b/i.test(userMessage);
-    const asksForFullAccess = /\b(?:full\s*access)\b/i.test(userMessage);
-    if (!asksForPaperTrading || !asksForFullAccess) return false;
 
-    const coin = userMessage.match(/\b(BTC|ETH|SOL|HYPE)\b/i)?.[1]?.toUpperCase();
-    const assetLabel = coin ? ` ${coin}` : '';
-    this.emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
-      intent: 'ACTIVATE_AUTONOMY_AGREEMENT',
-      parameters: {
-        title: `Paper trading${assetLabel}`,
-        intent: `Manage${assetLabel} paper-trading activity`,
-        mode: 'FULL_ACCESS',
-        permissions: ['PAPER_TRADE'],
-        nextActionSummary: `Paper-trading activity for${assetLabel || ' the selected asset'} is ready for explicit simulation requests.`
-      },
-      userMessage
-    });
-
-    this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-      text: `I prepared an agreement to manage paper trading${assetLabel}. Review the details in this card, then choose Approve if the scope and boundaries are right for you.`
-    });
-
-    return true;
-  }
 
   private emitEvent(type: string, payload: Record<string, any>): void {
     this.eventBus.emit(type, {

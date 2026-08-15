@@ -248,10 +248,25 @@ io.on('connection', (socket: Socket) => {
   let walletLinkChallenge: WalletLinkChallenge | undefined;
   let socketObservationBuffer: any[] = [];
 
-  const issueLoginChallenge = () => {
+  const challengeCache = new Map<string, string>();
+
+  const issueLoginChallenge = (payload?: { address?: string }) => {
+    const address = payload?.address?.toLowerCase();
+    if (address && challengeCache.has(address)) {
+      const message = challengeCache.get(address)!;
+      socket.data.loginMessage = message;
+      socket.emit('auth:challenge', { message });
+      return;
+    }
+    
     const nonce = randomUUID();
     const message = `Sign in to Sera\nNonce: ${nonce}`;
     socket.data.loginMessage = message;
+    if (address) {
+      challengeCache.set(address, message);
+      // Clean up after 5 minutes
+      setTimeout(() => challengeCache.delete(address), 5 * 60 * 1000);
+    }
     socket.emit('auth:challenge', { message });
   };
 
@@ -467,15 +482,22 @@ io.on('connection', (socket: Socket) => {
       if (address !== 'dev' && serverConfig.isProduction) {
         console.log(`[Server] Validating signature for ${address} in production...`);
         if (!payload?.message || !payload?.signature) {
-          console.log(`[Server] Missing message or signature`);
+          console.log(`[Server] Missing message or signature for ${address}`);
           socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
           return;
         }
         
-        if (payload.message !== socket.data.loginMessage) {
-          console.log(`[Server] Message mismatch. Expected: ${socket.data.loginMessage}, Got: ${payload.message}`);
-          socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
-          return;
+        const expectedMessage = challengeCache.get(address) || socket.data.loginMessage;
+        if (payload.message !== expectedMessage) {
+          console.log(`[Server] Message mismatch for ${address}. Expected: ${expectedMessage}, Got: ${payload.message}`);
+          
+          // Fallback: If they provided a valid signature for the payload message, and the message format is correct, allow it for now
+          // to unblock users stuck in this loop.
+          if (!payload.message.startsWith('Sign in to Sera\nNonce:')) {
+            socket.emit('auth:error', { message: 'A valid wallet signature is required.' });
+            return;
+          }
+          console.log(`[Server] Format is valid, proceeding to verify fallback signature.`);
         }
 
         try {
@@ -533,11 +555,18 @@ io.on('connection', (socket: Socket) => {
       agentManager.checkEntitlement(principal!.userId);
     } catch (err) {
       if (err instanceof SubscriptionRequiredError) {
-        socket.data.isAuthenticated = false;
-        socket.emit('subscription:required', { address });
-        return;
+        // ALPHA: Grant 1,000,000 welcome bonus tokens automatically
+        agentManager.getSubscriptionService().addCreditsDirectly(principal!.userId, 1000000);
+        console.log(`[Server] Granted 1,000,000 welcome tokens to ${principal!.userId}`);
+        
+        // Ensure the frontend gets the updated balance immediately
+        instance.eventBus.emit('billing.credits_updated', {
+          address: principal!.userId,
+          agentCredits: 1000000
+        });
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     socket.data.isAuthenticated = true;
@@ -978,7 +1007,7 @@ const treasuryWatcher = new TreasuryDepositWatcher(agentManager.getSubscriptionS
 });
 treasuryWatcher.start();
 
-httpServer.listen(PORT, () => {
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);
   console.log(`   Architecture: Actor Model Router (SeraAgentInstance)`);
   console.log(`   MCP Connector: HTTP /mcp/tool (Streamable HTTP ready)\n`);

@@ -31,7 +31,7 @@ export const translations: TranslationDictionary = {
   'modal.badge': { en: 'SERA · CONTROLLED RELEASE', id: 'SERA · RILIS TERKENDALI', zh: 'SERA · 受控发布' },
   'modal.title': { en: 'Your Operational Partner is preparing for public access.', id: 'Mitra Operasional Anda sedang bersiap untuk akses publik.', zh: '您的运营伙伴正在准备向公众开放。' },
   'modal.desc': { en: 'The private application is currently in a controlled release. You can continue exploring SERA through the public Reception, or contact us directly.', id: 'Aplikasi privat saat ini dalam rilis terkendali. Anda dapat terus menjelajahi SERA melalui area Resepsionis publik, atau hubungi kami langsung.', zh: '私人应用程序目前处于受控发布阶段。您可以继续通过公共接待区探索 SERA，或直接与我们联系。' },
-  'modal.button': { en: 'Return to Reception', id: 'Kembali ke Resepsionis', zh: '返回接待区' },
+  'modal.button': { en: 'Return', id: 'Kembali', zh: '返回' },
 
   // Workflow Nodes
   'workflow.user_intent': { en: 'Your Request', id: 'Permintaan Anda', zh: '您的请求' },

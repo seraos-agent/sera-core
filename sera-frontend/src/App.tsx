@@ -101,7 +101,7 @@ function InnerApp() {
   }, [currentView]);
 
   const { walletState, setWalletState } = useWallet();
-  const { isConnected, address, isConnecting, isReconnecting } = useAccount();
+  const { isConnected, address } = useAccount();
   const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
@@ -321,14 +321,7 @@ function InnerApp() {
 
   if (!isMounted) return null;
 
-  // Wait for wallet hydration to finish to prevent flashing the login screen on refresh
-  if (isConnecting || isReconnecting) {
-    return (
-      <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <div style={{ color: mode === "light" ? "#666" : "#888", fontFamily: "Inter, sans-serif", letterSpacing: "0.5px" }}>Restoring session...</div>
-      </div>
-    );
-  }
+  // (Removed blocking hydration check to prevent 'Restoring session' infinite loop in some WalletConnect edge cases)
 
   // 1. If not connected, check launch code then show ConnectGateway
   if (!isConnected && !isBypassed) {

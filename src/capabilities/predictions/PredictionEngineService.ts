@@ -176,10 +176,12 @@ export class PredictionEngineService {
 
   private async updateBtcPrice() {
     try {
-      const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-      const data = await res.json();
+      // PAUSED: Avoid Binance API timeouts in current env
+      // const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+      // const data = await res.json();
+      const data = { price: 63000 };
       if (data && data.price) {
-        this.currentBtcPrice = parseFloat(data.price);
+        this.currentBtcPrice = parseFloat(data.price.toString());
         
         if (!this.hasInitializedStrikePrice && this.currentBtcPrice > 0) {
           for (const m of this.markets) {

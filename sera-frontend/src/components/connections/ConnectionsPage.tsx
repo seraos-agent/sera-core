@@ -114,12 +114,28 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
     if (!socket) return;
     
     if (connectorId === 'threads') {
-      const authUrl = `https://localhost:3001/api/auth/threads?sessionId=${walletState?.sessionId}`;
-      const width = 600;
-      const height = 700;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-      window.open(authUrl, 'Threads OAuth', `width=${width},height=${height},left=${left},top=${top}`);
+      const apiUrl = import.meta.env.VITE_API_URL || 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+          ? "http://localhost:3001" 
+          : "https://sera-core-212723620663.asia-southeast1.run.app");
+      const returnUrl = encodeURIComponent(window.location.href);
+      const authUrl = `${apiUrl}/api/auth/threads?sessionId=${walletState?.sessionId}&returnUrl=${returnUrl}`;
+      
+      // Detect mobile: on mobile, window.open() gets intercepted by the Threads app 
+      // via deep linking, breaking the OAuth flow. Use direct navigation instead.
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // Navigate in-place so the OAuth flow stays inside the browser
+        window.location.href = authUrl;
+      } else {
+        // Desktop: use popup window
+        const width = 600;
+        const height = 700;
+        const left = window.screen.width / 2 - width / 2;
+        const top = window.screen.height / 2 - height / 2;
+        window.open(authUrl, 'Threads OAuth', `width=${width},height=${height},left=${left},top=${top}`);
+      }
     } else {
       socket.emit('connector:activate', { connectorId });
     }
@@ -203,11 +219,7 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-            {connector.id === 'polymarket' ? (
-              <img src="/polymarket.png" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : connector.id === 'hyperliquid-market-data' ? (
-              <img src="/hyperliquid.png" width={22} height={22} style={{ borderRadius: 6 }} />
-            ) : connector.id === 'wallet' ? (
+            {connector.id === 'wallet' ? (
               <img src="/base.svg" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : connector.id === 'threads' ? (
               <svg viewBox="0 0 192 192" width={22} height={22} fill={theme.ink}>

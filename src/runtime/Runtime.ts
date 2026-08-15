@@ -46,8 +46,7 @@ import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { ConnectorActivationStore } from '../core/capabilities/ConnectorActivationStore';
 import { WalletToolCapability } from '../capabilities/wallet/WalletToolCapability';
 import { CommunicationToolCapability } from '../capabilities/communication/CommunicationToolCapability';
-import { HyperliquidMarketDataCapability } from '../capabilities/hyperliquid/HyperliquidMarketDataCapability';
-import { PaperTradingCapability } from '../capabilities/paper-trading/PaperTradingCapability';
+
 import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
 import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
@@ -62,7 +61,6 @@ import { Logger } from '../core/logging/Logger';
 import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { DomainProductContractRegistry } from '../core/products/DomainProductContractRegistry';
-import { HyperliquidTradingProductContract } from '../capabilities/hyperliquid/HyperliquidTradingProductContract';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { predictionEngine } from '../server/predictionEngine';
 
@@ -152,7 +150,6 @@ export class Runtime {
     private readonly subscriptionService?: any
   ) {
     this.memoryStore = memoryStore || new WorkingMemory();
-    this.productContracts.register(HyperliquidTradingProductContract);
     this.authorityService = new AuthorityService();
     this.constitutionEngine = constitutionEngine;
     this.feedbackPipeline = feedbackPipeline;
@@ -237,8 +234,7 @@ export class Runtime {
     this.capabilityCatalog = new CapabilityCatalog(activationStore);
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
-    const hyperliquidCap = new HyperliquidMarketDataCapability();
-    const paperTradingCap = new PaperTradingCapability();
+
     const autonomyAgreementCap = new AutonomyAgreementCapability();
 
     this.secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
@@ -255,10 +251,7 @@ export class Runtime {
       this.threadsDaemon.start(2 * 60 * 1000); // 2-minute polling for testing
     }
 
-    this.productContracts.assertCapabilitiesAvailable(
-      HyperliquidTradingProductContract.id,
-      [...hyperliquidCap.getTools(), ...paperTradingCap.getTools()].map(tool => tool.name)
-    );
+
 
     // ── Register Connectors with full metadata ─────────────────────────────
     // Always-on connectors: available from boot, cannot be deactivated
@@ -307,26 +300,6 @@ export class Runtime {
     });
 
     // Opt-in connectors: require explicit user activation
-    this.capabilityCatalog.registerConnector({
-      id: 'hyperliquid-market-data',
-      name: 'Hyperliquid',
-      category: 'finance',
-      description: 'Real-time candles, orderbooks & perpetual trading',
-      riskSummary: 'Hyperliquid is a decentralized perpetual exchange. Activating this connector allows Sera to read real-time market data including price candles, orderbooks, and funding rates. The market data tools are read-only and do not execute trades.',
-      network: 'Hyperliquid L1',
-      alwaysActive: false,
-      tools: hyperliquidCap.getTools(),
-    });
-
-    this.capabilityCatalog.registerConnector({
-      id: 'paper-trading',
-      name: 'Paper Trading',
-      category: 'finance',
-      description: 'Simulated trading with virtual funds for strategy testing',
-      riskSummary: 'Paper Trading uses simulated (virtual) funds to test trading strategies without financial risk. No real assets are involved. This is a safe way to evaluate Sera\'s trading capabilities before committing real capital.',
-      alwaysActive: false,
-      tools: paperTradingCap.getTools(),
-    });
 
 
 

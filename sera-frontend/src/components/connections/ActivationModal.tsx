@@ -59,9 +59,7 @@ export function ActivationModal({ theme, connector, onActivate, onClose }: Activ
               background: theme.surface2, border: `1px solid ${theme.border}`,
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden"
             }}>
-              {connector.id === 'hyperliquid-market-data' ? (
-                <img src="/hyperliquid.png" width={22} height={22} style={{ borderRadius: 6 }} />
-              ) : connector.id === 'wallet' ? (
+              {connector.id === 'wallet' ? (
                 <img src="/base.svg" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : connector.id === 'threads' ? (
                 <svg viewBox="0 0 192 192" width={22} height={22} fill={theme.ink}>

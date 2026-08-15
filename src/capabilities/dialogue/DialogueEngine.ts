@@ -323,7 +323,6 @@ export class DialogueEngine {
       return;
     }
 
-    if (this.preparePaperTradingFullAccessProposal(userMessage)) return;
 
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
     try {
@@ -626,14 +625,6 @@ You MUST write a brief, natural response asking the user to review and click "Ap
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /**
-   * Paper trading is the first product with an explicit operating agreement.
-   * Keep its proposal deterministic so the model cannot accidentally describe
-   * real exchange permissions that this adapter does not implement.
-   */
-  private preparePaperTradingFullAccessProposal(userMessage: string): boolean {
-    return this.proposalResponseHandler.preparePaperTradingFullAccessProposal(userMessage);
-  }
 
   private isProposalApproval(message: string): boolean {
     return this.proposalResponseHandler.isApproval(message);

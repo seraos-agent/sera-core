@@ -187,7 +187,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               if (c.id === 'wallet' || c.id === 'autonomy' || c.id === 'communication') return null;
 
               // Hide any unrecognized connectors that don't have UI icons
-              if (!['hyperliquid-market-data', 'threads'].includes(c.id)) return null;
+              if (!['threads'].includes(c.id)) return null;
 
               return (
                 <div
@@ -204,11 +204,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.surface; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
-                  {c.id === 'polymarket' ? (
-                    <img src="/polymarket.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4, objectFit: "cover" }} />
-                  ) : c.id === 'hyperliquid-market-data' ? (
-                    <img src="/hyperliquid.png" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4 }} />
-                  ) : c.id === 'wallet' ? (
+                  {c.id === 'wallet' ? (
                     <img src="/base.svg" width={18} height={18} style={{ flexShrink: 0, borderRadius: 4, objectFit: "cover" }} />
                   ) : c.id === 'threads' ? (
                     <svg viewBox="0 0 192 192" width={18} height={18} fill={theme.ink} style={{ flexShrink: 0 }}>

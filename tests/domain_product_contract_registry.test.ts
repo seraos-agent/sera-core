@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DomainProductContractRegistry } from '../src/core/products/DomainProductContractRegistry';
-import { HyperliquidTradingProductContract } from '../src/capabilities/hyperliquid/HyperliquidTradingProductContract';
-
 describe('DomainProductContractRegistry', () => {
-  it('validates and resolves the read-only Hyperliquid pilot boundary', () => {
-    const registry = new DomainProductContractRegistry();
-    registry.register(HyperliquidTradingProductContract);
-
-    expect(registry.resolveWorkClass('hyperliquid-trading', 'HYPERLIQUID_CANDLES')).toBe('OPERATIONAL');
-    expect(() => registry.resolveWorkClass('hyperliquid-trading', 'HYPERLIQUID_PLACE_ORDER')).not.toThrow();
-    expect(() => registry.assertCapabilitiesAvailable('hyperliquid-trading', ['HYPERLIQUID_MARKET_SUMMARY'])).toThrow(/HYPERLIQUID_CANDLES/);
-  });
 
   it('refuses a high-risk route that tries to omit explicit authority', () => {
     const registry = new DomainProductContractRegistry();

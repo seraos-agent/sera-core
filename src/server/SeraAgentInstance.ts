@@ -166,9 +166,8 @@ export class SeraAgentInstance {
     
     this.triggerStore = new InMemoryTriggerStore(this.sessionId, { persistLocally });
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
-    (globalThis as any).__triggerEngine = this.triggerEngine;
     
-    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.personalWalletAddress, this.autonomyAgreementStore);
+    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.personalWalletAddress, this.autonomyAgreementStore, undefined, this.triggerEngine);
 
     const executionDispatcher = new ExecutionDispatcher(this.eventBus);
     const plannerLLM = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
