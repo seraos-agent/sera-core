@@ -566,7 +566,8 @@ io.on('connection', (socket: Socket) => {
           source: 'Server',
           payload: {
             address: principal!.userId,
-            agentCredits: 1000000
+            agentCredits: 1000000,
+            periods: 1
           },
           timestamp: Date.now()
         });
