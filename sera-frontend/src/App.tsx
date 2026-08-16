@@ -426,6 +426,54 @@ function InnerApp() {
           activeConnectors={activeConnectors}
         />
 
+        {walletState.error && (walletState.error.includes("Authentication") || walletState.error.includes("expired")) && (
+          <div style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backdropFilter: "blur(6px)"
+          }}>
+            <div style={{
+              background: theme.bg,
+              padding: 32,
+              borderRadius: 24,
+              border: `1px solid ${theme.border}`,
+              maxWidth: 360,
+              width: "90%",
+              textAlign: "center",
+              boxShadow: "0 12px 48px rgba(0,0,0,0.5)"
+            }}>
+              <h2 style={{ margin: "0 0 16px 0", color: theme.text, fontSize: 20 }}>Signature Required</h2>
+              <p style={{ color: theme.inkFaint, fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+                Your wallet must sign a message to securely authenticate your session and load your data.
+              </p>
+              <button
+                onClick={() => {
+                  setWalletState(prev => ({ ...prev, error: "", syncing: true }));
+                  socket?.emit("auth:challenge");
+                }}
+                style={{
+                  background: theme.brand,
+                  color: "#fff",
+                  border: "none",
+                  padding: "12px 24px",
+                  borderRadius: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  width: "100%",
+                  fontSize: 15
+                }}
+              >
+                Sign Message Now
+              </button>
+            </div>
+          </div>
+        )}
+
         {billingOpen && (
           <BillingModal
             theme={theme}
