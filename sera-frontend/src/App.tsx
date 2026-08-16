@@ -447,7 +447,7 @@ function InnerApp() {
               textAlign: "center",
               boxShadow: "0 12px 48px rgba(0,0,0,0.5)"
             }}>
-              <h2 style={{ margin: "0 0 16px 0", color: theme.text, fontSize: 20 }}>Signature Required</h2>
+              <h2 style={{ margin: "0 0 16px 0", color: theme.ink, fontSize: 20 }}>Signature Required</h2>
               <p style={{ color: theme.inkFaint, fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
                 Your wallet must sign a message to securely authenticate your session and load your data.
               </p>
@@ -457,7 +457,7 @@ function InnerApp() {
                   socket?.emit("auth:challenge");
                 }}
                 style={{
-                  background: theme.brand,
+                  background: theme.accent,
                   color: "#fff",
                   border: "none",
                   padding: "12px 24px",
