@@ -179,7 +179,8 @@ export class GoalBridge {
           vaultBalance,
           vaultBalances: { base: vaultBalance, polygon: '0', ethereum: '0' },
           network: walletId.network,
-          asset: 'USDC'
+          asset: 'USDC',
+          syncing: false
         },
         timestamp: Date.now()
       });
@@ -475,7 +476,8 @@ export class GoalBridge {
           vaultBalance,
           vaultBalances,
           network: walletId.network || 'Base Mainnet',
-          asset: 'USDC'
+          asset: 'USDC',
+          syncing: false
         },
         timestamp: Date.now()
       });

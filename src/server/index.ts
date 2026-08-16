@@ -560,9 +560,15 @@ io.on('connection', (socket: Socket) => {
         console.log(`[Server] Granted 1,000,000 welcome tokens to ${principal!.userId}`);
         
         // Ensure the frontend gets the updated balance immediately
-        instance.eventBus.emit('billing.credits_updated', {
-          address: principal!.userId,
-          agentCredits: 1000000
+        instance.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
+          id: `evt-billing-${Date.now()}`,
+          type: EventTypes.BILLING_CREDITS_UPDATED,
+          source: 'Server',
+          payload: {
+            address: principal!.userId,
+            agentCredits: 1000000
+          },
+          timestamp: Date.now()
         });
       } else {
         throw err;
