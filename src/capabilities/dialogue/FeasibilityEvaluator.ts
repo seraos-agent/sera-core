@@ -30,9 +30,7 @@ export class FeasibilityEvaluator {
       if (!walletState) return { feasible: false, reason: 'Wallet state is completely unknown or disconnected.' };
 
       const requestedAmount = checkParams.amount;
-      const currentBalance = walletState.balance;
-      const vaultBalance = walletState.vaultBalance;
-      const effectiveBalance = checkParams.fromWallet === 'user_main_wallet' ? currentBalance : vaultBalance;
+      const effectiveBalance = walletState.vaultBalance;
 
       if (requestedAmount === 'all') {
         if (effectiveBalance <= 0) return { feasible: false, reason: 'Insufficient funds. Available balance is 0 USDC.' };

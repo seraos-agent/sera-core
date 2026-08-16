@@ -627,7 +627,7 @@ export class GoalBridge {
           recipient: normalizedRecipient,
           amount: transferAmount,
           asset,
-          fromWallet: (parameters.fromWallet === 'agent_vault' || parameters.fromWallet === 'sera_vault') ? 'sera_vault' : 'user_main_wallet'
+          fromWallet: 'sera_vault' // AI can only transfer from its vault
         },
         onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
           ...auditEvent!,
