@@ -9,7 +9,7 @@ export const serverConfig = {
   environment,
   isProduction: environment === 'production',
   allowDevFeatures: environment !== 'production' && process.env.SERA_ENABLE_DEV_FEATURES !== 'false',
-  corsOrigins: (process.env.SERA_CORS_ORIGINS ?? 'http://localhost:5173')
+  corsOrigins: (process.env.SERA_CORS_ORIGINS ?? process.env.SERA_RECEPTION_CORS_ORIGINS ?? 'http://localhost:5173,https://app.seraos.xyz,https://seraos.xyz')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),

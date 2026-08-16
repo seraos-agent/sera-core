@@ -76,21 +76,23 @@ export class GoalBridge {
       this.walletInitializing = Promise.resolve();
       console.warn(`[GoalBridge] Wallet capability unavailable: ${error.message}`);
 
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-ws-fallback-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: this.personalWalletAddress || '',
-          vaultAddress: '',
-          balance: '0',
-          vaultBalance: '0',
-          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
-          network: 'auto',
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
+      process.nextTick(() => {
+        this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+          id: `evt-ws-fallback-${Date.now()}`,
+          type: EventTypes.DOMAIN_WALLET_STATE,
+          source: 'GoalBridge',
+          payload: {
+            address: this.personalWalletAddress || '',
+            vaultAddress: '',
+            balance: '0',
+            vaultBalance: '0',
+            vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
+            network: 'auto',
+            asset: 'USDC',
+            syncing: false
+          },
+          timestamp: Date.now()
+        });
       });
     }
 
