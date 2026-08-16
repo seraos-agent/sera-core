@@ -15,7 +15,9 @@ export function createWalletCustodyProvider(
 ): WalletCustodyProvider {
   const provider = configuredProvider as WalletCustodyProviderName;
   if (provider === 'local_development') {
-    // TEMPORARY: Allow in production for testing/debugging
+    if (environment === 'production') {
+      throw new WalletCustodyUnavailableError('Local development custody is prohibited in production.');
+    }
     return new LocalDevelopmentCustodyProvider();
   }
 

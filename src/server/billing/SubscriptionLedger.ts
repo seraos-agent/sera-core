@@ -59,10 +59,7 @@ export class SubscriptionLedger {
     const key = address.toLowerCase();
     let entry = this.entries.get(key);
     
-    // Automatically grant a 1,000,000 credit free trial to new users
-    if (!entry) {
-      entry = this.credit(key, 1000000, 0);
-    }
+    if (!entry) return false;
     
     return entry.agentCredits > 0;
   }
