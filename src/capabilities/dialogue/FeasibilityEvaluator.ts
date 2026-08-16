@@ -23,18 +23,7 @@ export class FeasibilityEvaluator {
       checkParams = parameters.actionParameters || {};
     }
 
-    if (checkIntent === 'SPOT_SWAP') {
-      const isDev = process.env.NODE_ENV !== 'production';
-      const customMin = process.env.MIN_SWAP_AMOUNT_USDC ? parseFloat(process.env.MIN_SWAP_AMOUNT_USDC) : null;
-      const minAmount = customMin !== null && !isNaN(customMin) ? customMin : (isDev ? 0.01 : 1.0);
-      const amount = parseFloat(checkParams.amount);
-      if (!isNaN(amount) && amount < minAmount) {
-        return {
-          feasible: false,
-          reason: `Requested swap amount ($${amount}) is below the minimum required threshold of $${minAmount} USDC.`
-        };
-      }
-    }
+
 
     if (checkIntent === 'TRANSFER_FUNDS') {
       const walletState = this.worldStateService.getWalletState();

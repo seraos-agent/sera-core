@@ -36,7 +36,7 @@ const topics: TopicKnowledge[] = [
     topic: 'capabilities',
     triggers: ['what can sera help', 'capabilities', 'fitur sera', 'what can it do'],
     facts: [
-      'SERA brings wallet intelligence, financial context, automation, tools, and connected services into one operational conversation.',
+      'SERA brings wallet operations, social media publishing, web search, image generation, task automation, and connected services into one operational conversation.',
       'Its value is not a list of dashboards; it helps clarify what matters, compare the next steps, and prepare a reviewable proposal.',
       'Capabilities should be described as assistance and preparation. Availability can depend on the connected system and the permission a user gives it.',
     ],
@@ -92,7 +92,7 @@ const topics: TopicKnowledge[] = [
     topic: 'wallet',
     triggers: ['wallet', 'portfolio', 'crypto', 'dompet'],
     facts: [
-      'SERA uses two distinct layers: a personal wallet context for the user and an operational wallet layer for SERA proposals and approved actions.',
+      'SERA uses two distinct layers: a personal wallet for the user and an operational wallet for SERA to execute approved P2P transfers on behalf of the user.',
       'Email, Google, and supported social sign-ups can begin without an existing crypto wallet. Crypto-native users can connect an existing wallet during onboarding instead.',
       'For supported managed-wallet onboarding, key management is handled by the wallet provider. SERA never asks for a seed phrase or personal private key.',
       'The public Reception must never request a seed phrase, private key, or other sensitive wallet credentials.',

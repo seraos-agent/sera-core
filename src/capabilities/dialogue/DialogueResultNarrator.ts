@@ -27,11 +27,8 @@ export class DialogueResultNarrator {
 
     if (result.success && result.data?.agreement) {
       const agreement = result.data.agreement;
-      const hasPaperTradingOnlyScope = agreement.permissions.length === 1 && agreement.permissions[0] === 'PAPER_TRADE';
       emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        text: hasPaperTradingOnlyScope
-          ? `The agreement for ${agreement.title} is active. SERA now has ${agreement.mode === 'FULL_ACCESS' ? 'Full Access' : 'Assistant mode'} for simulation within the scope you approved; no order or real balance can change.`
-          : `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
+        text: `Operating Agreement "${agreement.title}" is active in ${agreement.mode} mode.`,
       });
       return;
     }

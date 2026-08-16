@@ -62,7 +62,6 @@ export class ToolExecutionHandler {
 
     const startTime = Date.now();
     let toolIntent = toolCall.name;
-    if (toolIntent === 'RESOLVE_BASE_TOKEN') toolIntent = 'RESOLVE_TOKEN';
 
     let toolParams: Record<string, any> = {};
     try {
@@ -136,7 +135,7 @@ export class ToolExecutionHandler {
     }
 
     let isSafe = false;
-    const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'SPOT_SWAP', 'TRANSFER_FUNDS'];
+    const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'TRANSFER_FUNDS'];
     const emitEvent = params.emitEvent || ((type: string, payload: Record<string, any>) => this.eventBus.emit(type, payload));
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {

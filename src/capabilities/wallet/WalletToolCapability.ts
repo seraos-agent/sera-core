@@ -56,8 +56,8 @@ export class WalletToolCapability {
             humanIntent: { type: 'string', description: 'A professional summary of WHEN this will happen (e.g. "Every 5 minutes", "Every 30 seconds", "Every Monday at 9:00 AM", "In 20 seconds").' },
             cronExpression: { type: 'string', description: 'If recurring, standard cron expression in UTC (e.g. "*/5 * * * *" for every 5 mins, "0 9 * * 1" for every Monday 9am UTC).' },
             delaySeconds: { type: 'number', description: 'If exact timestamp, how many seconds from now this should execute. e.g. 20' },
-            actionIntent: { type: 'string', description: 'The tool to execute (e.g. HYPERLIQUID_CANDLES, HYPERLIQUID_MARKET_SUMMARY, TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
-            actionParameters: { type: 'object', description: 'The exact parameters required for the actionIntent (e.g. { "coin": "BTC" } for HYPERLIQUID_CANDLES or HYPERLIQUID_MARKET_SUMMARY).' }
+            actionIntent: { type: 'string', description: 'The tool to execute (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE)' },
+            actionParameters: { type: 'object', description: 'The exact parameters required for the actionIntent (e.g. { "recipient": { "type": "address", "address": "0x..." }, "amount": 10, "asset": "usdc" } for TRANSFER_FUNDS).' }
           },
           required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
         },

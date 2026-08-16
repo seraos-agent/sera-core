@@ -378,9 +378,9 @@ export class DialogueEngine {
       // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
       if (intent !== 'NONE') {
         // Read-only operations execute immediately without proposal cards.
-        // Only mutative/financial actions (TRANSFER_FUNDS, SPOT_SWAP, SCHEDULE_GOAL,
+        // Only mutative/financial actions (TRANSFER_FUNDS, SCHEDULE_GOAL,
         // ACTIVATE_AUTONOMY_AGREEMENT) fall through to the proposal path below.
-        const PROPOSAL_REQUIRED_INTENTS = ['TRANSFER_FUNDS', 'SPOT_SWAP', 'SCHEDULE_GOAL', 'ACTIVATE_AUTONOMY_AGREEMENT'];
+        const PROPOSAL_REQUIRED_INTENTS = ['TRANSFER_FUNDS', 'SCHEDULE_GOAL', 'ACTIVATE_AUTONOMY_AGREEMENT'];
         const shouldAutoExecute = !PROPOSAL_REQUIRED_INTENTS.includes(intent);
 
         if (shouldAutoExecute) {
