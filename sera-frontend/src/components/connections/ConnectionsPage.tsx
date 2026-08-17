@@ -270,6 +270,39 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
           <div style={{ fontSize: 12, color: theme.inkSoft, lineHeight: 1.4 }}>
             {connector.description}
           </div>
+          {isThreads && isConnectorActive && (threads?.username || threads?.threadsUserId) && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 12px",
+              background: "rgba(16, 185, 129, 0.08)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              borderRadius: 10,
+              fontSize: 12,
+              color: theme.ink,
+              fontWeight: 500,
+              marginTop: 8
+            }}>
+              {threads.profilePictureUrl ? (
+                <img
+                  src={threads.profilePictureUrl}
+                  alt={threads.username || 'Threads User'}
+                  style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
+                />
+              ) : (
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981" }} />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, overflow: "hidden" }}>
+                <span style={{ fontWeight: 600, color: theme.ink, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                  {threads.username ? `@${threads.username}` : `ID: ${threads.threadsUserId}`}
+                </span>
+                {threads.name && (
+                  <span style={{ fontSize: 10, color: theme.inkSoft }}>{threads.name}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Button */}

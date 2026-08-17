@@ -5,6 +5,11 @@ import { agentManager } from '../AgentManager';
 export interface ThreadsConnectionStatus {
   provider: 'THREADS';
   status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+  username?: string;
+  name?: string;
+  threadsUserId?: string;
+  profilePictureUrl?: string;
+  connectedAt?: string;
 }
 
 export class ThreadsOAuthService {
@@ -34,7 +39,22 @@ export class ThreadsOAuthService {
     try {
       const token = await this.secretManager.getSecret(`THREADS_TOKEN_${sessionId}`);
       if (token) {
-        return { provider: 'THREADS', status: 'CONNECTED' };
+        let profile: any = {};
+        const profileStr = await this.secretManager.getSecret(`THREADS_PROFILE_${sessionId}`);
+        if (profileStr) {
+          try {
+            profile = JSON.parse(profileStr);
+          } catch {}
+        }
+        return {
+          provider: 'THREADS',
+          status: 'CONNECTED',
+          username: profile.username || undefined,
+          name: profile.name || undefined,
+          threadsUserId: profile.id || undefined,
+          profilePictureUrl: profile.threads_profile_picture_url || undefined,
+          connectedAt: profile.connectedAt || undefined,
+        };
       }
       return { provider: 'THREADS', status: 'NOT_CONNECTED' };
     } catch {
@@ -68,6 +88,7 @@ export class ThreadsOAuthService {
   async disconnect(sessionId: string): Promise<ThreadsConnectionStatus> {
     try {
       await this.secretManager.deleteSecret(`THREADS_TOKEN_${sessionId}`);
+      await this.secretManager.deleteSecret(`THREADS_PROFILE_${sessionId}`);
     } catch (e) {
       console.warn(`[ThreadsOAuthService] Failed to delete token for ${sessionId}:`, e);
     }
@@ -219,8 +240,26 @@ export function createThreadsAuthRouter(
       const longLivedData = await longLivedResponse.json();
       const longLivedToken = longLivedData.access_token;
 
-      // 3. Persist the long-lived token in SecretManager for this specific sessionId
+      // 2b. Fetch Threads User Profile (username, name, ID, profile picture)
+      let profile: any = {};
+      try {
+        const meRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username,name,threads_profile_picture_url&access_token=${longLivedToken}`);
+        if (meRes.ok) {
+          profile = await meRes.json();
+          profile.connectedAt = new Date().toISOString();
+          console.log(`[ThreadsAuth] Connected Threads profile for ${sessionId}: @${profile.username} (${profile.id})`);
+        } else {
+          console.warn('[ThreadsAuth] Threads profile request returned status:', meRes.status);
+        }
+      } catch (err: any) {
+        console.warn('[ThreadsAuth] Could not fetch Threads user profile:', err.message);
+      }
+
+      // 3. Persist the long-lived token and profile metadata in SecretManager for this specific sessionId
       await secretManager.setSecret(`THREADS_TOKEN_${sessionId}`, longLivedToken);
+      if (profile.username || profile.id) {
+        await secretManager.setSecret(`THREADS_PROFILE_${sessionId}`, JSON.stringify(profile));
+      }
 
       // 4. Activate the connector in CapabilityCatalog
       const instance = agentManager.getOrCreateInstance(sessionId);

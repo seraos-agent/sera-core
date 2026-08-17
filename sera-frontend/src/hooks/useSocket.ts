@@ -14,6 +14,11 @@ export interface GoogleDriveConnectionState {
 export interface ThreadsConnectionState {
   provider: 'THREADS';
   status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+  username?: string;
+  name?: string;
+  profilePictureUrl?: string;
+  threadsUserId?: string;
+  connectedAt?: string;
 }
 
 export function useSocket(

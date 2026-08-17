@@ -2,21 +2,13 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ISecretStore } from '../types';
+import { SupabaseRestClient } from '../../persistence/SupabaseRestClient';
 
 /**
  * EncryptedDatabaseSecretStore — Phase 1 ISecretStore implementation.
  *
- * Stores secrets as AES-256-GCM encrypted values in a local JSON file.
- * Each secret gets its own random IV and auth tag, so a compromise of
- * one ciphertext does not help decrypt others.
- *
- * ⚠️  PHASE 1 — Testnet / Development use only.
- * The MASTER_ENCRYPTION_KEY lives in .env on the same machine as the
- * ciphertext. For production mainnet funds, migrate to Phase 2 (Cloud KMS)
- * where the key and ciphertext are on physically separate systems.
- *
- * Secret format stored per-entry:
- *   { iv: <hex>, tag: <hex>, ciphertext: <hex> }
+ * Stores secrets as AES-256-GCM encrypted values in a local JSON file
+ * and mirrors them to persistent Supabase storage when available.
  */
 
 const ALGORITHM = 'aes-256-gcm';
@@ -32,6 +24,7 @@ interface EncryptedEntry {
 export class EncryptedDatabaseSecretStore implements ISecretStore {
   private readonly keyBuffer: Buffer;
   private readonly dbPath: string;
+  private readonly supabaseClient: SupabaseRestClient | null;
 
   constructor() {
     const hexKey = process.env.MASTER_ENCRYPTION_KEY;
@@ -43,6 +36,7 @@ export class EncryptedDatabaseSecretStore implements ISecretStore {
     }
     this.keyBuffer = Buffer.from(hexKey, 'hex');
     this.dbPath = path.join(process.cwd(), '.data', 'secrets.json');
+    this.supabaseClient = SupabaseRestClient.fromEnvironment();
   }
 
   // ── Crypto Helpers ──────────────────────────────────────────────────────
@@ -99,16 +93,43 @@ export class EncryptedDatabaseSecretStore implements ISecretStore {
 
   async getSecret(key: string): Promise<string | null> {
     const db = this.loadDb();
-    const entry = db[key];
+    let entry = db[key];
+    if (!entry && this.supabaseClient) {
+      try {
+        const rows = await this.supabaseClient.select<{ id: string; iv: string; tag: string; ciphertext: string }>('sera_secrets', `id=eq.${encodeURIComponent(key)}`);
+        if (rows && rows.length > 0) {
+          entry = { iv: rows[0].iv, tag: rows[0].tag, ciphertext: rows[0].ciphertext };
+          db[key] = entry;
+          this.saveDb(db);
+        }
+      } catch {
+        // Fall back to local file entry if table is not configured
+      }
+    }
     if (!entry) return null;
     return this.decrypt(entry);
   }
 
   async setSecret(key: string, value: string): Promise<void> {
     const db = this.loadDb();
-    db[key] = this.encrypt(value);
+    const entry = this.encrypt(value);
+    db[key] = entry;
     this.saveDb(db);
     console.log(`[SecretStore] Secret stored: ${key}`);
+
+    if (this.supabaseClient) {
+      try {
+        await this.supabaseClient.upsert('sera_secrets', {
+          id: key,
+          iv: entry.iv,
+          tag: entry.tag,
+          ciphertext: entry.ciphertext,
+          updated_at: new Date().toISOString()
+        }, 'id');
+      } catch {
+        // Local encryption is already safely committed
+      }
+    }
   }
 
   async deleteSecret(key: string): Promise<void> {
@@ -117,6 +138,17 @@ export class EncryptedDatabaseSecretStore implements ISecretStore {
       delete db[key];
       this.saveDb(db);
       console.log(`[SecretStore] Secret deleted: ${key}`);
+    }
+    if (this.supabaseClient) {
+      try {
+        await this.supabaseClient.upsert('sera_secrets', {
+          id: key,
+          iv: '',
+          tag: '',
+          ciphertext: '',
+          updated_at: new Date().toISOString()
+        }, 'id');
+      } catch {}
     }
   }
 }
