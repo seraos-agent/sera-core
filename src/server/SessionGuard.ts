@@ -29,7 +29,8 @@ export function requireAuthenticatedSession(
   }
 
   socket.emit('auth:error', {
-    message: 'Connect a valid wallet before performing this action.',
+    code: 'UNAUTHENTICATED',
+    message: 'Authentication required. Please connect a valid wallet before performing this action.',
   });
   return false;
 }

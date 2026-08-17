@@ -33,4 +33,19 @@ export class LocalDevelopmentCustodyProvider implements WalletCustodyProvider {
   execute(walletId: WalletId, context: ExecutionContext<any>): Promise<ExecutionReceipt> {
     return this.wallet.execute(walletId, context);
   }
+
+  executeGaslessDeposit(payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
+    return this.wallet.executeGaslessDeposit(payload);
+  }
 }

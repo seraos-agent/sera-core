@@ -10,7 +10,24 @@ export const USDC_BASE_MAINNET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
 const ERC20_ABI = [
   { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
-  { name: 'transfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+  {
+    name: 'transferWithAuthorization',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'validAfter', type: 'uint256' },
+      { name: 'validBefore', type: 'uint256' },
+      { name: 'nonce', type: 'bytes32' },
+      { name: 'v', type: 'uint8' },
+      { name: 'r', type: 'bytes32' },
+      { name: 's', type: 'bytes32' }
+    ],
+    outputs: []
+  }
 ];
 
 const VAULT_ABI = [
@@ -52,6 +69,83 @@ export class BaseAdapter {
     }
   }
 
+  public async executeGaslessDeposit(payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
+    const ownerKey = process.env.OWNER_WALLET_PRIVATE_KEY;
+    if (!ownerKey) {
+      throw new Error('OWNER_WALLET_PRIVATE_KEY is not configured for gas relayer.');
+    }
+
+    let v = payload.v;
+    let r = payload.r as `0x${string}` | undefined;
+    let s = payload.s as `0x${string}` | undefined;
+
+    if (payload.signature && (!v || !r || !s)) {
+      const cleanSig = payload.signature.startsWith('0x') ? payload.signature.slice(2) : payload.signature;
+      r = `0x${cleanSig.slice(0, 64)}` as `0x${string}`;
+      s = `0x${cleanSig.slice(64, 128)}` as `0x${string}`;
+      let rawV = parseInt(cleanSig.slice(128, 130), 16);
+      if (rawV < 27) rawV += 27;
+      v = rawV;
+    }
+
+    if (!v || !r || !s) {
+      throw new Error('Invalid signature format for EIP-3009 transfer.');
+    }
+
+    const relayerAccount = privateKeyToAccount(ownerKey as `0x${string}`);
+    const relayerClient = createWalletClient({
+      account: relayerAccount,
+      chain: base,
+      transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
+    });
+
+    const data = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: 'transferWithAuthorization',
+      args: [
+        payload.from as `0x${string}`,
+        payload.to as `0x${string}`,
+        BigInt(payload.value),
+        BigInt(payload.validAfter),
+        BigInt(payload.validBefore),
+        payload.nonce as `0x${string}`,
+        v,
+        r,
+        s,
+      ],
+    });
+
+    console.log(`[BaseAdapter] 🚀 Relaying gasless USDC deposit: ${payload.value} units from ${payload.from} to ${payload.to}`);
+
+    const txHash = await relayerClient.sendTransaction({
+      account: relayerAccount,
+      to: USDC_BASE_MAINNET,
+      data,
+      ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
+    });
+
+    console.log(`[BaseAdapter] ⏳ Waiting for gasless deposit receipt (TX: ${txHash})...`);
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    if (receipt.status !== 'success') {
+      return { status: 'FAILED', error: 'Gasless deposit transaction reverted on-chain.', transactionHash: txHash };
+    }
+
+    console.log(`[BaseAdapter] ✅ Gasless deposit confirmed on Base!`);
+    return { status: 'SUCCESS', transactionHash: txHash };
+  }
+
   public async executeTransaction(
     privateKeyHex: string, 
     context: ExecutionContext<TransferIntentParameters>
@@ -62,8 +156,6 @@ export class BaseAdapter {
     // Resolve exact amount
     let finalAmount = 0;
     if (intent.amount === 'all') {
-      // Very naive 'all' resolution for base adapter - ideally handled by intent resolution earlier, 
-      // but if it reaches here, we check balance.
       const fromWalletAddress = intent.fromWallet === 'sera_vault' && this.vaultAddress 
           ? this.vaultAddress 
           : privateKeyToAccount(privateKeyHex as `0x${string}`).address;
@@ -79,9 +171,6 @@ export class BaseAdapter {
     const account = privateKeyToAccount(privateKeyHex as `0x${string}`);
     let recipientAddress: string = '';
     if (intent.recipient.type === 'USER_MAIN_WALLET') {
-      recipientAddress = account.address; // For now assuming the agent's account acts as the user main wallet or we should fail if we don't know the owner
-      // Ideally, registry holds the owner. We will use the agent's owner if available. 
-      // Actually, in the old GoalBridge, if recipient.type === 'USER_MAIN_WALLET', finalRecipient = walletId.address.
       recipientAddress = account.address;
     } else if (intent.recipient.type === 'SERA_VAULT') {
       if (!this.vaultAddress) throw new Error("SERA_VAULT_ADDRESS is not configured.");
@@ -106,9 +195,6 @@ export class BaseAdapter {
 
       let txHash: `0x${string}`;
       const isFundingVault = this.vaultAddress && recipientAddress.toLowerCase() === this.vaultAddress.toLowerCase();
-      
-      // Implicit initiator checks (AI vs UI) have been removed from this layer as execution should be pure.
-      // GoalBridge should validate policies before passing the ExecutionContext.
 
       if (this.vaultAddress && !isFundingVault && intent.fromWallet === 'sera_vault') {
         console.log(`[BaseAdapter] Routing transfer through SeraVault: ${this.vaultAddress}`);
@@ -175,12 +261,10 @@ export class BaseAdapter {
       try {
         await context.onBroadcast?.(txHash);
       } catch (error: any) {
-        // The transaction is already broadcast. Do not misreport it as failed
-        // because audit persistence is temporarily unavailable.
         console.error(`[BaseAdapter] Failed to record transaction broadcast: ${error.message}`);
       }
 
-      console.log(`[BaseAdapter] ⏳ Waiting for transaction confirmation...`);
+      console.log(`[BaseAdapter] ⏳ Waiting for transaction receipt... (TX: ${txHash})`);
       const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
       console.log(`[BaseAdapter] ✅ Transfer confirmed. TX Hash: ${txHash}`);
 

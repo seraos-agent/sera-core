@@ -11,6 +11,11 @@ export interface GoogleDriveConnectionState {
   connectedAt?: string;
 }
 
+export interface ThreadsConnectionState {
+  provider: 'THREADS';
+  status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+}
+
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
   setMode: (mode: "light" | "dark") => void,
@@ -22,10 +27,12 @@ export function useSocket(
   const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
   const [googleDrive, setGoogleDrive] = useState<GoogleDriveConnectionState>({ provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
+  const [threads, setThreads] = useState<ThreadsConnectionState>({ provider: 'THREADS', status: 'UNAVAILABLE' });
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
   const googleDrivePopup = useRef<Window | null>(null);
+  const threadsPopup = useRef<Window | null>(null);
   const skipNextDeviceVaultWrite = useRef(false);
 
   const localChatKey = `chat-history:${deviceScope}`;
@@ -96,6 +103,19 @@ export function useSocket(
 
   const disconnectGoogleDrive = useCallback(() => {
     socket?.emit('google_drive:disconnect');
+  }, [socket]);
+
+  const connectThreads = useCallback(() => {
+    if (!socket) return;
+    const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (!isMobile) {
+      threadsPopup.current = window.open('', 'sera-threads', 'popup=yes,width=560,height=720');
+    }
+    socket.emit('threads:connect');
+  }, [socket]);
+
+  const disconnectThreads = useCallback(() => {
+    socket?.emit('threads:disconnect');
   }, [socket]);
 
   const respondToGovernanceRecommendation = useCallback((recommendationId: string, decision: 'APPROVED' | 'REJECTED' | 'MODIFIED', rationale?: string) => {
@@ -197,16 +217,52 @@ export function useSocket(
 
     newSocket.on('google_drive:authorization', (data: { authorizationUrl?: string }) => {
       if (!data.authorizationUrl) return;
-      if (googleDrivePopup.current && !googleDrivePopup.current.closed) {
-        googleDrivePopup.current.location.assign(data.authorizationUrl);
-      } else {
-        window.location.assign(data.authorizationUrl);
+      try {
+        if (googleDrivePopup.current && !googleDrivePopup.current.closed) {
+          googleDrivePopup.current.location.href = data.authorizationUrl;
+          return;
+        }
+      } catch (e) {
+        console.warn('[useSocket] Popup navigation error, falling back:', e);
       }
+      window.open(data.authorizationUrl, 'sera-google-drive', 'popup=yes,width=520,height=700') || window.location.assign(data.authorizationUrl);
     });
 
     newSocket.on('google_drive:error', () => {
-      if (googleDrivePopup.current && !googleDrivePopup.current.closed) googleDrivePopup.current.close();
+      try {
+        if (googleDrivePopup.current && !googleDrivePopup.current.closed) googleDrivePopup.current.close();
+      } catch {}
       googleDrivePopup.current = null;
+    });
+
+    newSocket.on('threads:status', (data: ThreadsConnectionState) => {
+      setThreads(data);
+      try {
+        if (data.status === 'CONNECTED' && threadsPopup.current && !threadsPopup.current.closed) {
+          threadsPopup.current.close();
+          threadsPopup.current = null;
+        }
+      } catch {}
+    });
+
+    newSocket.on('threads:authorization', (data: { authorizationUrl?: string }) => {
+      if (!data.authorizationUrl) return;
+      try {
+        if (threadsPopup.current && !threadsPopup.current.closed) {
+          threadsPopup.current.location.href = data.authorizationUrl;
+          return;
+        }
+      } catch (e) {
+        console.warn('[useSocket] Threads popup navigation error, falling back:', e);
+      }
+      window.open(data.authorizationUrl, 'sera-threads', 'popup=yes,width=560,height=720') || window.location.assign(data.authorizationUrl);
+    });
+
+    newSocket.on('threads:error', () => {
+      try {
+        if (threadsPopup.current && !threadsPopup.current.closed) threadsPopup.current.close();
+      } catch {}
+      threadsPopup.current = null;
     });
 
     newSocket.on('governance:recommendation_list', (list: any[]) => {
@@ -225,6 +281,9 @@ export function useSocket(
       newSocket.off('google_drive:status');
       newSocket.off('google_drive:authorization');
       newSocket.off('google_drive:error');
+      newSocket.off('threads:status');
+      newSocket.off('threads:authorization');
+      newSocket.off('threads:error');
       newSocket.off('governance:recommendation_list');
       newSocket.off('governance:recommendation_pending');
       newSocket.close();
@@ -244,6 +303,9 @@ export function useSocket(
     googleDrive,
     connectGoogleDrive,
     disconnectGoogleDrive,
+    threads,
+    connectThreads,
+    disconnectThreads,
     governanceRecommendations,
     respondToGovernanceRecommendation,
   };

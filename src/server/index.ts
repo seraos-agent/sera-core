@@ -23,7 +23,7 @@ import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 import { predictionEngine, arenaEventBus } from './predictionEngine';
-import { createThreadsAuthRouter } from './auth/threadsAuth';
+import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
 
 export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
@@ -32,9 +32,12 @@ const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('h
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
 const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
+const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
+const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
 
 console.log(`[Server] Supabase Services Init - URL: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Secret: ${process.env.SUPABASE_SECRET_KEY ? 'OK' : 'MISSING'}`);
 console.log(`[Server] reownWalletIdentityService is ${reownWalletIdentityService ? 'ACTIVE' : 'NULL (Falling back to local auth)'}`);
+console.log(`[Server] Threads OAuth Service initialized - App ID: ${threadsOAuthService.appId ? 'OK' : 'MISSING'}`);
 
 interface SessionTokenPrincipal {
   userId: string;
@@ -222,7 +225,13 @@ app.post('/mcp/message', async (req, res) => {
 });
 
 // ── Auth & OAuth Routes ──────────────────────────────────────────────────
-app.use('/api/auth/threads', createThreadsAuthRouter(agentManager.getOrCreateInstance('dev').runtime.secretManager));
+app.use('/api/auth/threads', createThreadsAuthRouter(threadsOAuthService, globalSecretManager, (sessionId) => {
+  io.to(`user:${sessionId}`).emit('threads:status', { provider: 'THREADS', status: 'CONNECTED' });
+  const inst = agentManager.getOrCreateInstance(sessionId);
+  if (inst?.runtime?.capabilityCatalog) {
+    io.to(`user:${sessionId}`).emit('connector:status_changed', inst.runtime.capabilityCatalog.allConnectorSummaries());
+  }
+}));
 
 let msgIdCounter = Date.now();
 
@@ -289,6 +298,13 @@ io.on('connection', (socket: Socket) => {
         .catch(() => socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' }));
     } else {
       socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
+    }
+    if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
+      void threadsOAuthService.getStatus(socket.data.sessionId)
+        .then((status) => socket.emit('threads:status', status))
+        .catch(() => socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' }));
+    } else {
+      socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' });
     }
   };
 
@@ -578,6 +594,13 @@ io.on('connection', (socket: Socket) => {
 
     socket.data.isAuthenticated = true;
     socket.join(`user:${principal!.userId}`);
+
+    // Trigger fresh on-chain balance query for the connected user wallet silently
+    if (instance?.goalBridge) {
+      instance.goalBridge.syncWalletState().catch(err => {
+        console.warn('[Server] Failed to refresh wallet balance on login:', err);
+      });
+    }
   });
 
   socket.on('auth:logout', () => {
@@ -613,6 +636,37 @@ io.on('connection', (socket: Socket) => {
       socket.emit('google_drive:status', await googleDriveOAuthService.disconnect(socket.data.sessionId!));
     } catch (error) {
       socket.emit('google_drive:error', { message: error instanceof Error ? error.message : 'Unable to disconnect Google Drive.' });
+    }
+  });
+
+  socket.on('threads:connect', () => {
+    if (!requireAuthenticatedSession(socket, 'threads:connect', instance?.eventBus)) return;
+    if (socket.data.sessionId === 'dev' || !threadsOAuthService.appId) {
+      socket.emit('threads:error', { message: 'Threads connection is not configured for this environment.' });
+      return;
+    }
+    try {
+      const authorizationUrl = threadsOAuthService.beginAuthorization(socket.data.sessionId!);
+      socket.emit('threads:authorization', { authorizationUrl });
+    } catch (err: any) {
+      socket.emit('threads:error', { message: err.message || 'Failed to generate Threads authorization URL.' });
+    }
+  });
+
+  socket.on('threads:disconnect', async () => {
+    if (!requireAuthenticatedSession(socket, 'threads:disconnect', instance?.eventBus)) return;
+    if (socket.data.sessionId === 'dev') {
+      socket.emit('threads:status', { provider: 'THREADS', status: 'NOT_CONNECTED' });
+      return;
+    }
+    try {
+      const status = await threadsOAuthService.disconnect(socket.data.sessionId!);
+      socket.emit('threads:status', status);
+      if (instance?.runtime?.capabilityCatalog) {
+        socket.emit('connector:status_changed', instance.runtime.capabilityCatalog.allConnectorSummaries());
+      }
+    } catch (err: any) {
+      socket.emit('threads:error', { message: err.message || 'Failed to disconnect Threads.' });
     }
   });
 
@@ -900,6 +954,59 @@ io.on('connection', (socket: Socket) => {
     } catch (err: any) {
       console.error('[Server] wallet:transfer error:', err);
       socket.emit('wallet:transfer:result', { status: 'FAILED', error: err.message || 'Unknown error' });
+    }
+  });
+
+  socket.on('wallet:deposit:gasless', async (payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }) => {
+    if (!requireAuthenticatedSession(socket, 'wallet:deposit:gasless', instance?.eventBus)) return;
+    console.log(`[Server] wallet:deposit:gasless requested by ${payload.from} → ${payload.value} units to ${payload.to}`);
+    socket.emit('wallet:transfer:pending', { message: 'Sponsoring and broadcasting gasless deposit on Base...' });
+
+    try {
+      if (!instance.goalBridge) {
+        socket.emit('wallet:transfer:result', { status: 'FAILED', error: 'Wallet not initialized' });
+        return;
+      }
+
+      const result = await instance.goalBridge.executeGaslessDeposit(payload);
+      socket.emit('wallet:transfer:result', result);
+      if (result.status === 'SUCCESS') {
+        await instance.goalBridge.syncWalletState();
+      }
+    } catch (err: any) {
+      console.error('[Server] wallet:deposit:gasless error:', err);
+      socket.emit('wallet:transfer:result', { status: 'FAILED', error: err.message || 'Unknown error' });
+    }
+  });
+
+  socket.on('wallet:refresh', async () => {
+    if (instance?.goalBridge) {
+      try {
+        await instance.goalBridge.syncWalletState();
+      } catch (err) {
+        console.warn('[Server] Error refreshing wallet balance:', err);
+      }
+    }
+  });
+
+  socket.on('wallet:fetch', async () => {
+    if (instance?.goalBridge) {
+      try {
+        await instance.goalBridge.syncWalletState();
+      } catch (err) {
+        console.warn('[Server] Error fetching wallet balance:', err);
+      }
     }
   });
 

@@ -39,33 +39,77 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-async function openDatabase(): Promise<IDBDatabase> {
+let cachedDbPromise: Promise<IDBDatabase> | null = null;
+
+async function getDatabase(): Promise<IDBDatabase> {
   if (!('indexedDB' in window) || !window.crypto?.subtle) {
     throw new Error('This browser does not support the encrypted local vault.');
   }
 
-  return new Promise((resolve, reject) => {
+  if (cachedDbPromise) {
+    try {
+      const db = await cachedDbPromise;
+      // Check if DB is still open
+      if (db && !db.close) {
+        return db;
+      }
+    } catch {
+      cachedDbPromise = null;
+    }
+  }
+
+  cachedDbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(RECORDS_STORE)) database.createObjectStore(RECORDS_STORE, { keyPath: 'id' });
       if (!database.objectStoreNames.contains(KEYS_STORE)) database.createObjectStore(KEYS_STORE, { keyPath: 'id' });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Unable to open the local vault.'));
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onclose = () => {
+        cachedDbPromise = null;
+      };
+      db.onerror = () => {
+        cachedDbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      cachedDbPromise = null;
+      reject(request.error ?? new Error('Unable to open the local vault.'));
+    };
   });
+
+  return cachedDbPromise;
 }
 
+let cachedCryptoKey: CryptoKey | null = null;
+
 async function getDeviceKey(database: IDBDatabase): Promise<CryptoKey> {
-  const readTransaction = database.transaction(KEYS_STORE, 'readonly');
-  const existing = await requestResult(readTransaction.objectStore(KEYS_STORE).get(KEY_ID)) as KeyRecord | undefined;
-  await transactionDone(readTransaction);
-  if (existing?.key) return existing.key;
+  if (cachedCryptoKey) return cachedCryptoKey;
+
+  try {
+    const readTransaction = database.transaction(KEYS_STORE, 'readonly');
+    const existing = await requestResult(readTransaction.objectStore(KEYS_STORE).get(KEY_ID)) as KeyRecord | undefined;
+    await transactionDone(readTransaction);
+    if (existing?.key) {
+      cachedCryptoKey = existing.key;
+      return existing.key;
+    }
+  } catch {
+    // If read failed, generate a new one
+  }
 
   const key = await window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-  const writeTransaction = database.transaction(KEYS_STORE, 'readwrite');
-  writeTransaction.objectStore(KEYS_STORE).put({ id: KEY_ID, key } satisfies KeyRecord);
-  await transactionDone(writeTransaction);
+  try {
+    const writeTransaction = database.transaction(KEYS_STORE, 'readwrite');
+    writeTransaction.objectStore(KEYS_STORE).put({ id: KEY_ID, key } satisfies KeyRecord);
+    await transactionDone(writeTransaction);
+  } catch (e) {
+    console.warn('[DeviceMemoryVault] Could not persist key to IndexedDB:', e);
+  }
+  cachedCryptoKey = key;
   return key;
 }
 
@@ -87,39 +131,40 @@ async function decrypt<T>(record: EncryptedRecord, key: CryptoKey): Promise<T> {
  */
 export class DeviceMemoryVault {
   public async get<T>(id: string): Promise<T | null> {
-    const database = await openDatabase();
     try {
+      const database = await getDatabase();
       const transaction = database.transaction(RECORDS_STORE, 'readonly');
       const record = await requestResult(transaction.objectStore(RECORDS_STORE).get(id)) as EncryptedRecord | undefined;
       await transactionDone(transaction);
       if (!record) return null;
       return decrypt<T>(record, await getDeviceKey(database));
-    } finally {
-      database.close();
+    } catch (err) {
+      console.warn('[DeviceMemoryVault] get error (falling back):', err);
+      return null;
     }
   }
 
   public async set(id: string, value: unknown): Promise<void> {
-    const database = await openDatabase();
     try {
+      const database = await getDatabase();
       const key = await getDeviceKey(database);
       const encrypted = await encrypt(value, key);
       const transaction = database.transaction(RECORDS_STORE, 'readwrite');
       transaction.objectStore(RECORDS_STORE).put({ id, ...encrypted, updatedAt: Date.now() } satisfies EncryptedRecord);
       await transactionDone(transaction);
-    } finally {
-      database.close();
+    } catch (err) {
+      console.warn('[DeviceMemoryVault] set error (non-fatal):', err);
     }
   }
 
   public async delete(id: string): Promise<void> {
-    const database = await openDatabase();
     try {
+      const database = await getDatabase();
       const transaction = database.transaction(RECORDS_STORE, 'readwrite');
       transaction.objectStore(RECORDS_STORE).delete(id);
       await transactionDone(transaction);
-    } finally {
-      database.close();
+    } catch (err) {
+      console.warn('[DeviceMemoryVault] delete error:', err);
     }
   }
 }

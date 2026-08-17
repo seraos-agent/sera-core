@@ -10,13 +10,14 @@ export class ThreadsDaemon {
   private lastProcessedMentionId?: string;
   private lastProcessedReplyIds = new Map<string, string>(); // threadId -> lastReplyId
   private timelineContext: string = ''; // Caches recent posts for AI context
+  private processedIds = new Set<string>();
 
   private readonly watermarkFile = path.join(process.cwd(), '.data', 'threads_watermark.json');
 
   constructor(
     private readonly api: ThreadsAPI,
     private readonly eventBus: EventEmitter,
-    private readonly sessionId: string = 'dev'
+    private readonly sessionId: string = 'default'
   ) {
     this.loadWatermark();
   }
@@ -28,6 +29,7 @@ export class ThreadsDaemon {
         const parsed = JSON.parse(data);
         if (parsed.lastProcessedMentionId) {
           this.lastProcessedMentionId = parsed.lastProcessedMentionId;
+          this.processedIds.add(parsed.lastProcessedMentionId);
           console.log(`[ThreadsDaemon] Loaded watermark. Starting from Mention ID: ${this.lastProcessedMentionId}`);
         }
       }
@@ -39,11 +41,25 @@ export class ThreadsDaemon {
   private saveWatermark(mentionId: string) {
     try {
       this.lastProcessedMentionId = mentionId;
+      this.processedIds.add(mentionId);
       const dir = path.dirname(this.watermarkFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(this.watermarkFile, JSON.stringify({ lastProcessedMentionId: mentionId }, null, 2), 'utf8');
     } catch (err: any) {
       console.error(`[ThreadsDaemon] Failed to save watermark: ${err.message}`);
+    }
+  }
+
+  private markProcessed(id: string) {
+    this.processedIds.add(id);
+    // Keep memory clean
+    if (this.processedIds.size > 2000) {
+      const iter = this.processedIds.values();
+      for (let i = 0; i < 500; i++) {
+        const next = iter.next();
+        if (next.done) break;
+        this.processedIds.delete(next.value);
+      }
     }
   }
 
@@ -78,24 +94,29 @@ export class ThreadsDaemon {
     try {
       const mentions = await this.api.getMentions(this.sessionId, 20);
       if (!mentions || mentions.length === 0) {
-        console.log(`[ThreadsDaemon] Polled 0 mentions.`);
         return;
       }
 
       // Ensure mentions are sorted newest-first
       mentions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      console.log(`[ThreadsDaemon] Polled ${mentions.length} mentions. Newest ID: ${mentions[0].id}`);
+
+      // FIRST RUN GUARD: If watermark is empty (e.g. cold start), record the latest ID and skip past backlog
+      if (!this.lastProcessedMentionId) {
+        this.saveWatermark(mentions[0].id);
+        mentions.forEach(m => this.markProcessed(m.id));
+        console.log(`[ThreadsDaemon] Initialized mention watermark to ID: ${mentions[0].id}. Skipping historical backlog.`);
+        return;
+      }
 
       // Find new mentions
       const newMentions: ThreadsMention[] = [];
       for (const mention of mentions) {
-        if (mention.id === this.lastProcessedMentionId) break;
+        if (mention.id === this.lastProcessedMentionId || this.processedIds.has(mention.id)) break;
         newMentions.push(mention);
       }
       
       if (newMentions.length > 0) {
         console.log(`[ThreadsDaemon] Found ${newMentions.length} new mentions.`);
-        // Save the newest mention ID as the new watermark so we don't process it again
         this.saveWatermark(newMentions[0].id);
       }
 
@@ -104,7 +125,6 @@ export class ThreadsDaemon {
         await this.handleMention(mention);
       }
     } catch (err: any) {
-      // API block or no token yet, ignore quietly
       if (!err.message.includes('active access token')) {
         console.error('[ThreadsDaemon] Error polling mentions:', err.message);
       }
@@ -138,7 +158,7 @@ export class ThreadsDaemon {
         const lastProcessedId = this.lastProcessedReplyIds.get(thread.id);
 
         for (const reply of replies) {
-          if (reply.id === lastProcessedId) break;
+          if (reply.id === lastProcessedId || this.processedIds.has(reply.id)) break;
           newReplies.push(reply);
         }
 
@@ -147,7 +167,10 @@ export class ThreadsDaemon {
         }
 
         // First run initialization, don't trigger backlog replies
-        if (!lastProcessedId) continue;
+        if (!lastProcessedId) {
+          newReplies.forEach(r => this.markProcessed(r.id));
+          continue;
+        }
 
         // Process from oldest to newest
         for (const reply of newReplies.reverse()) {
@@ -162,10 +185,22 @@ export class ThreadsDaemon {
   }
 
   private async handleReply(reply: ThreadsMention, originalPostText: string) {
-    const vipUsersStr = process.env.THREADS_VIP_USERS || '';
-    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase());
+    if (this.processedIds.has(reply.id)) return;
+    this.markProcessed(reply.id);
 
-    const isVip = vipUsers.includes(reply.username.toLowerCase());
+    const vipUsersStr = process.env.THREADS_VIP_USERS || '';
+    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
+
+    const replyUsername = (reply.username || '').toLowerCase();
+    
+    // Ignore self-reply from the bot account itself
+    const botUsername = (process.env.THREADS_BOT_USERNAME || 'sera.agent').toLowerCase();
+    if (replyUsername === botUsername) {
+      console.log(`[ThreadsDaemon] Ignoring self-reply from @${reply.username}`);
+      return;
+    }
+
+    const isVip = vipUsers.includes(replyUsername);
 
     if (!isVip) {
       console.log(`[ThreadsDaemon] Ignoring non-VIP reply from @${reply.username} on our post.`);
@@ -197,19 +232,30 @@ ${this.timelineContext}
   }
 
   private async handleMention(mention: ThreadsMention) {
+    if (this.processedIds.has(mention.id)) return;
+    this.markProcessed(mention.id);
+
+    const mentionUsername = (mention.username || '').toLowerCase();
+    const botUsername = (process.env.THREADS_BOT_USERNAME || 'sera.agent').toLowerCase();
+
+    // Ignore self-mentions
+    if (mentionUsername === botUsername) {
+      console.log(`[ThreadsDaemon] Ignoring self-mention from @${mention.username}`);
+      return;
+    }
+
     console.log(`[ThreadsDaemon] New mention detected from @${mention.username}: ${mention.text}`);
 
     const vipUsersStr = process.env.THREADS_VIP_USERS || '';
-    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase());
+    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
 
-    const isVip = vipUsers.includes(mention.username.toLowerCase());
+    const isVip = vipUsers.includes(mentionUsername);
 
     if (isVip) {
       console.log(`[ThreadsDaemon] @${mention.username} is VIP. Waking up AI...`);
       
       let parentPostContext = '';
       try {
-        // Fetch the mention details to see if it is a reply (is_reply, replied_to fields)
         const mentionDetails = await this.api.getPost(this.sessionId, mention.id);
         
         if (mentionDetails.is_reply && mentionDetails.replied_to?.id) {
@@ -239,10 +285,9 @@ ${this.timelineContext || '(No recent posts)'}
       });
     } else {
       console.log(`[ThreadsDaemon] @${mention.username} is not VIP. Sending gatekeeper reply...`);
-      // Auto-reply directly bypassing AI
       try {
         const replyText = `Hello @${mention.username}! Great question. However, I am currently only serving registered users. Join us at seraos.xyz (or check the link in my bio) so we can chat! 🚀`;
-        await this.api.publishPost(replyText, mention.id);
+        await this.api.publishPost(this.sessionId, replyText, mention.id);
         console.log(`[ThreadsDaemon] Gatekeeper reply sent to @${mention.username}`);
       } catch (err: any) {
         console.error(`[ThreadsDaemon] Failed to send gatekeeper reply to @${mention.username}:`, err.message);

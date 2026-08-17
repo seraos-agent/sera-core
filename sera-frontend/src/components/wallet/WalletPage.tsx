@@ -3,7 +3,10 @@ import { ChevronLeft as CloseIcon, X, Check, Copy, ChevronDown, ChevronUp } from
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
-import { useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useSignTypedData } from 'wagmi';
+import { parseUnits } from 'viem';
+
+const USDC_ADDRESS_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
 const UsdcLogo = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 2000 2000" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -22,7 +25,9 @@ interface WalletPageProps {
 }
 
 export function WalletPage({ theme, walletState, onBack, socket, isMobileView }: WalletPageProps) {
+  const { address } = useAccount();
   const { disconnect } = useDisconnect();
+  const { signTypedDataAsync } = useSignTypedData();
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 20 : 24;
   const [amount, setAmount] = useState("");
@@ -35,7 +40,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const [copiedVault, setCopiedVault] = useState(false);
   const [showNetworks, setShowNetworks] = useState(false);
 
-  const handleCopy = (text: string, type: "agent" | "vault") => {
+  const copyToClipboard = (text: string, type: "agent" | "vault") => {
     navigator.clipboard.writeText(text);
     if (type === "agent") {
       setCopiedAgent(true);
@@ -45,6 +50,8 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
       setTimeout(() => setCopiedVault(false), 2000);
     }
   };
+  const handleCopy = copyToClipboard;
+
 
   const agentAddr = walletState.fullAddress || "";
   const vaultAddr = walletState.vaultAddress || "";
@@ -55,7 +62,6 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const parsedAmount = parseFloat(amount) || 0;
 
   const activeBalance = direction === "toSera" ? parsedAgentBalance : parsedVaultBalance;
-
   const fromLabel = direction === "toSera" ? "Personal" : "Sera";
   const toLabel = direction === "toSera" ? "Sera" : "Personal";
   const toAddr = direction === "toSera" ? vaultAddr : agentAddr;
@@ -66,7 +72,105 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
     setStep("confirm");
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    // 1. Personal -> Sera Vault (Deposit): Gasless EIP-3009 transfer sponsored by Sera Server
+    if (direction === "toSera") {
+      if (!vaultAddr || !vaultAddr.startsWith("0x")) {
+        setErrorMsg("Agent vault address is not available.");
+        setStep("failed");
+        return;
+      }
+      if (!address) {
+        setErrorMsg("Personal wallet not connected.");
+        setStep("failed");
+        return;
+      }
+      setStep("pending");
+
+      try {
+        const value = parseUnits(parsedAmount.toString(), 6);
+        const validAfter = BigInt(0);
+        const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour validity
+
+        // Generate cryptographically secure random 32-byte nonce
+        const randomBytes = new Uint8Array(32);
+        crypto.getRandomValues(randomBytes);
+        const nonce = ('0x' + Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
+
+        // 1-Click Zero-Gas Signature
+        const signature = await signTypedDataAsync({
+          account: address as `0x${string}`,
+          domain: {
+            name: 'USD Coin',
+            version: '2',
+            chainId: 8453,
+            verifyingContract: USDC_ADDRESS_BASE as `0x${string}`,
+          },
+          types: {
+            TransferWithAuthorization: [
+              { name: 'from', type: 'address' },
+              { name: 'to', type: 'address' },
+              { name: 'value', type: 'uint256' },
+              { name: 'validAfter', type: 'uint256' },
+              { name: 'validBefore', type: 'uint256' },
+              { name: 'nonce', type: 'bytes32' },
+            ],
+          },
+          primaryType: 'TransferWithAuthorization',
+          message: {
+            from: address as `0x${string}`,
+            to: vaultAddr as `0x${string}`,
+            value,
+            validAfter,
+            validBefore,
+            nonce,
+          },
+        });
+
+        if (!socket) {
+          setErrorMsg("Not connected to server.");
+          setStep("failed");
+          return;
+        }
+
+        socket.emit("wallet:deposit:gasless", {
+          from: address,
+          to: vaultAddr,
+          value: value.toString(),
+          validAfter: validAfter.toString(),
+          validBefore: validBefore.toString(),
+          nonce,
+          signature,
+        });
+
+        const onResult = (result: any) => {
+          socket.off("wallet:transfer:result", onResult);
+          if (result.status === "SUCCESS") {
+            setTxHash(result.transactionHash || "");
+            setStep("success");
+          } else {
+            let cleanError = result.error || "Deposit failed.";
+            setErrorMsg(cleanError);
+            setStep("failed");
+          }
+        };
+
+        socket.on("wallet:transfer:result", onResult);
+      } catch (err: any) {
+        console.error("Personal to Sera transfer error:", err);
+        let cleanError = err.shortMessage || err.message || "Transfer failed.";
+        if (typeof cleanError === "string") {
+          if (cleanError.includes("User rejected") || cleanError.includes("rejected the request")) {
+            cleanError = "Signature rejected by user.";
+          }
+        }
+        setErrorMsg(cleanError);
+        setStep("failed");
+      }
+      return;
+    }
+
+    // 2. Sera Vault -> Personal (Withdraw): Agent signs from server
     if (!socket) {
       setErrorMsg("Not connected to server.");
       setStep("failed");

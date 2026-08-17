@@ -127,4 +127,19 @@ export class UniversalAgenticWallet implements IExecutionCapability {
 
     throw new Error(`[UniversalAgenticWallet] No adapter found for network: ${resolvedNetwork}`);
   }
+
+  async executeGaslessDeposit(payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
+    return this.baseAdapter.executeGaslessDeposit(payload);
+  }
 }

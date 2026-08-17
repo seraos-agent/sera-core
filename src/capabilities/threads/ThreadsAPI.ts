@@ -45,9 +45,7 @@ export class ThreadsAPI {
     }
     
     if (!replyToId) {
-      // Only append topic to top-level posts to avoid clashing with other topics
       url.searchParams.append('text', text);
-      url.searchParams.append('topic_tag', 'sera-agent');
     } else {
       url.searchParams.append('text', text);
       url.searchParams.append('reply_to_id', replyToId);

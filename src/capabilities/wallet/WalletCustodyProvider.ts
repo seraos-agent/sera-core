@@ -12,6 +12,18 @@ export interface WalletCustodyProvider {
   getBalance(walletId: WalletId, asset: string, network?: string): Promise<number>;
   getAddressBalance(address: string, asset: string, network?: string): Promise<number>;
   execute(walletId: WalletId, context: ExecutionContext<any>): Promise<ExecutionReceipt>;
+  executeGaslessDeposit?(payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }>;
 }
 
 export class WalletCustodyUnavailableError extends Error {

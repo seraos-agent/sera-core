@@ -59,8 +59,10 @@ export class DialogueResultNarrator {
 
     let sanitizedDataStr = JSON.stringify(result.data || {});
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
+    sanitizedDataStr = sanitizedDataStr.replace(/"vaultEthBalance"/g, '"agentEthBalance"');
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultAddress"/g, '"agentAddress"');
     sanitizedDataStr = sanitizedDataStr.replace(/"personalBalance"/g, '"userBalance"');
+    sanitizedDataStr = sanitizedDataStr.replace(/"personalEthBalance"/g, '"userEthBalance"');
     sanitizedDataStr = sanitizedDataStr.replace(/"personalAddress"/g, '"userAddress"');
     sanitizedDataStr = sanitizedDataStr.replace(/sera vault/gi, 'agent balance');
 

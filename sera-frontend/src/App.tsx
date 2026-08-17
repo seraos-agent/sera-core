@@ -102,7 +102,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address } = useAccount();
-  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
+  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -249,8 +249,10 @@ function InnerApp() {
       };
 
       const handleAuthError = (err: any) => {
-        if (err.code === 'INVALID_TOKEN' && address) {
-          localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
+        if ((err.code === 'INVALID_TOKEN' || err.code === 'UNAUTHENTICATED') && address) {
+          if (err.code === 'INVALID_TOKEN') {
+            localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
+          }
           socket.emit('auth:challenge'); // Retry with fresh challenge
         } else {
           setWalletState(prev => ({
@@ -516,6 +518,9 @@ function InnerApp() {
             theme={theme}
             walletState={walletState}
             socket={socket}
+            threads={threads}
+            onConnectThreads={connectThreads}
+            onDisconnectThreads={disconnectThreads}
             isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />

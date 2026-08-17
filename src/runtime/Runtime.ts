@@ -103,7 +103,7 @@ export class Runtime {
   private adaptationPlanner: AdaptationPlanner | undefined;
   private adaptationExecutor: AdaptationExecutor | undefined;
   private executionReflectionEngine: ExecutionReflectionEngine | undefined;
-  private threadsDaemon?: ThreadsDaemon;
+  private static globalThreadsDaemon?: ThreadsDaemon;
 
   // Coordinators
   private cognitiveCoordinator: CognitiveCoordinator;
@@ -221,7 +221,7 @@ export class Runtime {
 
   public stop(): void {
     this.executionCoordinator.stop();
-    this.threadsDaemon?.stop();
+    Runtime.globalThreadsDaemon?.stop();
   }
 
   // Replaced by ExecutionDispatcher's direct listening
@@ -245,10 +245,10 @@ export class Runtime {
     const threadsCap = new ThreadsCapability(threadsApi);
     const imageGenCap = new ImageGenerationCapability();
 
-    // Initialize and start the autonomous daemon for Threads
-    if (process.env.THREADS_APP_ID) {
-      this.threadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, options?.sessionId || 'default');
-      this.threadsDaemon.start(2 * 60 * 1000); // 2-minute polling for testing
+    // Initialize and start the autonomous daemon for Threads as a singleton worker
+    if (process.env.THREADS_APP_ID && !Runtime.globalThreadsDaemon) {
+      Runtime.globalThreadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, 'default');
+      Runtime.globalThreadsDaemon.start(5 * 60 * 1000); // 5-minute autonomous polling
     }
 
 

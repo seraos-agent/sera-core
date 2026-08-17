@@ -7,7 +7,8 @@ describe('Socket session authorization', () => {
 
     expect(requireAuthenticatedSession(socket, 'test')).toBe(false);
     expect(socket.emit).toHaveBeenCalledWith('auth:error', {
-      message: 'Connect a valid wallet before performing this action.',
+      code: 'UNAUTHENTICATED',
+      message: 'Authentication required. Please connect a valid wallet before performing this action.',
     });
   });
 

@@ -110,6 +110,7 @@ export class GoalBridge {
       let primaryAddress = '';
       let vaultAddress = '';
       let primaryBalance = '0';
+      let primaryEthBalance = '0';
       let vaultBalance = '0';
 
       // EMIT SYNCING FIRST
@@ -128,8 +129,12 @@ export class GoalBridge {
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
 
         try {
-          const pb = await this.walletAdapter.getBalance(walletId, 'usdc');
-          primaryBalance = pb.toString();
+          const [pb, eb] = await Promise.allSettled([
+            this.walletAdapter.getBalance(walletId, 'usdc'),
+            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
+          ]);
+          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
         } catch (e) {
           console.error('Failed to get primary balance in dev mode:', e);
         }
@@ -150,14 +155,20 @@ export class GoalBridge {
         // Fetch actual user balance instead of mocking
         try {
           if (primaryAddress) {
-            const pb = await this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet');
-            primaryBalance = pb.toString();
+            const [pb, eb] = await Promise.allSettled([
+              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
+            ]);
+            primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+            primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
           } else {
             primaryBalance = '0';
+            primaryEthBalance = '0';
           }
         } catch (e) {
           console.warn('[GoalBridge] Failed to get user personal balance:', e);
           primaryBalance = '0';
+          primaryEthBalance = '0';
         }
 
         if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
@@ -178,6 +189,7 @@ export class GoalBridge {
           address: primaryAddress,
           vaultAddress,
           balance: primaryBalance,
+          ethBalance: primaryEthBalance,
           vaultBalance,
           vaultBalances: { base: vaultBalance, polygon: '0', ethereum: '0' },
           network: walletId.network,
@@ -416,12 +428,17 @@ export class GoalBridge {
       // Multi-network vault balances
       let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
 
+      let primaryEthBalance = '0';
       if (!userAddress) {
         primaryAddress = walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
         try {
-          const pb = await this.walletAdapter.getBalance(walletId, 'usdc');
-          primaryBalance = pb.toString();
+          const [pb, eb] = await Promise.allSettled([
+            this.walletAdapter.getBalance(walletId, 'usdc'),
+            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
+          ]);
+          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
         } catch (e) {
           console.warn('[GoalBridge] Failed to get primary balance:', e);
         }
@@ -429,11 +446,16 @@ export class GoalBridge {
         primaryAddress = userAddress;
         vaultAddress = walletId.address;
         try {
-          const pb = await this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet');
-          primaryBalance = pb.toString();
+          const [pb, eb] = await Promise.allSettled([
+            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
+          ]);
+          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
         } catch (e) {
           console.warn('[GoalBridge] Failed to get user personal balance:', e);
           primaryBalance = '0';
+          primaryEthBalance = '0';
         }
       }
 
@@ -456,16 +478,20 @@ export class GoalBridge {
       this.cachedPersonal = primaryBalance;
       this.cachedVault = vaultBalance;
 
-      this.emitResult(requestId, true, {
-        asset: 'USDC',
-        personalBalance: primaryBalance,
-        vaultBalance,
-        vaultBalances,
-        totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
-        network: walletId.network || 'Base Mainnet',
-        personalAddress: primaryAddress,
-        vaultAddress,
-      });
+      const isBackgroundSync = !requestId || requestId.startsWith('login-') || requestId.startsWith('refresh-') || requestId.startsWith('fetch-') || requestId.startsWith('sync-');
+      if (!isBackgroundSync) {
+        this.emitResult(requestId, true, {
+          asset: 'USDC',
+          personalBalance: primaryBalance,
+          personalEthBalance: primaryEthBalance,
+          vaultBalance,
+          vaultBalances,
+          totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
+          network: walletId.network || 'Base Mainnet',
+          personalAddress: primaryAddress,
+          vaultAddress,
+        });
+      }
 
       this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
         id: `evt-wallet-${Date.now()}`,
@@ -475,6 +501,7 @@ export class GoalBridge {
           address: primaryAddress,
           vaultAddress,
           balance: primaryBalance,
+          ethBalance: primaryEthBalance,
           vaultBalance,
           vaultBalances,
           network: walletId.network || 'Base Mainnet',
@@ -485,25 +512,10 @@ export class GoalBridge {
       });
     } catch (e: any) {
       console.error('[GoalBridge] Error checking balance:', e.message);
-
-      // Fallback to cache if RPC rate limits are hit
       if (this.currentWalletId) {
-        console.log('[GoalBridge] Falling back to cached balance due to RPC error');
-        this.emitResult(requestId, true, {
-          asset: 'USDC',
-          personalBalance: this.cachedPersonal,
-          vaultBalance: this.cachedVault,
-          vaultBalances: { base: this.cachedVault, polygon: '0', ethereum: '0' },
-          totalBalance: (parseFloat(this.cachedPersonal) + parseFloat(this.cachedVault)).toString(),
-          network: 'Base Mainnet',
-          personalAddress: this.currentWalletId.address,
-          vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
-        });
-        
         this.emitWalletState(this.currentWalletId.address, process.env.SERA_VAULT_ADDRESS || '', this.cachedPersonal, this.cachedVault, 'Base Mainnet');
       } else {
         this.emitResult(requestId, false, {}, e.message);
-        
         this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
           id: `evt-wallet-err-${Date.now()}`,
           type: EventTypes.DOMAIN_WALLET_STATE,
@@ -521,6 +533,90 @@ export class GoalBridge {
           timestamp: Date.now()
         });
       }
+    }
+  }
+
+  /** Fetch live on-chain balances and emit DOMAIN_WALLET_STATE silently without triggering chat narration */
+  async syncWalletState(): Promise<void> {
+    if (this.walletInitializing) await this.walletInitializing;
+    if (!this.walletInitialized || !this.currentWalletId) return;
+
+    try {
+      const userAddress = this.personalWalletAddress;
+      const walletId = this.currentWalletId as any;
+
+      let primaryAddress = '';
+      let vaultAddress = '';
+      let primaryBalance = '0';
+      let primaryEthBalance = '0';
+      let vaultBalance = this.cachedVault || '0';
+      let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
+
+      if (!userAddress) {
+        primaryAddress = walletId.address;
+        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
+        try {
+          const [pb, eb] = await Promise.allSettled([
+            this.walletAdapter.getBalance(walletId, 'usdc'),
+            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
+          ]);
+          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
+        } catch (e) {
+          console.warn('[GoalBridge] Failed to get primary balance in sync:', e);
+        }
+      } else {
+        primaryAddress = userAddress;
+        vaultAddress = walletId.address;
+        try {
+          const [pb, eb] = await Promise.allSettled([
+            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
+          ]);
+          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
+        } catch (e) {
+          console.warn('[GoalBridge] Failed to get user balance in sync:', e);
+          primaryBalance = '0';
+          primaryEthBalance = '0';
+        }
+      }
+
+      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        const [baseResult, polygonResult, ethResult] = await Promise.allSettled([
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'polygon'),
+          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'ethereum'),
+        ]);
+
+        vaultBalances.base = baseResult.status === 'fulfilled' ? baseResult.value.toString() : '0';
+        vaultBalances.polygon = polygonResult.status === 'fulfilled' ? polygonResult.value.toString() : '0';
+        vaultBalances.ethereum = ethResult.status === 'fulfilled' ? ethResult.value.toString() : '0';
+        vaultBalance = vaultBalances.base;
+      }
+
+      this.cachedPersonal = primaryBalance;
+      this.cachedVault = vaultBalance;
+
+      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+        id: `evt-wallet-${Date.now()}`,
+        type: EventTypes.DOMAIN_WALLET_STATE,
+        source: 'GoalBridge',
+        payload: {
+          address: primaryAddress,
+          vaultAddress,
+          balance: primaryBalance,
+          ethBalance: primaryEthBalance,
+          vaultBalance,
+          vaultBalances,
+          network: walletId.network || 'Base Mainnet',
+          asset: 'USDC',
+          syncing: false
+        },
+        timestamp: Date.now()
+      });
+    } catch (e: any) {
+      console.error('[GoalBridge] Error syncing wallet state:', e.message);
     }
   }
 
@@ -866,6 +962,26 @@ export class GoalBridge {
       this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
     }
 
+    return result;
+  }
+
+  public async executeGaslessDeposit(payload: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+    signature?: string;
+    v?: number;
+    r?: string;
+    s?: string;
+  }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
+    if (!this.walletAdapter.executeGaslessDeposit) {
+      return { status: 'FAILED', error: 'Gasless deposit is not supported by current wallet custody provider.' };
+    }
+
+    const result = await this.walletAdapter.executeGaslessDeposit(payload);
     return result;
   }
 

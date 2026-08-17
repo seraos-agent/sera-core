@@ -15,7 +15,8 @@ export function createWalletCustodyProvider(
 ): WalletCustodyProvider {
   const provider = configuredProvider as WalletCustodyProviderName;
   if (provider === 'local_development') {
-    if (environment === 'production') {
+    const allowLocalInProduction = process.env.SERA_ALLOW_LOCAL_CUSTODY === 'true' || process.env.SERA_ENABLE_DEV_FEATURES === 'true';
+    if (environment === 'production' && !allowLocalInProduction) {
       throw new WalletCustodyUnavailableError('Local development custody is prohibited in production.');
     }
     return new LocalDevelopmentCustodyProvider();

@@ -18,12 +18,17 @@ import { QuestDashboard } from "../quests/QuestDashboard";
 import { McpConnectorPanel } from "./McpConnectorPanel";
 import { ActivationModal } from "./ActivationModal";
 
+import type { ThreadsConnectionState } from "../../hooks/useSocket";
+
 interface WorkspacePageProps {
   theme: ThemeType;
   walletState?: any;
   onBack: () => void;
   isMobileView?: boolean;
   socket?: any;
+  threads?: ThreadsConnectionState;
+  onConnectThreads?: () => void;
+  onDisconnectThreads?: () => void;
 }
 
 interface ConnectorSummary {
@@ -61,7 +66,7 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   connectors: Server,
 };
 
-export function ConnectionsPage({ theme, walletState, onBack, isMobileView, socket }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMobileView, socket, threads, onConnectThreads, onDisconnectThreads }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
 
@@ -111,37 +116,27 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
   }, [activeCategory]);
 
   const handleActivate = (connectorId: string) => {
-    if (!socket) return;
-    
     if (connectorId === 'threads') {
-      const apiUrl = import.meta.env.VITE_API_URL || 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-          ? "http://localhost:3001" 
-          : "https://sera-core-212723620663.asia-southeast1.run.app");
-      const returnUrl = encodeURIComponent(window.location.href);
-      const authUrl = `${apiUrl}/api/auth/threads?sessionId=${walletState?.sessionId}&returnUrl=${returnUrl}`;
-      
-      // Detect mobile: on mobile, window.open() gets intercepted by the Threads app 
-      // via deep linking, breaking the OAuth flow. Use direct navigation instead.
-      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      
-      if (isMobile) {
-        // Navigate in-place so the OAuth flow stays inside the browser
-        window.location.href = authUrl;
-      } else {
-        // Desktop: use popup window
-        const width = 600;
-        const height = 700;
-        const left = window.screen.width / 2 - width / 2;
-        const top = window.screen.height / 2 - height / 2;
-        window.open(authUrl, 'Threads OAuth', `width=${width},height=${height},left=${left},top=${top}`);
+      if (onConnectThreads) {
+        onConnectThreads();
+      } else if (socket) {
+        socket.emit('threads:connect');
       }
-    } else {
-      socket.emit('connector:activate', { connectorId });
+      return;
     }
+    if (!socket) return;
+    socket.emit('connector:activate', { connectorId });
   };
 
   const handleDeactivate = (connectorId: string) => {
+    if (connectorId === 'threads') {
+      if (onDisconnectThreads) {
+        onDisconnectThreads();
+      } else if (socket) {
+        socket.emit('threads:disconnect');
+      }
+      return;
+    }
     if (!socket) return;
     socket.emit('connector:deactivate', { connectorId });
   };
@@ -207,6 +202,9 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
 
   const renderConnectorCard = (connector: ConnectorSummary) => {
     const Icon = CATEGORY_ICON_MAP[connector.category] || Activity;
+    const isThreads = connector.id === 'threads';
+    const isConnectorActive = isThreads ? (threads?.status === 'CONNECTED') : connector.isActive;
+
     return (
       <div
         key={connector.id}
@@ -239,7 +237,7 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
             }}>
               <Shield size={12} /> Always On
             </div>
-          ) : connector.isActive ? (
+          ) : isConnectorActive ? (
             <div style={{
               display: "flex", alignItems: "center", gap: 5,
               fontSize: 11, fontWeight: 600, color: "#10b981",
@@ -277,7 +275,7 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
         {/* Action Button */}
         {!connector.alwaysActive && (
           <div style={{ marginTop: 4 }}>
-            {connector.isActive ? (
+            {isConnectorActive ? (
               <button
                 onClick={() => handleDeactivate(connector.id)}
                 style={{
@@ -291,11 +289,11 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)"; e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.3)"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = theme.inkSoft; e.currentTarget.style.borderColor = theme.border; }}
               >
-                <PowerOff size={13} /> Deactivate
+                <PowerOff size={13} /> {isThreads ? "Disconnect Threads" : "Deactivate"}
               </button>
             ) : (
               <button
-                onClick={() => setActivationTarget(connector)}
+                onClick={() => isThreads ? handleActivate(connector.id) : setActivationTarget(connector)}
                 style={{
                   width: "100%", padding: "8px 0", borderRadius: 10,
                   border: "none",
@@ -308,7 +306,7 @@ export function ConnectionsPage({ theme, walletState, onBack, isMobileView, sock
                 onMouseEnter={e => { e.currentTarget.style.opacity = "0.85"; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = "1"; }}
               >
-                <Power size={13} /> Activate
+                <Power size={13} /> {isThreads ? "Connect Threads" : "Activate"}
               </button>
             )}
           </div>
