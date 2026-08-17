@@ -658,21 +658,23 @@ export class GoalBridge {
         }
       }
 
-      // ── Pre-flight Check: AI can only spend from the Vault ────────────────
-      const vaultAddress = process.env.SERA_VAULT_ADDRESS;
+      // ── Pre-flight Check: AI can only spend from the Agent Vault ─────────
+      const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
       if (!vaultAddress) {
-        this.emitResult(requestId, false, {}, 'No Vault configured. AI cannot send funds.');
+        this.emitResult(requestId, false, {}, 'No Agent Wallet initialized. Cannot send funds.');
         return;
       }
 
-      let transferAmount = amount;
+      let transferAmount = typeof amount === 'number' ? amount.toString() : amount;
       let preVault = 0;
       let prePersonal = 0;
 
       if (typeof this.walletAdapter.getAddressBalance === 'function') {
         try {
-          preVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
-          prePersonal = await this.walletAdapter.getBalance(walletId, asset);
+          preVault = await this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, asset, 'base-mainnet');
+          if (this.personalWalletAddress) {
+            prePersonal = await this.walletAdapter.getAddressBalance(this.personalWalletAddress as `0x${string}`, asset, 'base-mainnet');
+          }
         } catch (e) {
           console.warn('[GoalBridge] Pre-transfer snapshot failed, using cache:', e);
           preVault = parseFloat(this.cachedVault) || 0;
@@ -684,7 +686,7 @@ export class GoalBridge {
         }
 
         if (parseFloat(transferAmount) > preVault) {
-          this.emitResult(requestId, false, {}, `Insufficient Sera Vault balance. Available: ${preVault} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
+          this.emitResult(requestId, false, {}, `Insufficient Agent balance. Available: ${preVault} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
           return;
         }
       }
@@ -692,7 +694,7 @@ export class GoalBridge {
 
       const numericAmount = Number(transferAmount);
       if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-        this.emitResult(requestId, false, {}, 'Transfer amount must be a positive number.');
+        this.emitResult(requestId, false, {}, `Transfer amount must be a positive number. (Available: ${preVault} ${asset.toUpperCase()})`);
         return;
       }
 
@@ -713,7 +715,7 @@ export class GoalBridge {
 
       // ── Dispatch via ExecutionContext ────────────────────────────────────
       const normalizedRecipient = {
-        type: finalRecipient === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
+        type: finalRecipient.toLowerCase() === vaultAddress.toLowerCase() ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
         address: finalRecipient
       };
 
@@ -725,9 +727,9 @@ export class GoalBridge {
         },
         intent: {
           recipient: normalizedRecipient,
-          amount: transferAmount,
+          amount: numericAmount,
           asset,
-          fromWallet: 'sera_vault' // AI can only transfer from its vault
+          fromWallet: 'agent_vault' // 1:1 Agent wallet
         },
         onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
           ...auditEvent!,
@@ -751,14 +753,8 @@ export class GoalBridge {
           amount: result.amountExecuted,
           asset: result.asset,
         });
-        // TX is confirmed on-chain (waitForTransactionReceipt already called inside executeTransfer)
-        // Math is now 100% accurate — no guessing
-        const sent = parseFloat(transferAmount);
-        const isToPersonal = finalRecipient.toLowerCase() === walletId.address.toLowerCase();
-        const confirmedVault = Math.max(0, preVault - sent);
-        const confirmedPersonal = isToPersonal ? prePersonal + sent : prePersonal;
-        this.emitWalletState(walletId.address, vaultAddress, confirmedPersonal.toString(), confirmedVault.toString(), walletId.network);
-        console.log(`[GoalBridge] ✅ TX confirmed. Balance updated — Vault: ${confirmedVault}, Personal: ${confirmedPersonal}`);
+        await this.syncWalletState();
+        console.log(`[GoalBridge] ✅ TX confirmed. Live balances synced.`);
       } else {
         await this.recordTransferOutcome({
           ...auditEvent,
@@ -766,9 +762,8 @@ export class GoalBridge {
           transactionHash: result.executionId,
           failureReason: result.reason ?? 'Wallet provider did not confirm the transfer.',
         });
-        // TX failed — restore original balance (syncing=false, no changes)
         console.log(`[GoalBridge] ❌ Transfer failed. Restoring original balance.`);
-        this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
+        await this.syncWalletState();
         this.emitResult(requestId, false, {
           executionId: result.executionId,
           amount: result.amountExecuted,
@@ -859,8 +854,9 @@ export class GoalBridge {
       return { status: 'FAILED', error: 'Wallet not initialized' };
     }
 
-    const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
     const walletId = this.currentWalletId as any;
+    const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
+    const walletIdAddress = walletId.address;
 
     if (params.recipientAddress === 'SERA_VAULT_ADDRESS') {
       params.recipientAddress = vaultAddress;
@@ -873,7 +869,7 @@ export class GoalBridge {
     const auditEvent = this.createTransferAuditEvent({
       idempotencyKey: `direct-${this.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       approvalSource: 'DIRECT_UI',
-      sourceWallet: walletId.address,
+      sourceWallet: walletIdAddress,
       destinationWallet: params.recipientAddress,
       chain: this.auditChain(walletId.network),
       asset: params.asset,
@@ -890,9 +886,9 @@ export class GoalBridge {
     let prePersonal = parseFloat(this.cachedPersonal) || 0;
     let preVault = parseFloat(this.cachedVault) || 0;
     try {
-      prePersonal = await this.walletAdapter.getBalance(walletId, params.asset);
-      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        preVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, params.asset);
+      preVault = await this.walletAdapter.getBalance(walletId, params.asset);
+      if (this.personalWalletAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
+        prePersonal = await this.walletAdapter.getAddressBalance(this.personalWalletAddress as `0x${string}`, params.asset);
       }
     } catch (e) {
       console.warn('[GoalBridge] Pre-transfer snapshot failed, falling back to cache:', e);
@@ -915,7 +911,7 @@ export class GoalBridge {
         },
         amount: params.amount,
         asset: params.asset,
-        fromWallet: 'user_main_wallet'
+        fromWallet: 'agent_vault'
       }
     };
 

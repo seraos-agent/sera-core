@@ -23,6 +23,7 @@ export class UniversalAgenticWallet implements IExecutionCapability {
   private secretManager: SecretManager;
   private permissionGuard: SpendPermissionAdapter;
   private walletId: WalletId | null = null;
+  private userAddress?: string;
   
   // Pluggable reality adapters
   private baseAdapter: BaseAdapter;
@@ -36,6 +37,7 @@ export class UniversalAgenticWallet implements IExecutionCapability {
   }
 
   async initialize(userAddress?: string): Promise<WalletId> {
+    this.userAddress = userAddress;
     let privateKey = await this.secretManager.getAgenticWalletPrivateKey(userAddress);
 
     if (!privateKey) {
@@ -58,36 +60,26 @@ export class UniversalAgenticWallet implements IExecutionCapability {
   }
 
   async getBalance(_walletId: WalletId, asset: string, network: string = 'base-mainnet'): Promise<number> {
-    if (!this.walletId) throw new Error('[UniversalAgenticWallet] Not initialized.');
-    if (network === 'polygon') {
-      return this.polygonAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
+    const resolvedNetwork = network === 'auto' ? 'base-mainnet' : network;
+    if (resolvedNetwork === 'polygon') {
+      return this.polygonAdapter.getBalance(_walletId.address as `0x${string}`, asset);
     }
-    if (network === 'base-mainnet' || network === 'base-sepolia') {
-      return this.baseAdapter.getBalance(this.walletId.address as `0x${string}`, asset);
-    }
-    return 0; // Unsupported network
+    return this.baseAdapter.getBalance(_walletId.address as `0x${string}`, asset);
   }
 
   async getAddressBalance(address: string, asset: string, network: string = 'base-mainnet'): Promise<number> {
-    if (network === 'polygon') {
+    const resolvedNetwork = network === 'auto' ? 'base-mainnet' : network;
+    if (resolvedNetwork === 'polygon') {
       return this.polygonAdapter.getBalance(address as `0x${string}`, asset);
     }
-    if (network === 'base-mainnet' || network === 'base-sepolia') {
-      return this.baseAdapter.getBalance(address as `0x${string}`, asset);
-    }
-    return 0; // Unsupported network
+    return this.baseAdapter.getBalance(address as `0x${string}`, asset);
   }
 
   async execute(walletId: WalletId, context: ExecutionContext<TransferIntentParameters>): Promise<ExecutionReceipt> {
     if (!this.walletId) throw new Error('[UniversalAgenticWallet] Not initialized. Call initialize() first.');
 
     // ── 1. Network Resolution ──────────────────────────────────────────
-    let resolvedNetwork = context.network;
-    if (resolvedNetwork === 'auto') {
-      // Logic to resolve network based on user preference, asset, or routing policies
-      // For now, we default to base-mainnet as our primary reality
-      resolvedNetwork = 'base-mainnet';
-    }
+    const resolvedNetwork = context.network === 'auto' ? 'base-mainnet' : context.network;
 
     // ── 2. Mandatory Guard: SpendPermission ────────────────────────────
     const requestStub = {
@@ -113,7 +105,10 @@ export class UniversalAgenticWallet implements IExecutionCapability {
     }
 
     // ── 3. Decrypt Secrets ─────────────────────────────────────────────
-    const privateKey = await this.secretManager.getAgenticWalletPrivateKey();
+    let privateKey = await this.secretManager.getAgenticWalletPrivateKey(this.userAddress || walletId.address);
+    if (!privateKey) {
+      privateKey = await this.secretManager.getAgenticWalletPrivateKey();
+    }
     if (!privateKey) throw new Error('[UniversalAgenticWallet] Failed to decrypt private key for execution.');
 
     // ── 4. Execute via Reality Adapter ─────────────────────────────────
