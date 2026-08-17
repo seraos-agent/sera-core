@@ -24,6 +24,7 @@ import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 import { predictionEngine, arenaEventBus } from './predictionEngine';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
+import { BaseAdapter } from '../capabilities/wallet/chains/BaseAdapter';
 
 export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
@@ -987,6 +988,23 @@ io.on('connection', (socket: Socket) => {
     } catch (err: any) {
       console.error('[Server] wallet:deposit:gasless error:', err);
       socket.emit('wallet:transfer:result', { status: 'FAILED', error: err.message || 'Unknown error' });
+    }
+  });
+
+  socket.on('wallet:sponsor_user_gas', async (payload: { address: string }, callback?: (res: any) => void) => {
+    try {
+      if (payload?.address && isAddress(payload.address)) {
+        console.log(`[Server] ⛽ Checking / Sponsoring gas for personal wallet: ${payload.address}`);
+        const baseAdapter = new BaseAdapter();
+        const success = await baseAdapter.ensureAddressGas(payload.address as `0x${string}`);
+        console.log(`[Server] Gas sponsor result for ${payload.address}: ${success}`);
+        if (typeof callback === 'function') callback({ status: success ? 'SUCCESS' : 'SKIPPED' });
+      } else {
+        if (typeof callback === 'function') callback({ status: 'SKIPPED' });
+      }
+    } catch (err: any) {
+      console.warn('[Server] Failed to sponsor gas for user:', err.message);
+      if (typeof callback === 'function') callback({ status: 'FAILED', error: err.message });
     }
   });
 

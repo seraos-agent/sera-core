@@ -46,7 +46,7 @@ export class BaseAdapter {
       transport: http(rpcUrl),
     });
     this.vaultAddress = (process.env.SERA_VAULT_ADDRESS as `0x${string}`) || null;
-    
+
     const builderCode = process.env.BASE_BUILDER_CODE;
     if (builderCode) {
       this.builderDataSuffix = Attribution.toDataSuffix({ codes: [builderCode] }) as `0x${string}`;
@@ -147,21 +147,21 @@ export class BaseAdapter {
   }
 
   public async executeTransaction(
-    privateKeyHex: string, 
+    privateKeyHex: string,
     context: ExecutionContext<TransferIntentParameters>
   ): Promise<ExecutionReceipt> {
     const intent = context.intent;
     const assetId = context.asset?.id.toLowerCase() || 'usdc';
-    
+
     // Resolve exact amount
     let finalAmount = 0;
     if (intent.amount === 'all') {
-      const fromWalletAddress = intent.fromWallet === 'sera_vault' && this.vaultAddress 
-          ? this.vaultAddress 
-          : privateKeyToAccount(privateKeyHex as `0x${string}`).address;
+      const fromWalletAddress = intent.fromWallet === 'sera_vault' && this.vaultAddress
+        ? this.vaultAddress
+        : privateKeyToAccount(privateKeyHex as `0x${string}`).address;
       finalAmount = await this.getBalance(fromWalletAddress, assetId);
       if (finalAmount <= 0) {
-         throw new Error("Insufficient balance to transfer 'all'.");
+        throw new Error("Insufficient balance to transfer 'all'.");
       }
     } else {
       finalAmount = intent.amount;
@@ -194,68 +194,32 @@ export class BaseAdapter {
       });
 
       let txHash: `0x${string}`;
-      const isFundingVault = this.vaultAddress && recipientAddress.toLowerCase() === this.vaultAddress.toLowerCase();
 
-      if (this.vaultAddress && !isFundingVault && intent.fromWallet === 'sera_vault') {
-        console.log(`[BaseAdapter] Routing transfer through SeraVault: ${this.vaultAddress}`);
-        const tokenAddress = assetId === 'usdc' ? USDC_BASE_MAINNET : '0x0000000000000000000000000000000000000000';
-        const amountWei = assetId === 'usdc' ? parseUnits(finalAmount.toString(), 6) : parseEther(finalAmount.toString());
-        
+      if (assetId === 'usdc') {
         const data = encodeFunctionData({
-          abi: VAULT_ABI,
-          functionName: 'executeTransfer',
-          args: [tokenAddress, recipientAddress as `0x${string}`, amountWei],
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [recipientAddress as `0x${string}`, parseUnits(finalAmount.toString(), 6)],
         });
-        
-        const ownerKey = process.env.OWNER_WALLET_PRIVATE_KEY;
-        let executorAccount = account;
-        let executorClient = walletClient;
-        
-        if (ownerKey) {
-          console.log(`[BaseAdapter] Using Owner Key to authorize Vault transfer...`);
-          executorAccount = privateKeyToAccount(ownerKey as `0x${string}`);
-          executorClient = createWalletClient({
-            account: executorAccount,
-            chain: base,
-            transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
-          });
-        }
-        
-        await this.ensureGas(executorAccount.address, this.vaultAddress, data);
-        
-        txHash = await executorClient.sendTransaction({
-          account: executorAccount,
-          to: this.vaultAddress,
+
+        await this.ensureGas(account.address, USDC_BASE_MAINNET as `0x${string}`, data);
+
+        txHash = await walletClient.sendTransaction({
+          account,
+          to: USDC_BASE_MAINNET,
           data,
           ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
         });
       } else {
-        if (assetId === 'usdc') {
-          const data = encodeFunctionData({
-            abi: ERC20_ABI,
-            functionName: 'transfer',
-            args: [recipientAddress as `0x${string}`, parseUnits(finalAmount.toString(), 6)],
-          });
-          
-          await this.ensureGas(account.address, USDC_BASE_MAINNET as `0x${string}`, data);
-          
-          txHash = await walletClient.sendTransaction({
-            account,
-            to: USDC_BASE_MAINNET,
-            data,
-            ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
-          });
-        } else {
-          const value = parseEther(finalAmount.toString());
-          await this.ensureGas(account.address, recipientAddress as `0x${string}`, undefined, value);
-          
-          txHash = await walletClient.sendTransaction({
-            account,
-            to: recipientAddress as `0x${string}`,
-            value,
-            ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
-          });
-        }
+        const value = parseEther(finalAmount.toString());
+        await this.ensureGas(account.address, recipientAddress as `0x${string}`, undefined, value);
+
+        txHash = await walletClient.sendTransaction({
+          account,
+          to: recipientAddress as `0x${string}`,
+          value,
+          ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
+        });
       }
 
       try {
@@ -297,7 +261,7 @@ export class BaseAdapter {
     try {
       const gasPrice = await this.publicClient.getGasPrice();
       let gasLimit: bigint;
-      
+
       try {
         if (data) {
           gasLimit = await this.publicClient.estimateGas({ account: agentAddress, to, data });
@@ -306,7 +270,7 @@ export class BaseAdapter {
         }
       } catch (estErr: any) {
         console.warn('[BaseAdapter] Gas estimation failed, using fallback limits.', estErr.message);
-        gasLimit = data ? 65000n : 21000n; 
+        gasLimit = data ? 65000n : 21000n;
       }
 
       const gasNeeded = (gasPrice * gasLimit * 130n) / 100n;
@@ -315,7 +279,7 @@ export class BaseAdapter {
       if (agentBalance < gasNeeded) {
         const deficit = gasNeeded - agentBalance;
         console.log(`[BaseAdapter] ⛽ Agent deficit: ${formatEther(deficit)} ETH. Auto-funding from Owner...`);
-        
+
         const ownerAccount = privateKeyToAccount(ownerKey as `0x${string}`);
         const ownerClient = createWalletClient({
           account: ownerAccount,
@@ -335,6 +299,41 @@ export class BaseAdapter {
       }
     } catch (err: any) {
       console.error('[BaseAdapter] Auto-fund logic error:', err.message);
+    }
+  }
+
+  public async ensureAddressGas(targetAddress: `0x${string}`): Promise<boolean> {
+    const ownerKey = process.env.OWNER_WALLET_PRIVATE_KEY;
+    if (!ownerKey) return false;
+
+    try {
+      const balance = await this.publicClient.getBalance({ address: targetAddress });
+      const minRequired = parseEther('0.00004');
+      if (balance < minRequired) {
+        const topUp = parseEther('0.00006');
+        console.log(`[BaseAdapter] ⛽ Sponsoring user personal wallet gas: ${formatEther(topUp)} ETH to ${targetAddress}`);
+
+        const ownerAccount = privateKeyToAccount(ownerKey as `0x${string}`);
+        const ownerClient = createWalletClient({
+          account: ownerAccount,
+          chain: base,
+          transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
+        });
+
+        const txHash = await ownerClient.sendTransaction({
+          to: targetAddress,
+          value: topUp,
+          ...(this.builderDataSuffix ? { dataSuffix: this.builderDataSuffix } : {}),
+        });
+
+        await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+        console.log(`[BaseAdapter] ✅ User personal wallet gas sponsored successfully: ${txHash}`);
+        return true;
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('[BaseAdapter] Failed to sponsor user personal gas:', err.message);
+      return false;
     }
   }
 }

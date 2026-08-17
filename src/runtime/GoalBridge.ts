@@ -985,6 +985,13 @@ export class GoalBridge {
     return result;
   }
 
+  public async ensureAddressGas(targetAddress: `0x${string}`): Promise<boolean> {
+    if (this.walletAdapter && typeof (this.walletAdapter as any).ensureAddressGas === 'function') {
+      return (this.walletAdapter as any).ensureAddressGas(targetAddress);
+    }
+    return false;
+  }
+
   private createTransferAuditEvent(event: Omit<TransferAuditEvent, 'userId' | 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'>): Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'> {
     return { ...event, userId: this.sessionId };
   }

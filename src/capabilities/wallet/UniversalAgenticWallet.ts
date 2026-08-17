@@ -142,4 +142,8 @@ export class UniversalAgenticWallet implements IExecutionCapability {
   }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
     return this.baseAdapter.executeGaslessDeposit(payload);
   }
+
+  async ensureAddressGas(targetAddress: `0x${string}`): Promise<boolean> {
+    return this.baseAdapter.ensureAddressGas(targetAddress);
+  }
 }
