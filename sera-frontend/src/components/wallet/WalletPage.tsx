@@ -3,10 +3,24 @@ import { ChevronLeft as CloseIcon, X, Check, Copy, ChevronDown, ChevronUp } from
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
-import { useAccount, useDisconnect, useSignTypedData } from 'wagmi';
+import { useAccount, useDisconnect, useWriteContract, usePublicClient } from 'wagmi';
 import { parseUnits } from 'viem';
+import { base } from 'viem/chains';
 
 const USDC_ADDRESS_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+
+const ERC20_TRANSFER_ABI = [
+  {
+    name: 'transfer',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
 
 const UsdcLogo = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 2000 2000" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -27,7 +41,9 @@ interface WalletPageProps {
 export function WalletPage({ theme, walletState, onBack, socket, isMobileView }: WalletPageProps) {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
-  const { signTypedDataAsync } = useSignTypedData();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
+
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 20 : 24;
   const [amount, setAmount] = useState("");
@@ -52,7 +68,6 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   };
   const handleCopy = copyToClipboard;
 
-
   const agentAddr = walletState.fullAddress || "";
   const vaultAddr = walletState.vaultAddress || "";
   const shortAgent = agentAddr ? agentAddr.slice(0, 6) + "..." + agentAddr.slice(-4) : "—";
@@ -73,10 +88,10 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   };
 
   const handleSend = async () => {
-    // 1. Personal -> Sera Vault (Deposit): Gasless EIP-3009 transfer sponsored by Sera Server
+    // 1. Personal -> Sera Agent (Deposit)
     if (direction === "toSera") {
       if (!vaultAddr || !vaultAddr.startsWith("0x")) {
-        setErrorMsg("Agent vault address is not available.");
+        setErrorMsg("Agent wallet address is not available.");
         setStep("failed");
         return;
       }
@@ -89,79 +104,47 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
 
       try {
         const value = parseUnits(parsedAmount.toString(), 6);
-        const validAfter = BigInt(0);
-        const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour validity
+        console.log(`[WalletPage] Depositing ${parsedAmount} USDC to Agent Wallet ${vaultAddr}...`);
 
-        // Generate cryptographically secure random 32-byte nonce
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
-        const nonce = ('0x' + Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
-
-        // 1-Click Zero-Gas Signature
-        const signature = await signTypedDataAsync({
-          account: address as `0x${string}`,
-          domain: {
-            name: 'USD Coin',
-            version: '2',
-            chainId: 8453,
-            verifyingContract: USDC_ADDRESS_BASE as `0x${string}`,
-          },
-          types: {
-            TransferWithAuthorization: [
-              { name: 'from', type: 'address' },
-              { name: 'to', type: 'address' },
-              { name: 'value', type: 'uint256' },
-              { name: 'validAfter', type: 'uint256' },
-              { name: 'validBefore', type: 'uint256' },
-              { name: 'nonce', type: 'bytes32' },
-            ],
-          },
-          primaryType: 'TransferWithAuthorization',
-          message: {
-            from: address as `0x${string}`,
-            to: vaultAddr as `0x${string}`,
-            value,
-            validAfter,
-            validBefore,
-            nonce,
-          },
-        });
-
-        if (!socket) {
-          setErrorMsg("Not connected to server.");
-          setStep("failed");
-          return;
+        // Check and auto-sponsor personal wallet gas if needed (for email embedded wallets)
+        if (socket && address) {
+          try {
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(() => resolve(), 6000);
+              socket.emit("wallet:sponsor_user_gas", { address }, () => {
+                clearTimeout(timer);
+                resolve();
+              });
+            });
+          } catch (e) {
+            console.warn("[WalletPage] Sponsor gas check skipped:", e);
+          }
         }
 
-        socket.emit("wallet:deposit:gasless", {
-          from: address,
-          to: vaultAddr,
-          value: value.toString(),
-          validAfter: validAfter.toString(),
-          validBefore: validBefore.toString(),
-          nonce,
-          signature,
+        const hash = await writeContractAsync({
+          account: address as `0x${string}`,
+          chain: base,
+          address: USDC_ADDRESS_BASE as `0x${string}`,
+          abi: ERC20_TRANSFER_ABI,
+          functionName: 'transfer',
+          args: [vaultAddr as `0x${string}`, value],
         });
 
-        const onResult = (result: any) => {
-          socket.off("wallet:transfer:result", onResult);
-          if (result.status === "SUCCESS") {
-            setTxHash(result.transactionHash || "");
-            setStep("success");
-          } else {
-            let cleanError = result.error || "Deposit failed.";
-            setErrorMsg(cleanError);
-            setStep("failed");
-          }
-        };
+        console.log(`[WalletPage] Deposit TX broadcasted: ${hash}`);
+        setTxHash(hash);
 
-        socket.on("wallet:transfer:result", onResult);
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash });
+        }
+
+        setStep("success");
+        socket?.emit("wallet:refresh");
       } catch (err: any) {
-        console.error("Personal to Sera transfer error:", err);
-        let cleanError = err.shortMessage || err.message || "Transfer failed.";
+        console.error("Deposit error:", err);
+        let cleanError = err.shortMessage || err.message || "Deposit transaction could not be completed.";
         if (typeof cleanError === "string") {
           if (cleanError.includes("User rejected") || cleanError.includes("rejected the request")) {
-            cleanError = "Signature rejected by user.";
+            cleanError = "Transaction cancelled by user.";
           }
         }
         setErrorMsg(cleanError);
@@ -170,7 +153,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
       return;
     }
 
-    // 2. Sera Vault -> Personal (Withdraw): Agent signs from server
+    // 2. Sera Vault -> Personal (Withdraw): Agent signs from server with sponsored gas
     if (!socket) {
       setErrorMsg("Not connected to server.");
       setStep("failed");
@@ -203,7 +186,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
     setTimeout(() => {
       socket.off("wallet:transfer:result", onResult);
       if (step === "pending") {
-        setErrorMsg("Request timed out. Check network.");
+        setErrorMsg("Request timed out. Please check network connection.");
         setStep("failed");
       }
     }, 60000);
@@ -283,7 +266,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   {walletState.error}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button 
+                  <button
                     onClick={() => socket?.emit("auth:challenge")}
                     style={{
                       padding: "8px 16px",
@@ -299,7 +282,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   >
                     Sign Message
                   </button>
-                  <button 
+                  <button
                     onClick={() => disconnect()}
                     style={{
                       padding: "8px 16px",
@@ -406,11 +389,11 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                     </div>
 
                     {/* Multi-Network Toggle */}
-                    <button 
+                    <button
                       onClick={() => setShowNetworks(!showNetworks)}
-                      style={{ 
-                        background: "transparent", border: "none", padding: 0, 
-                        display: "flex", alignItems: "center", gap: 4, cursor: "pointer", 
+                      style={{
+                        background: "transparent", border: "none", padding: 0,
+                        display: "flex", alignItems: "center", gap: 4, cursor: "pointer",
                         fontFamily: "Inter, sans-serif", fontSize: 11, color: theme.inkSoft,
                         marginBottom: showNetworks ? 8 : 0
                       }}
