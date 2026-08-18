@@ -13,6 +13,7 @@ export class SubscriptionRequiredError extends Error {
 export class AgentManager {
   private instances: Map<string, SeraAgentInstance> = new Map();
   private billingTickHandle: ReturnType<typeof setInterval> | undefined;
+  private instanceCreatedCallbacks: Array<(instance: SeraAgentInstance) => void> = [];
 
   constructor(
     private subscriptionService: SubscriptionService = new SubscriptionService(),
@@ -31,6 +32,10 @@ export class AgentManager {
     }
   }
 
+  public onInstanceCreated(callback: (instance: SeraAgentInstance) => void): void {
+    this.instanceCreatedCallbacks.push(callback);
+  }
+
   public getOrCreateInstance(context: SeraUserContext | string): SeraAgentInstance {
     const user = typeof context === 'string' ? { userId: context } : context;
     const id = user.userId.toLowerCase();
@@ -41,6 +46,13 @@ export class AgentManager {
       instance = new SeraAgentInstance({ ...user, userId: id }, this.subscriptionService);
       instance.start();
       this.instances.set(id, instance);
+      for (const callback of this.instanceCreatedCallbacks) {
+        try {
+          callback(instance);
+        } catch (e) {
+          console.error(`[AgentManager] Error in instanceCreated callback:`, e);
+        }
+      }
     }
     
     return instance;

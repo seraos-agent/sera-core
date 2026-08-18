@@ -102,7 +102,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address } = useAccount();
-  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
+  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -516,12 +516,14 @@ function InnerApp() {
         ) : currentView === "connections" ? (
           <ConnectionsPage
             theme={theme}
-            walletState={walletState}
             socket={socket}
+            isMobileView={isMobileView}
             threads={threads}
             onConnectThreads={connectThreads}
             onDisconnectThreads={disconnectThreads}
-            isMobileView={isMobileView}
+            telegram={telegram}
+            telegramLinkCode={telegramLinkCode}
+            onGenerateTelegramLink={generateTelegramLink}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : currentView === "automations" ? (

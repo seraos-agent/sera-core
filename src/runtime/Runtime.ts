@@ -327,6 +327,17 @@ export class Runtime {
       executeTool: (name: string, args: any, context?: any) => threadsCap.executeTool(name, args, context),
     });
 
+    this.capabilityCatalog.registerConnector({
+      id: 'telegram',
+      name: 'Telegram Bot',
+      category: 'communication',
+      description: 'Chat with Sera anytime via Telegram',
+      riskSummary: 'Connect your personal Telegram account to chat with Sera on the go. Sera will only respond to your specific Telegram account.',
+      network: 'Web2',
+      alwaysActive: false,
+      tools: [], // No tools exposed to LLM, it acts purely as a UI adapter
+    });
+
     this.executionCoordinator.setCapabilityCatalog(this.capabilityCatalog);
 
     // Initialize MCP Memory Server for testing/capabilities

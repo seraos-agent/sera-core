@@ -21,6 +21,11 @@ export interface ThreadsConnectionState {
   connectedAt?: string;
 }
 
+export interface TelegramConnectionState {
+  provider: 'TELEGRAM';
+  status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+}
+
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
   setMode: (mode: "light" | "dark") => void,
@@ -33,6 +38,8 @@ export function useSocket(
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
   const [googleDrive, setGoogleDrive] = useState<GoogleDriveConnectionState>({ provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
   const [threads, setThreads] = useState<ThreadsConnectionState>({ provider: 'THREADS', status: 'UNAVAILABLE' });
+  const [telegram, setTelegram] = useState<TelegramConnectionState>({ provider: 'TELEGRAM', status: 'UNAVAILABLE' });
+  const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
@@ -270,6 +277,14 @@ export function useSocket(
       threadsPopup.current = null;
     });
 
+    newSocket.on('telegram:status', (data: TelegramConnectionState) => {
+      setTelegram(data);
+    });
+
+    newSocket.on('telegram:link_generated', (data: { code: string }) => {
+      setTelegramLinkCode(data.code);
+    });
+
     newSocket.on('governance:recommendation_list', (list: any[]) => {
       setGovernanceRecommendations(list);
     });
@@ -289,6 +304,8 @@ export function useSocket(
       newSocket.off('threads:status');
       newSocket.off('threads:authorization');
       newSocket.off('threads:error');
+      newSocket.off('telegram:status');
+      newSocket.off('telegram:link_generated');
       newSocket.off('governance:recommendation_list');
       newSocket.off('governance:recommendation_pending');
       newSocket.close();
@@ -311,6 +328,11 @@ export function useSocket(
     threads,
     connectThreads,
     disconnectThreads,
+    telegram,
+    telegramLinkCode,
+    generateTelegramLink: useCallback(() => {
+      socket?.emit("telegram:generate_link");
+    }, [socket]),
     governanceRecommendations,
     respondToGovernanceRecommendation,
   };

@@ -6,7 +6,7 @@ export class WalletToolCapability {
     return [
       {
         name: 'TRANSFER_FUNDS',
-        description: 'Use this tool to transfer USDC to a specific recipient address.',
+        description: 'Use this tool to transfer USDC to a specific recipient address. IMPORTANT: Calling this tool will AUTOMATICALLY generate a visual Proposal Card in the chat UI for the user to approve. You MUST call this tool immediately to present the transfer proposal. Do NOT write text pretending to be a proposal card.',
         parameters: {
           type: 'object',
           properties: {
@@ -48,7 +48,7 @@ export class WalletToolCapability {
       },
       {
         name: 'SCHEDULE_GOAL',
-        description: 'Use this tool to schedule a recurring or future action (such as checking asset prices periodically or making delayed transfers). You must specify the target action to be performed.',
+        description: 'Use this tool to schedule a recurring or future action (such as checking asset prices periodically or making delayed transfers). IMPORTANT: Calling this tool will AUTOMATICALLY generate a visual Proposal Card in the chat UI for the user to approve. You MUST call this tool immediately to present the schedule proposal. Do NOT write text pretending to be a proposal card.',
         parameters: {
           type: 'object',
           properties: {

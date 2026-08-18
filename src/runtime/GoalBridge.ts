@@ -287,8 +287,8 @@ export class GoalBridge {
   private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
     const text = parameters.text;
     if (!text) throw new Error('Threads publish requires text parameter.');
-    const container = await this.threadsApi.createContainer(parameters.sessionId || 'dev', text, parameters.replyToId);
-    const published = await this.threadsApi.publishContainer(parameters.sessionId || 'dev', container.id);
+    const container = await this.threadsApi.createContainer(this.sessionId, text, parameters.replyToId);
+    const published = await this.threadsApi.publishContainer(this.sessionId, container.id);
     this.emitResult(requestId, true, {
       provider: 'Meta Threads',
       id: published.id,
@@ -370,6 +370,9 @@ export class GoalBridge {
     if (scheduleType === 'exact' && delaySeconds !== undefined) {
       const safeDelay = Math.max(10, Number(delaySeconds));
       computedExecuteAfterUtc = new Date(Date.now() + safeDelay * 1000).toISOString();
+    } else if (scheduleType === 'exact' && !executeAfterUtc) {
+      // Fallback: If LLM forgets to pass delaySeconds for exact schedule, default to 60 seconds
+      computedExecuteAfterUtc = new Date(Date.now() + 60000).toISOString();
     }
 
     this.triggerEngine.register({

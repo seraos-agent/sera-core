@@ -24,6 +24,7 @@ import { SeraMcpServer } from '../mcp/SeraMcpServer';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 import { predictionEngine, arenaEventBus } from './predictionEngine';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
+import { TelegramAdapter } from './telegram/TelegramAdapter';
 import { BaseAdapter } from '../capabilities/wallet/chains/BaseAdapter';
 
 export { predictionEngine };
@@ -35,6 +36,7 @@ const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
 const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
 const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
+const telegramAdapter = new TelegramAdapter(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
 
 console.log(`[Server] Supabase Services Init - URL: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Secret: ${process.env.SUPABASE_SECRET_KEY ? 'OK' : 'MISSING'}`);
 console.log(`[Server] reownWalletIdentityService is ${reownWalletIdentityService ? 'ACTIVE' : 'NULL (Falling back to local auth)'}`);
@@ -304,8 +306,13 @@ io.on('connection', (socket: Socket) => {
       void threadsOAuthService.getStatus(socket.data.sessionId)
         .then((status) => socket.emit('threads:status', status))
         .catch(() => socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' }));
+      
+      void telegramAdapter.getStatus(socket.data.sessionId)
+        .then((status) => socket.emit('telegram:status', status))
+        .catch(() => socket.emit('telegram:status', { provider: 'TELEGRAM', status: 'UNAVAILABLE' }));
     } else {
       socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' });
+      socket.emit('telegram:status', { provider: 'TELEGRAM', status: 'UNAVAILABLE' });
     }
   };
 
@@ -638,6 +645,16 @@ io.on('connection', (socket: Socket) => {
     } catch (error) {
       socket.emit('google_drive:error', { message: error instanceof Error ? error.message : 'Unable to disconnect Google Drive.' });
     }
+  });
+
+  socket.on('telegram:generate_link', async () => {
+    if (!requireAuthenticatedSession(socket, 'telegram:generate_link', instance?.eventBus)) return;
+    if (!telegramAdapter.isEnabled()) {
+      socket.emit('telegram:error', { message: 'Telegram Bot is not configured on this server.' });
+      return;
+    }
+    const code = await telegramAdapter.generateLinkCode(socket.data.sessionId);
+    socket.emit('telegram:link_generated', { code });
   });
 
   socket.on('threads:connect', () => {

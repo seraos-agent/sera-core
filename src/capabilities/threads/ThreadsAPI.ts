@@ -75,16 +75,33 @@ export class ThreadsAPI {
     url.searchParams.append('creation_id', creationId);
     url.searchParams.append('access_token', token);
 
-    const response = await this.fetchImpl(url.toString(), {
-      method: 'POST',
-    });
+    let attempts = 0;
+    while (attempts < 5) {
+      const response = await this.fetchImpl(url.toString(), {
+        method: 'POST',
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        return response.json();
+      }
+
       const errorText = await response.text();
-      throw new Error(`Failed to publish Threads container: ${errorText}`);
+      
+      // Meta's API may return "The requested resource does not exist" (error_subcode 4279009) 
+      // if the container is still processing. We should wait and retry.
+      if (errorText.includes('4279009') || errorText.includes('does not exist')) {
+        attempts++;
+        if (attempts >= 5) {
+          throw new Error(`Failed to publish Threads container after retries: ${errorText}`);
+        }
+        // Wait 3 seconds before trying again
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } else {
+        throw new Error(`Failed to publish Threads container: ${errorText}`);
+      }
     }
-
-    return response.json();
+    
+    throw new Error('Unreachable retry limit in publishContainer');
   }
 
   /**
