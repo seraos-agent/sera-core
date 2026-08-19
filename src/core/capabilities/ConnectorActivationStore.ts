@@ -1,5 +1,4 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { SecretManager } from '../secrets/SecretManager';
 
 /**
  * ConnectorActivationStore
@@ -8,31 +7,41 @@ import * as path from 'node:path';
  * Connectors marked `alwaysActive` in their definition are not tracked here;
  * they are always considered active by the CapabilityCatalog.
  *
- * Storage: `.data/connector_activations.json`
- * Format:  { "activatedIds": ["sera-arena", "threads"] }
+ * Storage: SecretManager (Supabase) via `ACTIVATIONS_${sessionId}`
  */
 export class ConnectorActivationStore {
   private activatedIds: Set<string> = new Set();
-  private readonly filePath: string;
+  private loadPromise: Promise<void> | null = null;
+  private secretKey: string;
 
-  constructor(private readonly persistLocally: boolean = true) {
-    this.filePath = path.join(process.cwd(), '.data', 'connector_activations.json');
-    if (this.persistLocally) {
-      this.load();
+  constructor(
+    private secretManager: SecretManager | null = null,
+    sessionId: string = 'default'
+  ) {
+    this.secretKey = `ACTIVATIONS_${sessionId}`;
+    this.loadPromise = this.loadAsync();
+  }
+
+  /**
+   * Ensures the activations have been successfully loaded from persistent storage.
+   */
+  public async waitForLoad(): Promise<void> {
+    if (this.loadPromise) {
+      await this.loadPromise;
     }
   }
 
   /** Mark a connector as activated by the user. */
   public activate(connectorId: string): void {
     this.activatedIds.add(connectorId);
-    this.save();
+    this.saveAsync();
     console.log(`[ConnectorActivationStore] Activated connector: ${connectorId}`);
   }
 
   /** Remove a connector from the activated set. */
   public deactivate(connectorId: string): void {
     this.activatedIds.delete(connectorId);
-    this.save();
+    this.saveAsync();
     console.log(`[ConnectorActivationStore] Deactivated connector: ${connectorId}`);
   }
 
@@ -46,31 +55,27 @@ export class ConnectorActivationStore {
     return [...this.activatedIds];
   }
 
-  private save(): void {
-    if (!this.persistLocally) return;
+  private async saveAsync(): Promise<void> {
+    if (!this.secretManager) return;
     try {
-      const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(
-        this.filePath,
-        JSON.stringify({ activatedIds: [...this.activatedIds] }, null, 2),
-        'utf-8'
+      await this.secretManager.setSecret(
+        this.secretKey,
+        JSON.stringify([...this.activatedIds])
       );
     } catch (error) {
       console.error('[ConnectorActivationStore] Failed to persist activations:', error);
     }
   }
 
-  private load(): void {
+  private async loadAsync(): Promise<void> {
+    if (!this.secretManager) return;
     try {
-      if (fs.existsSync(this.filePath)) {
-        const raw = fs.readFileSync(this.filePath, 'utf-8');
+      const raw = await this.secretManager.getSecret(this.secretKey);
+      if (raw) {
         const data = JSON.parse(raw);
-        if (Array.isArray(data.activatedIds)) {
-          this.activatedIds = new Set(data.activatedIds);
-          console.log(`[ConnectorActivationStore] Loaded ${this.activatedIds.size} activated connector(s).`);
+        if (Array.isArray(data)) {
+          this.activatedIds = new Set(data);
+          console.log(`[ConnectorActivationStore] Loaded ${this.activatedIds.size} activated connector(s) for ${this.secretKey}.`);
         }
       }
     } catch (error) {

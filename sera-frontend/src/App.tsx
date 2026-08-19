@@ -81,6 +81,16 @@ function InnerApp() {
   const { setThemeMode } = useAppKitTheme();
 
   useEffect(() => {
+    // If inside Telegram WebApp, try to adapt to its theme
+    if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
+      const twa = (window as any).Telegram.WebApp;
+      if (twa.colorScheme) {
+        setMode(twa.colorScheme === 'dark' ? 'dark' : 'light');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     setThemeMode(mode);
   }, [mode, setThemeMode]);
 
@@ -163,7 +173,8 @@ function InnerApp() {
   const { open } = useAppKit();
   const [isBypassed, setIsBypassed] = useState(() => {
     if (typeof window !== 'undefined') {
-      return new URLSearchParams(window.location.search).has('bypass');
+      const hasInitData = Boolean((window as any).Telegram?.WebApp?.initData);
+      return hasInitData || new URLSearchParams(window.location.search).has('bypass');
     }
     return false;
   });
@@ -176,13 +187,24 @@ function InnerApp() {
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
   const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
 
-  // Automatically emit login if bypass was passed via URL
+  // Automatically emit login if bypass was passed via URL or if inside Telegram Mini App
   useEffect(() => {
     if (isBypassed && socket) {
-      socket.emit("auth:login", {});
+      const initData = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp?.initData : null;
+      
+      if (initData) {
+        // Expand the Telegram Mini App and signal it's ready
+        (window as any).Telegram.WebApp.ready();
+        (window as any).Telegram.WebApp.expand();
+        
+        socket.emit("auth:login", { telegramInitData: initData });
+      } else {
+        // Dev bypass
+        socket.emit("auth:login", {});
+      }
 
       // Cleanup URL so it looks clean
-      if (typeof window !== 'undefined' && window.history.replaceState) {
+      if (typeof window !== 'undefined' && window.history.replaceState && !initData) {
         const url = new URL(window.location.href);
         url.searchParams.delete('bypass');
         window.history.replaceState({}, '', url.toString());

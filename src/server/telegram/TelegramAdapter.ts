@@ -44,12 +44,12 @@ export class TelegramAdapter {
           await this.secretManager.setSecret(`TG_USER_${ctx.from.id}`, sessionId);
           await this.secretManager.setSecret(`TG_SESSION_${sessionId}`, ctx.from.id.toString());
           await this.secretManager.deleteSecret(`TG_LINK_${code}`); // one-time use
-          ctx.reply('🎉 Sukses! Akun Telegram Anda telah terhubung ke SERA OS. Anda sekarang bisa mengobrol langsung dengan Agen Anda di sini.');
+          ctx.reply('✅ Success! Your Telegram account has been connected to SERA OS. You can now chat directly with your Agent here.');
         } else {
-          ctx.reply('❌ Kode penghubung tidak valid atau sudah kedaluwarsa. Silakan ulangi dari Web Workspace SERA.');
+          ctx.reply('❌ Invalid or expired connection code. Please try again from the SERA Web Workspace.');
         }
       } else {
-        ctx.reply('Selamat datang di SERA OS. Akun Anda belum terhubung. Silakan login ke Web Workspace SERA dan klik "Connect Telegram" untuk mendapatkan akses.');
+        ctx.reply('Unrecognized account. Please authenticate via your SERA Web Workspace to proceed.');
       }
     });
 
@@ -58,7 +58,7 @@ export class TelegramAdapter {
       const sessionId = await this.secretManager.getSecret(`TG_USER_${ctx.from.id}`);
       
       if (!sessionId) {
-        return ctx.reply('Selamat datang di SERA OS. Akun Anda belum terhubung. Silakan login ke Web Workspace SERA untuk menghubungkan Telegram Anda.');
+        return ctx.reply('Unrecognized account. Please authenticate via your SERA Web Workspace to proceed.');
       }
 
       const instance = this.agentManager.getOrCreateInstance(sessionId);
@@ -125,10 +125,20 @@ export class TelegramAdapter {
 
       const tgId = await this.getTelegramIdForSession(instance.sessionId);
       if (tgId) {
+
+
         try {
-          await this.bot.telegram.sendMessage(tgId, text);
+          // Convert standard **bold** to Telegram *bold*
+          let cleanText = text.replace(/\*\*(.*?)\*\*/g, '*$1*');
+          // Escape some chars if needed, but standard Markdown usually handles it well.
+          await this.bot.telegram.sendMessage(tgId, cleanText, { parse_mode: 'Markdown' });
         } catch (e) {
-          console.error(`[TelegramAdapter] Failed to send message to ${tgId}:`, e);
+          console.warn(`[TelegramAdapter] Markdown parsing failed, falling back to plain text for ${tgId}`);
+          try {
+            await this.bot.telegram.sendMessage(tgId, text);
+          } catch (err) {
+             console.error(`[TelegramAdapter] Failed to send message to ${tgId}:`, err);
+          }
         }
       }
     });
@@ -138,6 +148,8 @@ export class TelegramAdapter {
       
       const tgId = await this.getTelegramIdForSession(instance.sessionId);
       if (tgId) {
+
+
         try {
           let description = 'Unknown Action';
           if (payload.action?.type === 'TRANSFER_FUNDS') {
@@ -146,7 +158,7 @@ export class TelegramAdapter {
             description = `Publish to Threads: "${payload.action.payload.text}"`;
           }
 
-          const messageText = `🔔 **PROPOSAL KEPUTUSAN**\n\nAgen Anda meminta persetujuan untuk melakukan tindakan berikut:\n\n**Tindakan:** ${description}`;
+          const messageText = `🔔 *ACTION PROPOSAL*\n\nYour Agent is requesting approval for the following action:\n\n*Action:* ${description}`;
           
           await this.bot.telegram.sendMessage(tgId, messageText, {
             parse_mode: 'Markdown',
@@ -161,6 +173,19 @@ export class TelegramAdapter {
           });
         } catch (e) {
           console.error(`[TelegramAdapter] Failed to send proposal to ${tgId}:`, e);
+        }
+      }
+    });
+
+    instance.eventBus.on(EventTypes.DIALOGUE_ACTIVITY, async (event: StandardEvent) => {
+      if (!this.bot) return;
+
+      const tgId = await this.getTelegramIdForSession(instance.sessionId);
+      if (tgId) {
+        try {
+          await this.bot.telegram.sendChatAction(tgId, 'typing');
+        } catch (e) {
+          // ignore rate limits for chat action
         }
       }
     });

@@ -25,6 +25,13 @@ export class CapabilityCatalog {
     this.activationStore = activationStore || new ConnectorActivationStore();
   }
 
+  /**
+   * Ensures the underlying activation store has loaded persistent state.
+   */
+  public async waitForLoad(): Promise<void> {
+    await this.activationStore.waitForLoad();
+  }
+
   // ── Connector-Aware API ──────────────────────────────────────────────────
 
   /**

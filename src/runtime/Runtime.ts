@@ -230,14 +230,14 @@ export class Runtime {
     const persistUserData = options?.persistUserData ?? this.persistUserData;
     this.worldStateService = new WorldStateService(globalEventBus, options?.sessionId || 'default', { persistLocally: persistUserData });
 
-    const activationStore = new ConnectorActivationStore(persistUserData);
+    this.secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
+
+    const activationStore = new ConnectorActivationStore(this.secretManager, options?.sessionId || 'default');
     this.capabilityCatalog = new CapabilityCatalog(activationStore);
     const walletCap = new WalletToolCapability();
     const commCap = new CommunicationToolCapability();
 
     const autonomyAgreementCap = new AutonomyAgreementCapability();
-
-    this.secretManager = new SecretManager(new EncryptedDatabaseSecretStore());
 
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
 

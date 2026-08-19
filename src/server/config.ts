@@ -19,6 +19,7 @@ export const serverConfig = {
   ],
   demoIntentCommand: process.env.SERA_DEMO_INTENT_COMMAND?.trim().toLowerCase(),
   memoryPersistenceMode,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
 };
 
 export function isAllowedOrigin(origin: string | undefined): boolean {

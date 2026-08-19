@@ -17,6 +17,7 @@ import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityRe
 import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
 import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/identity/ReownWalletIdentityService';
 import { verifyWalletSignature } from './WalletSignatureVerifier';
+import { verifyTelegramWebAppData } from '../core/identity/TelegramAuthVerifier';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
@@ -453,7 +454,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('auth:challenge', issueLoginChallenge);
 
-  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string; supabaseAccessToken?: string }) => {
+  socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string; supabaseAccessToken?: string; telegramInitData?: string }) => {
     let address = payload?.address?.toLowerCase();
     let principal: SeraUserContext;
 
@@ -477,6 +478,27 @@ io.on('connection', (socket: Socket) => {
         socket.emit('auth:error', { message: 'Session expired or invalid. Please sign in again.', code: 'INVALID_TOKEN' });
         return;
       }
+    } else if (payload.telegramInitData) {
+      if (!serverConfig.telegramBotToken) {
+        socket.emit('auth:error', { message: 'Telegram Mini App authentication is not configured on this server.', code: 'IDENTITY_UNAVAILABLE' });
+        return;
+      }
+      const tgResult = verifyTelegramWebAppData(payload.telegramInitData, serverConfig.telegramBotToken);
+      if (!tgResult.isValid || !tgResult.user) {
+        console.error(`[Server] Telegram TMA Auth Failed: ${tgResult.error}`);
+        socket.emit('auth:error', { message: 'Telegram authentication failed.', code: 'INVALID_TOKEN' });
+        return;
+      }
+      
+      console.log(`[Server] Valid Telegram TMA login for user ID: ${tgResult.user.id}`);
+      
+      principal = {
+        userId: `telegram:${tgResult.user.id}`,
+      };
+      
+      // If we later want to map this to an existing Supabase Identity, we can do it here.
+      // For now, we trust the Telegram user ID as their primary identity if they login via TMA.
+      
     } else if (payload.supabaseAccessToken) {
       if (!supabaseIdentityService) {
         socket.emit('auth:error', { message: 'Supabase identity is not configured on this server.', code: 'IDENTITY_UNAVAILABLE' });
@@ -1099,8 +1121,9 @@ io.on('connection', (socket: Socket) => {
   });
 
   // ── Connector Marketplace Events ────────────────────────────────────────
-  socket.on('connector:list', () => {
+  socket.on('connector:list', async () => {
     if (!instance?.runtime?.capabilityCatalog) return;
+    await instance.runtime.capabilityCatalog.waitForLoad();
     const summaries = instance.runtime.capabilityCatalog.allConnectorSummaries();
     socket.emit('connector:catalog', summaries);
   });
