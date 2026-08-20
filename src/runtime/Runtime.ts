@@ -242,12 +242,12 @@ export class Runtime {
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
 
     const threadsApi = new ThreadsAPI(this.secretManager);
-    const threadsCap = new ThreadsCapability(threadsApi);
+    const threadsCap = new ThreadsCapability(threadsApi, this.secretManager);
     const imageGenCap = new ImageGenerationCapability();
 
     // Initialize and start the autonomous daemon for Threads as a singleton worker
     if (process.env.THREADS_APP_ID && !Runtime.globalThreadsDaemon) {
-      Runtime.globalThreadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, 'default');
+      Runtime.globalThreadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, 'default', this.secretManager);
       Runtime.globalThreadsDaemon.start(5 * 60 * 1000); // 5-minute autonomous polling
     }
 

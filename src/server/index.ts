@@ -309,7 +309,16 @@ io.on('connection', (socket: Socket) => {
         .catch(() => socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' }));
       
       void telegramAdapter.getStatus(socket.data.sessionId)
-        .then((status) => socket.emit('telegram:status', status))
+        .then((status) => {
+          socket.emit('telegram:status', status);
+          if (status.status === 'CONNECTED') {
+            const inst = agentManager.getOrCreateInstance(socket.data.sessionId!);
+            if (inst?.runtime?.capabilityCatalog && !inst.runtime.capabilityCatalog.isConnectorActive('telegram')) {
+              inst.runtime.capabilityCatalog.activateConnector('telegram');
+              socket.emit('connector:catalog', inst.runtime.capabilityCatalog.allConnectorSummaries());
+            }
+          }
+        })
         .catch(() => socket.emit('telegram:status', { provider: 'TELEGRAM', status: 'UNAVAILABLE' }));
     } else {
       socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' });
@@ -492,9 +501,20 @@ io.on('connection', (socket: Socket) => {
       
       console.log(`[Server] Valid Telegram TMA login for user ID: ${tgResult.user.id}`);
       
-      principal = {
-        userId: `telegram:${tgResult.user.id}`,
-      };
+      // Resolve Telegram ID to a linked wallet session if one exists
+      const linkedSessionId = await globalSecretManager.getSecret(`TG_USER_${tgResult.user.id}`);
+      if (linkedSessionId) {
+        console.log(`[Server] Mapping Telegram login to linked session ID: ${linkedSessionId}`);
+        const inst = agentManager.getOrCreateInstance(linkedSessionId);
+        principal = {
+          userId: linkedSessionId,
+          personalWalletAddress: inst.personalWalletAddress,
+        };
+      } else {
+        principal = {
+          userId: `telegram:${tgResult.user.id}`,
+        };
+      }
       
       // If we later want to map this to an existing Supabase Identity, we can do it here.
       // For now, we trust the Telegram user ID as their primary identity if they login via TMA.
@@ -707,6 +727,39 @@ io.on('connection', (socket: Socket) => {
       }
     } catch (err: any) {
       socket.emit('threads:error', { message: err.message || 'Failed to disconnect Threads.' });
+    }
+  });
+
+  socket.on('threads:get_settings', async () => {
+    console.log(`[Server] Received threads:get_settings from socket ${socket.id}`);
+    if (!requireAuthenticatedSession(socket, 'threads:get_settings', instance?.eventBus)) {
+      console.log(`[Server] requireAuthenticatedSession failed for ${socket.id}`);
+      return;
+    }
+    try {
+      console.log(`[Server] Fetching secrets for ${socket.data.sessionId}`);
+      const settingsStr = await globalSecretManager.getSecret(`THREADS_SETTINGS_${socket.data.sessionId}`);
+      console.log(`[Server] Secret result: ${settingsStr}`);
+      const settings = settingsStr ? JSON.parse(settingsStr) : {
+        allowPublishing: true,
+        vipReplies: true,
+        gatekeeper: true
+      };
+      socket.emit('threads:settings', settings);
+      console.log(`[Server] Emitted threads:settings to ${socket.id}`);
+    } catch (err: any) {
+      console.error(`[Server] Error in threads:get_settings:`, err);
+      socket.emit('threads:error', { message: err.message || 'Failed to fetch Threads settings.' });
+    }
+  });
+
+  socket.on('threads:update_settings', async (settings) => {
+    if (!requireAuthenticatedSession(socket, 'threads:update_settings', instance?.eventBus)) return;
+    try {
+      await globalSecretManager.setSecret(`THREADS_SETTINGS_${socket.data.sessionId}`, JSON.stringify(settings));
+      socket.emit('threads:settings_updated', settings);
+    } catch (err: any) {
+      socket.emit('threads:error', { message: err.message || 'Failed to update Threads settings.' });
     }
   });
 

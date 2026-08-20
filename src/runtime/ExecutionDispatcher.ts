@@ -35,11 +35,25 @@ export class ExecutionDispatcher {
     this.dispatch(action || payload.intent, actionPayload || payload.parameters, { triggerId });
   }
 
-  /**
-   * Dispatches the action to the appropriate domain capability.
-   */
   public dispatch(actionType: string, payload: Record<string, any>, context: Record<string, any>): void {
     console.log(`[ExecutionDispatcher] Routing action: ${actionType}`);
+
+    if (actionType === 'DYNAMIC_SCHEDULED_ACTION') {
+      console.log(`[ExecutionDispatcher] Intercepting dynamic scheduled action. Waking up DialogueEngine.`);
+      const taskPrompt = payload.taskPrompt || 'Execute scheduled task.';
+      
+      this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
+        id: `evt-dyn-${Date.now()}`,
+        type: EventTypes.DIALOGUE_USER_OBSERVED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          userMessage: `[SYSTEM AUTOMATION TRIGGER]: It is time for a scheduled dynamic task. Please execute the following instruction based on the current context: "${taskPrompt}". You may use web search, tools, and social media posting. Do not ask for confirmation, just do it. Keep your response brief.`,
+          _seraWorkClass: 'CONVERSATION'
+        },
+        timestamp: Date.now()
+      } as StandardEvent);
+      return;
+    }
 
     try {
       this.eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {

@@ -1,8 +1,9 @@
 import { SeraTool } from '../../core/cognitive/Tool';
 import { ThreadsAPI } from './ThreadsAPI';
+import { SecretManager } from '../../core/secrets/SecretManager';
 
 export class ThreadsCapability {
-  constructor(private readonly api: ThreadsAPI) {}
+  constructor(private readonly api: ThreadsAPI, private readonly secretManager?: SecretManager) {}
 
   getTools(): SeraTool[] {
     return [
@@ -48,10 +49,26 @@ export class ThreadsCapability {
 
     switch (name) {
       case 'THREADS_PUBLISH':
+        if (this.secretManager) {
+          try {
+            const settingsStr = await this.secretManager.getSecret(`THREADS_SETTINGS_${sessionId}`);
+            if (settingsStr) {
+              const settings = JSON.parse(settingsStr);
+              if (settings.allowPublishing === false) {
+                return { success: false, error: "Action denied: User disabled Threads publishing in Settings." };
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        
         const postId = await this.api.publishPost(sessionId, args.text, undefined, args.imageUrl);
         return { success: true, postId, message: `Successfully published to Threads.` };
       
       case 'THREADS_REPLY':
+        // Note: THREADS_REPLY is allowed even if allowPublishing is false, 
+        // since VIP replies might still be enabled and require replying.
         const replyId = await this.api.publishPost(sessionId, args.text, args.replyToId, args.imageUrl);
         return { success: true, postId: replyId, message: `Successfully replied to Threads post.` };
         

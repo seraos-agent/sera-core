@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { EventTypes } from '../../core/events/types';
 import { ThreadsAPI, ThreadsMention } from './ThreadsAPI';
+import { SecretManager } from '../../core/secrets/SecretManager';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -17,9 +18,21 @@ export class ThreadsDaemon {
   constructor(
     private readonly api: ThreadsAPI,
     private readonly eventBus: EventEmitter,
-    private readonly sessionId: string = 'default'
+    private readonly sessionId: string = 'default',
+    private readonly secretManager?: SecretManager
   ) {
     this.loadWatermark();
+  }
+
+  private async getSettings() {
+    if (!this.secretManager) return { vipReplies: true, gatekeeper: true };
+    try {
+      const settingsStr = await this.secretManager.getSecret(`THREADS_SETTINGS_${this.sessionId}`);
+      if (settingsStr) return JSON.parse(settingsStr);
+    } catch (e) {
+      // ignore
+    }
+    return { vipReplies: true, gatekeeper: true };
   }
 
   private loadWatermark() {
@@ -201,9 +214,15 @@ export class ThreadsDaemon {
     }
 
     const isVip = vipUsers.includes(replyUsername);
+    const settings = await this.getSettings();
 
     if (!isVip) {
       console.log(`[ThreadsDaemon] Ignoring non-VIP reply from @${reply.username} on our post.`);
+      return;
+    }
+
+    if (!settings.vipReplies) {
+      console.log(`[ThreadsDaemon] Ignoring VIP reply because vipReplies setting is disabled.`);
       return;
     }
 
@@ -248,10 +267,15 @@ ${this.timelineContext}
 
     const vipUsersStr = process.env.THREADS_VIP_USERS || '';
     const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
+    const settings = await this.getSettings();
 
     const isVip = vipUsers.includes(mentionUsername);
 
     if (isVip) {
+      if (!settings.vipReplies) {
+        console.log(`[ThreadsDaemon] Ignoring VIP mention because vipReplies setting is disabled.`);
+        return;
+      }
       console.log(`[ThreadsDaemon] @${mention.username} is VIP. Waking up AI...`);
       
       let parentPostContext = '';
@@ -284,6 +308,10 @@ ${this.timelineContext || '(No recent posts)'}
         timestamp: Date.now()
       });
     } else {
+      if (!settings.gatekeeper) {
+        console.log(`[ThreadsDaemon] Ignoring non-VIP mention because gatekeeper setting is disabled.`);
+        return;
+      }
       console.log(`[ThreadsDaemon] @${mention.username} is not VIP. Sending gatekeeper reply...`);
       try {
         const replyText = `Hello @${mention.username}! Great question. However, I am currently only serving registered users. Join us at seraos.xyz (or check the link in my bio) so we can chat! 🚀`;

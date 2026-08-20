@@ -44,6 +44,16 @@ export class TelegramAdapter {
           await this.secretManager.setSecret(`TG_USER_${ctx.from.id}`, sessionId);
           await this.secretManager.setSecret(`TG_SESSION_${sessionId}`, ctx.from.id.toString());
           await this.secretManager.deleteSecret(`TG_LINK_${code}`); // one-time use
+          
+          try {
+            const instance = this.agentManager.getOrCreateInstance(sessionId);
+            if (instance?.runtime?.capabilityCatalog) {
+              instance.runtime.capabilityCatalog.activateConnector('telegram');
+            }
+          } catch (err) {
+            console.error('[TelegramAdapter] Failed to activate telegram connector on link:', err);
+          }
+
           ctx.reply('✅ Success! Your Telegram account has been connected to SERA OS. You can now chat directly with your Agent here.');
         } else {
           ctx.reply('❌ Invalid or expired connection code. Please try again from the SERA Web Workspace.');

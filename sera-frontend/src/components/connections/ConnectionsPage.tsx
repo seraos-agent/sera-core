@@ -332,16 +332,25 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
           <div style={{ marginTop: 4 }}>
             {isConnectorActive ? (
               <button
-                onClick={() => { if (!isTelegram) handleDeactivate(connector.id) }}
+                onClick={() => { 
+                  if (!isTelegram) {
+                    handleDeactivate(connector.id);
+                  } 
+                }}
                 style={{
                   width: "100%", padding: "8px 0", borderRadius: 10,
                   border: `1px solid ${theme.border}`, background: "transparent",
-                  color: isTelegram ? "#10b981" : "#ef4444", fontSize: 13, fontWeight: 600, cursor: isTelegram ? "default" : "pointer",
+                  color: isTelegram ? "#10b981" : "#ef4444", 
+                  fontSize: 13, fontWeight: 600, cursor: isTelegram ? "default" : "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                   transition: "background 200ms"
                 }}
-                onMouseEnter={e => { if (!isTelegram) e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)" }}
-                onMouseLeave={e => { if (!isTelegram) e.currentTarget.style.background = "transparent" }}
+                onMouseEnter={e => { 
+                  if (!isTelegram) e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
+                }}
+                onMouseLeave={e => { 
+                  if (!isTelegram) e.currentTarget.style.background = "transparent";
+                }}
               >
                 {isTelegram ? (
                   <><CheckCircle2 size={14} /> Connected</>

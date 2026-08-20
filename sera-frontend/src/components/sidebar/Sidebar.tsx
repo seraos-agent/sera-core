@@ -3,7 +3,7 @@ import type { ThemeType } from "../../theme";
 import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
-export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "arena";
+export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "arena" | "threads_settings";
 
 interface ConnectorSummary {
   id: string;
@@ -192,11 +192,12 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
               return (
                 <div
                   key={c.id}
+                  onClick={() => navigate(c.id === 'threads' ? "threads_settings" : "connections" as SidebarView)}
                   title={!open ? c.name : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: open ? "8px 6px" : "12px", borderRadius: 8,
-                    cursor: "default", transition: "background 150ms",
+                    cursor: "pointer", transition: "background 150ms",
                     marginBottom: 2,
                     justifyContent: open ? "flex-start" : "center",
                     background: "transparent"

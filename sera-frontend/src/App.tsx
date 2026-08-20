@@ -6,6 +6,7 @@ import { Sidebar } from "./components/sidebar/Sidebar";
 import { WalletPage } from "./components/wallet/WalletPage";
 import { ChatView } from "./components/chat/ChatView";
 import { ConnectionsPage } from "./components/connections/ConnectionsPage";
+import { ThreadsSettingsPage } from "./components/connections/ThreadsSettingsPage";
 import { AutomationsPage } from "./components/automations/AutomationsPage";
 import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
@@ -103,7 +104,7 @@ function InnerApp() {
   const [billingOpen, setBillingOpen] = useState(false);
   const [currentView, setCurrentView] = useState<SidebarView>(() => {
     const saved = localStorage.getItem("sera_view") as SidebarView | null;
-    return saved && ["chat", "wallet", "connections", "automations", "profile", "polymarket", "arena"].includes(saved) ? saved : "chat";
+    return saved && ["chat", "wallet", "connections", "automations", "profile", "polymarket", "arena", "threads_settings"].includes(saved) ? saved : "chat";
   });
 
   useEffect(() => {
@@ -111,7 +112,7 @@ function InnerApp() {
   }, [currentView]);
 
   const { walletState, setWalletState } = useWallet();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, isReconnecting, isConnecting } = useAccount();
   const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
@@ -191,12 +192,12 @@ function InnerApp() {
   useEffect(() => {
     if (isBypassed && socket) {
       const initData = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp?.initData : null;
-      
+
       if (initData) {
         // Expand the Telegram Mini App and signal it's ready
         (window as any).Telegram.WebApp.ready();
         (window as any).Telegram.WebApp.expand();
-        
+
         socket.emit("auth:login", { telegramInitData: initData });
       } else {
         // Dev bypass
@@ -345,7 +346,31 @@ function InnerApp() {
 
   if (!isMounted) return null;
 
-  // (Removed blocking hydration check to prevent 'Restoring session' infinite loop in some WalletConnect edge cases)
+  // Show a loading screen while the wallet is reconnecting on initial load to prevent UI flash
+  if (isReconnecting || isConnecting) {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000",
+        fontFamily: "Inter, sans-serif"
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%",
+            border: `3px solid ${theme.border}`,
+            borderTopColor: theme.ink,
+            animation: "spin 1s linear infinite"
+          }} />
+          <div style={{ color: theme.inkSoft, fontSize: 14, fontWeight: 500, letterSpacing: "0.02em" }}>
+            Restoring session...
+          </div>
+        </div>
+        <style>{`
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
 
   // 1. If not connected, check launch code then show ConnectGateway
   if (!isConnected && !isBypassed) {
@@ -559,6 +584,14 @@ function InnerApp() {
           <PredictionArenaPage
             theme={theme}
             socket={socket}
+            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
+          />
+        ) : currentView === "threads_settings" ? (
+          <ThreadsSettingsPage
+            theme={theme}
+            socket={socket}
+            isMobileView={isMobileView}
+            onDisconnect={disconnectThreads}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : (

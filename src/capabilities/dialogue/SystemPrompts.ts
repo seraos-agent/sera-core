@@ -141,19 +141,30 @@ Exemplar 4 - Transfer Funds:
 User: "send 50 USDC to 0xabc..." or "transfer all my funds"
 Action: Call tool "TRANSFER_FUNDS" with: { "recipient": { "type": "address", "address": "0xabc..." }, "amount": 50, "asset": "usdc" }
 
-Exemplar 5 - Pure Conversational Question:
+Exemplar 5 - Dynamic Scheduled Task (e.g., Social Media, Research):
+User: "post to Threads every 10 minutes about AI news" or "every hour write a new joke"
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "cron",
+  "cronExpression": "*/10 * * * *",
+  "humanIntent": "Every 10 minutes post about AI news",
+  "actionIntent": "DYNAMIC_SCHEDULED_ACTION",
+  "actionParameters": { "taskPrompt": "Search for recent AI news and write a short, engaging Threads post about it. Use THREADS_PUBLISH to post it." }
+}
+
+Exemplar 6 - Pure Conversational Question:
 User: "What's happening in the world today?" or "How does SERA work?"
 Action: Do NOT call any tool. Provide a clear, natural text response in the user's language. If the question involves current events or facts you're unsure about, use web search.
 
-Exemplar 6 - UI Display Theme Control:
+Exemplar 7 - UI Display Theme Control:
 User: "change mode dark" or "please switch to light mode" or "change to dark mode" or "switch interface theme"
 Action: Call tool "SET_THEME" with: { "theme": "dark" } (or "light"). NEVER refuse by claiming you lack interface display settings access!
 
-Exemplar 7 - Clear Chat History:
+Exemplar 8 - Clear Chat History:
 User: "clear chat" or "delete messages" or "clear message history" or "wipe chat"
 Action: Call tool "CLEAR_CHAT" with: {}. NEVER refuse by claiming you cannot delete messages!
 
-Exemplar 8 - Image Generation:
+Exemplar 9 - Image Generation:
 User: "create a picture of a sunset" or "generate an image of a cat" or "draw me a logo"
 Action: Call tool "GENERATE_IMAGE" with the user's description. NEVER refuse by claiming you cannot create images!`;
 
@@ -161,7 +172,7 @@ export const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analy
 
 Supported intents:
 - CHECK_NETWORK: user asks about the current network, chain, or blockchain Sera is connected to.
-- SCHEDULE_GOAL: user wants to run a task on a schedule (e.g. "every 5 mins", "remind me hourly"). parameters: "scheduleType" (cron or exact), "cronExpression", "delaySeconds", "actionIntent", "actionParameters".
+- SCHEDULE_GOAL: user wants to run a task on a schedule (e.g. "every 5 mins", "remind me hourly"). parameters: "scheduleType" (cron or exact), "cronExpression", "delaySeconds", "actionIntent", "actionParameters". For dynamic generation tasks like social media posting, use "actionIntent": "DYNAMIC_SCHEDULED_ACTION" and "actionParameters": {"taskPrompt": "..."}.
 - FORGET_ME: user asks SERA to forget them, delete their data, wipe their memory, or opt-out.
 - NONE: anything else (conversation, UI commands, checking balances, transferring funds, web search, image generation, social media posts)
 
