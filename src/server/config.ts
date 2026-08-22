@@ -25,5 +25,6 @@ export const serverConfig = {
 export function isAllowedOrigin(origin: string | undefined): boolean {
   // Non-browser clients (health checks, server-side tools) do not send Origin.
   if (!origin) return true;
+  if (origin.endsWith('.vercel.app')) return true;
   return serverConfig.corsOrigins.includes(origin);
 }
