@@ -164,7 +164,7 @@ function InnerApp() {
   };
 
   const shellWidth = "100%";
-  const shellHeight = isMobileView ? "100dvh" : "100vh";
+  const shellHeight = isMobileView ? "var(--tg-viewport-height, 100vh)" : "100vh";
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
@@ -543,6 +543,7 @@ function InnerApp() {
             if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
             socket?.emit('auth:logout');
             disconnect();
+            setIsBypassed(false);
           }}
           onLinkWallet={isBypassed ? undefined : startWalletLink}
           isLinkingWallet={Boolean(walletLinkSourceAddress)}

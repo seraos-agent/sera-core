@@ -23,22 +23,22 @@ function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear:
   }
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
       justifyContent: 'space-between',
-      background: theme.surface2, 
-      border: `1px solid ${theme.border}`, 
-      borderRadius: 12, 
-      padding: '10px 14px', 
-      marginTop: 4, 
-      width: '100%', 
-      maxWidth: 300 
+      background: theme.surface2,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 12,
+      padding: '10px 14px',
+      marginTop: 4,
+      width: '100%',
+      maxWidth: 300
     }}>
       <div style={{ fontSize: 14, color: theme.ink, fontWeight: 500 }}>
         Clearing chat in <span style={{ color: '#EF4444', fontWeight: 700, marginLeft: 2 }}>{timeLeft}</span>
       </div>
-      <button 
+      <button
         onClick={() => setCanceled(true)}
         style={{
           background: theme.surface, border: `1px solid ${theme.border}`, color: theme.ink,
@@ -62,11 +62,11 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
   walletState: any;
 }) {
   const isUser = msg.role === "user";
-  
+
   // Format content: replace LLM's long dash (em-dash) with a comma for better natural reading.
   // We use \s*—\s* to catch cases with or without spaces and turn them into a clean comma.
-  const displayContent = typeof msg.content === 'string' 
-    ? msg.content.replace(/\s*—\s*/g, ', ') 
+  const displayContent = typeof msg.content === 'string'
+    ? msg.content.replace(/\s*—\s*/g, ', ')
     : msg.content;
 
   if (msg.type === "activity") {
@@ -152,8 +152,8 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                     return (
                       <div style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
                         <img style={{ maxWidth: "100%", height: "auto", borderRadius: 12, display: "block", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }} {...props} />
-                        <a 
-                          href={props.src} 
+                        <a
+                          href={props.src}
                           download={`Sera_Image_${Date.now()}.png`}
                           target="_blank"
                           rel="noopener noreferrer"

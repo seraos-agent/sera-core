@@ -110,7 +110,7 @@ export function ChatView({
             )}
 
 
-            
+
             {currentActivity && (
               <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
                 <div style={{
@@ -147,9 +147,9 @@ export function ChatView({
               onClose={() => setShowObservations(false)}
             />
           )}
-          <ChatInput 
-            theme={theme} 
-            onSend={onSend} 
+          <ChatInput
+            theme={theme}
+            onSend={onSend}
             disabled={!socket}
             isProcessing={!!currentActivity}
             showObservations={showObservations}
