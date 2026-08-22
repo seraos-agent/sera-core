@@ -28,7 +28,11 @@ export class GoogleDriveConnectionRepository {
   static fromEnvironment(): GoogleDriveConnectionRepository | null {
     const client = SupabaseRestClient.fromEnvironment();
     const key = process.env.SERA_CLOUD_CREDENTIAL_ENCRYPTION_KEY;
-    return client && key ? new GoogleDriveConnectionRepository(client, new EncryptionService(key)) : null;
+    if (!client || !key) {
+      console.warn('[GoogleDriveConnectionRepository] Failed to initialize. Missing:', { client: !!client, key: !!key });
+      return null;
+    }
+    return new GoogleDriveConnectionRepository(client, new EncryptionService(key));
   }
 
   async getStatus(userId: string): Promise<GoogleDriveConnectionStatus> {

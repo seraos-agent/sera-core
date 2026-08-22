@@ -174,8 +174,7 @@ function InnerApp() {
   const { open } = useAppKit();
   const [isBypassed, setIsBypassed] = useState(() => {
     if (typeof window !== 'undefined') {
-      const hasInitData = Boolean((window as any).Telegram?.WebApp?.initData);
-      return hasInitData || new URLSearchParams(window.location.search).has('bypass');
+      return new URLSearchParams(window.location.search).has('bypass');
     }
     return false;
   });
@@ -188,24 +187,22 @@ function InnerApp() {
   const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
   const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
 
-  // Automatically emit login if bypass was passed via URL or if inside Telegram Mini App
+  // Expand Telegram Mini App if present
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData) {
+      (window as any).Telegram.WebApp.ready();
+      (window as any).Telegram.WebApp.expand();
+    }
+  }, []);
+
+  // Automatically emit dev login if bypass was passed via URL
   useEffect(() => {
     if (isBypassed && socket) {
-      const initData = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp?.initData : null;
-
-      if (initData) {
-        // Expand the Telegram Mini App and signal it's ready
-        (window as any).Telegram.WebApp.ready();
-        (window as any).Telegram.WebApp.expand();
-
-        socket.emit("auth:login", { telegramInitData: initData });
-      } else {
-        // Dev bypass
-        socket.emit("auth:login", {});
-      }
+      // Dev bypass
+      socket.emit("auth:login", {});
 
       // Cleanup URL so it looks clean
-      if (typeof window !== 'undefined' && window.history.replaceState && !initData) {
+      if (typeof window !== 'undefined' && window.history.replaceState) {
         const url = new URL(window.location.href);
         url.searchParams.delete('bypass');
         window.history.replaceState({}, '', url.toString());
@@ -550,9 +547,6 @@ function InnerApp() {
           memoryVault={memoryVault}
           deviceVault={deviceVault}
           onDeleteDeviceMemory={deleteDeviceMemory}
-          googleDrive={googleDrive}
-          onConnectGoogleDrive={connectGoogleDrive}
-          onDisconnectGoogleDrive={disconnectGoogleDrive}
         /> : currentView === "wallet" ? (
           <WalletPage
             theme={theme}
@@ -572,6 +566,9 @@ function InnerApp() {
             telegram={telegram}
             telegramLinkCode={telegramLinkCode}
             onGenerateTelegramLink={generateTelegramLink}
+            googleDrive={googleDrive}
+            onConnectGoogleDrive={connectGoogleDrive}
+            onDisconnectGoogleDrive={disconnectGoogleDrive}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
         ) : currentView === "automations" ? (

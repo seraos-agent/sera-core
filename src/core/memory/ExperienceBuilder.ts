@@ -6,6 +6,13 @@ import { ExperienceRecord } from './ExperienceRecord';
 import { MemoryEvidence, EvidenceType } from './MemoryEvidence';
 import { QwenAdapter } from '../../capabilities/llm/QwenAdapter';
 import { VectorMemoryStore } from './VectorMemoryStore';
+import { SupabaseVectorMemoryStore } from './SupabaseVectorMemoryStore';
+import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
+
+/** A vector store that supports insert (sync or async). */
+interface VectorStorePort {
+  insert(id: string, vector: number[], metadata: Record<string, any>): void | Promise<void>;
+}
 
 export class ExperienceBuilder {
   private logPath: string;
@@ -13,7 +20,8 @@ export class ExperienceBuilder {
   private episodeTimer: NodeJS.Timeout | null = null;
   private stopped = false;
   private llm: QwenAdapter;
-  private vectorStore: VectorMemoryStore;
+  private vectorStore: VectorStorePort;
+  private readonly supabaseClient: SupabaseRestClient | null;
   private readonly persistLocally: boolean;
   private readonly episodeEventTypes = [
     EventTypes.DIALOGUE_USER_OBSERVED,
@@ -35,7 +43,11 @@ export class ExperienceBuilder {
     }
     this.logPath = path.join(dataDir, 'episodic_memory.jsonl');
     this.llm = new QwenAdapter();
-    this.vectorStore = new VectorMemoryStore(sessionId, { persistLocally: this.persistLocally });
+    this.supabaseClient = SupabaseRestClient.fromEnvironment();
+    // Use Supabase-backed vector store in production, local file store otherwise
+    this.vectorStore = this.supabaseClient
+      ? new SupabaseVectorMemoryStore(sessionId, this.supabaseClient)
+      : new VectorMemoryStore(sessionId, { persistLocally: this.persistLocally });
     this.setupListeners();
     console.log('[ExperienceBuilder] Initialized. Listening for episodes.');
   }
@@ -93,6 +105,22 @@ export class ExperienceBuilder {
       evidence
     };
 
+    // Write episodic record to Supabase for persistence across restarts
+    if (this.supabaseClient) {
+      try {
+        await this.supabaseClient.upsert('sera_episodic_memories', {
+          id: record.id,
+          session_id: this.sessionId,
+          summary: record.summary,
+          type: record.type,
+          evidence: record.evidence,
+          created_at: new Date(record.timestamp).toISOString(),
+        }, 'id,session_id');
+      } catch (err) {
+        console.warn('[ExperienceBuilder] Failed to write episodic record to Supabase:', err instanceof Error ? err.message : err);
+      }
+    }
+
     if (!this.persistLocally) {
       void this.completeConsolidatedRecord(record);
       return;
@@ -108,7 +136,7 @@ export class ExperienceBuilder {
     console.log(`[ExperienceBuilder] Episode consolidated: ${record.summary}`);
     try {
       const vector = await this.llm.embed(record.summary);
-      this.vectorStore.insert(record.id, vector, {
+      await this.vectorStore.insert(record.id, vector, {
         summary: record.summary,
         type: record.type,
         timestamp: record.timestamp,

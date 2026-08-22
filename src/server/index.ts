@@ -17,16 +17,18 @@ import { resolveVerifiedWalletIdentity } from '../core/identity/WalletIdentityRe
 import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
 import { ReownWalletIdentityService, WalletAlreadyLinkedError } from '../core/identity/ReownWalletIdentityService';
 import { verifyWalletSignature } from './WalletSignatureVerifier';
-import { verifyTelegramWebAppData } from '../core/identity/TelegramAuthVerifier';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
+import { TelegramBotManager } from '../capabilities/communication/adapters/TelegramBotManager';
+import { TelegramAdapter } from '../capabilities/communication/adapters/TelegramAdapter';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
 import { predictionEngine, arenaEventBus } from './predictionEngine';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
-import { TelegramAdapter } from './telegram/TelegramAdapter';
 import { BaseAdapter } from '../capabilities/wallet/chains/BaseAdapter';
+import { HygieneDaemon } from '../core/hygiene/HygieneDaemon';
+import { SupabaseRestClient } from '../core/persistence/SupabaseRestClient';
 
 export { predictionEngine };
 const mcpApiKeyStore = new McpApiKeyStore();
@@ -35,13 +37,30 @@ const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('h
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
 const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
+console.log(`[Server] Google Drive OAuth Service initialized:`, !!googleDriveOAuthService);
 const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
+export const telegramBotManager = new TelegramBotManager(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
 const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
-const telegramAdapter = new TelegramAdapter(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
 
 console.log(`[Server] Supabase Services Init - URL: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Secret: ${process.env.SUPABASE_SECRET_KEY ? 'OK' : 'MISSING'}`);
 console.log(`[Server] reownWalletIdentityService is ${reownWalletIdentityService ? 'ACTIVE' : 'NULL (Falling back to local auth)'}`);
 console.log(`[Server] Threads OAuth Service initialized - App ID: ${threadsOAuthService.appId ? 'OK' : 'MISSING'}`);
+
+// ── Hygiene Daemon (Automated Garbage Collection) ────────────────────────────
+const supabaseClient = SupabaseRestClient.fromEnvironment();
+if (supabaseClient) {
+  const hygieneDaemon = new HygieneDaemon(supabaseClient);
+  hygieneDaemon.start();
+} else {
+  console.warn('[Server] HygieneDaemon not started: Supabase credentials missing.');
+}
+
+agentManager.onInstanceCreated((instance) => {
+  instance.communicationBridge.registerAdapter(
+    'telegram',
+    new TelegramAdapter(instance.sessionId, telegramBotManager, instance.eventBus)
+  );
+});
 
 interface SessionTokenPrincipal {
   userId: string;
@@ -296,19 +315,26 @@ io.on('connection', (socket: Socket) => {
     if (instance.metaGovernanceReview) {
       socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
     }
-    if (googleDriveOAuthService && socket.data.sessionId && socket.data.sessionId !== 'dev') {
+    if (googleDriveOAuthService && socket.data.sessionId) {
       void googleDriveOAuthService.getStatus(socket.data.sessionId)
-        .then((status) => socket.emit('google_drive:status', status))
-        .catch(() => socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' }));
+        .then((status) => {
+          console.log(`[GoogleDrive] Status for ${socket.data.sessionId}:`, status);
+          socket.emit('google_drive:status', status);
+        })
+        .catch((e) => {
+          console.error(`[GoogleDrive] Error getting status for ${socket.data.sessionId}:`, e);
+          socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
+        });
     } else {
+      console.log(`[GoogleDrive] UNAVAILABLE because:`, { serviceExists: !!googleDriveOAuthService, sessionId: socket.data.sessionId });
       socket.emit('google_drive:status', { provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
     }
-    if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
+    if (socket.data.sessionId) {
       void threadsOAuthService.getStatus(socket.data.sessionId)
         .then((status) => socket.emit('threads:status', status))
         .catch(() => socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' }));
       
-      void telegramAdapter.getStatus(socket.data.sessionId)
+      void telegramBotManager.getStatus(socket.data.sessionId)
         .then((status) => {
           socket.emit('telegram:status', status);
           if (status.status === 'CONNECTED') {
@@ -487,38 +513,7 @@ io.on('connection', (socket: Socket) => {
         socket.emit('auth:error', { message: 'Session expired or invalid. Please sign in again.', code: 'INVALID_TOKEN' });
         return;
       }
-    } else if (payload.telegramInitData) {
-      if (!serverConfig.telegramBotToken) {
-        socket.emit('auth:error', { message: 'Telegram Mini App authentication is not configured on this server.', code: 'IDENTITY_UNAVAILABLE' });
-        return;
-      }
-      const tgResult = verifyTelegramWebAppData(payload.telegramInitData, serverConfig.telegramBotToken);
-      if (!tgResult.isValid || !tgResult.user) {
-        console.error(`[Server] Telegram TMA Auth Failed: ${tgResult.error}`);
-        socket.emit('auth:error', { message: 'Telegram authentication failed.', code: 'INVALID_TOKEN' });
-        return;
-      }
-      
-      console.log(`[Server] Valid Telegram TMA login for user ID: ${tgResult.user.id}`);
-      
-      // Resolve Telegram ID to a linked wallet session if one exists
-      const linkedSessionId = await globalSecretManager.getSecret(`TG_USER_${tgResult.user.id}`);
-      if (linkedSessionId) {
-        console.log(`[Server] Mapping Telegram login to linked session ID: ${linkedSessionId}`);
-        const inst = agentManager.getOrCreateInstance(linkedSessionId);
-        principal = {
-          userId: linkedSessionId,
-          personalWalletAddress: inst.personalWalletAddress,
-        };
-      } else {
-        principal = {
-          userId: `telegram:${tgResult.user.id}`,
-        };
-      }
-      
-      // If we later want to map this to an existing Supabase Identity, we can do it here.
-      // For now, we trust the Telegram user ID as their primary identity if they login via TMA.
-      
+
     } else if (payload.supabaseAccessToken) {
       if (!supabaseIdentityService) {
         socket.emit('auth:error', { message: 'Supabase identity is not configured on this server.', code: 'IDENTITY_UNAVAILABLE' });
@@ -669,7 +664,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('google_drive:connect', () => {
     if (!requireAuthenticatedSession(socket, 'google_drive:connect', instance?.eventBus)) return;
-    if (!googleDriveOAuthService || socket.data.sessionId === 'dev') {
+    if (!googleDriveOAuthService) {
       socket.emit('google_drive:error', { message: 'Google Drive connection is not configured for this environment.' });
       return;
     }
@@ -678,7 +673,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('google_drive:disconnect', async () => {
     if (!requireAuthenticatedSession(socket, 'google_drive:disconnect', instance?.eventBus)) return;
-    if (!googleDriveOAuthService || socket.data.sessionId === 'dev') {
+    if (!googleDriveOAuthService) {
       socket.emit('google_drive:error', { message: 'Google Drive connection is not configured for this environment.' });
       return;
     }
@@ -691,11 +686,11 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('telegram:generate_link', async () => {
     if (!requireAuthenticatedSession(socket, 'telegram:generate_link', instance?.eventBus)) return;
-    if (!telegramAdapter.isEnabled()) {
+    if (!telegramBotManager.isEnabled()) {
       socket.emit('telegram:error', { message: 'Telegram Bot is not configured on this server.' });
       return;
     }
-    const code = await telegramAdapter.generateLinkCode(socket.data.sessionId);
+    const code = await telegramBotManager.generateLinkCode(socket.data.sessionId);
     socket.emit('telegram:link_generated', { code });
   });
 

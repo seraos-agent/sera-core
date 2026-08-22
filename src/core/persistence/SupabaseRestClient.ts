@@ -47,6 +47,17 @@ export class SupabaseRestClient {
     });
   }
 
+  async rpc<T>(functionName: string, params: Record<string, unknown>): Promise<T> {
+    return this.request<T>(`/rest/v1/rpc/${functionName}`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  async delete(table: string, filter: string): Promise<void> {
+    await this.request(`/rest/v1/${table}?${filter}`, { method: 'DELETE' });
+  }
+
   private async request<T = void>(path: string, init: RequestInit): Promise<T> {
     const response = await this.fetchImpl(`${this.url}${path}`, {
       ...init,

@@ -1,0 +1,1 @@
+import { SupabaseRestClient } from './src/core/persistence/SupabaseRestClient'; const c = SupabaseRestClient.fromEnvironment(); c!.request('GET', 'user_cloud_connections?limit=1').then(r => console.log(r)).catch(e => console.error(e));

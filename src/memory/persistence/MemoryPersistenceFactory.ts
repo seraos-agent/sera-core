@@ -2,8 +2,10 @@ import { IMemoryPersistence } from '../../core/memory/IMemoryPersistence';
 import { MemoryVaultDescriptor } from '../../core/memory/MemoryVault';
 import { EphemeralMemoryPersistence } from './EphemeralMemoryPersistence';
 import { FileMemoryPersistence } from './FileMemoryPersistence';
+import { SupabaseMemoryPersistence } from './SupabaseMemoryPersistence';
+import { SupabaseRestClient } from '../../core/persistence/SupabaseRestClient';
 
-export type ConfiguredMemoryPersistenceMode = 'local_development' | 'runtime_only' | 'user_cloud';
+export type ConfiguredMemoryPersistenceMode = 'local_development' | 'runtime_only' | 'user_cloud' | 'supabase';
 
 export interface MemoryPersistenceFactoryInput {
   sessionId: string;
@@ -23,7 +25,14 @@ export interface MemoryPersistenceSelection {
  * never falls back to SERA server storage when its provider is unavailable.
  */
 export function createMemoryPersistence(input: MemoryPersistenceFactoryInput): MemoryPersistenceSelection {
-  const mode = input.mode ?? (input.environment === 'production' ? 'runtime_only' : 'local_development');
+  const supabaseClient = SupabaseRestClient.fromEnvironment();
+
+  // In production, auto-select 'supabase' mode if Supabase is available and no explicit mode is set
+  const mode = input.mode ?? (
+    input.environment === 'production'
+      ? (supabaseClient ? 'supabase' : 'runtime_only')
+      : 'local_development'
+  );
 
   if (mode === 'local_development') {
     if (input.environment === 'production') {
@@ -42,6 +51,24 @@ export function createMemoryPersistence(input: MemoryPersistenceFactoryInput): M
     };
   }
 
+  if (mode === 'supabase') {
+    if (!supabaseClient) {
+      console.warn('[MemoryPersistenceFactory] Supabase mode requested but client unavailable. Falling back to runtime_only.');
+      return createRuntimeOnlySelection();
+    }
+    return {
+      persistence: new SupabaseMemoryPersistence(input.sessionId, supabaseClient),
+      vault: {
+        mode: 'RUNTIME_ONLY', // Vault mode stays RUNTIME_ONLY until user-cloud is implemented
+        status: 'ACTIVE',
+        storageLabel: 'Supabase encrypted storage',
+        retentionLabel: 'Persistent across restarts (90-day retention)',
+        autonomyReady: false,
+        detail: 'SERA persists cognitive memory to Supabase. Beliefs and episodic memories survive container restarts.',
+      },
+    };
+  }
+
   if (mode === 'user_cloud') {
     return {
       persistence: new EphemeralMemoryPersistence(),
@@ -56,6 +83,10 @@ export function createMemoryPersistence(input: MemoryPersistenceFactoryInput): M
     };
   }
 
+  return createRuntimeOnlySelection();
+}
+
+function createRuntimeOnlySelection(): MemoryPersistenceSelection {
   return {
     persistence: new EphemeralMemoryPersistence(),
     vault: {

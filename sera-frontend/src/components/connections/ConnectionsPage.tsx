@@ -11,7 +11,8 @@ import {
   Server,
   Shield,
   Power,
-  PowerOff
+  PowerOff,
+  HardDrive
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { QuestDashboard } from "../quests/QuestDashboard";
@@ -32,6 +33,9 @@ interface WorkspacePageProps {
   telegram?: any;
   telegramLinkCode?: string | null;
   onGenerateTelegramLink?: () => void;
+  googleDrive?: { status: string; url?: string } | null;
+  onConnectGoogleDrive?: () => void;
+  onDisconnectGoogleDrive?: () => void;
 }
 
 interface ConnectorSummary {
@@ -48,6 +52,7 @@ interface ConnectorSummary {
 }
 
 const CATEGORIES = [
+  { id: "storage", name: "Storage Vault", icon: HardDrive, description: "Agent persistent memory storage and file synchronization" },
   { id: "finance", name: "Finance & Trading", icon: Wallet, description: "Manage Web3 wallets, balances, and market trading" },
   { id: "communication", name: "Channels & Messaging", icon: MessageCircle, description: "Interactive channels and workspace integrations" },
   { id: "quests", name: "Quests & Airdrops", icon: Gift, description: "Complete tasks to earn points and free Agent Credits" },
@@ -67,9 +72,10 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   finance: Activity,
   communication: MessageCircle,
   connectors: Server,
+  storage: HardDrive,
 };
 
-export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMobileView, socket, threads, onConnectThreads, onDisconnectThreads, telegram, telegramLinkCode, onGenerateTelegramLink }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMobileView, socket, threads, onConnectThreads, onDisconnectThreads, telegram, telegramLinkCode, onGenerateTelegramLink, googleDrive, onConnectGoogleDrive, onDisconnectGoogleDrive }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
 
@@ -164,6 +170,7 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
   const getCategoryCount = (catId: string): number => {
     if (catId === 'quests') return STATIC_CAPABILITIES.quests?.length || 0;
     if (catId === 'connectors') return 1 + (connectorsByCategory['connectors']?.length || 0);
+    if (catId === 'storage') return 1; // Google Drive
     return connectorsByCategory[catId]?.length || 0;
   };
 
@@ -406,6 +413,55 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
     }
     if (catId === "connectors") {
       return <McpConnectorPanel theme={theme} onBack={() => setActiveCategory(null)} isMobileView={isMobileView} socket={socket} />;
+    }
+    if (catId === "storage") {
+      return (
+        <div style={{ animation: "walletPageIn 300ms ease forwards" }}>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: isMobileView ? 24 : 32, fontWeight: 500, color: theme.ink, marginBottom: 8, letterSpacing: -0.5 }}>
+            Storage Vault
+          </div>
+          <div style={{ fontSize: 14, color: theme.inkSoft, marginBottom: isMobileView ? 24 : 36 }}>
+            Agent persistent memory storage and file synchronization.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(260px, 1fr))", gap: isMobileView ? 12 : 20 }}>
+            {/* Google Drive Card */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img src="/google-drive.png" alt="Google Drive" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: googleDrive?.status === 'CONNECTED' ? theme.statusSoft : theme.surface, color: googleDrive?.status === 'CONNECTED' ? theme.status : theme.inkSoft }}>
+                  {googleDrive?.status === 'CONNECTED' ? 'CONNECTED' : googleDrive?.status === 'NOT_CONNECTED' ? 'READY' : 'SETUP REQUIRED'}
+                </span>
+              </div>
+              <div>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+                  Google Drive
+                </div>
+                <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
+                  {googleDrive?.status === 'CONNECTED' ? 'Workspace memory vault is connected.' : 'Future workspace memory vault.'}
+                </div>
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+                {googleDrive?.status === 'CONNECTED' ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => window.open(googleDrive.url, '_blank')} style={{ flex: 1, padding: "8px", borderRadius: 10, background: theme.surface, border: `1px solid ${theme.border}`, color: theme.ink, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = theme.surface2} onMouseLeave={e => e.currentTarget.style.background = theme.surface}>
+                      Open Vault
+                    </button>
+                    <button onClick={onDisconnectGoogleDrive} style={{ flex: 1, padding: "8px", borderRadius: 10, background: "transparent", border: `1px solid ${theme.isDark ? '#6D3434' : '#F0CACA'}`, color: '#D04646', fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = theme.isDark ? '#4A2323' : '#FDF0F0'} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      Disconnect
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={onConnectGoogleDrive} disabled={!onConnectGoogleDrive || googleDrive?.status !== 'NOT_CONNECTED'} style={{ width: '100%', padding: "8px", borderRadius: 10, background: theme.ink, border: "none", color: theme.bg, fontSize: 13, fontWeight: 600, cursor: googleDrive?.status === 'NOT_CONNECTED' ? "pointer" : "not-allowed", opacity: googleDrive?.status === 'NOT_CONNECTED' ? 1 : 0.58 }} title={googleDrive?.status === 'UNAVAILABLE' ? 'Google Drive OAuth must be configured on SERA Core first' : undefined}>
+                    Connect Drive
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
     }
 
     const category = CATEGORIES.find(c => c.id === catId);

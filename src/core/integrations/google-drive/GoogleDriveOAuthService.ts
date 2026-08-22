@@ -39,7 +39,10 @@ export class GoogleDriveOAuthService {
     const publicUrl = process.env.SERA_PUBLIC_URL?.replace(/\/$/, '');
     const stateSecret = process.env.SESSION_SECRET;
     const connections = GoogleDriveConnectionRepository.fromEnvironment();
-    if (!clientId || !clientSecret || !publicUrl || !stateSecret || !connections) return null;
+    if (!clientId || !clientSecret || !publicUrl || !stateSecret || !connections) {
+      console.warn('[GoogleDriveOAuthService] Failed to initialize from environment. Missing:', { clientId: !!clientId, clientSecret: !!clientSecret, publicUrl: !!publicUrl, stateSecret: !!stateSecret, connections: !!connections });
+      return null;
+    }
     return new GoogleDriveOAuthService({ clientId, clientSecret, publicUrl, stateSecret }, connections);
   }
 

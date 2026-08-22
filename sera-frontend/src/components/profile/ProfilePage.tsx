@@ -4,7 +4,7 @@ import type { ThemeType } from '../../theme';
 import type { WalletState } from '../../hooks/useWallet';
 import type { MemoryVaultDescriptor } from '../../types/MemoryVault';
 import type { DeviceVaultDescriptor } from '../../storage/DeviceMemoryVault';
-import type { GoogleDriveConnectionState } from '../../hooks/useSocket';
+
 
 interface ProfilePageProps {
   theme: ThemeType;
@@ -19,9 +19,6 @@ interface ProfilePageProps {
   memoryVault?: MemoryVaultDescriptor | null;
   deviceVault?: DeviceVaultDescriptor;
   onDeleteDeviceMemory?: () => void;
-  googleDrive?: GoogleDriveConnectionState;
-  onConnectGoogleDrive?: () => void;
-  onDisconnectGoogleDrive?: () => void;
   isMobileView?: boolean;
 }
 
@@ -55,9 +52,6 @@ export function ProfilePage({
   memoryVault,
   deviceVault,
   onDeleteDeviceMemory,
-  googleDrive,
-  onConnectGoogleDrive,
-  onDisconnectGoogleDrive,
   isMobileView,
 }: ProfilePageProps) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -179,30 +173,13 @@ export function ProfilePage({
                 <Trash2 size={15} /> Delete local chat
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobileView ? '1fr' : '1fr 1fr', gap: 12 }}>
-              <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: theme.accentSoft, color: theme.accent }}><HardDrive size={17} /></div>
-                    <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>Google Drive</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Future user-owned memory vault</div></div>
-                  </div>
-                  <span style={{ color: googleDrive?.status === 'CONNECTED' ? theme.status : theme.inkSoft, background: googleDrive?.status === 'CONNECTED' ? theme.statusSoft : theme.surface, border: `1px solid ${theme.border}`, borderRadius: 999, padding: '5px 8px', fontSize: 10, fontWeight: 700 }}>{googleDrive?.status === 'CONNECTED' ? 'CONNECTED' : googleDrive?.status === 'NOT_CONNECTED' ? 'READY TO CONNECT' : 'SETUP REQUIRED'}</span>
-                </div>
-                <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>{googleDrive?.status === 'CONNECTED' ? 'Connected to your visible SERA Vault folder. Core holds only an encrypted, revocable delegation token for offline autonomy.' : 'Authorize your own Google account. SERA will store only validated memory projections in a visible SERA Vault folder, with access you can revoke.'}</p>
-                {googleDrive?.status === 'CONNECTED' ? (
-                  <button onClick={onDisconnectGoogleDrive} style={{ ...secondaryButton, width: 'fit-content', color: '#D04646', borderColor: theme.isDark ? '#6D3434' : '#F0CACA' }}>Disconnect Google Drive</button>
-                ) : (
-                  <button onClick={onConnectGoogleDrive} disabled={!onConnectGoogleDrive || googleDrive?.status !== 'NOT_CONNECTED'} title={googleDrive?.status === 'UNAVAILABLE' ? 'Google Drive OAuth must be configured on SERA Core first' : undefined} style={{ ...secondaryButton, width: 'fit-content', opacity: googleDrive?.status === 'NOT_CONNECTED' ? 1 : 0.58, cursor: googleDrive?.status === 'NOT_CONNECTED' ? 'pointer' : 'not-allowed' }}>Connect Google Drive</button>
-                )}
+            <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: theme.surface, color: theme.inkSoft }}><Cloud size={17} /></div>
+                <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>User-owned clouds</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Provider choice remains yours</div></div>
               </div>
-              <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: theme.surface, color: theme.inkSoft }}><Cloud size={17} /></div>
-                  <div><div style={{ color: theme.ink, fontSize: 14, fontWeight: 600 }}>More user-owned clouds</div><div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 3 }}>Provider choice remains yours</div></div>
-                </div>
-                <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>Additional options such as S3-compatible storage, R2, or a private Supabase project will be added through the same revocable-vault contract.</p>
-                <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 'auto' }}>No provider is connected yet.</div>
-              </div>
+              <p style={{ color: theme.inkSoft, fontSize: 12, lineHeight: 1.55, margin: 0 }}>Additional options such as S3-compatible storage, R2, or a private Supabase project will be added through the same revocable-vault contract.</p>
+              <div style={{ color: theme.inkSoft, fontSize: 12, marginTop: 'auto' }}>No provider is connected yet.</div>
             </div>
           </Section>
 
