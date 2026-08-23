@@ -34,3 +34,11 @@ This file enshrines the core architectural constraints of Sera. As an AI buildin
    - All source code, internal comments, docstrings, system prompts, prompt exemplars, tool descriptions, and error messages MUST be written strictly in **English (Universal Engineering Standard)**.
    - Indonesian or non-English text is ONLY permitted for dynamic user-facing responses when conversing with non-English users.
    - Hardcoding Indonesian or non-English text inside code files, system prompts, or architectural rules is strictly prohibited to ensure global developer readability and seamless team collaboration.
+
+8. **Production Deployment Protocol (Cloud Run & Vercel)**
+   - **Backend (`sera-core`)**: NEVER use `gcloud run deploy --source .` directly. The root `Dockerfile` is reserved exclusively for the public landing service (`sera-reception`). To deploy the SERA Core Socket/Agent runtime, you MUST:
+     1. Build the container image via Cloud Build using: `gcloud builds submit --config cloudbuild.core.yaml .`
+     2. Deploy the built image: `gcloud run deploy sera-core --image asia-southeast1-docker.pkg.dev/sera-core/sera-core-images/sera-core-api:latest --region asia-southeast1 --quiet`
+   - **Frontend (`sera-frontend`)**: Deployed from `sera-frontend/` via Vercel (`npx vercel --prod`). Ensure `VITE_API_URL` is set to the Cloud Run public URL (`https://sera-core-212723620663.asia-southeast1.run.app`).
+   - **CORS Configuration**: All `.vercel.app` preview/production domains and authorized custom domains must be permitted in `src/server/config.ts` via `isAllowedOrigin`.
+

@@ -13,7 +13,9 @@
     "start:server": "ts-node --transpile-only src/server/index.ts",
     "start:reception": "npm --prefix sera-reception run start",
     "dev:docs": "npm --prefix sera-docs run start -- --port 3003",
-    "build": "tsc"
+    "build": "tsc",
+    "deploy:core": "gcloud builds submit --config cloudbuild.core.yaml . && gcloud run deploy sera-core --image asia-southeast1-docker.pkg.dev/sera-core/sera-core-images/sera-core-api:latest --region asia-southeast1 --quiet",
+    "deploy:frontend": "npm --prefix sera-frontend run build && vercel --prod --cwd sera-frontend"
   },
   "author": "",
   "license": "ISC",
@@ -30,6 +32,8 @@
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.51.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-brave-search": "^0.6.2",
+    "@modelcontextprotocol/server-memory": "^0.6.2",
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",
     "cron-parser": "^5.6.1",

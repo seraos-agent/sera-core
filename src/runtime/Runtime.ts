@@ -52,6 +52,7 @@ import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
 import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 import { ImageGenerationCapability } from '../capabilities/media/ImageGenerationCapability';
+import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
 
 import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
 import { SecretManager } from '../core/secrets/SecretManager';
@@ -244,6 +245,7 @@ export class Runtime {
     const threadsApi = new ThreadsAPI(this.secretManager);
     const threadsCap = new ThreadsCapability(threadsApi, this.secretManager);
     const imageGenCap = new ImageGenerationCapability();
+    const braveSearchCap = new BraveSearchCapability();
 
     // Initialize and start the autonomous daemon for Threads as a singleton worker
     if (process.env.THREADS_APP_ID && !Runtime.globalThreadsDaemon) {
@@ -286,6 +288,17 @@ export class Runtime {
       alwaysActive: true,
       tools: imageGenCap.getTools(),
       executeTool: imageGenCap.executeTool.bind(imageGenCap),
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'web_search',
+      name: 'Web Intelligence',
+      category: 'connectors',
+      description: 'Live internet web search powered by Brave',
+      riskSummary: 'Fetches real-time web search results from Brave Search. Safe and read-only.',
+      alwaysActive: true,
+      tools: braveSearchCap.getTools(),
+      executeTool: braveSearchCap.executeTool.bind(braveSearchCap),
     });
 
     // ── On-demand connectors: Can be toggled by users ─────────────────────activation

@@ -23,8 +23,8 @@ export class WorkClassificationPolicy {
       return this.route('COMPLEX');
     }
 
-    if (/\b(transfer|send|trade|buy|sell|deploy|production)\b/.test(value)) return this.route('HIGH_RISK');
-    if (/\b(build|implement|refactor|audit|research|codebase|strategy)\b/.test(value)) return this.route('COMPLEX');
+    if (/\b(transfer|send|trade|buy|sell|deploy|production)\b/i.test(value)) return this.route('HIGH_RISK');
+    if (/\b(build|implement|refactor|audit|research|codebase|strategy)\b/i.test(value)) return this.route('COMPLEX');
     if (/\b(check|search|status|balance|schedule|mode|theme|display|light|dark|clear|chat|history|delete|remove|reset|clean|switch|change|retry|monitor|report|track|every|interval|cron|minute|minutes|min|mins|sec|second|seconds|hour|hours|daily|weekly|btc|eth|sol|arb|hype|aero|brett|toshi|usdc|price|market|start|begin|proceed|yes|ok|okay|confirm)\b/i.test(value)) return this.route('OPERATIONAL');
     return this.route('CONVERSATION');
   }

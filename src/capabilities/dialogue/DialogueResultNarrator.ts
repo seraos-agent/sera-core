@@ -68,7 +68,7 @@ export class DialogueResultNarrator {
 
     const marketEvidencePolicy = '';
     const narratePrompt = result.success
-      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally and concisely in the same language the user used. IMPORTANT: Do NOT mention the transaction hash or provide any links in your response.${marketEvidencePolicy}`
+      ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally, helpfully, and concisely in the same language the user used. If the data contains web search results, summarize the key findings clearly and include relevant sources/links if helpful. Do NOT mention internal raw transaction hashes unless relevant.${marketEvidencePolicy}`
       : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
 
     const messages = await buildWorkingMemory();
