@@ -113,7 +113,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address, isReconnecting, isConnecting } = useAccount();
-  const { socket, messages, setMessages, currentActivity, cancelChat, memoryVault, deviceVault, deleteDeviceMemory, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
+  const { socket, messages, setMessages, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -164,7 +164,7 @@ function InnerApp() {
   };
 
   const shellWidth = "100%";
-  const shellHeight = isMobileView ? "var(--tg-viewport-height, 100vh)" : "100vh";
+  const shellHeight = isMobileView ? "var(--tg-viewport-height, 100dvh)" : "100vh";
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
@@ -184,7 +184,6 @@ function InnerApp() {
     }
     return false;
   });
-  const [walletLinkSourceAddress, setWalletLinkSourceAddress] = useState<string | null>(null);
   const [activeConnectors, setActiveConnectors] = useState<any[]>([]);
 
   // Expand Telegram Mini App if present
@@ -210,30 +209,17 @@ function InnerApp() {
     }
   }, [isBypassed, socket]);
 
-  const startWalletLink = () => {
-    if (!socket || !address || isBypassed) return;
-    setWalletLinkSourceAddress(address.toLowerCase());
-    open();
-  };
-
   useEffect(() => {
-    const normalizedAddress = address?.toLowerCase();
-    const isAwaitingLinkedWallet = Boolean(
-      walletLinkSourceAddress && normalizedAddress && normalizedAddress !== walletLinkSourceAddress,
-    );
-
     // Kapan pun address/isBypassed berubah, langsung bersihkan state UI secara lokal (Optimistic Clear)
     // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
-    if (!isAwaitingLinkedWallet) {
-      setMessages([]);
-      setWalletState({
-        ...INITIAL_WALLET,
-        address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
-        fullAddress: address || INITIAL_WALLET.fullAddress,
-        syncing: true,
-      });
-      setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
-    }
+    setMessages([]);
+    setWalletState({
+      ...INITIAL_WALLET,
+      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
+      fullAddress: address || INITIAL_WALLET.fullAddress,
+      syncing: true,
+    });
+    setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
 
     if (socket) {
       const requestChallenge = async (data: { message: string }) => {
@@ -287,44 +273,17 @@ function InnerApp() {
         if (address) socket.emit("billing:fetch", { address: address.toLowerCase() });
       };
 
-      const signWalletLinkChallenge = async (data: { address: string; message: string }) => {
-        if (!isAwaitingLinkedWallet || !address || data.address !== address.toLowerCase()) return;
-        try {
-          const signature = await signMessageAsync({ account: address, message: data.message });
-          socket.emit('identity:link_wallet', { address, message: data.message, signature });
-        } catch {
-          setWalletLinkSourceAddress(null);
-          setWalletState(prev => ({ ...prev, syncing: false, error: 'Wallet linking was cancelled before ownership could be verified.' }));
-        }
-      };
-
-      const handleWalletLinkSuccess = () => {
-        setWalletLinkSourceAddress(null);
-      };
-
-      const handleWalletLinkError = (error: { message?: string }) => {
-        setWalletLinkSourceAddress(null);
-        setWalletState(prev => ({ ...prev, syncing: false, error: error.message || 'The wallet could not be linked.' }));
-      };
-
       socket.on("auth:challenge", requestChallenge);
       socket.on("auth:success", handleAuthSuccess);
       socket.on("auth:error", handleAuthError);
       socket.on("subscription:required", handleSubscriptionRequired);
-      socket.on('identity:link_wallet_challenge', signWalletLinkChallenge);
-      socket.on('identity:link_success', handleWalletLinkSuccess);
-      socket.on('identity:link_error', handleWalletLinkError);
 
       socket.on('connector:catalog', setActiveConnectors);
       socket.on('connector:status_changed', setActiveConnectors);
       socket.emit('connector:list');
 
       if (isConnected && address) {
-        if (walletLinkSourceAddress) {
-          if (isAwaitingLinkedWallet) socket.emit('identity:link_wallet_challenge', { address });
-        } else {
-          socket.emit("auth:challenge");
-        }
+        socket.emit("auth:challenge");
       }
 
       return () => {
@@ -332,14 +291,11 @@ function InnerApp() {
         socket.off("auth:success", handleAuthSuccess);
         socket.off("auth:error", handleAuthError);
         socket.off("subscription:required", handleSubscriptionRequired);
-        socket.off('identity:link_wallet_challenge', signWalletLinkChallenge);
-        socket.off('identity:link_success', handleWalletLinkSuccess);
-        socket.off('identity:link_error', handleWalletLinkError);
         socket.off('connector:catalog', setActiveConnectors);
         socket.off('connector:status_changed', setActiveConnectors);
       };
     }
-  }, [socket, isConnected, address, isBypassed, walletLinkSourceAddress, setMessages, signMessageAsync, setWalletState]);
+  }, [socket, isConnected, address, isBypassed, setMessages, signMessageAsync, setWalletState]);
 
   if (!isMounted) return null;
 
@@ -433,7 +389,7 @@ function InnerApp() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: isMobileView ? "100dvh" : "100vh", width: "100vw", backgroundColor: mode === "light" ? "#f3f4f6" : "#000", fontFamily: "Inter, sans-serif", overflow: "hidden" }}>
       <style>{`
           body { margin: 0; padding: 0; overflow: hidden; }
           @keyframes chatui-blink { 50% { opacity: 0; } }
@@ -451,12 +407,12 @@ function InnerApp() {
           maxWidth: "100%",
           height: shellHeight,
           background: theme.bg,
-          borderRadius: isMobileView ? 28 : 0,
-          border: isMobileView ? `1px solid ${theme.border}` : "none",
+          borderRadius: 0,
+          border: "none",
           overflow: "hidden",
           display: "flex",
           position: "relative",
-          boxShadow: isMobileView ? theme.shellShadow : "none",
+          boxShadow: isMobileView ? "none" : "none",
         }}
       >
         <Sidebar
@@ -542,11 +498,6 @@ function InnerApp() {
             disconnect();
             setIsBypassed(false);
           }}
-          onLinkWallet={isBypassed ? undefined : startWalletLink}
-          isLinkingWallet={Boolean(walletLinkSourceAddress)}
-          memoryVault={memoryVault}
-          deviceVault={deviceVault}
-          onDeleteDeviceMemory={deleteDeviceMemory}
         /> : currentView === "wallet" ? (
           <WalletPage
             theme={theme}

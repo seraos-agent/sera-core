@@ -302,7 +302,12 @@ io.on('connection', (socket: Socket) => {
     socket.emit('auth:challenge', { message });
   };
 
-  const sendInitialState = () => {
+  const sendInitialState = async () => {
+    try {
+      await instance.chatHistoryStore.ensureLoaded();
+    } catch (e) {
+      console.warn('[Server] Failed to ensure chat history loaded:', e);
+    }
     const walletState = instance.worldStateService.getWalletState();
     if (walletState && walletState.address) {
       socket.emit('wallet:update', walletState);

@@ -160,8 +160,7 @@ export class SeraAgentInstance {
     });
     this.persistence = memorySelection.persistence;
     this.memoryVault = memorySelection.vault;
-    const persistLocally = this.memoryVault.mode === 'LOCAL_DEVELOPMENT';
-
+    const persistLocally = true;
     this.chatHistoryStore = new ChatHistoryStore(this.sessionId, { persistLocally });
     
     this.triggerStore = new InMemoryTriggerStore(this.sessionId, { persistLocally });
@@ -335,8 +334,11 @@ export class SeraAgentInstance {
     this.started = true;
     console.log(`[SeraAgentInstance] Starting engines for ${this.sessionId}`);
     
-    // Load snapshot at start
-    const snapshot = await this.persistence.load();
+    // Load working memory snapshot and chat history concurrently
+    const [snapshot] = await Promise.all([
+      this.persistence.load(),
+      this.chatHistoryStore.ensureLoaded()
+    ]);
     if (snapshot) {
       if ('loadSnapshot' in this.memoryStore) {
         (this.memoryStore as WorkingMemory).loadSnapshot(snapshot);

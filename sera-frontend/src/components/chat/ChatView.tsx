@@ -37,14 +37,38 @@ export function ChatView({
   onRespondGovernance
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [showObservations, setShowObservations] = useState(false);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    if (!scrollRef.current) return;
+    const { scrollHeight, clientHeight } = scrollRef.current;
+    if (scrollHeight > clientHeight) {
+      scrollRef.current.scrollTo({
+        top: scrollHeight,
+        behavior
+      });
     }
-  }, [messages, currentActivity]);
+  }, []);
+
+  // Instant scroll on new messages / activity state changes
+  useEffect(() => {
+    scrollToBottom('smooth');
+    const timer = setTimeout(() => scrollToBottom('auto'), 80);
+    return () => clearTimeout(timer);
+  }, [messages, currentActivity, showObservations, scrollToBottom]);
+
+  // Use ResizeObserver on the messages content wrapper to guarantee auto-scroll on any dynamic height change
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const observer = new ResizeObserver(() => {
+      scrollToBottom('smooth');
+    });
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
 
   const handleCopy = useCallback((id: number, content: string) => {
     navigator.clipboard.writeText(content);
@@ -75,14 +99,14 @@ export function ChatView({
       {/* Messages area */}
       <div ref={scrollRef} style={{
         flex: 1, overflowY: "auto",
-        padding: isMobileView ? "72px 14px 120px" : "80px 26px 140px",
-        maskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)",
-        WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 64px, black 100%)"
+        padding: isMobileView ? "68px 14px 180px" : "80px 26px 200px",
+        maskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
+        WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
       }}>
         {messages.length === 0 ? (
           <EmptyState theme={theme} />
         ) : (
-          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <div ref={contentRef} style={{ maxWidth: 760, margin: "0 auto" }}>
             {messages.map((msg, idx) => (
               <MessageBubble
                 key={msg.id || idx}
@@ -112,22 +136,27 @@ export function ChatView({
 
 
             {currentActivity && (
-              <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0" }}>
+              <div style={{ display: "flex", justifyContent: "flex-start", margin: "20px 0 16px" }}>
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  fontSize: 12, color: theme.inkFaint, fontFamily: "Inter, sans-serif",
-                  fontWeight: 500
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  padding: "8px 16px", borderRadius: 20,
+                  background: theme.surface2, border: `1px solid ${theme.border}`,
+                  fontSize: 12.5, color: theme.inkSoft, fontFamily: "Inter, sans-serif",
+                  fontWeight: 500, boxShadow: "0 2px 10px rgba(0,0,0,0.05)"
                 }}>
                   <div className="activity-spinner" style={{
-                    width: 12, height: 12, border: `2px solid ${theme.inkFaint}40`, borderTopColor: theme.inkFaint, borderRadius: "50%", animation: "spin 1s linear infinite"
+                    width: 13, height: 13, border: `2px solid ${theme.accent}40`, borderTopColor: theme.accent, borderRadius: "50%", animation: "spin 1s linear infinite"
                   }} />
-                  {currentActivity}
+                  <span>{currentActivity}</span>
                   <style>{`
                   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
                 `}</style>
                 </div>
               </div>
             )}
+
+            {/* Scroll bottom clearance anchor */}
+            <div ref={bottomRef} style={{ height: isMobileView ? 24 : 32 }} />
 
           </div>
         )}
@@ -136,7 +165,7 @@ export function ChatView({
       {/* Input area */}
       <div style={{
         position: "absolute", bottom: 0, left: 0, right: 0,
-        padding: isMobileView ? "0px 14px 12px" : "0px 26px 16px",
+        padding: isMobileView ? "0px 14px max(14px, env(safe-area-inset-bottom, 14px))" : "0px 26px 16px",
         background: theme.bg,
         pointerEvents: "none" // so clicks pass through the gradient
       }}>

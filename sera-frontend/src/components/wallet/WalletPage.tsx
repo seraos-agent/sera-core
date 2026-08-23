@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronLeft as CloseIcon, X, Check, Copy, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft as CloseIcon, X, Check, Copy, ChevronDown, ChevronUp, QrCode } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { Socket } from "socket.io-client";
 import type { WalletState } from "../../hooks/useWallet";
@@ -55,6 +55,19 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const [copiedAgent, setCopiedAgent] = useState(false);
   const [copiedVault, setCopiedVault] = useState(false);
   const [showNetworks, setShowNetworks] = useState(false);
+  const [qrModal, setQrModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    address: string;
+    type: 'personal' | 'agent';
+  } | null>(null);
+  const [copiedModal, setCopiedModal] = useState(false);
+
+  const copyModalAddress = (addr: string) => {
+    navigator.clipboard.writeText(addr);
+    setCopiedModal(true);
+    setTimeout(() => setCopiedModal(false), 2000);
+  };
 
   const copyToClipboard = (text: string, type: "agent" | "vault") => {
     navigator.clipboard.writeText(text);
@@ -231,13 +244,13 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             </div>
           </div>
 
-          {/* ── Sticky Services Tabs ── */}
+          {/* ── Sticky Services Tabs / Header Actions ── */}
           <div style={{
             display: 'flex', gap: 12, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center",
             position: 'sticky', top: -1, zIndex: 10,
             background: theme.bg, padding: `16px ${sidePad}px 16px`
           }}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <button style={{
                 padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
                 fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
@@ -245,6 +258,59 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
               }}>
                 Base Network
               </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {/* QR Code Action Button */}
+              <button
+                onClick={() => setQrModal({
+                  isOpen: true,
+                  title: "Sera Agent Vault",
+                  address: vaultAddr || agentAddr,
+                  type: "agent"
+                })}
+                title="Show Wallet QR Code"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${theme.border}`,
+                  background: theme.surface,
+                  color: theme.ink,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "background 150ms"
+                }}
+              >
+                <QrCode size={15} />
+                <span>QR Code</span>
+              </button>
+
+              {/* View on Basescan Text Button (No icon) */}
+              <a
+                href={`https://basescan.org/address/${vaultAddr || agentAddr}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "7px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${theme.border}`,
+                  background: theme.surface,
+                  color: theme.ink,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  transition: "background 150ms",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                View on Basescan
+              </a>
             </div>
           </div>
 
@@ -362,7 +428,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 <div style={{ display: "flex", flexDirection: isMobileView ? "column" : "row", gap: isMobileView ? 8 : 12, marginTop: isMobileView ? 16 : 24 }}>
                   <div style={{ flex: 1, background: theme.surface2, borderRadius: 16, padding: isMobileView ? "10px 12px" : "14px 16px", border: `1px solid ${theme.border}` }}>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
-                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)}</div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)} USDC</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortAgent}</div>
                       {agentAddr && (
@@ -594,6 +660,197 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
           </div>
         </div>
       </div>
+      {/* ── QR Code / Receive Modal ── */}
+      {qrModal?.isOpen && (
+        <div
+          onClick={() => setQrModal(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            animation: "walletPageIn 180ms ease forwards"
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 20,
+              padding: isMobileView ? "20px 16px" : "24px",
+              maxWidth: 380,
+              width: "100%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              position: "relative"
+            }}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setQrModal(null)}
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: theme.inkSoft,
+                padding: 4,
+                display: "flex"
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ fontSize: 16, fontWeight: 600, color: theme.ink, marginBottom: 4, textAlign: "center" }}>
+              Receive on {qrModal.title}
+            </div>
+            <div style={{ fontSize: 12, color: theme.inkSoft, textAlign: "center", marginBottom: 16 }}>
+              Scan QR code to transfer USDC or ETH (Base Mainnet)
+            </div>
+
+            {/* Wallet Toggle Tabs inside Modal */}
+            {agentAddr && vaultAddr && (
+              <div style={{ display: "flex", background: theme.surface2, padding: 3, borderRadius: 10, marginBottom: 16, width: "100%", boxSizing: "border-box" }}>
+                <button
+                  onClick={() => setQrModal(prev => prev ? { ...prev, title: "Sera Agent Vault", address: vaultAddr, type: "agent" } : null)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: qrModal.type === "agent" ? theme.surface : "transparent",
+                    color: qrModal.type === "agent" ? theme.ink : theme.inkSoft,
+                    boxShadow: qrModal.type === "agent" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
+                  }}
+                >
+                  Agent Vault
+                </button>
+                <button
+                  onClick={() => setQrModal(prev => prev ? { ...prev, title: "Personal Wallet", address: agentAddr, type: "personal" } : null)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: qrModal.type === "personal" ? theme.surface : "transparent",
+                    color: qrModal.type === "personal" ? theme.ink : theme.inkSoft,
+                    boxShadow: qrModal.type === "personal" ? "0 2px 6px rgba(0,0,0,0.08)" : "none"
+                  }}
+                >
+                  Personal Wallet
+                </button>
+              </div>
+            )}
+
+            {/* QR Code Container */}
+            <div style={{
+              background: "#ffffff",
+              padding: 14,
+              borderRadius: 16,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 20
+            }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrModal.address)}&margin=4`}
+                alt="Wallet QR Code"
+                width={190}
+                height={190}
+                style={{ display: "block", borderRadius: 8 }}
+              />
+            </div>
+
+            {/* Address & Copy Box */}
+            <div style={{
+              width: "100%",
+              background: theme.surface2,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
+              padding: "10px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 16,
+              boxSizing: "border-box"
+            }}>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 12,
+                color: theme.ink,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }}>
+                {qrModal.address}
+              </span>
+              <button
+                onClick={() => copyModalAddress(qrModal.address)}
+                style={{
+                  background: copiedModal ? theme.statusSoft : theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  color: copiedModal ? theme.status : theme.ink,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0
+                }}
+              >
+                {copiedModal ? <Check size={13} /> : <Copy size={13} />}
+                {copiedModal ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            {/* Basescan Link Button */}
+            <a
+              href={`https://basescan.org/address/${qrModal.address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 12,
+                background: theme.accentSoft,
+                color: theme.accent,
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                transition: "opacity 150ms",
+                boxSizing: "border-box"
+              }}
+            >
+              View on Basescan
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

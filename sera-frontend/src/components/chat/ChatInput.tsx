@@ -332,9 +332,11 @@ export function ChatInput({
           </div>
         </div>
 
-        <div style={{ textAlign: "center", fontSize: 11, color: theme.inkSoft, fontFamily: "Inter, sans-serif", marginTop: 14 }}>
-          Sera can make mistakes. Verify important information.
-        </div>
+        {!isMobileView && (
+          <div style={{ textAlign: "center", fontSize: 11, color: theme.inkSoft, fontFamily: "Inter, sans-serif", marginTop: 14 }}>
+            Sera can make mistakes. Verify important information.
+          </div>
+        )}
       </div>
     </div>
   );
