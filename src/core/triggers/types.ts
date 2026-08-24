@@ -21,6 +21,7 @@ export interface Trigger {
   action: TriggerAction;
   createdAt: number;
   lastFiredAt?: number;
+  nextExecutionUtc?: number;
   lastExecutionResult?: {
     success: boolean;
     errorMessage?: string;

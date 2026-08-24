@@ -280,7 +280,8 @@ export class DialogueEngine {
   }
 
   private async onUserObservation(event: StandardEvent<DialogueUserObservedPayload>): Promise<void> {
-    const userMessage: string = event.payload.message;
+    const rawPayload = (event?.payload || {}) as any;
+    const userMessage: string = (rawPayload.message || rawPayload.userMessage || '').trim();
 
     // Check battery empty state
     if (this.subscriptionService) {

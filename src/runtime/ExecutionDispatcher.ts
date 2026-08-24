@@ -47,6 +47,7 @@ export class ExecutionDispatcher {
         type: EventTypes.DIALOGUE_USER_OBSERVED,
         source: 'ExecutionDispatcher',
         payload: {
+          message: `[SYSTEM AUTOMATION TRIGGER]: It is time for a scheduled dynamic task. Please execute the following instruction based on the current context: "${taskPrompt}". You may use web search, tools, and social media posting. Do not ask for confirmation, just do it. Keep your response brief.`,
           userMessage: `[SYSTEM AUTOMATION TRIGGER]: It is time for a scheduled dynamic task. Please execute the following instruction based on the current context: "${taskPrompt}". You may use web search, tools, and social media posting. Do not ask for confirmation, just do it. Keep your response brief.`,
           _seraWorkClass: 'CONVERSATION'
         },

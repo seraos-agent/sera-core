@@ -34,8 +34,19 @@ export class TriggerEngine {
    * Register a new trigger into the system.
    */
   register(trigger: Trigger): void {
+    if (trigger.condition?.type === 'RECURRING' && trigger.condition?.internalCompiled) {
+      try {
+        const interval = CronExpressionParser.parse(trigger.condition.internalCompiled, {
+          currentDate: new Date(),
+          tz: 'UTC'
+        });
+        trigger.nextExecutionUtc = interval.next().getTime();
+      } catch (e: any) {
+        console.error(`[TriggerEngine] Failed to compute initial nextExecutionUtc for ${trigger.id}:`, e.message);
+      }
+    }
     this.store.save(trigger);
-    console.log(`[TriggerEngine] Registered new trigger: ${trigger.id} (State: ${trigger.state})`);
+    console.log(`[TriggerEngine] Registered new trigger: ${trigger.id} (State: ${trigger.state}, Next: ${trigger.nextExecutionUtc ? new Date(trigger.nextExecutionUtc).toISOString() : 'N/A'})`);
   }
 
   /**
@@ -85,21 +96,20 @@ export class TriggerEngine {
           }
         }
       } else if (cond.type === 'RECURRING' && cond.internalCompiled) {
-        // Evaluate cron expression
+        // Deterministic schedule check via nextExecutionUtc
+        if (trigger.nextExecutionUtc) {
+          return nowUtc >= trigger.nextExecutionUtc;
+        }
+
+        // Fallback for legacy or newly deserialized triggers missing nextExecutionUtc
         try {
           const interval = CronExpressionParser.parse(cond.internalCompiled, {
             currentDate: new Date(nowUtc),
             tz: 'UTC'
           });
-          const prev = interval.prev().getTime();
-          // If the cron tick was within the last 60 seconds, fire it
-          if (nowUtc - prev <= 60000 && nowUtc >= prev) {
-            // To prevent double-firing in the same minute
-            if (trigger.lastFiredAt && (nowUtc - trigger.lastFiredAt) < 50000) {
-              return false;
-            }
-            return true;
-          }
+          const next = interval.next().getTime();
+          trigger.nextExecutionUtc = next;
+          this.store.save(trigger);
         } catch (e: any) {
           console.error(`[TriggerEngine] Invalid cron expression "${cond.internalCompiled}" for trigger ${trigger.id}:`, e.message);
         }
@@ -116,6 +126,21 @@ export class TriggerEngine {
     // 1. Transition state to FIRING
     trigger.state = 'FIRING';
     trigger.lastFiredAt = Date.now();
+
+    // Compute NEXT execution time for recurring triggers BEFORE publishing event
+    if (trigger.condition?.type === 'RECURRING' && trigger.condition?.internalCompiled) {
+      try {
+        const interval = CronExpressionParser.parse(trigger.condition.internalCompiled, {
+          currentDate: new Date(Date.now()),
+          tz: 'UTC'
+        });
+        trigger.nextExecutionUtc = interval.next().getTime();
+        console.log(`[TriggerEngine] Trigger ${trigger.id} next execution scheduled at: ${new Date(trigger.nextExecutionUtc).toISOString()}`);
+      } catch (e: any) {
+        console.error(`[TriggerEngine] Failed to compute nextExecutionUtc for ${trigger.id}:`, e.message);
+      }
+    }
+
     this.store.save(trigger);
 
     console.log(`[TriggerEngine] ⚡ TRIGGER FIRED: ${trigger.id} -> ${trigger.action.type}`);
