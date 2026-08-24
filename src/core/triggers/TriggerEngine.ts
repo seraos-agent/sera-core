@@ -1,7 +1,7 @@
 import { TriggerStore, Trigger, TemporalCondition } from './types';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, TemporalTickPayload } from '../events/types';
-import cronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 
 export class TriggerEngine {
   private cycleCount = 0;
@@ -86,21 +86,22 @@ export class TriggerEngine {
         }
       } else if (cond.type === 'RECURRING' && cond.internalCompiled) {
         // Evaluate cron expression
-        // We check if the current minute matches the cron schedule
         try {
-          const interval = cronParser.parse(cond.internalCompiled, { utc: true } as any);
+          const interval = CronExpressionParser.parse(cond.internalCompiled, {
+            currentDate: new Date(nowUtc),
+            tz: 'UTC'
+          });
           const prev = interval.prev().getTime();
           // If the cron tick was within the last 60 seconds, fire it
-          // Assuming the tick rate of TemporalClockService is 60s
           if (nowUtc - prev <= 60000 && nowUtc >= prev) {
-             // To prevent double-firing in the same minute
-             if (trigger.lastFiredAt && (nowUtc - trigger.lastFiredAt) < 60000) {
-               return false;
-             }
-             return true;
+            // To prevent double-firing in the same minute
+            if (trigger.lastFiredAt && (nowUtc - trigger.lastFiredAt) < 50000) {
+              return false;
+            }
+            return true;
           }
-        } catch (e) {
-          console.error(`[TriggerEngine] Invalid cron expression for trigger ${trigger.id}`);
+        } catch (e: any) {
+          console.error(`[TriggerEngine] Invalid cron expression "${cond.internalCompiled}" for trigger ${trigger.id}:`, e.message);
         }
       }
     }
@@ -136,12 +137,21 @@ export class TriggerEngine {
 
     // 3. Post-execution lifecycle transition
     if (trigger.firePolicy === 'ONCE') {
-      trigger.state = 'DISABLED';
-      console.log(`[TriggerEngine] Trigger ${trigger.id} policy was ONCE. State -> DISABLED.`);
+      trigger.state = 'COMPLETED';
+      console.log(`[TriggerEngine] Trigger ${trigger.id} policy was ONCE. State -> COMPLETED.`);
     } else {
       trigger.state = 'ACTIVE';
     }
     
     this.store.save(trigger);
+
+    // Emit event so the server socket and Active Intent Stream update in real-time
+    this.eventBus.emit('system.trigger.registered', {
+      id: `evt-trg-fired-${Date.now()}`,
+      type: 'system.trigger.registered',
+      source: 'TriggerEngine',
+      timestamp: Date.now(),
+      payload: trigger
+    });
   }
 }

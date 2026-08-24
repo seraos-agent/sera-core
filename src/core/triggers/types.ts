@@ -15,7 +15,7 @@ export interface TriggerAction {
 export interface Trigger {
   id: string;
   type: 'TIME' | 'EVENT' | 'SYSTEM';
-  state: 'ACTIVE' | 'PAUSED' | 'FIRING' | 'DISABLED';
+  state: 'ACTIVE' | 'PAUSED' | 'FIRING' | 'DISABLED' | 'COMPLETED';
   firePolicy: 'ONCE' | 'REPEAT' | 'CONDITIONAL';
   condition: TemporalCondition | any;
   action: TriggerAction;

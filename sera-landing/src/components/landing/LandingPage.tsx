@@ -689,8 +689,8 @@ export function LandingPage() {
           <div className="landing-footer-bottom">
             <span className="copyright">{t('footer.rights')}</span>
             <div className="footer-legal">
-              <a href="#privacy">Privacy Policy</a>
-              <a href="#terms">Terms of Service</a>
+              <a href="https://docs.seraos.xyz/docs/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
+              <a href="https://docs.seraos.xyz/docs/terms" target="_blank" rel="noreferrer">Terms of Service</a>
             </div>
           </div>
         </footer>

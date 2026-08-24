@@ -242,6 +242,37 @@ function parseReceptionReply(raw: string, message: string): ReceptionReply {
   try {
     return normaliseReply(JSON.parse(jsonPayload), message);
   } catch {
+    // If it's a truncated or broken JSON object starting with {
+    let extractedVisual = 'general';
+    let extractedResponse = '';
+    let extractedQuestions: string[] = [];
+
+    const visualMatch = jsonPayload.match(/"visual"\s*:\s*"([^"]+)"/i);
+    if (visualMatch) extractedVisual = visualMatch[1];
+
+    // Extract response value even if string was unclosed due to token truncation
+    const responseMatch = jsonPayload.match(/"response"\s*:\s*"((?:\\.|[^"\\])*)/i);
+    if (responseMatch) {
+      try {
+        extractedResponse = JSON.parse(`"${responseMatch[1]}"`);
+      } catch {
+        extractedResponse = responseMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+    }
+
+    const questionsMatch = jsonPayload.match(/"suggestedQuestions"\s*:\s*\[([^\]]*)\]/i);
+    if (questionsMatch) {
+      extractedQuestions = Array.from(questionsMatch[1].matchAll(/"([^"]+)"/g), (m) => m[1]);
+    }
+
+    if (extractedResponse.trim()) {
+      return normaliseReply({
+        visual: extractedVisual,
+        response: extractedResponse.trim(),
+        suggestedQuestions: extractedQuestions.length > 0 ? extractedQuestions : ['What is SERA?', 'How does SERA work?', 'How does SERA stay safe?']
+      }, message);
+    }
+
     // Models occasionally return the requested fields as Markdown instead of JSON.
     // Recover the visitor-facing answer, but never expose transport metadata in the UI.
     const lines = jsonPayload.split('\n');
@@ -254,7 +285,9 @@ function parseReceptionReply(raw: string, message: string): ReceptionReply {
       const plain = line.replace(/\*\*/g, '').trim();
       const field = plain.match(/^(visual|label|suggestedQuestions)\s*:\s*(.*)$/i);
       if (!field) {
-        responseLines.push(line);
+        if (!/^[{}]/.test(plain)) {
+          responseLines.push(line);
+        }
         continue;
       }
 
@@ -271,7 +304,12 @@ function parseReceptionReply(raw: string, message: string): ReceptionReply {
       }
     }
 
-    return normaliseReply({ visual, label, response: responseLines.join('\n').trim(), suggestedQuestions }, message);
+    return normaliseReply({
+      visual,
+      label,
+      response: responseLines.join('\n').trim(),
+      suggestedQuestions: suggestedQuestions.length > 0 ? suggestedQuestions : ['What is SERA?', 'How does SERA work?', 'How does SERA stay safe?']
+    }, message);
   }
 }
 
@@ -354,7 +392,7 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
               { role: 'user', content: normalizedMessage },
             ],
           },
-          parameters: { result_format: 'message', max_tokens: 320, enable_thinking: false },
+          parameters: { result_format: 'message', max_tokens: 800, enable_thinking: false },
         }),
       });
 

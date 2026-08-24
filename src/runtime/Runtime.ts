@@ -329,6 +329,55 @@ export class Runtime {
     });
 
     this.capabilityCatalog.registerConnector({
+      id: 'hyperliquid',
+      name: 'Hyperliquid Spot Trading',
+      category: 'finance',
+      description: 'On-chain CLOB orderbook trading, live market data & portfolio',
+      riskSummary: 'Activating Hyperliquid allows SERA to query real-time orderbook pricing, place spot buy/sell orders, manage resting limit orders, and track your spot portfolio on Hyperliquid Layer 1. All trade executions require explicit proposal card approval unless an operating agreement permits autonomous execution. Crypto spot trading carries price volatility risk.',
+      network: 'Hyperliquid L1',
+      alwaysActive: false,
+      tools: [
+        {
+          name: 'HL_SPOT_MARKET_DATA',
+          description: 'Fetches live spot market data from Hyperliquid orderbook: price, 24h volume, bid/ask, and price change.',
+          parameters: { type: 'object', properties: { coin: { type: 'string', description: 'Token symbol (e.g. HYPE, ETH, BTC)' } }, required: ['coin'] }
+        },
+        {
+          name: 'HL_SPOT_ORDER',
+          description: 'Places a spot buy or sell order on Hyperliquid (Market or Limit).',
+          parameters: {
+            type: 'object',
+            properties: {
+              coin: { type: 'string', description: 'Token symbol' },
+              side: { type: 'string', enum: ['buy', 'sell'] },
+              amount: { type: 'number', description: 'Amount in USDC' },
+              orderType: { type: 'string', enum: ['market', 'limit'] },
+              limitPrice: { type: 'number' }
+            },
+            required: ['coin', 'side', 'amount']
+          },
+          requiresApproval: true
+        },
+        {
+          name: 'HL_SPOT_CANCEL',
+          description: 'Cancels a resting limit order on the spot market.',
+          parameters: { type: 'object', properties: { coin: { type: 'string' }, orderId: { type: 'number' } }, required: ['coin', 'orderId'] },
+          requiresApproval: true
+        },
+        {
+          name: 'HL_SPOT_PORTFOLIO',
+          description: 'Shows user complete portfolio with all token holdings and USD valuations.',
+          parameters: { type: 'object', properties: {} }
+        },
+        {
+          name: 'HL_SPOT_OPEN_ORDERS',
+          description: 'Lists all active resting limit orders on the spot market.',
+          parameters: { type: 'object', properties: {} }
+        }
+      ],
+    });
+
+    this.capabilityCatalog.registerConnector({
       id: 'threads',
       name: 'Threads',
       category: 'communication',

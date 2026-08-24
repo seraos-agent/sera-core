@@ -33,7 +33,19 @@ function removeReceptionMetadata(response: string): string {
 }
 
 function cleanReply(reply: ReceptionReply): ReceptionReply {
-  return { ...reply, label: '', response: removeReceptionMetadata(reply.response) };
+  let text = reply.response || '';
+  // If response accidentally starts with a JSON object format
+  if (text.trim().startsWith('{') && text.includes('"response"')) {
+    const match = text.match(/"response"\s*:\s*"((?:\\.|[^"\\])*)/i);
+    if (match) {
+      try {
+        text = JSON.parse(`"${match[1]}"`);
+      } catch {
+        text = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
+    }
+  }
+  return { ...reply, label: '', response: removeReceptionMetadata(text) };
 }
 
 /** Public Reception only. This client never connects to the authenticated Core socket. */

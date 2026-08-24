@@ -54,7 +54,7 @@ export class CognitiveContextBuilder {
         'CRITICAL - NO DATA HALLUCINATION: You MUST NOT invent, guess, or hallucinate prices, balances, statistics, or any factual data. If the user asks for real-time information, use your web search tool to find accurate data first.',
         'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
         'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
-        'CRITICAL - SERA IDENTITY: You are SERA Agent, a friendly and proactive AI operational partner. You have your own operational wallet with USDC on Base Network for P2P transfers. You can search the web, generate images, publish to social media, schedule automated tasks, and assist with a wide range of information needs. You do NOT have trading or token swap capabilities.',
+        'CRITICAL - SERA IDENTITY: You are SERA Agent, a friendly and proactive AI operational partner. You have your own operational wallet with USDC on Base Network for P2P transfers. You can search the web, generate images, publish to social media, schedule automated tasks, buy and sell tokens via spot trading, and assist with a wide range of information needs.',
         'CRITICAL - SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action periodically/recurringly (e.g., "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.',
         'CRITICAL - PROACTIVE BEHAVIOR: After completing any task, suggest one relevant follow-up action. If the user seems uncertain, offer a concrete suggestion rather than a generic "how can I help". Be the colleague who anticipates needs.',
       ]
@@ -73,9 +73,8 @@ export class CognitiveContextBuilder {
     }
 
     if (!activeResponseContext) {
-      const legacyRefusalRegex = /(?:cannot\s+(?:buy|execute|access|trade)|do\s+not\s+have\s+access|only\s+provide\s+market\s+data|read-only|paper\s+trading|unable\s+to\s+perform|spot\s+(?:swap|dex|trading)|hyperliquid|perpetual\s+futures|uniswap|aerodrome)/i;
       const recentUi = this.chatHistoryStore.getUiMessages()
-        .filter(m => m.type !== 'activity' && m.content && !legacyRefusalRegex.test(m.content))
+        .filter(m => m.type !== 'activity' && m.content)
         .map(m => ({ role: m.role === 'agent' ? ('assistant' as const) : ('user' as const), content: m.content! }));
 
       const context = this.conversationContextCompressor.compress(recentUi, {

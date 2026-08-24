@@ -8,6 +8,7 @@ import { IMemoryPersistence } from '../core/memory/IMemoryPersistence';
 import { MemoryVaultDescriptor } from '../core/memory/MemoryVault';
 import { createMemoryPersistence } from '../memory/persistence/MemoryPersistenceFactory';
 import { GoalBridge } from '../runtime/GoalBridge';
+import { SecretManager } from '../core/secrets/SecretManager';
 import { ChatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { ObservationStore } from '../core/perception/ObservationStore';
 import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
@@ -106,7 +107,8 @@ export class SeraAgentInstance {
 
   constructor(
     context: SeraUserContext | string,
-    public readonly subscriptionService?: any
+    public readonly subscriptionService?: any,
+    public readonly secretManager?: SecretManager
   ) {
     const user = typeof context === 'string' ? { userId: context } : context;
     this.sessionId = user.userId;
@@ -166,7 +168,15 @@ export class SeraAgentInstance {
     this.triggerStore = new InMemoryTriggerStore(this.sessionId, { persistLocally });
     this.triggerEngine = new TriggerEngine(this.triggerStore, this.eventBus);
     
-    this.goalBridge = new GoalBridge(this.eventBus, this.sessionId, this.personalWalletAddress, this.autonomyAgreementStore, undefined, this.triggerEngine);
+    this.goalBridge = new GoalBridge(
+      this.eventBus,
+      this.sessionId,
+      this.personalWalletAddress,
+      this.autonomyAgreementStore,
+      undefined,
+      this.triggerEngine,
+      this.secretManager
+    );
 
     const executionDispatcher = new ExecutionDispatcher(this.eventBus);
     const plannerLLM = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
@@ -318,6 +328,118 @@ export class SeraAgentInstance {
       {
         name: 'CHECK_WALLET_BALANCE',
         description: 'Checks real-time wallet balances (USDC, WETH) for user and agent wallet on Base network.',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'TRANSFER_FUNDS',
+        description: 'Transfers USDC to a recipient address on Base network. Charges standard take rate + gas surcharge.',
+        parameters: {
+          type: 'object',
+          properties: {
+            recipient: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['EXTERNAL_ADDRESS', 'DOMAIN_INTERNAL'] },
+                address: { type: 'string', description: 'The 0x address of the recipient' }
+              },
+              required: ['type']
+            },
+            amount: { type: ['number', 'string'], description: 'The amount of USDC to transfer, or "all"' },
+            asset: { type: 'string', description: 'Asset symbol (default: USDC)' }
+          },
+          required: ['recipient', 'amount']
+        },
+        requiresApproval: true,
+        irreversible: true
+      },
+      {
+        name: 'SCHEDULE_GOAL',
+        description: 'Schedules a future or recurring automated task (e.g. "every 5 minutes", "every hour", "in 20 seconds"). Put the target action (e.g. THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION) in actionIntent.',
+        parameters: {
+          type: 'object',
+          properties: {
+            scheduleType: { type: 'string', enum: ['cron', 'exact'], description: 'cron for recurring schedules, exact for a one-time delay' },
+            humanIntent: { type: 'string', description: 'Human readable schedule description (e.g. "Every 5 minutes", "In 1 hour")' },
+            cronExpression: { type: 'string', description: 'If recurring, 5-field UTC cron (e.g. "*/5 * * * *" for every 5 minutes)' },
+            delaySeconds: { type: 'number', description: 'If exact, delay in seconds from now' },
+            actionIntent: { type: 'string', description: 'The action tool to execute (e.g. THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION)' },
+            actionParameters: { type: 'object', description: 'Parameters for the actionIntent (e.g. { "text": "..." } or { "taskPrompt": "..." })' }
+          },
+          required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
+        },
+        requiresApproval: true
+      },
+      {
+        name: 'ACTIVATE_AUTONOMY_AGREEMENT',
+        description: 'Proposes an operating agreement / delegation scope to allow autonomous actions without requiring per-transaction approvals.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            mode: { type: 'string', enum: ['FULL_ACCESS', 'APPROVAL_REQUIRED', 'RESTRICTED'] },
+            scopes: { type: 'array', items: { type: 'string' } }
+          },
+          required: ['title', 'mode', 'scopes']
+        },
+        requiresApproval: true
+      },
+      // =====================================================================
+      // Hyperliquid Spot Trading Tools
+      // =====================================================================
+      {
+        name: 'HL_SPOT_MARKET_DATA',
+        description: 'Fetches live spot market data from Hyperliquid orderbook: price, 24h volume, bid/ask, and price change. Use this for any token price query.',
+        parameters: {
+          type: 'object',
+          properties: {
+            coin: { type: 'string', description: 'Token symbol to look up (e.g. HYPE, ETH, BTC, SOL, PURR)' }
+          },
+          required: ['coin']
+        }
+      },
+      {
+        name: 'HL_SPOT_ORDER',
+        description: 'Places a spot buy or sell order. Supports market (instant fill) and limit (at specific price). Funds are managed automatically. Use this when user wants to buy or sell any token.',
+        parameters: {
+          type: 'object',
+          properties: {
+            coin: { type: 'string', description: 'Token symbol to trade (e.g. HYPE, ETH, BTC)' },
+            side: { type: 'string', enum: ['buy', 'sell'], description: 'Buy or sell' },
+            amount: { type: 'number', description: 'Amount in USDC' },
+            orderType: { type: 'string', enum: ['market', 'limit'], description: 'Market (instant) or limit (at specific price). Default: market' },
+            limitPrice: { type: 'number', description: 'Required for limit orders: the price per token in USDC' }
+          },
+          required: ['coin', 'side', 'amount']
+        },
+        requiresApproval: true
+      },
+      {
+        name: 'HL_SPOT_CANCEL',
+        description: 'Cancels a resting limit order on the spot market.',
+        parameters: {
+          type: 'object',
+          properties: {
+            coin: { type: 'string', description: 'Token symbol of the order (e.g. HYPE, ETH)' },
+            orderId: { type: 'number', description: 'The order ID to cancel' }
+          },
+          required: ['coin', 'orderId']
+        },
+        requiresApproval: true
+      },
+      {
+        name: 'HL_SPOT_PORTFOLIO',
+        description: 'Shows the user complete portfolio: all token holdings with current USD valuations and total portfolio value.',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'HL_SPOT_OPEN_ORDERS',
+        description: 'Lists all active limit orders waiting to be filled on the spot market.',
         parameters: {
           type: 'object',
           properties: {}

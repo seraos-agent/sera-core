@@ -34,6 +34,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelcontextprotocol/server-brave-search": "^0.6.2",
     "@modelcontextprotocol/server-memory": "^0.6.2",
+    "@nktkas/hyperliquid": "^0.33.3",
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.6",
     "cron-parser": "^5.6.1",

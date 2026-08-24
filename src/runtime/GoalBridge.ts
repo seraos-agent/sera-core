@@ -14,6 +14,11 @@ import { TriggerEngine } from '../core/triggers/TriggerEngine';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { BaseSpotMarketCapability } from '../capabilities/spot/BaseSpotMarketCapability';
 import { TokenResolverService } from '../capabilities/spot/TokenResolverService';
+import { HyperliquidClient } from '../capabilities/hyperliquid/HyperliquidClient';
+import { HyperliquidTokenRegistry } from '../capabilities/hyperliquid/HyperliquidTokenRegistry';
+import { AutoBridgeService } from '../capabilities/hyperliquid/AutoBridgeService';
+import { HyperliquidSpotCapability } from '../capabilities/hyperliquid/HyperliquidSpotCapability';
+import { GasAbstractionService } from '../capabilities/wallet/GasAbstractionService';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
@@ -47,7 +52,21 @@ export class GoalBridge {
 
   private readonly spotMarket = new BaseSpotMarketCapability();
   private readonly tokenResolver = new TokenResolverService();
-  private readonly threadsApi = new ThreadsAPI(new SecretManager(new EncryptedDatabaseSecretStore()));
+
+  // Hyperliquid spot trading capability (lazy-initialized)
+  private _hlSpot: HyperliquidSpotCapability | null = null;
+  private get hlSpot(): HyperliquidSpotCapability {
+    if (!this._hlSpot) {
+      const hlClient = new HyperliquidClient();
+      const hlTokenRegistry = new HyperliquidTokenRegistry(hlClient);
+      const autoBridge = new AutoBridgeService(hlClient);
+      const gasService = new GasAbstractionService();
+      this._hlSpot = new HyperliquidSpotCapability(hlClient, hlTokenRegistry, autoBridge, gasService);
+      console.log('[GoalBridge] Hyperliquid spot capability initialized.');
+    }
+    return this._hlSpot;
+  }
+  private readonly threadsApi: ThreadsAPI;
 
   constructor(
     eventBus: EventEmitter,
@@ -55,10 +74,12 @@ export class GoalBridge {
     private readonly personalWalletAddress?: string,
     private readonly autonomyAgreementStore?: AutonomyAgreementStore,
     private readonly transferAudit: TransferAuditRepository | null = SupabaseTransferAuditRepository.fromEnvironment(),
-    private readonly triggerEngine?: TriggerEngine
+    private readonly triggerEngine?: TriggerEngine,
+    secretManager?: SecretManager
   ) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
+    this.threadsApi = new ThreadsAPI(secretManager || new SecretManager(new EncryptedDatabaseSecretStore()));
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
     try {
@@ -267,6 +288,23 @@ export class GoalBridge {
         case 'RESOLVE_TOKEN':
           await this.handleResolveToken(requestId, actionPayload);
           break;
+
+        // Hyperliquid Spot Trading
+        case 'HL_SPOT_MARKET_DATA':
+          await this.handleHLSpotMarketData(requestId, actionPayload);
+          break;
+        case 'HL_SPOT_ORDER':
+          await this.handleHLSpotOrder(requestId, actionPayload);
+          break;
+        case 'HL_SPOT_CANCEL':
+          await this.handleHLSpotCancel(requestId, actionPayload);
+          break;
+        case 'HL_SPOT_PORTFOLIO':
+          await this.handleHLSpotPortfolio(requestId);
+          break;
+        case 'HL_SPOT_OPEN_ORDERS':
+          await this.handleHLSpotOpenOrders(requestId);
+          break;
         case 'ACTIVATE_AUTONOMY_AGREEMENT':
           this.handleActivateAutonomyAgreement(requestId, actionPayload);
           break;
@@ -320,6 +358,89 @@ export class GoalBridge {
     this.emitResult(requestId, true, metadata);
   }
 
+  // ===========================================================================
+  // Hyperliquid Spot Trading Handlers
+  // ===========================================================================
+
+  private async handleHLSpotMarketData(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || parameters.query || '').trim();
+    if (!coin) throw new Error('Please specify a token symbol (e.g. HYPE, ETH, BTC).');
+
+    const data = await this.hlSpot.getMarketData(coin);
+    this.emitResult(requestId, true, {
+      provider: 'Hyperliquid Spot',
+      mode: 'SPOT',
+      symbol: data.coin,
+      name: data.token.fullName,
+      midPrice: data.midPrice,
+      bestBid: data.bestBid,
+      bestAsk: data.bestAsk,
+      volume24h: data.volume24h,
+      priceChange24hPercent: data.priceChange24hPercent
+    });
+  }
+
+  private async handleHLSpotOrder(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || '').trim();
+    const side = (parameters.side || 'buy') as 'buy' | 'sell';
+    const amount = Number(parameters.amount || 0);
+    const orderType = (parameters.orderType || 'market') as 'market' | 'limit';
+    const limitPrice = parameters.limitPrice ? Number(parameters.limitPrice) : undefined;
+    const userAddress = this.personalWalletAddress || this.sessionId;
+
+    if (!coin) throw new Error('Please specify which token to trade (e.g. HYPE, ETH, BTC).');
+    if (amount <= 0) throw new Error('Please specify a valid amount in USDC.');
+
+    const result = await this.hlSpot.executeOrder({
+      coin,
+      side,
+      amountUsdc: amount,
+      orderType,
+      limitPrice,
+      userAddress
+    });
+    this.emitResult(requestId, result.success, result, result.errorMessage);
+  }
+
+  private async handleHLSpotCancel(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const coin = String(parameters.coin || '').trim();
+    const orderId = Number(parameters.orderId || 0);
+
+    if (!coin) throw new Error('Please specify the token symbol of the order to cancel.');
+    if (!orderId) throw new Error('Please specify the order ID to cancel.');
+
+    const result = await this.hlSpot.cancelOrder(coin, orderId);
+    this.emitResult(requestId, result.success, result, result.errorMessage);
+  }
+
+  private async handleHLSpotPortfolio(requestId: string): Promise<void> {
+    const userAddress = this.personalWalletAddress || this.sessionId;
+    const portfolio = await this.hlSpot.getPortfolio(userAddress);
+    this.emitResult(requestId, true, {
+      provider: 'Hyperliquid Spot',
+      mode: 'PORTFOLIO',
+      items: portfolio.items,
+      totalValueUsdc: portfolio.totalValueUsdc,
+      userAddress
+    });
+  }
+
+  private async handleHLSpotOpenOrders(requestId: string): Promise<void> {
+    const orders = await this.hlSpot.getOpenOrders();
+    this.emitResult(requestId, true, {
+      provider: 'Hyperliquid Spot',
+      mode: 'OPEN_ORDERS',
+      orders: orders.map(o => ({
+        coin: o.coin,
+        side: o.side === 'B' ? 'buy' : 'sell',
+        price: o.limitPx,
+        size: o.sz,
+        orderId: o.oid,
+        timestamp: o.timestamp
+      }))
+    });
+  }
+
   private handleActivateAutonomyAgreement(requestId: string, parameters: Record<string, any>): void {
     if (!this.autonomyAgreementStore) throw new Error('Autonomy Agreement store is not initialized.');
     const mode = parameters.mode === 'FULL_ACCESS' ? 'FULL_ACCESS' : 'ASSISTANT';
@@ -357,12 +478,14 @@ export class GoalBridge {
     let { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
 
     // Programmatic Safeguard: System minimum interval is 1 minute (60 seconds)
-    const MINIMUM_SCHEDULE_SECONDS = 60;
-    let sanitizedCron = cronExpression;
+    let sanitizedCron = cronExpression ? cronExpression.trim() : '*/5 * * * *';
     if (scheduleType === 'cron') {
-      // Normalize any per-second cron (6 fields or <=30s) to 1 minute
-      if (!cronExpression || cronExpression.includes('*/30 * *') || cronExpression.includes('*/10 * *') || cronExpression.includes('*/5 * *') || cronExpression.includes('*/1 * * * * *')) {
+      const parts = sanitizedCron.split(/\s+/);
+      // If 6 parts (per-second cron), normalize to 1-minute 5-field cron
+      if (parts.length === 6) {
         sanitizedCron = '*/1 * * * *';
+      } else if (parts.length < 5) {
+        sanitizedCron = '*/5 * * * *';
       }
     }
 
@@ -375,14 +498,15 @@ export class GoalBridge {
       computedExecuteAfterUtc = new Date(Date.now() + 60000).toISOString();
     }
 
-    this.triggerEngine.register({
-      id: `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      type: 'TIME',
-      state: 'ACTIVE',
-      firePolicy: scheduleType === 'cron' ? 'REPEAT' : 'ONCE',
+    const triggerId = `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newTrigger = {
+      id: triggerId,
+      type: 'TIME' as const,
+      state: 'ACTIVE' as const,
+      firePolicy: scheduleType === 'cron' ? ('REPEAT' as const) : ('ONCE' as const),
       condition: {
-        type: scheduleType === 'cron' ? 'RECURRING' : 'EXACT',
-        humanIntent: humanIntent || 'Unknown schedule',
+        type: scheduleType === 'cron' ? ('RECURRING' as const) : ('EXACT' as const),
+        humanIntent: humanIntent || 'Recurring schedule',
         timezoneContext: 'UTC (Global)',
         internalCompiled: scheduleType === 'cron' ? sanitizedCron : undefined,
         executeAfterUtc: scheduleType === 'exact' ? computedExecuteAfterUtc : undefined,
@@ -392,9 +516,20 @@ export class GoalBridge {
         payload: actionParameters || {}
       },
       createdAt: Date.now()
+    };
+
+    this.triggerEngine.register(newTrigger);
+
+    // Emit event so the server socket and Active Intent Stream update in real-time
+    this.eventBus.emit('system.trigger.registered', {
+      id: `evt-trg-reg-${Date.now()}`,
+      type: 'system.trigger.registered',
+      source: 'GoalBridge',
+      timestamp: Date.now(),
+      payload: newTrigger
     });
 
-    this.emitResult(requestId, true, { scheduled: true, humanIntent, actionIntent });
+    this.emitResult(requestId, true, { scheduled: true, humanIntent, actionIntent, triggerId });
   }
 
   public async handleCheckBalance(requestId: string): Promise<void> {

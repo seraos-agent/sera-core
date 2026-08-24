@@ -1,6 +1,7 @@
 import { SeraAgentInstance } from './SeraAgentInstance';
 import { SubscriptionService } from './billing/SubscriptionService';
 import { SeraUserContext } from '../core/identity/types';
+import { SecretManager } from '../core/secrets/SecretManager';
 
 /** Thrown by checkEntitlement() — callers (e.g. server/index.ts) catch this explicitly. */
 export class SubscriptionRequiredError extends Error {
@@ -14,11 +15,16 @@ export class AgentManager {
   private instances: Map<string, SeraAgentInstance> = new Map();
   private billingTickHandle: ReturnType<typeof setInterval> | undefined;
   private instanceCreatedCallbacks: Array<(instance: SeraAgentInstance) => void> = [];
+  private secretManager?: SecretManager;
 
   constructor(
     private subscriptionService: SubscriptionService = new SubscriptionService(),
     private billingPeriodMs: number = 24 * 60 * 60 * 1000 // 1 day, override in tests
   ) {}
+
+  public setSecretManager(sm: SecretManager) {
+    this.secretManager = sm;
+  }
 
   /**
    * Explicit gate — NOT called automatically inside getOrCreateInstance.
@@ -43,7 +49,7 @@ export class AgentManager {
     
     if (!instance) {
       console.log(`[AgentManager] Spawning new Sera Agent Instance for ${id}`);
-      instance = new SeraAgentInstance({ ...user, userId: id }, this.subscriptionService);
+      instance = new SeraAgentInstance({ ...user, userId: id }, this.subscriptionService, this.secretManager);
       instance.start();
       this.instances.set(id, instance);
       for (const callback of this.instanceCreatedCallbacks) {

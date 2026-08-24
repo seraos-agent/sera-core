@@ -39,6 +39,7 @@ const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
 console.log(`[Server] Google Drive OAuth Service initialized:`, !!googleDriveOAuthService);
 const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
+agentManager.setSecretManager(globalSecretManager);
 export const telegramBotManager = new TelegramBotManager(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
 const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
 
@@ -305,8 +306,9 @@ io.on('connection', (socket: Socket) => {
   const sendInitialState = async () => {
     try {
       await instance.chatHistoryStore.ensureLoaded();
+      await instance.triggerStore.ensureLoaded();
     } catch (e) {
-      console.warn('[Server] Failed to ensure chat history loaded:', e);
+      console.warn('[Server] Failed to ensure chat history / triggers loaded:', e);
     }
     const walletState = instance.worldStateService.getWalletState();
     if (walletState && walletState.address) {
@@ -460,6 +462,10 @@ io.on('connection', (socket: Socket) => {
     socket.emit('billing:update', event.payload);
   };
 
+  const onTriggerRegistered = () => {
+    socket.emit('automations:update', instance.triggerStore.getAll());
+  };
+
   const bindListeners = () => {
     instance.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onAgentSpeak);
     instance.eventBus.on(EventTypes.DIALOGUE_ACTIVITY, onActivity);
@@ -473,6 +479,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
     instance.eventBus.on(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
     instance.eventBus.on(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
+    instance.eventBus.on('system.trigger.registered', onTriggerRegistered);
   };
 
   const unbindListeners = () => {
@@ -488,6 +495,7 @@ io.on('connection', (socket: Socket) => {
     instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
     instance.eventBus.off(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
     instance.eventBus.off(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
+    instance.eventBus.off('system.trigger.registered', onTriggerRegistered);
   };
 
   // Listeners are only bound after successful auth:login.
@@ -993,8 +1001,11 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  socket.on('automations:fetch', () => {
+  socket.on('automations:fetch', async () => {
     if (!requireAuthenticatedSession(socket, 'automations:fetch', instance?.eventBus)) return;
+    try {
+      await instance.triggerStore.ensureLoaded();
+    } catch {}
     socket.emit('automations:update', instance.triggerStore.getAll());
   });
 

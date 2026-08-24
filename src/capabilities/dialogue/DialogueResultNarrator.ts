@@ -57,6 +57,26 @@ export class DialogueResultNarrator {
       return;
     }
 
+
+    // Hyperliquid Spot — Order Result
+    if (result.data?.provider === undefined && result.data?.coin && result.data?.side && result.data?.orderType) {
+      const d = result.data;
+      if (result.success) {
+        const sideLabel = d.side === 'buy' ? '✅ Purchased' : '✅ Sold';
+        const typeLabel = d.orderType === 'limit' ? ' (Limit Order placed)' : '';
+        const text = `${sideLabel} ~${d.estimatedCoinAmount} ${d.coin} for $${d.amountUsdc}${typeLabel}.\n` +
+          `• Fee: $${d.feeBreakdown?.totalFeeUsdc?.toFixed(4) || '0.00'}`;
+        emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text });
+      } else {
+        emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: `Could not complete your ${d.side} order for ${d.coin}: ${d.errorMessage || 'Unknown error'}`
+        });
+      }
+      return;
+    }
+
+
+
     let sanitizedDataStr = JSON.stringify(result.data || {});
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultBalance"/g, '"agentBalance"');
     sanitizedDataStr = sanitizedDataStr.replace(/"vaultEthBalance"/g, '"agentEthBalance"');
