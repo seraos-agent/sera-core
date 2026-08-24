@@ -197,55 +197,102 @@ export class ThreadsDaemon {
     }
   }
 
+  private userActivityMap = new Map<string, { count: number; windowStart: number }>();
+
+  /**
+   * Enforces a rate limit per Threads user to prevent abuse and spam (e.g. max 3 responses per 15 mins).
+   */
+  private checkRateLimit(username: string): boolean {
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+    const maxRequests = 3;
+
+    const activity = this.userActivityMap.get(username);
+    if (!activity || (now - activity.windowStart) > windowMs) {
+      this.userActivityMap.set(username, { count: 1, windowStart: now });
+      return true;
+    }
+
+    if (activity.count >= maxRequests) {
+      return false;
+    }
+
+    activity.count++;
+    return true;
+  }
+
+  private isSpamOrScam(text: string): boolean {
+    if (!text) return false;
+    const spamPatterns = [
+      /t\.me\//i,
+      /bit\.ly\//i,
+      /wa\.me\//i,
+      /whatsapp/i,
+      /airdrop/i,
+      /dm me/i,
+      /dm for promo/i,
+      /send me a message/i,
+      /join my channel/i,
+      /telegram/i,
+      /giveaway.*crypto/i
+    ];
+    return spamPatterns.some(p => p.test(text));
+  }
+
   private async handleReply(reply: ThreadsMention, originalPostText: string) {
     if (this.processedIds.has(reply.id)) return;
     this.markProcessed(reply.id);
 
-    const vipUsersStr = process.env.THREADS_VIP_USERS || '';
-    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
-
     const replyUsername = (reply.username || '').toLowerCase();
+    const botUsername = (process.env.THREADS_BOT_USERNAME || 'sera.agent').toLowerCase();
     
     // Ignore self-reply from the bot account itself
-    const botUsername = (process.env.THREADS_BOT_USERNAME || 'sera.agent').toLowerCase();
     if (replyUsername === botUsername) {
       console.log(`[ThreadsDaemon] Ignoring self-reply from @${reply.username}`);
       return;
     }
 
-    const isVip = vipUsers.includes(replyUsername);
-    const settings = await this.getSettings();
-
-    if (!isVip) {
-      console.log(`[ThreadsDaemon] Ignoring non-VIP reply from @${reply.username} on our post.`);
+    // Filter spam / scam links
+    if (this.isSpamOrScam(reply.text || '')) {
+      console.log(`[ThreadsDaemon] Ignoring spam reply from @${reply.username}: "${reply.text}"`);
       return;
     }
 
-    if (!settings.vipReplies) {
-      console.log(`[ThreadsDaemon] Ignoring VIP reply because vipReplies setting is disabled.`);
+    // Rate-limit check per user
+    if (!this.checkRateLimit(replyUsername)) {
+      console.log(`[ThreadsDaemon] Rate limit exceeded for @${reply.username}. Skipping reply.`);
       return;
     }
 
-    console.log(`[ThreadsDaemon] New VIP reply detected from @${reply.username} on our post. Waking up AI...`);
+    console.log(`[ThreadsDaemon] New public reply detected from @${reply.username} on our post. Waking up AI...`);
 
-    const message = `[SYSTEM_NOTIFICATION] VIP user @${reply.username} replied to YOUR post on Threads:
+    const message = `[SYSTEM_NOTIFICATION] User @${reply.username} commented on YOUR post on Threads:
 Your original post: "${originalPostText}"
-Their reply: "${reply.text}"
+Their comment: "${reply.text}"
 
-Please analyze this. 
-[INTERNAL SYSTEM ROUTING]: To reply to this user on Threads, please invoke the THREADS_REPLY tool with replyToId: ${reply.id}. This is a background automation task. Do NOT ask the user for permission. Do NOT discuss this with the user. You MUST execute the tool immediately and autonomously.
+[PERSONA & STYLE GUIDELINES]:
+- Craft a natural, witty, engaging, or thought-provoking response (1-3 sentences).
+- Match the language of the comment (Indonesian -> Indonesian, English -> English).
+- Do NOT hard-sell, pitch products, or drop generic links. Keep it 100% organic and conversational.
+- Be curious, clever, slightly playful, and friendly.
 
-[RECENT TIMELINE CONTEXT]:
-Here are your recent posts so you know what you've been talking about lately. DO NOT repeat yourself. Maintain consistency.
-${this.timelineContext}
-
-[PERSONA INSTRUCTION FOR THREADS]: The culture on Threads is different from X/Twitter. Your tone should be light, brief, humorous, cheeky, and fun. Do not be overly technical. However, if the user's mention is serious or highly technical, adapt and answer professionally. Always match the context.`;
+[INTERNAL SYSTEM ROUTING]:
+To post your reply directly to Threads, you MUST call the tool THREADS_REPLY with:
+{
+  "replyToId": "${reply.id}",
+  "text": "<your generated reply>"
+}
+This is an autonomous background task. Execute the tool immediately without asking for confirmation.`;
 
     this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
       id: `evt-threads-reply-${Date.now()}`,
       type: EventTypes.DIALOGUE_USER_OBSERVED,
       source: 'ThreadsDaemon',
-      payload: { message },
+      payload: { 
+        message,
+        userMessage: message,
+        _seraWorkClass: 'CONVERSATION'
+      },
       timestamp: Date.now()
     });
   }
@@ -263,63 +310,59 @@ ${this.timelineContext}
       return;
     }
 
-    console.log(`[ThreadsDaemon] New mention detected from @${mention.username}: ${mention.text}`);
-
-    const vipUsersStr = process.env.THREADS_VIP_USERS || '';
-    const vipUsers = vipUsersStr.split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
-    const settings = await this.getSettings();
-
-    const isVip = vipUsers.includes(mentionUsername);
-
-    if (isVip) {
-      if (!settings.vipReplies) {
-        console.log(`[ThreadsDaemon] Ignoring VIP mention because vipReplies setting is disabled.`);
-        return;
-      }
-      console.log(`[ThreadsDaemon] @${mention.username} is VIP. Waking up AI...`);
-      
-      let parentPostContext = '';
-      try {
-        const mentionDetails = await this.api.getPost(this.sessionId, mention.id);
-        
-        if (mentionDetails.is_reply && mentionDetails.replied_to?.id) {
-          console.log(`[ThreadsDaemon] Mention is a reply. Fetching parent post context for ${mentionDetails.replied_to.id}...`);
-          const parentPost = await this.api.getPost(this.sessionId, mentionDetails.replied_to.id);
-          parentPostContext = `\n[PARENT POST CONTEXT]: They are replying to a post by @${parentPost.username} which says:\n"${parentPost.text}"\n`;
-        }
-      } catch (err: any) {
-        console.error(`[ThreadsDaemon] Failed to fetch parent post context:`, err.message);
-      }
-
-      const message = `[SYSTEM_NOTIFICATION] You received a new mention on Threads from VIP user @${mention.username}: "${mention.text}". Please analyze this.${parentPostContext}
-[INTERNAL SYSTEM ROUTING]: To reply to this user on Threads, please invoke the THREADS_REPLY tool with replyToId: ${mention.id}. This is a background automation task. Do NOT ask the user for permission. Do NOT discuss this with the user. You MUST execute the tool immediately and autonomously.
-
-[RECENT TIMELINE CONTEXT]:
-Here are your recent posts so you know what you've been talking about lately. DO NOT repeat yourself.
-${this.timelineContext || '(No recent posts)'}
-
-[PERSONA INSTRUCTION FOR THREADS]: The culture on Threads is different from X/Twitter. Your tone should be light, brief, humorous, cheeky, and fun. Do not be overly technical. However, if the user's mention is serious or highly technical, adapt and answer professionally. Always match the context.`;
-
-      this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
-        id: `evt-threads-${Date.now()}`,
-        type: EventTypes.DIALOGUE_USER_OBSERVED,
-        source: 'ThreadsDaemon',
-        payload: { message },
-        timestamp: Date.now()
-      });
-    } else {
-      if (!settings.gatekeeper) {
-        console.log(`[ThreadsDaemon] Ignoring non-VIP mention because gatekeeper setting is disabled.`);
-        return;
-      }
-      console.log(`[ThreadsDaemon] @${mention.username} is not VIP. Sending gatekeeper reply...`);
-      try {
-        const replyText = `Hello @${mention.username}! Great question. However, I am currently only serving registered users. Join us at seraos.xyz (or check the link in my bio) so we can chat! 🚀`;
-        await this.api.publishPost(this.sessionId, replyText, mention.id);
-        console.log(`[ThreadsDaemon] Gatekeeper reply sent to @${mention.username}`);
-      } catch (err: any) {
-        console.error(`[ThreadsDaemon] Failed to send gatekeeper reply to @${mention.username}:`, err.message);
-      }
+    // Filter spam / scam links
+    if (this.isSpamOrScam(mention.text || '')) {
+      console.log(`[ThreadsDaemon] Ignoring spam mention from @${mention.username}: "${mention.text}"`);
+      return;
     }
+
+    // Rate-limit check per user
+    if (!this.checkRateLimit(mentionUsername)) {
+      console.log(`[ThreadsDaemon] Rate limit exceeded for @${mentionUsername}. Skipping mention.`);
+      return;
+    }
+
+    console.log(`[ThreadsDaemon] New public mention detected from @${mention.username}: "${mention.text}"`);
+
+    let parentPostContext = '';
+    try {
+      const mentionDetails = await this.api.getPost(this.sessionId, mention.id);
+      
+      if (mentionDetails.is_reply && mentionDetails.replied_to?.id) {
+        console.log(`[ThreadsDaemon] Mention is a reply. Fetching parent post context for ${mentionDetails.replied_to.id}...`);
+        const parentPost = await this.api.getPost(this.sessionId, mentionDetails.replied_to.id);
+        parentPostContext = `\n[PARENT POST CONTEXT]: They are replying in a thread under @${parentPost.username}'s post: "${parentPost.text}"\n`;
+      }
+    } catch (err: any) {
+      console.warn(`[ThreadsDaemon] Could not fetch parent post context:`, err.message);
+    }
+
+    const message = `[SYSTEM_NOTIFICATION] You were mentioned on Threads by @${mention.username}: "${mention.text}".${parentPostContext}
+
+[PERSONA & STYLE GUIDELINES]:
+- Provide a helpful, intelligent, witty, or intriguing response (1-3 sentences).
+- Match the language of the mention (Indonesian -> Indonesian, English -> English).
+- Do NOT hard-sell, advertise, or output marketing sales pitches. Keep the conversation organic, insightful, and natural.
+- You can use web search if they ask for factual data or current news.
+
+[INTERNAL SYSTEM ROUTING]:
+To post your reply directly to Threads, you MUST call the tool THREADS_REPLY with:
+{
+  "replyToId": "${mention.id}",
+  "text": "<your generated reply>"
+}
+This is an autonomous background task. Execute the tool immediately without asking for confirmation.`;
+
+    this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
+      id: `evt-threads-${Date.now()}`,
+      type: EventTypes.DIALOGUE_USER_OBSERVED,
+      source: 'ThreadsDaemon',
+      payload: { 
+        message,
+        userMessage: message,
+        _seraWorkClass: 'CONVERSATION'
+      },
+      timestamp: Date.now()
+    });
   }
 }

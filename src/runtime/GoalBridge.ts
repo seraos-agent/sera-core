@@ -477,15 +477,48 @@ export class GoalBridge {
 
     let { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
 
-    // Programmatic Safeguard: System minimum interval is 1 minute (60 seconds)
-    let sanitizedCron = cronExpression ? cronExpression.trim() : '*/5 * * * *';
-    if (scheduleType === 'cron') {
-      const parts = sanitizedCron.split(/\s+/);
-      // If 6 parts (per-second cron), normalize to 1-minute 5-field cron
-      if (parts.length === 6) {
-        sanitizedCron = '*/1 * * * *';
-      } else if (parts.length < 5) {
-        sanitizedCron = '*/5 * * * *';
+    // Option B Relative Interval Extraction & Cron Normalization
+    let computedIntervalMs: number | undefined = undefined;
+    let sanitizedCron = cronExpression ? cronExpression.trim() : undefined;
+
+    if (scheduleType === 'cron' || parameters.intervalHours || parameters.intervalMinutes || parameters.intervalMs) {
+      if (parameters.intervalMs && Number(parameters.intervalMs) > 0) {
+        computedIntervalMs = Number(parameters.intervalMs);
+      } else if (parameters.intervalHours && Number(parameters.intervalHours) > 0) {
+        computedIntervalMs = Number(parameters.intervalHours) * 3600 * 1000;
+      } else if (parameters.intervalMinutes && Number(parameters.intervalMinutes) > 0) {
+        computedIntervalMs = Number(parameters.intervalMinutes) * 60 * 1000;
+      } else if (sanitizedCron) {
+        const parts = sanitizedCron.split(/\s+/);
+        if (parts.length === 6) {
+          sanitizedCron = '*/1 * * * *';
+        } else if (parts.length < 5) {
+          sanitizedCron = '*/5 * * * *';
+        } else if (parts.length === 5) {
+          if (parts[0] === '*/60') {
+            parts[0] = '0';
+            sanitizedCron = parts.join(' ');
+          }
+          if (parts[0] === '*' && parts[1].includes('/')) {
+            parts[0] = '0';
+            sanitizedCron = parts.join(' ');
+          }
+        }
+
+        // Check for relative interval patterns (Option B)
+        const mMin = sanitizedCron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+        const mHourStep = sanitizedCron.match(/^0\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
+        const mHourEvery = sanitizedCron.match(/^0\s+\*\s+\*\s+\*\s+\*$/);
+
+        if (mMin) {
+          computedIntervalMs = Math.max(60000, parseInt(mMin[1]) * 60 * 1000);
+        } else if (mHourStep) {
+          computedIntervalMs = Math.max(3600000, parseInt(mHourStep[1]) * 3600 * 1000);
+        } else if (mHourEvery) {
+          computedIntervalMs = 3600000; // 1 hour
+        }
+      } else {
+        computedIntervalMs = 300000; // Default: 5 minutes
       }
     }
 
@@ -508,7 +541,8 @@ export class GoalBridge {
         type: scheduleType === 'cron' ? ('RECURRING' as const) : ('EXACT' as const),
         humanIntent: humanIntent || 'Recurring schedule',
         timezoneContext: 'UTC (Global)',
-        internalCompiled: scheduleType === 'cron' ? sanitizedCron : undefined,
+        internalCompiled: sanitizedCron,
+        intervalMs: computedIntervalMs,
         executeAfterUtc: scheduleType === 'exact' ? computedExecuteAfterUtc : undefined,
       },
       action: {

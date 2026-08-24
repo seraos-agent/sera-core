@@ -34,7 +34,9 @@ export class TriggerEngine {
    * Register a new trigger into the system.
    */
   register(trigger: Trigger): void {
-    if (trigger.condition?.type === 'RECURRING' && trigger.condition?.internalCompiled) {
+    if (trigger.condition?.intervalMs && trigger.condition.intervalMs > 0) {
+      trigger.nextExecutionUtc = Date.now() + trigger.condition.intervalMs;
+    } else if (trigger.condition?.type === 'RECURRING' && trigger.condition?.internalCompiled) {
       try {
         const interval = CronExpressionParser.parse(trigger.condition.internalCompiled, {
           currentDate: new Date(),
@@ -95,23 +97,29 @@ export class TriggerEngine {
             return true;
           }
         }
-      } else if (cond.type === 'RECURRING' && cond.internalCompiled) {
-        // Deterministic schedule check via nextExecutionUtc
+      } else if (cond.type === 'RECURRING') {
+        // Deterministic schedule check via nextExecutionUtc (Supports Option B Relative Intervals & Standard Crons)
         if (trigger.nextExecutionUtc) {
           return nowUtc >= trigger.nextExecutionUtc;
         }
 
         // Fallback for legacy or newly deserialized triggers missing nextExecutionUtc
-        try {
-          const interval = CronExpressionParser.parse(cond.internalCompiled, {
-            currentDate: new Date(nowUtc),
-            tz: 'UTC'
-          });
-          const next = interval.next().getTime();
-          trigger.nextExecutionUtc = next;
+        if (cond.intervalMs && cond.intervalMs > 0) {
+          trigger.nextExecutionUtc = Date.now() + cond.intervalMs;
           this.store.save(trigger);
-        } catch (e: any) {
-          console.error(`[TriggerEngine] Invalid cron expression "${cond.internalCompiled}" for trigger ${trigger.id}:`, e.message);
+          return false;
+        } else if (cond.internalCompiled) {
+          try {
+            const interval = CronExpressionParser.parse(cond.internalCompiled, {
+              currentDate: new Date(nowUtc),
+              tz: 'UTC'
+            });
+            const next = interval.next().getTime();
+            trigger.nextExecutionUtc = next;
+            this.store.save(trigger);
+          } catch (e: any) {
+            console.error(`[TriggerEngine] Invalid cron expression "${cond.internalCompiled}" for trigger ${trigger.id}:`, e.message);
+          }
         }
       }
     }
@@ -128,16 +136,21 @@ export class TriggerEngine {
     trigger.lastFiredAt = Date.now();
 
     // Compute NEXT execution time for recurring triggers BEFORE publishing event
-    if (trigger.condition?.type === 'RECURRING' && trigger.condition?.internalCompiled) {
-      try {
-        const interval = CronExpressionParser.parse(trigger.condition.internalCompiled, {
-          currentDate: new Date(Date.now()),
-          tz: 'UTC'
-        });
-        trigger.nextExecutionUtc = interval.next().getTime();
-        console.log(`[TriggerEngine] Trigger ${trigger.id} next execution scheduled at: ${new Date(trigger.nextExecutionUtc).toISOString()}`);
-      } catch (e: any) {
-        console.error(`[TriggerEngine] Failed to compute nextExecutionUtc for ${trigger.id}:`, e.message);
+    if (trigger.condition?.type === 'RECURRING') {
+      if (trigger.condition.intervalMs && trigger.condition.intervalMs > 0) {
+        trigger.nextExecutionUtc = Date.now() + trigger.condition.intervalMs;
+        console.log(`[TriggerEngine] Trigger ${trigger.id} relative interval ${trigger.condition.intervalMs}ms next execution scheduled at: ${trigger.nextExecutionUtc ? new Date(trigger.nextExecutionUtc).toISOString() : 'N/A'}`);
+      } else if (trigger.condition?.internalCompiled) {
+        try {
+          const interval = CronExpressionParser.parse(trigger.condition.internalCompiled, {
+            currentDate: new Date(Date.now()),
+            tz: 'UTC'
+          });
+          trigger.nextExecutionUtc = interval.next().getTime();
+          console.log(`[TriggerEngine] Trigger ${trigger.id} next execution scheduled at: ${trigger.nextExecutionUtc ? new Date(trigger.nextExecutionUtc).toISOString() : 'N/A'}`);
+        } catch (e: any) {
+          console.error(`[TriggerEngine] Failed to compute nextExecutionUtc for ${trigger.id}:`, e.message);
+        }
       }
     }
 

@@ -114,7 +114,7 @@ Action: Call tool "SCHEDULE_GOAL" with:
   "actionParameters": {}
 }
 
-Exemplar 1b - Recurring Social Media / Threads Posting:
+Exemplar 1b - Recurring Social Media / Threads Posting (Minutes):
 User: "buatkan postingan setiap 5mnt dengan postingan pendek menarik, seru, dinamis" or "post to Threads every 5 minutes with engaging dynamic content"
 Action: Call tool "SCHEDULE_GOAL" with:
 {
@@ -125,11 +125,33 @@ Action: Call tool "SCHEDULE_GOAL" with:
   "actionParameters": { "taskPrompt": "Write a short, engaging, exciting, and dynamic post and publish it directly to Threads using THREADS_PUBLISH." }
 }
 
-Exemplar 1c - Invalid Recurring Task (< 1 minute):
+Exemplar 1c - Hourly Recurring Social Media / Threads Posting (Every 1 Hour):
+User: "buatkan postingan setiap 1 jam di threads" or "posting ke threads setiap jam" or "post to Threads every hour"
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "cron",
+  "cronExpression": "0 * * * *",
+  "humanIntent": "Every 1 hour create and publish an engaging dynamic post to Threads",
+  "actionIntent": "DYNAMIC_SCHEDULED_ACTION",
+  "actionParameters": { "taskPrompt": "Write a fresh, engaging, exciting, and dynamic post on Threads and publish it using THREADS_PUBLISH." }
+}
+
+Exemplar 1d - Multi-Hour Recurring Social Media Posting (e.g. Every 5 Hours):
+User: "posting di threads setiap 5 jam" or "buatkan postingan setiap 5 jam di threads" or "post to Threads every 5 hours"
+Action: Call tool "SCHEDULE_GOAL" with:
+{
+  "scheduleType": "cron",
+  "cronExpression": "0 */5 * * *",
+  "humanIntent": "Every 5 hours create and publish an engaging dynamic post to Threads",
+  "actionIntent": "DYNAMIC_SCHEDULED_ACTION",
+  "actionParameters": { "taskPrompt": "Write a fresh, engaging, exciting, and dynamic post on Threads and publish it using THREADS_PUBLISH." }
+}
+
+Exemplar 1e - Invalid Recurring Task (< 1 minute):
 User: "check every 30 seconds" or "remind me every 5 seconds" (ONLY if less than 60 seconds)
 Action: Do NOT call any tool. Reply in plain text in the user's language explaining that the minimum schedule frequency is 1 minute, and ask if they would like to proceed with a 1-minute schedule instead.
 
-Exemplar 1d - User Confirms Schedule Creation:
+Exemplar 1f - User Confirms Schedule Creation:
 User: "make it recurring" or "yes exactly" or "proceed with 1 minute" (when confirming a schedule)
 Action: Call tool "SCHEDULE_GOAL" with:
 {

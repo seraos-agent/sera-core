@@ -4,6 +4,7 @@ export interface TemporalCondition {
   timezoneContext: string;   // e.g. "UTC+7"
   internalCompiled?: string; // Optional compiler output (e.g. cron string)
   executeAfterUtc?: number;  // For EXACT matching
+  intervalMs?: number;       // For exact relative recurring intervals (e.g. 3 hours = 3 * 3600 * 1000)
 }
 
 export interface TriggerAction {

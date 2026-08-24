@@ -1,0 +1,11 @@
+.git
+.gitignore
+.data/
+node_modules/
+dist/
+sera-frontend/
+sera-landing/
+sera-docs/
+.env
+.env.*
+*.log
