@@ -38,7 +38,7 @@ export class TemporalClockService {
     }
   }
 
-  private emitTick(): void {
+  public emitTick(): void {
     const nowUtc = Date.now();
     const event: StandardEvent<TemporalTickPayload> = {
       id: `evt-tick-${nowUtc}`,

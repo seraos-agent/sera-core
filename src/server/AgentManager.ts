@@ -104,6 +104,58 @@ export class AgentManager {
     }
   }
 
+  public getActiveInstanceCount(): number {
+    return this.instances.size;
+  }
+
+  public getAllInstances(): SeraAgentInstance[] {
+    return Array.from(this.instances.values());
+  }
+
+  /**
+   * Hydrates all user sessions that have persistent state/triggers in Supabase.
+   * Ensures their TriggerEngine and TemporalClockService are running in memory.
+   */
+  public async hydrateAllSessionsFromCloud(supabaseClient?: any): Promise<number> {
+    if (!supabaseClient || typeof supabaseClient.select !== 'function') return 0;
+    try {
+      const rows = await supabaseClient.select('sera_memory_snapshots', 'select=session_id');
+      if (!Array.isArray(rows)) return 0;
+      
+      let count = 0;
+      for (const row of rows) {
+        if (row.session_id && row.session_id !== 'dev') {
+          const instance = this.getOrCreateInstance(row.session_id);
+          try {
+            await instance.triggerStore.ensureLoaded();
+          } catch (e: any) {
+            console.warn(`[AgentManager] Failed to ensure trigger store loaded for ${row.session_id}:`, e.message);
+          }
+          count++;
+        }
+      }
+      return count;
+    } catch (e: any) {
+      console.warn('[AgentManager] Could not hydrate sessions from cloud:', e.message);
+      return 0;
+    }
+  }
+
+  /**
+   * Emits a canonical temporal tick to all active agent instances.
+   */
+  public emitGlobalTemporalTick(): { instancesTicked: number; timestampUtc: number } {
+    const nowUtc = Date.now();
+    for (const instance of this.instances.values()) {
+      try {
+        instance.temporalClockService.emitTick();
+      } catch (err: any) {
+        console.error(`[AgentManager] Error emitting tick for ${instance.sessionId}:`, err.message);
+      }
+    }
+    return { instancesTicked: this.instances.size, timestampUtc: nowUtc };
+  }
+
   public shutdownAll(): void {
     this.stopBillingTick();
     for (const instance of this.instances.values()) {

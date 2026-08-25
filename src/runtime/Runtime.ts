@@ -105,6 +105,9 @@ export class Runtime {
   private adaptationExecutor: AdaptationExecutor | undefined;
   private executionReflectionEngine: ExecutionReflectionEngine | undefined;
   private static globalThreadsDaemon?: ThreadsDaemon;
+  public static getGlobalThreadsDaemon(): ThreadsDaemon | undefined {
+    return Runtime.globalThreadsDaemon;
+  }
 
   // Coordinators
   private cognitiveCoordinator: CognitiveCoordinator;

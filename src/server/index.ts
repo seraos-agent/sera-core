@@ -8,6 +8,7 @@ import { isAddress } from 'viem';
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'node:events';
 import { StandardEvent, EventTypes } from '../core/events/types';
+import { Runtime } from '../runtime/Runtime';
 import { agentManager, SubscriptionRequiredError } from './AgentManager';
 import { isAllowedOrigin, serverConfig } from './config';
 import { requireAuthenticatedSession } from './SessionGuard';
@@ -102,6 +103,48 @@ const app = express();
 app.get('/health', (_request, response) => {
   response.status(200).json({ status: 'ok', service: 'sera-core' });
 });
+
+// ── Canonical Temporal Heartbeat Endpoint (Cloud Scheduler Trigger) ─────────
+app.all('/api/temporal/tick', async (req, res) => {
+  const cronKey = req.headers['x-cron-key'] || req.query.key || (req.headers.authorization ? req.headers.authorization.replace('Bearer ', '') : undefined);
+  const expectedKey = process.env.CRON_SECRET || 'sera-temporal-cron-key-2026';
+
+  if (cronKey !== expectedKey) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid cron key' });
+  }
+
+  const nowUtc = Date.now();
+
+  // 1. Ensure all user sessions with triggers/state in Supabase are active in memory
+  let hydrated = 0;
+  try {
+    hydrated = await agentManager.hydrateAllSessionsFromCloud(supabaseClient);
+  } catch (err: any) {
+    console.warn('[Server] Temporal tick hydration warning:', err.message);
+  }
+
+  // 2. Emit canonical tick to all running instances
+  const tickResult = agentManager.emitGlobalTemporalTick();
+
+  // 3. Trigger autonomous Threads poll
+  try {
+    const daemon = Runtime.getGlobalThreadsDaemon();
+    if (daemon) {
+      void daemon.pollNow();
+    }
+  } catch (err: any) {
+    console.warn('[Server] Temporal tick Threads poll error:', err.message);
+  }
+
+  return res.json({
+    success: true,
+    timestampUtc: nowUtc,
+    timeIso: new Date(nowUtc).toISOString(),
+    sessionsHydrated: hydrated,
+    activeInstances: tickResult.instancesTicked
+  });
+});
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -1242,6 +1285,11 @@ const treasuryWatcher = new TreasuryDepositWatcher(agentManager.getSubscriptionS
   }
 });
 treasuryWatcher.start();
+
+// Initial hydration of all cloud sessions on boot
+void agentManager.hydrateAllSessionsFromCloud(supabaseClient).then((count) => {
+  console.log(`[Server] Hydrated ${count} active user session(s) from Supabase on boot.`);
+});
 
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`\n🚀 Sera Core Server is running on port ${PORT}`);

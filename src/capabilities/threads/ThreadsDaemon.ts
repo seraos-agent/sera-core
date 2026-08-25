@@ -101,8 +101,15 @@ export class ThreadsDaemon {
     console.log('[ThreadsDaemon] Stopped.');
   }
 
-  private async pollMentions() {
-    if (!this.isRunning) return;
+  public async pollNow(): Promise<void> {
+    await Promise.allSettled([
+      this.pollMentions(true),
+      this.pollReplies(true)
+    ]);
+  }
+
+  public async pollMentions(force: boolean = false) {
+    if (!this.isRunning && !force) return;
 
     try {
       const mentions = await this.api.getMentions(this.sessionId, 20);
@@ -144,8 +151,8 @@ export class ThreadsDaemon {
     }
   }
 
-  private async pollReplies() {
-    if (!this.isRunning) return;
+  public async pollReplies(force: boolean = false) {
+    if (!this.isRunning && !force) return;
 
     try {
       // 1. Get recent threads (Timeline Context)
