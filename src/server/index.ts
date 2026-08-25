@@ -962,8 +962,7 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  socket.on('chat:message', (message: string) => {
-    if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
+  const processChatMessage = (message: string) => {
     socketObservationBuffer = [];
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
@@ -994,6 +993,24 @@ io.on('connection', (socket: Socket) => {
       role: 'user',
       content: message,
     });
+  };
+
+  socket.on('chat:message', async (message: string) => {
+    if (!message || typeof message !== 'string') return;
+
+    // Graceful handshake buffer: if socket is in the middle of re-authenticating, wait up to 3s
+    if (!socket.data.isAuthenticated) {
+      let waited = 0;
+      const checkInterval = 150;
+      const maxWait = 3000;
+      while (!socket.data.isAuthenticated && waited < maxWait) {
+        await new Promise(r => setTimeout(r, checkInterval));
+        waited += checkInterval;
+      }
+    }
+
+    if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
+    processChatMessage(message);
   });
 
   socket.on('chat:clear', () => {

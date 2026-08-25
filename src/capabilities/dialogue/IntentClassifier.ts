@@ -21,36 +21,15 @@ export class IntentClassifier {
     private readonly orchestrator: ModelOrchestrator
   ) { }
 
-  public async classify(userMessage: string, activeAbortControllerSignal?: AbortSignal): Promise<ClassificationResult> {
+  public async classify(userMessage: string, _activeAbortControllerSignal?: AbortSignal): Promise<ClassificationResult> {
     const workRoute = this.workClassificationPolicy.classify(userMessage);
 
-    let intent = 'NONE';
-    let parameters: Record<string, any> = {};
+    // Fast-path Latency Optimization (Single-Turn Tool Calling):
+    // All intent detection and function execution is handled natively in the primary
+    // LLM call via Tool Calling, eliminating the redundant 1-shot LLM round-trip.
+    const intent = 'NONE';
+    const parameters: Record<string, any> = { _seraWorkClass: workRoute.workClass };
 
-    if (workRoute.workClass !== 'CONVERSATION') {
-      // Fast-path Latency Optimization:
-      // If workClass is CONVERSATION, bypass 1-shot LLM intent extraction
-      try {
-        const messages = [
-          { role: 'system', content: INTENT_EXTRACTION_PROMPT },
-          { role: 'user', content: userMessage }
-        ];
-        const profile = ExecutionProfileBuilder.forTier('Execution')
-          .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
-          .requiresJSON()
-          .build();
-
-        const response = await this.orchestrator.generate(profile, messages, undefined, activeAbortControllerSignal);
-        const parsed = JSON.parse(response.text.trim());
-        intent = parsed.intent || 'NONE';
-        parameters = parsed.parameters || {};
-      } catch {
-        intent = 'NONE';
-        parameters = {};
-      }
-    }
-
-    parameters = { ...parameters, _seraWorkClass: workRoute.workClass };
     return { intent, parameters, workRoute };
   }
 }

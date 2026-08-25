@@ -41,6 +41,8 @@ export function useSocket(
   const [telegram, setTelegram] = useState<TelegramConnectionState>({ provider: 'TELEGRAM', status: 'UNAVAILABLE' });
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const outboxQueue = useRef<Array<{ id: number; text: string }>>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
   const googleDrivePopup = useRef<Window | null>(null);
@@ -146,10 +148,56 @@ export function useSocket(
     initialServerHistoryReceived.current = false;
     setSocket(newSocket);
 
+    newSocket.on("connect", () => {
+      console.log("[useSocket] Socket connected to Core.");
+    });
+
+    newSocket.on("disconnect", () => {
+      console.log("[useSocket] Socket disconnected from Core.");
+      setIsAuthenticated(false);
+    });
+
+    newSocket.on("auth:success", () => {
+      console.log("[useSocket] Socket authenticated successfully.");
+      setIsAuthenticated(true);
+
+      // Drain and flush pending outbox messages
+      if (outboxQueue.current.length > 0) {
+        console.log(`[useSocket] Draining ${outboxQueue.current.length} pending message(s) from outbox...`);
+        outboxQueue.current.forEach((item) => {
+          newSocket.emit("chat:message", item.text);
+        });
+        const flushedIds = new Set(outboxQueue.current.map((i) => i.id));
+        setMessages((prev) => prev.map((m) => flushedIds.has(m.id) ? { ...m, status: 'sent' } : m));
+        outboxQueue.current = [];
+      }
+    });
+
+    newSocket.on("auth:error", () => {
+      setIsAuthenticated(false);
+    });
+
     newSocket.on("chat:history", (history: any[]) => {
       const isInitialHistory = !initialServerHistoryReceived.current;
       initialServerHistoryReceived.current = true;
-      setMessages((previous) => isInitialHistory && previous.length > 0 ? previous : history);
+      
+      setMessages((previous) => {
+        if (!previous || previous.length === 0) return history;
+        if (isInitialHistory && previous.length > 0 && history.length === 0) return previous;
+
+        // Preserve any pending user messages that are still waiting in outbox or in flight
+        const pendingUserMessages = previous.filter((m) =>
+          m.role === "user" && (m.status === "pending" || outboxQueue.current.some((o) => o.id === m.id))
+        );
+
+        // Deduplicate against server history
+        const uniquePending = pendingUserMessages.filter((p) =>
+          !history.some((h) => h.role === "user" && h.content === p.content && Math.abs((h.id || 0) - p.id) < 60000)
+        );
+
+        return [...history, ...uniquePending];
+      });
+
       if (!isInitialHistory && history.length === 0) {
         deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
           .catch(() => undefined)
@@ -312,10 +360,32 @@ export function useSocket(
     };
   }, [streamReply, setWalletState, setMode, localChatKey]);
 
+  const sendMessage = useCallback((text: string) => {
+    const msgId = Date.now();
+    const isReady = !!(socket && socket.connected && isAuthenticated);
+    const userMsg = { id: msgId, role: "user", content: text, status: isReady ? 'sent' : 'pending' };
+
+    setMessages((prev) => [...prev, userMsg]);
+
+    if (isReady) {
+      socket.emit("chat:message", text);
+    } else {
+      console.log(`[useSocket] Socket not yet fully authenticated. Enqueueing message (${msgId}) into Outbox.`);
+      outboxQueue.current.push({ id: msgId, text });
+      
+      // If socket is connected but not auth, trigger a challenge to speed up authentication
+      if (socket && socket.connected && !isAuthenticated) {
+        socket.emit("auth:challenge");
+      }
+    }
+  }, [socket, isAuthenticated]);
+
   return {
     socket,
     messages,
     setMessages,
+    sendMessage,
+    isAuthenticated,
     streamReply,
     currentActivity,
     cancelChat,

@@ -35,7 +35,8 @@ export class QwenAdapter implements ILLMAdapter {
     this.apiKey = key;
     this.model = model;
     this.endpoint = process.env.QWEN_BASE_URL || DEFAULT_DASHSCOPE_URL;
-    this.enableThinking = model === 'qwen3.5-flash' ? false : model === 'qwen3.7-max' ? true : undefined;
+    // Fast Latency Optimization: Disable thinking mode tokens by default to ensure sub-second / snappy responses.
+    this.enableThinking = process.env.ENABLE_DEEP_THINKING === 'true' && model === 'qwen3.7-max' ? true : false;
     this.capability = this.capabilityFor(model);
   }
 

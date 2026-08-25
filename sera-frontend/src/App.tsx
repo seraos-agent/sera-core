@@ -113,7 +113,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address, isReconnecting, isConnecting } = useAccount();
-  const { socket, messages, setMessages, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
+  const { socket, messages, setMessages, sendMessage, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -132,11 +132,8 @@ function InnerApp() {
   }, []);
 
   const handleSend = (text: string) => {
-    const nextMsgId = Date.now();
-    const userMsg = { id: nextMsgId, role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-
     if (text.toLowerCase().includes("github") && (text.toLowerCase().includes("beli") || text.toLowerCase().includes("pasang") || text.toLowerCase().includes("install"))) {
+      setMessages((prev) => [...prev, { id: Date.now(), role: "user", content: text }]);
       // Mock agent response for purchasing a product
       setTimeout(() => {
         setMessages(prev => [...prev, {
@@ -156,11 +153,7 @@ function InnerApp() {
       return;
     }
 
-    if (socket) {
-      socket.emit("chat:message", text);
-    } else {
-      setMessages(prev => [...prev, { id: nextMsgId + 1, type: "activity", content: "Koneksi ke Core terputus." }]);
-    }
+    sendMessage(text);
   };
 
   const shellWidth = "100%";

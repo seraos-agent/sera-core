@@ -116,11 +116,20 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
             lineHeight: 1.65,
             whiteSpace: isUser ? "pre-wrap" : "normal",
             wordBreak: "break-word",
+            opacity: isUser && msg.status === "pending" ? 0.7 : 1,
+            transition: "opacity 0.25s ease",
           }}
         >
           <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
             {isUser ? (
-              <span>{displayContent}</span>
+              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                <span>{displayContent}</span>
+                {msg.status === "pending" && (
+                  <span style={{ fontSize: 10, opacity: 0.65, fontStyle: "italic", whiteSpace: "nowrap" }}>
+                    • sending
+                  </span>
+                )}
+              </span>
             ) : (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

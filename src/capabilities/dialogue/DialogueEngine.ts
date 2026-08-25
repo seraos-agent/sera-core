@@ -430,7 +430,7 @@ Do NOT say that you are processing, executing, or performing the action right no
 You MUST write a brief, natural response asking the user to review and click "Approve" on the proposal shown on their UI. You may cognitively reason about the exact parameters and current world state if relevant to the request. Keep it strictly under 2 sentences. Do NOT hallucinate any values outside of the provided parameters and world state.`;
             const messages = await this.buildWorkingMemory(false, userMessage);
             messages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemProposalMsg}` });
-            const proposalResponse = await this.orchestrator.generate(this.profileFor('Reasoning', messages), messages, undefined, this.activeAbortController?.signal);
+            const proposalResponse = await this.orchestrator.generate(this.profileFor('Execution', messages), messages, undefined, this.activeAbortController?.signal);
 
             let summaryText = proposalResponse.text.trim();
 
@@ -524,9 +524,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         });
 
         this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
-        const toolTier = workRoute.workClass === 'HIGH_RISK' || workRoute.workClass === 'COMPLEX' ? 'Reasoning' : 'Execution';
+        const toolTier = workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution';
         const response = await this.orchestrator.generate(
-          this.profileFor(toolTier, messages, { requiresTools: true, requiresThinking: toolTier === 'Reasoning' }),
+          this.profileFor(toolTier, messages, { requiresTools: true, requiresThinking: false }),
           messages,
           availableTools,
           this.activeAbortController?.signal
