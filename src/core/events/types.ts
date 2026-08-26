@@ -94,6 +94,9 @@ export type EventType = typeof EventTypes[keyof typeof EventTypes];
 
 export interface DialogueUserObservedPayload {
   message: string;
+  images?: string[];
+  userMessage?: string;
+  _seraWorkClass?: string;
 }
 
 export interface DialogueAgentSpeakPayload {

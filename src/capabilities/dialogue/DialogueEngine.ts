@@ -195,7 +195,7 @@ export class DialogueEngine {
   private profileFor(
     tier: ExecutionProfile['tier'],
     messages: Array<{ content?: unknown }>,
-    requirements: { requiresJSON?: boolean; requiresTools?: boolean; requiresThinking?: boolean } = {}
+    requirements: { requiresJSON?: boolean; requiresTools?: boolean; requiresThinking?: boolean; requiresVision?: boolean } = {}
   ): ExecutionProfile {
     const estimatedInputTokens = Math.ceil(messages.reduce((total, message) => {
       const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content || '');
@@ -207,6 +207,7 @@ export class DialogueEngine {
     if (requirements.requiresJSON) builder.requiresJSON();
     if (requirements.requiresTools) builder.requiresTools();
     if (requirements.requiresThinking) builder.requiresThinking();
+    if (requirements.requiresVision) builder.requiresVision();
     return builder.build();
   }
 
@@ -469,6 +470,34 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           });
         }
 
+        const attachedImages: string[] = event?.payload?.images || [];
+        const hasImages = attachedImages.length > 0;
+        if (hasImages) {
+          const multimodalContent: any[] = [
+            { type: 'text', text: userMessage || 'Analyze this image.' }
+          ];
+          for (const url of attachedImages) {
+            multimodalContent.push({
+              type: 'image_url',
+              image_url: { url }
+            });
+          }
+          messages.push({
+            role: 'user',
+            content: multimodalContent
+          });
+          messages.push({
+            role: 'user',
+            content: `[SYSTEM NOTIFICATION: MULTIMODAL VISION ACTIVE]
+The user attached ${attachedImages.length} image(s) above.
+You have direct visual capability to inspect and analyze the image in full detail.
+Guidelines:
+- Analyze, read, and interpret the content, text, numbers, charts, or elements in the image accurately and helpfully.
+- If the user asks you to post or publish this image to Threads (e.g. "post this to Threads with caption..."), invoke the THREADS_PUBLISH tool call with parameters: { "text": "<your caption>", "imageUrl": "${attachedImages[0]}" }.
+- For normal chat, treat the image as private context.`
+          });
+        }
+
         const availableTools = typeof this.capabilityCatalog?.availableTools === 'function'
           ? this.capabilityCatalog.availableTools()
           : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
@@ -524,9 +553,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         });
 
         this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
-        const toolTier = workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution';
+        const toolTier = hasImages ? 'Vision' : (workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution');
         const response = await this.orchestrator.generate(
-          this.profileFor(toolTier, messages, { requiresTools: true, requiresThinking: false }),
+          this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: true, requiresThinking: false }),
           messages,
           availableTools,
           this.activeAbortController?.signal

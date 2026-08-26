@@ -1,5 +1,7 @@
 import { EventTypes, StandardEvent } from '../core/events/types';
 import { EventEmitter } from 'events';
+import { DynamicSocialSynthesizer } from '../capabilities/threads/DynamicSocialSynthesizer';
+import { ThreadsPostHistoryStore } from '../capabilities/threads/ThreadsPostHistoryStore';
 
 /**
  * ExecutionDispatcher — The hands of Sera's intent execution.
@@ -11,9 +13,17 @@ import { EventEmitter } from 'events';
  * - Keeps Runtime stateless and domain-agnostic.
  */
 export class ExecutionDispatcher {
+  private readonly dynamicSynthesizer: DynamicSocialSynthesizer;
+
   constructor(
-    private eventBus: EventEmitter
+    private eventBus: EventEmitter,
+    private sessionId: string = 'default',
+    dynamicSynthesizer?: DynamicSocialSynthesizer
   ) {
+    this.dynamicSynthesizer = dynamicSynthesizer || new DynamicSocialSynthesizer({
+      historyStore: new ThreadsPostHistoryStore()
+    });
+
     // Listen to all intent sources
     this.eventBus.on(EventTypes.DOMAIN_GOAL_SPAWNED, this.handleGoalSpawned.bind(this));
     this.eventBus.on(EventTypes.SYSTEM_TRIGGER_FIRED, this.handleTriggerFired.bind(this));
@@ -35,24 +45,50 @@ export class ExecutionDispatcher {
     this.dispatch(action || payload.intent, actionPayload || payload.parameters, { triggerId });
   }
 
-  public dispatch(actionType: string, payload: Record<string, any>, context: Record<string, any>): void {
+  public async dispatch(actionType: string, payload: Record<string, any>, context: Record<string, any>): Promise<void> {
     console.log(`[ExecutionDispatcher] Routing action: ${actionType}`);
 
     if (actionType === 'DYNAMIC_SCHEDULED_ACTION') {
-      console.log(`[ExecutionDispatcher] Intercepting dynamic scheduled action. Waking up DialogueEngine.`);
+      console.log(`[ExecutionDispatcher] Executing autonomous dynamic scheduled social action.`);
       const taskPrompt = payload.taskPrompt || 'Execute scheduled task.';
-      
-      this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
-        id: `evt-dyn-${Date.now()}`,
-        type: EventTypes.DIALOGUE_USER_OBSERVED,
-        source: 'ExecutionDispatcher',
-        payload: {
-          message: `[SYSTEM AUTOMATION TRIGGER]: It is time for a scheduled dynamic task. Please execute the following instruction based on the current context: "${taskPrompt}". You may use web search, tools, and social media posting. Do not ask for confirmation, just do it. Keep your response brief.`,
-          userMessage: `[SYSTEM AUTOMATION TRIGGER]: It is time for a scheduled dynamic task. Please execute the following instruction based on the current context: "${taskPrompt}". You may use web search, tools, and social media posting. Do not ask for confirmation, just do it. Keep your response brief.`,
-          _seraWorkClass: 'CONVERSATION'
-        },
-        timestamp: Date.now()
-      } as StandardEvent);
+      const activeSession = context?.sessionId || this.sessionId || 'default';
+
+      try {
+        // 1. Synthesize the rich, non-repetitive social post with live Hyperliquid / trend sensory data
+        const postText = await this.dynamicSynthesizer.generateSocialPost(
+          activeSession,
+          taskPrompt
+        );
+
+        if (!postText || !postText.trim()) {
+          console.warn(`[ExecutionDispatcher] Generated empty post text for ${activeSession}`);
+          return;
+        }
+
+        console.log(`[ExecutionDispatcher] Publishing autonomous post to Threads for ${activeSession}: "${postText}"`);
+
+        // 2. Directly dispatch THREADS_PUBLISH to GoalBridge
+        const publishRequestId = `req-auto-threads-${Date.now()}`;
+        this.eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+          id: `dispatch-${Date.now()}`,
+          type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+          source: 'ExecutionDispatcher',
+          payload: {
+            actionType: 'THREADS_PUBLISH',
+            actionPayload: { text: postText },
+            context: { sessionId: activeSession },
+            requestId: publishRequestId
+          },
+          timestamp: Date.now()
+        } as StandardEvent);
+
+        // 3. Emit notification to user chat/dashboard so the action is visible
+        this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: `📢 **[Autonomous Scheduled Post Published to Threads]**\n\n"${postText}"`
+        });
+      } catch (err: any) {
+        console.error(`[ExecutionDispatcher] Error executing dynamic social action:`, err.message);
+      }
       return;
     }
 

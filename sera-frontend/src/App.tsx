@@ -131,29 +131,8 @@ function InnerApp() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const handleSend = (text: string) => {
-    if (text.toLowerCase().includes("github") && (text.toLowerCase().includes("beli") || text.toLowerCase().includes("pasang") || text.toLowerCase().includes("install"))) {
-      setMessages((prev) => [...prev, { id: Date.now(), role: "user", content: text }]);
-      // Mock agent response for purchasing a product
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          id: Date.now() + 1,
-          role: "assistant",
-          type: "proposal",
-          proposal: {
-            proposalId: "mock_purchase_github",
-            intent: "PURCHASE_INTEGRATION",
-            parameters: {
-              integrationName: "GitHub",
-              priceUsdc: 10
-            }
-          }
-        }]);
-      }, 800);
-      return;
-    }
-
-    sendMessage(text);
+  const handleSendMessage = (text: string, images?: string[]) => {
+    sendMessage(text, images);
   };
 
   const shellWidth = "100%";
@@ -543,7 +522,7 @@ function InnerApp() {
             setMessages={setMessages}
             isMobileView={isMobileView}
             onOpenSidebar={() => setSidebarOpen(true)}
-            onSend={handleSend}
+            onSend={handleSendMessage}
             socket={socket}
             currentActivity={currentActivity}
             onCancelChat={cancelChat}

@@ -6,7 +6,7 @@ const DEFAULT_DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mo
 
 export interface QwenMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
   name?: string; // used for tool role
   tool_calls?: any[]; // used when assistant calls a tool
 }
@@ -213,6 +213,14 @@ export class QwenAdapter implements ILLMAdapter {
         tiers: ['Reasoning', 'Coding'],
         supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
         maxContext: 1_000_000, priceInput: 0.012, priceOutput: 0.036, latencyClass: 'Standard'
+      };
+    }
+    if (model === 'qwen-vl-max' || model === 'qwen-vl-plus' || model.startsWith('qwen-vl')) {
+      return {
+        provider: 'Qwen', model,
+        tiers: ['Vision', 'Execution', 'Reasoning'],
+        supportsVision: true, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
+        maxContext: 128_000, priceInput: 0.003, priceOutput: 0.006, latencyClass: 'Fast'
       };
     }
     return {

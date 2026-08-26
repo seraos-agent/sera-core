@@ -1,10 +1,20 @@
 import React, { useRef, useState } from "react";
-import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic } from "lucide-react";
+import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic, Loader2 } from "lucide-react";
 import type { ThemeType } from "../../theme";
+
+interface ImageAttachment {
+  id: string;
+  previewUrl: string;
+  publicUrl?: string;
+  name: string;
+  size: number;
+  uploading: boolean;
+  error?: string;
+}
 
 interface ChatInputProps {
   theme: ThemeType;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: string[]) => void;
   disabled?: boolean;
   isProcessing?: boolean;
   onToggleObservations?: () => void;
@@ -27,6 +37,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +55,45 @@ export function ChatInput({
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAttachMenu]);
+
+  const uploadImageFile = (file: File) => {
+    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const previewUrl = URL.createObjectURL(file);
+    const newAttachment: ImageAttachment = {
+      id,
+      previewUrl,
+      name: file.name || 'image.png',
+      size: file.size,
+      uploading: true
+    };
+    setImageAttachments(prev => [...prev, newAttachment]);
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const apiUrl = import.meta.env.VITE_API_URL || 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+          ? 'http://127.0.0.1:3001' 
+          : 'https://sera-core-212723620663.asia-southeast1.run.app');
+
+      try {
+        const res = await fetch(`${apiUrl}/api/upload/image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl, filename: file.name })
+        });
+        const data = await res.json();
+        if (data && data.url) {
+          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: data.url, uploading: false } : item));
+        } else {
+          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: dataUrl, uploading: false } : item));
+        }
+      } catch {
+        setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: dataUrl, uploading: false } : item));
+      }
+    };
+  };
 
   const handleAttachOption = (type: 'document' | 'image' | 'camera') => {
     setShowAttachMenu(false);
@@ -66,8 +116,11 @@ export function ChatInput({
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // For now, mock adding the file name to attachments
-    setAttachments(prev => [...prev, `[Attached: ${file.name}]`]);
+    if (file.type.startsWith('image/')) {
+      uploadImageFile(file);
+    } else {
+      setAttachments(prev => [...prev, `[Attached Document: ${file.name}]`]);
+    }
     e.target.value = ''; // Reset
   };
 
@@ -85,6 +138,20 @@ export function ChatInput({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            uploadImageFile(file);
+            return;
+          }
+        }
+      }
+    }
+
     const text = e.clipboardData.getData("text/plain");
     if (text.length > 250 || text.split('\n').length > 5) {
       e.preventDefault();
@@ -93,21 +160,32 @@ export function ChatInput({
   };
 
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || disabled) return;
+    const hasText = !!input.trim();
+    const hasAttachments = attachments.length > 0;
+    const hasImages = imageAttachments.length > 0;
+
+    if ((!hasText && !hasAttachments && !hasImages) || disabled) return;
     
     let finalText = "";
     if (attachments.length > 0) {
       attachments.forEach((att, i) => {
-        finalText += `[Pasted Text ${i + 1}]\n${att}\n\n`;
+        finalText += `[Pasted Context ${i + 1}]\n${att}\n\n`;
       });
     }
     finalText += input.trim();
+
+    const imageUrls = imageAttachments
+      .map(img => img.publicUrl || img.previewUrl)
+      .filter(Boolean);
     
-    onSend(finalText.trim());
+    onSend(finalText.trim(), imageUrls.length > 0 ? imageUrls : undefined);
     setInput("");
     setAttachments([]);
+    setImageAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
+
+  const canSend = isProcessing || (input.trim() || attachments.length > 0 || imageAttachments.length > 0) && !disabled;
 
   return (
     <div style={{ padding: "0", flexShrink: 0 }}>
@@ -130,8 +208,64 @@ export function ChatInput({
             padding: "12px 14px 10px",
           }}
         >
-          {attachments.length > 0 && (
-            <div style={{ display: "flex", gap: 8, padding: "2px 8px 12px", overflowX: "auto", flexWrap: "wrap" }}>
+          {/* Image & Text Attachments Preview Strip */}
+          {(attachments.length > 0 || imageAttachments.length > 0) && (
+            <div style={{ display: "flex", gap: 10, padding: "4px 8px 12px", overflowX: "auto", flexWrap: "wrap" }}>
+              {/* Image Previews: Clean square thumbnail with floating X button */}
+              {imageAttachments.map((img) => (
+                <div 
+                  key={img.id} 
+                  style={{
+                    position: "relative",
+                    width: 52,
+                    height: 52,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    border: `1px solid ${theme.border}`,
+                    background: "#000",
+                    flexShrink: 0
+                  }}
+                >
+                  <img 
+                    src={img.previewUrl} 
+                    alt="preview" 
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} 
+                  />
+                  {img.uploading && (
+                    <div style={{
+                      position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}>
+                      <Loader2 size={16} color="#FFF" style={{ animation: "spin 1s linear infinite" }} />
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => setImageAttachments(prev => prev.filter(i => i.id !== img.id))} 
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      right: 3,
+                      background: "rgba(0, 0, 0, 0.65)",
+                      backdropFilter: "blur(4px)",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: 18,
+                      height: 18,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "#FFF",
+                      padding: 0
+                    }}
+                    title="Remove image"
+                  >
+                    <X size={11} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ))}
+
+              {/* Pasted text attachments */}
               {attachments.map((_, idx) => (
                 <div key={idx} style={{
                   display: "flex", alignItems: "center", gap: 8,
@@ -140,7 +274,7 @@ export function ChatInput({
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, opacity: 0.9 }}>
                     <FileText size={14} color={theme.inkSoft} />
-                    <span style={{ fontWeight: 500 }}>Pasted</span>
+                    <span style={{ fontWeight: 500 }}>Pasted Context</span>
                   </div>
                   <button onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))} style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 2, marginLeft: 4 }}>
                     <X size={14} />
@@ -157,7 +291,7 @@ export function ChatInput({
             onChange={autoGrow}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ask anything..."
+            placeholder="Ask anything or attach a chart / image..."
             rows={1}
             disabled={disabled}
             style={{
@@ -244,7 +378,7 @@ export function ChatInput({
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                       <ImageIcon size={16} color={theme.inkSoft} />
-                      Library
+                      Image
                     </button>
                     <button
                       onClick={() => handleAttachOption('camera')}
@@ -264,7 +398,7 @@ export function ChatInput({
                 )}
               </div>
               
-              {/* Moved Bell icon to the left side, outside of menuRef */}
+              {/* System Notifications icon */}
               <button
                 title="System Notifications"
                 onClick={onToggleObservations}
@@ -305,20 +439,20 @@ export function ChatInput({
                     handleSend();
                   }
                 }}
-                disabled={(!isProcessing && !input.trim() && attachments.length === 0) || (disabled && !isProcessing)}
+                disabled={!canSend}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
                   border: "none",
-                  background: isProcessing ? theme.surface2 : ((input.trim() || attachments.length > 0) && !disabled ? theme.accent : theme.surface2),
-                  color: isProcessing ? theme.ink : ((input.trim() || attachments.length > 0) && !disabled ? theme.accentInk : theme.inkSoft),
+                  background: isProcessing ? theme.surface2 : (canSend ? theme.accent : theme.surface2),
+                  color: isProcessing ? theme.ink : (canSend ? theme.accentInk : theme.inkSoft),
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: isProcessing || ((input.trim() || attachments.length > 0) && !disabled) ? "pointer" : "default",
+                  cursor: canSend ? "pointer" : "default",
                   flexShrink: 0,
-                  transform: isProcessing || ((input.trim() || attachments.length > 0) && !disabled) ? "scale(1)" : "scale(0.95)",
+                  transform: canSend ? "scale(1)" : "scale(0.95)",
                   transition: "all 180ms ease",
                 }}
               >

@@ -98,8 +98,27 @@ function verifySessionToken(token: string): SessionTokenPrincipal | null {
 }
 
 const app = express();
-// Lightweight, unauthenticated probe for deployment platforms. It deliberately
-// does not instantiate or expose any agent state.
+
+// Global CORS Middleware for API routes
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-cron-key');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+app.use(express.json({ limit: '25mb' }));
+
+// Lightweight, unauthenticated probe for deployment platforms.
 app.get('/health', (_request, response) => {
   response.status(200).json({ status: 'ok', service: 'sera-core' });
 });
@@ -291,6 +310,75 @@ app.post('/mcp/message', async (req, res) => {
   await transport.handlePostMessage(req, res);
 });
 
+// ── Image Upload Route (Multimodal Chat & Social Media) ─────────────────────
+app.post('/api/upload/image', async (req, res) => {
+  try {
+    const { dataUrl, filename, sessionId } = req.body;
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'Missing image data' });
+    }
+
+    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    let buffer: Buffer;
+    let mimeType = 'image/png';
+    let ext = 'png';
+
+    if (matches && matches.length === 3) {
+      mimeType = matches[1];
+      buffer = Buffer.from(matches[2], 'base64');
+      ext = mimeType.split('/')[1] || 'png';
+      if (ext === 'jpeg') ext = 'jpg';
+    } else {
+      buffer = Buffer.from(dataUrl, 'base64');
+    }
+
+    const safeSession = (sessionId || 'anonymous').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const fileKey = `${safeSession}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+    const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+    const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/sera_chat_attachments/${fileKey}`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseKey,
+            authorization: `Bearer ${supabaseKey}`,
+            'content-type': mimeType
+          },
+          body: new Uint8Array(buffer)
+        });
+
+        if (uploadRes.ok) {
+          const publicUrl = `${supabaseUrl}/storage/v1/object/public/sera_chat_attachments/${fileKey}`;
+          return res.json({
+            success: true,
+            url: publicUrl,
+            filename: filename || fileKey,
+            mimeType
+          });
+        } else {
+          const errTxt = await uploadRes.text();
+          console.warn('[Server] Supabase image upload failed:', errTxt);
+        }
+      } catch (err: any) {
+        console.warn('[Server] Supabase upload error:', err.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      url: dataUrl,
+      filename: filename || 'image.png',
+      mimeType
+    });
+  } catch (err: any) {
+    console.error('[Server] /api/upload/image error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Auth & OAuth Routes ──────────────────────────────────────────────────
 app.use('/api/auth/threads', createThreadsAuthRouter(threadsOAuthService, globalSecretManager, (sessionId) => {
   io.to(`user:${sessionId}`).emit('threads:status', { provider: 'THREADS', status: 'CONNECTED' });
@@ -350,6 +438,15 @@ io.on('connection', (socket: Socket) => {
     try {
       await instance.chatHistoryStore.ensureLoaded();
       await instance.triggerStore.ensureLoaded();
+
+      // Session Handoff: If this is an authenticated wallet session and history is empty,
+      // seamlessly migrate any recent conversation from the anonymous session
+      if (socket.data.sessionId && socket.data.sessionId !== 'anonymous') {
+        const anonInstance = agentManager.getInstance('anonymous');
+        if (anonInstance && instance.chatHistoryStore.getUiMessages().length === 0) {
+          instance.chatHistoryStore.migrateFrom(anonInstance.chatHistoryStore);
+        }
+      }
     } catch (e) {
       console.warn('[Server] Failed to ensure chat history / triggers loaded:', e);
     }
@@ -962,41 +1059,70 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  const processChatMessage = (message: string) => {
+  const processChatMessage = (rawPayload: any) => {
+    let message = '';
+    let clientMessageId: string | undefined = undefined;
+    let images: string[] | undefined = undefined;
+
+    if (typeof rawPayload === 'string') {
+      message = rawPayload;
+    } else if (rawPayload && typeof rawPayload === 'object') {
+      message = rawPayload.message || rawPayload.text || '';
+      clientMessageId = rawPayload.clientMessageId;
+      if (Array.isArray(rawPayload.images) && rawPayload.images.length > 0) {
+        images = rawPayload.images;
+      } else if (rawPayload.imageUrl) {
+        images = [rawPayload.imageUrl];
+      }
+    }
+
+    if (!message && (!images || images.length === 0)) return;
+
     socketObservationBuffer = [];
     console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
+    const msgTimestamp = Date.now();
+
+    // Immediate Server ACK
+    socket.emit('chat:ack', {
+      clientMessageId,
+      id: msgTimestamp,
+      timestamp: msgTimestamp
+    });
+
     if (serverConfig.allowDevFeatures && serverConfig.demoIntentCommand && message.toLowerCase().trim() === serverConfig.demoIntentCommand) {
-      const intentId = `intent-${Date.now()}`;
+      const intentId = `intent-${msgTimestamp}`;
       instance.runtime.intentStore?.registerIntent({
         id: intentId,
         description: 'Grow Asset Value',
         status: 'ALIVE',
         terminality: 'CONTINUOUS',
-        createdAt: Date.now()
+        createdAt: msgTimestamp
       });
-      instance.runtime.executeCycle(Date.now()).catch(console.error);
+      instance.runtime.executeCycle(msgTimestamp).catch(console.error);
     }
 
     const event: StandardEvent = {
-      id: `evt-${Date.now()}`,
+      id: `evt-${msgTimestamp}`,
       type: EventTypes.DIALOGUE_USER_OBSERVED,
       source: 'SocketServer',
-      payload: { message },
-      timestamp: Date.now(),
+      payload: { message, images },
+      timestamp: msgTimestamp,
     };
 
     instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
 
     instance.chatHistoryStore.appendUiMessage({
-      id: event.timestamp,
+      id: msgTimestamp,
+      clientMessageId,
       role: 'user',
       content: message,
+      images
     });
   };
 
-  socket.on('chat:message', async (message: string) => {
-    if (!message || typeof message !== 'string') return;
+  socket.on('chat:message', async (rawPayload: any) => {
+    if (!rawPayload) return;
 
     // Graceful handshake buffer: if socket is in the middle of re-authenticating, wait up to 3s
     if (!socket.data.isAuthenticated) {
@@ -1010,7 +1136,7 @@ io.on('connection', (socket: Socket) => {
     }
 
     if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
-    processChatMessage(message);
+    processChatMessage(rawPayload);
   });
 
   socket.on('chat:clear', () => {

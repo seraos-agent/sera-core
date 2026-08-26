@@ -22,6 +22,7 @@ import { GasAbstractionService } from '../capabilities/wallet/GasAbstractionServ
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
+import { ThreadsPostHistoryStore } from '../capabilities/threads/ThreadsPostHistoryStore';
 import {
   SupabaseTransferAuditRepository,
   TransferAuditEvent,
@@ -67,6 +68,7 @@ export class GoalBridge {
     return this._hlSpot;
   }
   private readonly threadsApi: ThreadsAPI;
+  private readonly threadsPostHistoryStore: ThreadsPostHistoryStore;
 
   constructor(
     eventBus: EventEmitter,
@@ -75,11 +77,13 @@ export class GoalBridge {
     private readonly autonomyAgreementStore?: AutonomyAgreementStore,
     private readonly transferAudit: TransferAuditRepository | null = SupabaseTransferAuditRepository.fromEnvironment(),
     private readonly triggerEngine?: TriggerEngine,
-    secretManager?: SecretManager
+    secretManager?: SecretManager,
+    threadsPostHistoryStore?: ThreadsPostHistoryStore
   ) {
     this.eventBus = eventBus;
     this.sessionId = sessionId;
     this.threadsApi = new ThreadsAPI(secretManager || new SecretManager(new EncryptedDatabaseSecretStore()));
+    this.threadsPostHistoryStore = threadsPostHistoryStore || new ThreadsPostHistoryStore();
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
     try {
@@ -327,6 +331,7 @@ export class GoalBridge {
     if (!text) throw new Error('Threads publish requires text parameter.');
     const container = await this.threadsApi.createContainer(this.sessionId, text, parameters.replyToId);
     const published = await this.threadsApi.publishContainer(this.sessionId, container.id);
+    this.threadsPostHistoryStore.recordPost(this.sessionId, text, published.id);
     this.emitResult(requestId, true, {
       provider: 'Meta Threads',
       id: published.id,

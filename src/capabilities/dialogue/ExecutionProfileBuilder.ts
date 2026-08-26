@@ -34,6 +34,11 @@ export class ExecutionProfileBuilder {
     return this;
   }
 
+  public requiresVision(): this {
+    this.profile.constraints.requiresVision = true;
+    return this;
+  }
+
   public requiresLongContext(): this {
     this.profile.constraints.requiresLongContext = true;
     return this;

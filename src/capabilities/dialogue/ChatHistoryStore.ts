@@ -4,9 +4,11 @@ import { SupabaseRestClient } from '../../core/persistence/SupabaseRestClient';
 
 export interface UiMessage {
   id: number;
+  clientMessageId?: string;
   role?: 'user' | 'agent';
   type?: 'activity';
   content?: string;
+  images?: string[];
   proposal?: any;
   actionLinks?: { label: string; url: string }[];
   observations?: any[];
@@ -141,13 +143,31 @@ export class ChatHistoryStore {
   }
 
   public appendUiMessage(msg: UiMessage): void {
-    const existingIndex = this.state.uiMessages.findIndex(m => m.id === msg.id);
+    const existingIndex = this.state.uiMessages.findIndex(m => 
+      (msg.clientMessageId && m.clientMessageId === msg.clientMessageId) || m.id === msg.id
+    );
     if (existingIndex >= 0) {
-      this.state.uiMessages[existingIndex] = msg;
+      this.state.uiMessages[existingIndex] = { ...this.state.uiMessages[existingIndex], ...msg };
     } else {
       this.state.uiMessages.push(msg);
     }
     this.save();
+  }
+
+  /**
+   * Seamlessly migrates messages from an anonymous or prior session if this store is empty.
+   */
+  public migrateFrom(sourceStore: ChatHistoryStore): boolean {
+    const sourceMessages = sourceStore.getUiMessages();
+    if (sourceMessages.length === 0) return false;
+
+    if (this.state.uiMessages.length === 0) {
+      this.state.uiMessages = [...sourceMessages];
+      this.save();
+      console.log(`[ChatHistoryStore] Migrated ${sourceMessages.length} messages into session ${this.sessionId}`);
+      return true;
+    }
+    return false;
   }
 
   public updateProposalStatus(proposalId: string, status: 'APPROVED' | 'REJECTED'): void {

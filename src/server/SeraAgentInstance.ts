@@ -178,7 +178,7 @@ export class SeraAgentInstance {
       this.secretManager
     );
 
-    const executionDispatcher = new ExecutionDispatcher(this.eventBus);
+    const executionDispatcher = new ExecutionDispatcher(this.eventBus, this.sessionId);
     const plannerLLM = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
     const planner = new Planner(plannerLLM, this.eventBus);
     const strategyStore = new StrategyStore();

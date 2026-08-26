@@ -121,9 +121,22 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
           }}
         >
           <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
+            {msg.images && msg.images.length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: displayContent ? 8 : 0 }}>
+                {msg.images.map((imgUrl: string, i: number) => (
+                  <div key={i} style={{ position: "relative", maxWidth: 320, borderRadius: 12, overflow: "hidden", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+                    <img 
+                      src={imgUrl} 
+                      alt="attachment" 
+                      style={{ maxWidth: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} 
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             {isUser ? (
               <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-                <span>{displayContent}</span>
+                {displayContent && <span>{displayContent}</span>}
                 {msg.status === "pending" && (
                   <span style={{ fontSize: 10, opacity: 0.65, fontStyle: "italic", whiteSpace: "nowrap" }}>
                     • sending

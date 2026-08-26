@@ -13,7 +13,7 @@ interface ChatViewProps {
   setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   isMobileView: boolean;
   onOpenSidebar: () => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: string[]) => void;
   socket: Socket | null;
   currentActivity: string | null;
   onCancelChat: () => void;

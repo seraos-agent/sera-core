@@ -446,12 +446,11 @@ export class Runtime {
       }
     });
 
-    // Both models use the already-authorized Qwen provider. The light model
-    // serves routine interaction; the max model is reserved for reasoning,
-    // coding, and high-risk proposal review. Neither model grants execution.
+    // Authorized Qwen models: Light (routine), Max (reasoning/coding), Vision (multimodal image analysis).
     const qwenFlash = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
     const qwenMax = new QwenAdapter(process.env.QWEN_HIGH_RISK_MODEL || 'qwen3.7-max');
-    const registry = new ModelRegistry([qwenFlash, qwenMax]);
+    const qwenVision = new QwenAdapter(process.env.QWEN_VISION_MODEL || 'qwen-vl-max');
+    const registry = new ModelRegistry([qwenFlash, qwenMax, qwenVision]);
     const routingPolicy = new CapabilityRoutingPolicy();
     const modelOrchestrator = new ModelOrchestrator(registry, routingPolicy, globalEventBus);
 

@@ -42,7 +42,7 @@ export function useSocket(
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const outboxQueue = useRef<Array<{ id: number; text: string }>>([]);
+  const outboxQueue = useRef<Array<{ id: number; clientMessageId?: string; text: string; images?: string[] }>>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
   const googleDrivePopup = useRef<Window | null>(null);
@@ -57,7 +57,16 @@ export function useSocket(
     void deviceMemoryVault.get<any[]>(localChatKey)
       .then((history) => {
         if (!active) return;
-        setMessages((previous) => previous.length > 0 ? previous : (history ?? []));
+        setMessages((previous) => {
+          // If we already have messages on screen (e.g. typed before wallet connected), preserve them!
+          if (previous && previous.length > 0) {
+            if (!history || history.length === 0) return previous;
+            const existingIds = new Set(previous.map(p => p.clientMessageId || p.id));
+            const additional = history.filter(h => !existingIds.has(h.clientMessageId || h.id));
+            return [...previous, ...additional];
+          }
+          return history ?? [];
+        });
         setDeviceVault(deviceVaultDescriptor('ACTIVE'));
       })
       .catch(() => {
@@ -164,11 +173,11 @@ export function useSocket(
       // Drain and flush pending outbox messages
       if (outboxQueue.current.length > 0) {
         console.log(`[useSocket] Draining ${outboxQueue.current.length} pending message(s) from outbox...`);
-        outboxQueue.current.forEach((item) => {
-          newSocket.emit("chat:message", item.text);
+        outboxQueue.current.forEach((item: any) => {
+          newSocket.emit("chat:message", { clientMessageId: item.clientMessageId, message: item.text, images: item.images });
         });
-        const flushedIds = new Set(outboxQueue.current.map((i) => i.id));
-        setMessages((prev) => prev.map((m) => flushedIds.has(m.id) ? { ...m, status: 'sent' } : m));
+        const flushedIds = new Set(outboxQueue.current.map((i: any) => i.clientMessageId || i.id));
+        setMessages((prev) => prev.map((m) => (flushedIds.has(m.clientMessageId) || flushedIds.has(m.id)) ? { ...m, status: 'sent' } : m));
         outboxQueue.current = [];
       }
     });
@@ -177,25 +186,49 @@ export function useSocket(
       setIsAuthenticated(false);
     });
 
+    newSocket.on("chat:ack", (ackData: any) => {
+      if (!ackData) return;
+      setMessages((prev) => prev.map((m) => {
+        if (ackData.clientMessageId && m.clientMessageId === ackData.clientMessageId) {
+          return { ...m, status: 'sent' };
+        }
+        return m;
+      }));
+    });
+
     newSocket.on("chat:history", (history: any[]) => {
       const isInitialHistory = !initialServerHistoryReceived.current;
       initialServerHistoryReceived.current = true;
       
       setMessages((previous) => {
-        if (!previous || previous.length === 0) return history;
-        if (isInitialHistory && previous.length > 0 && history.length === 0) return previous;
+        if (!previous || previous.length === 0) return history || [];
+        if (!history || history.length === 0) return previous;
 
-        // Preserve any pending user messages that are still waiting in outbox or in flight
-        const pendingUserMessages = previous.filter((m) =>
-          m.role === "user" && (m.status === "pending" || outboxQueue.current.some((o) => o.id === m.id))
-        );
+        // Smart Deterministic Reconciliation:
+        // Merge server history with any local in-flight messages that haven't arrived yet
+        const merged = [...history];
 
-        // Deduplicate against server history
-        const uniquePending = pendingUserMessages.filter((p) =>
-          !history.some((h) => h.role === "user" && h.content === p.content && Math.abs((h.id || 0) - p.id) < 60000)
-        );
+        previous.forEach((localMsg) => {
+          const alreadyInServer = history.some((serverMsg) => {
+            if (localMsg.clientMessageId && serverMsg.clientMessageId) {
+              return localMsg.clientMessageId === serverMsg.clientMessageId;
+            }
+            if (localMsg.id && serverMsg.id && localMsg.id === serverMsg.id) {
+              return true;
+            }
+            if (localMsg.role === serverMsg.role && localMsg.content === serverMsg.content) {
+              const timeDiff = Math.abs((localMsg.id || 0) - (serverMsg.id || 0));
+              return timeDiff < 120000;
+            }
+            return false;
+          });
 
-        return [...history, ...uniquePending];
+          if (!alreadyInServer) {
+            merged.push(localMsg);
+          }
+        });
+
+        return merged;
       });
 
       if (!isInitialHistory && history.length === 0) {
@@ -360,18 +393,27 @@ export function useSocket(
     };
   }, [streamReply, setWalletState, setMode, localChatKey]);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, images?: string[]) => {
+    if ((!text || !text.trim()) && (!images || images.length === 0)) return;
+    const clientMessageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const msgId = Date.now();
     const isReady = !!(socket && socket.connected && isAuthenticated);
-    const userMsg = { id: msgId, role: "user", content: text, status: isReady ? 'sent' : 'pending' };
+    const userMsg = { 
+      id: msgId, 
+      clientMessageId,
+      role: "user", 
+      content: text, 
+      images,
+      status: isReady ? 'sent' : 'pending' 
+    };
 
     setMessages((prev) => [...prev, userMsg]);
 
     if (isReady) {
-      socket.emit("chat:message", text);
+      socket.emit("chat:message", { clientMessageId, message: text, images });
     } else {
-      console.log(`[useSocket] Socket not yet fully authenticated. Enqueueing message (${msgId}) into Outbox.`);
-      outboxQueue.current.push({ id: msgId, text });
+      console.log(`[useSocket] Socket not yet fully authenticated. Enqueueing message (${clientMessageId}) into Outbox.`);
+      outboxQueue.current.push({ id: msgId, clientMessageId, text, images });
       
       // If socket is connected but not auth, trigger a challenge to speed up authentication
       if (socket && socket.connected && !isAuthenticated) {

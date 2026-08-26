@@ -1,9 +1,18 @@
 import { SeraTool } from '../../core/cognitive/Tool';
 import { ThreadsAPI } from './ThreadsAPI';
 import { SecretManager } from '../../core/secrets/SecretManager';
+import { ThreadsPostHistoryStore } from './ThreadsPostHistoryStore';
 
 export class ThreadsCapability {
-  constructor(private readonly api: ThreadsAPI, private readonly secretManager?: SecretManager) {}
+  private readonly historyStore: ThreadsPostHistoryStore;
+
+  constructor(
+    private readonly api: ThreadsAPI,
+    private readonly secretManager?: SecretManager,
+    historyStore?: ThreadsPostHistoryStore
+  ) {
+    this.historyStore = historyStore || new ThreadsPostHistoryStore();
+  }
 
   getTools(): SeraTool[] {
     return [
@@ -64,6 +73,7 @@ export class ThreadsCapability {
         }
         
         const postId = await this.api.publishPost(sessionId, args.text, undefined, args.imageUrl);
+        this.historyStore.recordPost(sessionId, args.text, postId);
         return { success: true, postId, message: `Successfully published to Threads.` };
       
       case 'THREADS_REPLY':
