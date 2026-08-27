@@ -126,26 +126,29 @@ Action: Call tool "SCHEDULE_GOAL" with:
 }
 
 Exemplar 1c - Hourly Recurring Social Media / Threads Posting (Every 1 Hour):
-User: "buatkan postingan setiap 1 jam di threads" or "posting ke threads setiap jam" or "post to Threads every hour"
+User: "buatkan postingan setiap 1 jam di threads tentang news kripto 1 baris tanpa hashtag" or "post to Threads every hour about AI news"
 Action: Call tool "SCHEDULE_GOAL" with:
 {
   "scheduleType": "cron",
   "cronExpression": "0 * * * *",
-  "humanIntent": "Every 1 hour create and publish an engaging dynamic post to Threads",
+  "humanIntent": "Every 1 hour create and publish post to Threads",
   "actionIntent": "DYNAMIC_SCHEDULED_ACTION",
-  "actionParameters": { "taskPrompt": "Write a fresh, engaging, exciting, and dynamic post on Threads and publish it using THREADS_PUBLISH." }
+  "actionParameters": { "taskPrompt": "Write an authentic, punchy 1-2 line Threads post about current crypto news. STRICT CONSTRAINTS: Max 1-2 lines, NO hashtags (#), no long newspaper essays." }
 }
 
 Exemplar 1d - Multi-Hour Recurring Social Media Posting (e.g. Every 5 Hours):
-User: "posting di threads setiap 5 jam" or "buatkan postingan setiap 5 jam di threads" or "post to Threads every 5 hours"
+User: "posting di threads setiap 5 jam tentang btc dan ai" or "post to Threads every 5 hours"
 Action: Call tool "SCHEDULE_GOAL" with:
 {
   "scheduleType": "cron",
   "cronExpression": "0 */5 * * *",
-  "humanIntent": "Every 5 hours create and publish an engaging dynamic post to Threads",
+  "humanIntent": "Every 5 hours create and publish post to Threads",
   "actionIntent": "DYNAMIC_SCHEDULED_ACTION",
-  "actionParameters": { "taskPrompt": "Write a fresh, engaging, exciting, and dynamic post on Threads and publish it using THREADS_PUBLISH." }
+  "actionParameters": { "taskPrompt": "Write a fresh, authentic 1-2 line Threads post about BTC and AI trends. Strict: No hashtags, max 2 lines." }
 }
+
+IMPORTANT RULE FOR DYNAMIC_SCHEDULED_ACTION:
+Always preserve the user's full, detailed topic, format constraints (e.g. 1 baris, tanpa hashtag, santai), and style requirements in "actionParameters.taskPrompt". Never replace the user's specific instructions with a generic placeholder!
 
 Exemplar 1e - Invalid Recurring Task (< 1 minute):
 User: "check every 30 seconds" or "remind me every 5 seconds" (ONLY if less than 60 seconds)

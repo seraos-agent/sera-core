@@ -217,7 +217,7 @@ export class ThreadsAPI {
     return data.data || [];
   }
 
-  private async getAccessToken(sessionId: string): Promise<string | null> {
+  public async getAccessToken(sessionId: string): Promise<string | null> {
     // 1. Check for personal user token
     const userToken = await this.secretManager.getSecret(`THREADS_TOKEN_${sessionId}`);
     if (userToken) {

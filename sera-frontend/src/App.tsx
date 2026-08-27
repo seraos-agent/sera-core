@@ -481,6 +481,7 @@ function InnerApp() {
         ) : currentView === "connections" ? (
           <ConnectionsPage
             theme={theme}
+            walletState={walletState}
             socket={socket}
             isMobileView={isMobileView}
             threads={threads}

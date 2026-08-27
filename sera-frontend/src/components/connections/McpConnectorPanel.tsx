@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChevronLeft, Copy, Key, Trash2, Check } from "lucide-react";
+import { ChevronLeft, Copy, Key, Trash2, Check, Globe, Laptop, Sparkles } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
 interface McpConnectorPanelProps {
@@ -13,6 +13,11 @@ export function McpConnectorPanel({ theme, onBack, isMobileView, socket }: McpCo
   const [keys, setKeys] = useState<Array<{ key: string; masked: string }>>([]);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"oauth" | "desktop">("oauth");
+
+  const coreUrl = import.meta.env.VITE_API_URL || "https://sera-core-212723620663.asia-southeast1.run.app";
+  const sseUrl = `${coreUrl}/mcp/sse`;
+  const oauthDiscoveryUrl = `${coreUrl}/.well-known/oauth-authorization-server`;
 
   useEffect(() => {
     if (!socket) return;
@@ -40,23 +45,36 @@ export function McpConnectorPanel({ theme, onBack, isMobileView, socket }: McpCo
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const claudeConfig = `{
+  const claudeDesktopConfig = `{
   "mcpServers": {
     "sera": {
-      "command": "node",
-      "args": ["path/to/sera-mcp-stdio.js"],
+      "command": "npx",
+      "args": ["-y", "sera-mcp-stdio"],
       "env": {
-        "SERA_API_KEY": "${newKey || "sk-sera-YOUR_KEY_HERE"}",
-        "SERA_CORE_URL": "http://127.0.0.1:3001"
+        "SERA_API_KEY": "${newKey || (keys[0]?.key ?? "sk-sera-YOUR_API_KEY")}",
+        "SERA_API_URL": "${coreUrl}"
       }
     }
   }
 }`;
 
+  const toolsList = [
+    { name: "sera_chat", desc: "Interactive conversational reasoning & agent delegation" },
+    { name: "sera_wallet_balance", desc: "Check Base network Agent Vault on-chain balance" },
+    { name: "sera_wallet_transfer", desc: "Propose on-chain token transfers (ETH/USDC)" },
+    { name: "sera_spot_market_data", desc: "Real-time Hyperliquid L1 orderbook & prices" },
+    { name: "sera_spot_trade", desc: "Propose Hyperliquid spot buy/sell orders" },
+    { name: "sera_schedule_create", desc: "Create 24/7 background automation cron tasks" },
+    { name: "sera_threads_publish", desc: "Publish posts directly to Meta Threads" },
+    { name: "sera_memory_read", desc: "Read persistent working memory & confirmed beliefs" },
+    { name: "sera_memory_write", desc: "Store new user preferences into persistent memory" },
+    { name: "sera_billing_status", desc: "Check Agent Energy Credits balance & status" },
+  ];
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: theme.bg, animation: "walletPageIn 400ms cubic-bezier(.4,0,.2,1) forwards", minWidth: 0, minHeight: 0 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: "none", background: theme.bg, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobileView ? "12px 16px" : "12px 24px", borderBottom: `1px solid ${theme.border}`, background: theme.bg, flexShrink: 0 }}>
         <button
           onClick={onBack}
           style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, padding: 4, display: "flex", borderRadius: 6, transition: "background 0.2s" }}
@@ -66,170 +84,271 @@ export function McpConnectorPanel({ theme, onBack, isMobileView, socket }: McpCo
           <ChevronLeft size={18} />
         </button>
         <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 600, fontSize: 15, color: theme.ink }}>
-          Claude / ChatGPT Connector
+          Platform Connectors (Claude & ChatGPT)
         </span>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: isMobileView ? 24 : 48 }}>
-        <div style={{ maxWidth: 640, margin: "0 auto" }}>
-          {/* Intro */}
-          <div style={{ fontSize: 14, color: theme.inkSoft, lineHeight: 1.6, marginBottom: 28 }}>
-            Connect Sera to <strong style={{ color: theme.ink }}>Claude Desktop</strong>, <strong style={{ color: theme.ink }}>ChatGPT</strong>, or any
-            MCP-compatible platform. Generate an API key below, then add it to your platform's MCP configuration.
-          </div>
-
-          {/* Generate Key */}
+      <div style={{ flex: 1, overflowY: "auto", padding: isMobileView ? "20px 16px" : "36px 24px" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+          
+          {/* Main Card Banner */}
           <div style={{
-            background: `linear-gradient(135deg, ${theme.accentSoft}, ${theme.surface2})`,
-            border: `1px solid ${theme.border}`, borderRadius: 20,
-            padding: 24, marginBottom: 24,
-            display: "flex", justifyContent: "space-between", alignItems: "center"
+            background: theme.surface2,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 20,
+            padding: isMobileView ? 20 : 28,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.03)"
           }}>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: theme.ink, marginBottom: 4, fontFamily: "Inter, sans-serif" }}>
-                API Keys
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Sparkles size={22} color={theme.accent} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 17, fontWeight: 600, color: theme.ink }}>
+                    Model Context Protocol (MCP)
+                  </div>
+                  <div style={{ fontSize: 13, color: theme.inkSoft, marginTop: 2 }}>
+                    Connect Claude & ChatGPT to SERA's Web3 Vault, Hyperliquid L1, and 24/7 Daemons.
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: theme.inkSoft }}>
-                {keys.length === 0 ? "No keys yet. Generate one to get started." : `${keys.length} active key${keys.length > 1 ? "s" : ""}`}
-              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                background: "rgba(16, 185, 129, 0.1)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.2)"
+              }}>
+                READY
+              </span>
             </div>
-            <button
-              onClick={handleGenerate}
-              style={{
-                background: theme.accent, color: "#fff",
-                border: "none", padding: "10px 20px", borderRadius: 12,
-                fontWeight: 600, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 8,
-                transition: "opacity 0.2s"
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-            >
-              <Key size={16} /> Generate Key
-            </button>
+
+            {/* Mode Selector Tabs */}
+            <div style={{ display: "flex", gap: 8, marginTop: 8, background: theme.surface, padding: 4, borderRadius: 12, border: `1px solid ${theme.border}` }}>
+              <button
+                onClick={() => setActiveTab("oauth")}
+                style={{
+                  flex: 1, padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: activeTab === "oauth" ? theme.surface2 : "transparent",
+                  color: activeTab === "oauth" ? theme.ink : theme.inkSoft,
+                  boxShadow: activeTab === "oauth" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.2s"
+                }}
+              >
+                <Globe size={15} /> Claude Web / ChatGPT (OAuth 2.0)
+              </button>
+              <button
+                onClick={() => setActiveTab("desktop")}
+                style={{
+                  flex: 1, padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: activeTab === "desktop" ? theme.surface2 : "transparent",
+                  color: activeTab === "desktop" ? theme.ink : theme.inkSoft,
+                  boxShadow: activeTab === "desktop" ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.2s"
+                }}
+              >
+                <Laptop size={15} /> Claude Desktop (Local Stdio)
+              </button>
+            </div>
           </div>
 
-          {/* Newly generated key (shown once, with copy button) */}
-          {newKey && (
+          {/* Tab 1: OAuth 2.0 Connection */}
+          {activeTab === "oauth" && (
             <div style={{
-              background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.3)",
-              borderRadius: 16, padding: 20, marginBottom: 24
+              background: theme.surface2, border: `1px solid ${theme.border}`, borderRadius: 20,
+              padding: isMobileView ? 20 : 28, display: "flex", flexDirection: "column", gap: 20
             }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#10b981", marginBottom: 8 }}>
-                ✅ New API Key Generated
+              <div>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+                  OAuth 2.0 Dynamic Client Discovery
+                </div>
+                <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.5 }}>
+                  Anthropic Claude and ChatGPT automatically register via RFC 7591. Paste these endpoints into your platform:
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: theme.inkSoft, marginBottom: 12 }}>
-                Copy this key now — it will only be shown in full once.
+
+              {/* Endpoint 1: Discovery URL */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, marginBottom: 6 }}>
+                  OAuth Discovery Metadata URL (RFC 8414):
+                </div>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, background: theme.surface,
+                  border: `1px solid ${theme.border}`, borderRadius: 10, padding: "10px 14px"
+                }}>
+                  <code style={{ flex: 1, fontSize: 12, fontFamily: "monospace", color: theme.ink, wordBreak: "break-all" }}>
+                    {oauthDiscoveryUrl}
+                  </code>
+                  <button
+                    onClick={() => handleCopy(oauthDiscoveryUrl, "oauthDiscovery")}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: copied === "oauthDiscovery" ? "#10b981" : theme.inkSoft, padding: 4 }}
+                  >
+                    {copied === "oauthDiscovery" ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                </div>
               </div>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8,
-                background: theme.surface, borderRadius: 10, padding: "10px 14px",
-                border: `1px solid ${theme.border}`, fontFamily: "monospace", fontSize: 13, color: theme.ink,
-                wordBreak: "break-all"
-              }}>
-                <span style={{ flex: 1 }}>{newKey}</span>
-                <button
-                  onClick={() => handleCopy(newKey, "newKey")}
-                  style={{
-                    background: "transparent", border: "none", cursor: "pointer",
-                    color: copied === "newKey" ? "#10b981" : theme.inkSoft, padding: 4,
-                    flexShrink: 0
-                  }}
-                >
-                  {copied === "newKey" ? <Check size={16} /> : <Copy size={16} />}
-                </button>
+
+              {/* Endpoint 2: SSE URL */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: theme.inkSoft, marginBottom: 6 }}>
+                  MCP Server SSE Transport Endpoint:
+                </div>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, background: theme.surface,
+                  border: `1px solid ${theme.border}`, borderRadius: 10, padding: "10px 14px"
+                }}>
+                  <code style={{ flex: 1, fontSize: 12, fontFamily: "monospace", color: theme.ink, wordBreak: "break-all" }}>
+                    {sseUrl}
+                  </code>
+                  <button
+                    onClick={() => handleCopy(sseUrl, "sseEndpoint")}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: copied === "sseEndpoint" ? "#10b981" : theme.inkSoft, padding: 4 }}
+                  >
+                    {copied === "sseEndpoint" ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Existing keys list */}
-          {keys.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
-              {keys.map((k) => (
-                <div key={k.key} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: theme.surface2, border: `1px solid ${theme.border}`,
-                  borderRadius: 12, padding: "12px 16px"
+          {/* Tab 2: Desktop / API Key Connection */}
+          {activeTab === "desktop" && (
+            <div style={{
+              background: theme.surface2, border: `1px solid ${theme.border}`, borderRadius: 20,
+              padding: isMobileView ? 20 : 28, display: "flex", flexDirection: "column", gap: 24
+            }}>
+              {/* API Key Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+                    Personal API Keys
+                  </div>
+                  <div style={{ fontSize: 13, color: theme.inkSoft }}>
+                    {keys.length === 0 ? "No active keys generated yet." : `${keys.length} active key${keys.length > 1 ? "s" : ""}`}
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerate}
+                  style={{
+                    background: theme.ink, color: theme.bg, border: "none",
+                    padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                    transition: "opacity 0.2s"
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                >
+                  <Key size={14} /> Generate Key
+                </button>
+              </div>
+
+              {/* Newly generated key */}
+              {newKey && (
+                <div style={{
+                  background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)",
+                  borderRadius: 14, padding: 16
                 }}>
-                  <div style={{ fontFamily: "monospace", fontSize: 13, color: theme.ink }}>{k.masked}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#10b981", marginBottom: 6 }}>
+                    New API Key Generated
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.inkSoft, marginBottom: 10 }}>
+                    Copy this key now. It is shown only once for security:
+                  </div>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8, background: theme.surface,
+                    borderRadius: 10, padding: "8px 12px", border: `1px solid ${theme.border}`
+                  }}>
+                    <code style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: theme.ink, wordBreak: "break-all" }}>
+                      {newKey}
+                    </code>
+                    <button
+                      onClick={() => handleCopy(newKey, "newKey")}
+                      style={{ background: "transparent", border: "none", cursor: "pointer", color: copied === "newKey" ? "#10b981" : theme.inkSoft, padding: 4 }}
+                    >
+                      {copied === "newKey" ? <Check size={16} /> : <Copy size={16} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Keys list */}
+              {keys.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {keys.map((k) => (
+                    <div key={k.key} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      background: theme.surface, border: `1px solid ${theme.border}`,
+                      borderRadius: 10, padding: "10px 14px"
+                    }}>
+                      <div style={{ fontFamily: "monospace", fontSize: 13, color: theme.ink }}>{k.masked}</div>
+                      <button
+                        onClick={() => handleRevoke(k.key)}
+                        style={{ background: "transparent", border: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
+                        title="Revoke key"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* JSON Snippet */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: theme.ink, marginBottom: 6 }}>
+                  Claude Desktop Configuration (<code style={{ fontSize: 12 }}>claude_desktop_config.json</code>)
+                </div>
+                <div style={{ position: "relative", background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 14 }}>
+                  <pre style={{ margin: 0, fontFamily: "monospace", fontSize: 12, color: theme.ink, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                    {claudeDesktopConfig}
+                  </pre>
                   <button
-                    onClick={() => handleRevoke(k.key)}
+                    onClick={() => handleCopy(claudeDesktopConfig, "config")}
                     style={{
-                      background: "transparent", border: "none", cursor: "pointer",
-                      color: "#ef4444", padding: 4, display: "flex"
+                      position: "absolute", top: 10, right: 10, background: theme.surface2,
+                      border: `1px solid ${theme.border}`, borderRadius: 8, padding: "4px 8px",
+                      cursor: "pointer", color: copied === "config" ? "#10b981" : theme.inkSoft,
+                      display: "flex", alignItems: "center", gap: 4, fontSize: 11
                     }}
                   >
-                    <Trash2 size={16} />
+                    {copied === "config" ? <Check size={13} /> : <Copy size={13} />}
+                    {copied === "config" ? "Copied" : "Copy"}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Capabilities Showcase */}
+          <div style={{
+            background: theme.surface2, border: `1px solid ${theme.border}`, borderRadius: 20,
+            padding: isMobileView ? 20 : 28
+          }}>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 15, fontWeight: 600, color: theme.ink, marginBottom: 4 }}>
+              Available MCP Tool Capabilities ({toolsList.length})
+            </div>
+            <div style={{ fontSize: 13, color: theme.inkSoft, marginBottom: 18 }}>
+              Claude & ChatGPT can invoke these tools in real-time when connected:
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "1fr" : "repeat(2, 1fr)", gap: 10 }}>
+              {toolsList.map((tool) => (
+                <div key={tool.name} style={{
+                  display: "flex", flexDirection: "column", gap: 4, background: theme.surface,
+                  border: `1px solid ${theme.border}`, borderRadius: 12, padding: "12px 14px"
+                }}>
+                  <code style={{ fontSize: 12, fontFamily: "monospace", color: theme.accent, fontWeight: 600 }}>
+                    {tool.name}
+                  </code>
+                  <span style={{ fontSize: 12, color: theme.inkSoft, lineHeight: 1.4 }}>{tool.desc}</span>
                 </div>
               ))}
             </div>
-          )}
-
-          {/* Claude Desktop Config */}
-          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 600, color: theme.ink, marginBottom: 12 }}>
-            Claude Desktop Configuration
-          </div>
-          <div style={{ fontSize: 13, color: theme.inkSoft, marginBottom: 12 }}>
-            Add this to your Claude Desktop <code style={{ background: theme.surface, padding: "2px 6px", borderRadius: 4 }}>mcp.json</code> file:
-          </div>
-          <div style={{
-            position: "relative", background: theme.surface,
-            border: `1px solid ${theme.border}`, borderRadius: 14,
-            padding: 16, marginBottom: 28, overflowX: "auto"
-          }}>
-            <pre style={{
-              margin: 0, fontFamily: "monospace", fontSize: 12,
-              color: theme.ink, lineHeight: 1.6, whiteSpace: "pre-wrap"
-            }}>
-              {claudeConfig}
-            </pre>
-            <button
-              onClick={() => handleCopy(claudeConfig, "config")}
-              style={{
-                position: "absolute", top: 12, right: 12,
-                background: theme.surface2, border: `1px solid ${theme.border}`,
-                borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-                color: copied === "config" ? "#10b981" : theme.inkSoft,
-                display: "flex", alignItems: "center", gap: 4, fontSize: 12
-              }}
-            >
-              {copied === "config" ? <Check size={14} /> : <Copy size={14} />}
-              {copied === "config" ? "Copied" : "Copy"}
-            </button>
           </div>
 
-          {/* Available Tools */}
-          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: 600, color: theme.ink, marginBottom: 12 }}>
-            Available Tools
-          </div>
-          <div style={{ fontSize: 13, color: theme.inkSoft, marginBottom: 16 }}>
-            Once connected, Claude / ChatGPT can invoke these Sera tools:
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              { name: "sera_chat", desc: "Send messages to your Sera agent" },
-              { name: "sera_wallet_balance", desc: "Check wallet balance" },
-              { name: "sera_wallet_transfer", desc: "Propose a transfer (requires approval)" },
-              { name: "sera_memory_read", desc: "Read Sera's working memory" },
-              { name: "sera_billing_status", desc: "Check Agent Credits balance" },
-            ].map((tool) => (
-              <div key={tool.name} style={{
-                display: "flex", alignItems: "center", gap: 14,
-                background: theme.surface2, border: `1px solid ${theme.border}`,
-                borderRadius: 12, padding: "12px 16px"
-              }}>
-                <code style={{
-                  fontSize: 12, fontFamily: "monospace", color: theme.accent,
-                  background: theme.surface, padding: "4px 8px", borderRadius: 6,
-                  flexShrink: 0
-                }}>
-                  {tool.name}
-                </code>
-                <span style={{ fontSize: 13, color: theme.inkSoft }}>{tool.desc}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

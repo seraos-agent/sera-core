@@ -152,7 +152,7 @@ describe('SeraMcpServer', () => {
       mockInstance
     );
 
-    expect(result.content[0].text).toContain('Transfer proposal submitted');
+    expect(result.content[0].text).toContain('Transfer proposal created');
     expect(result.content[0].text).toContain('0xRecipient');
     expect(result.content[0].text).toContain('10 USDC');
     expect(emittedEvent).not.toBeNull();

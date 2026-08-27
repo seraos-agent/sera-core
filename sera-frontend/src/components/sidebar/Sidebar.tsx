@@ -220,7 +220,7 @@ export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentV
                   )}
                   {open && (
                     <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: theme.inkSoft, fontWeight: 500, whiteSpace: "nowrap", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {c.name.split(' (')[0]}
+                      {c.id === 'hyperliquid' ? 'Hyperliquid' : (c.id === 'telegram' ? 'Telegram' : (c.id === 'threads' ? 'Threads' : c.name.split(' (')[0]))}
                     </span>
                   )}
                   {open && (

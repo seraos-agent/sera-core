@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { EventTypes } from '../../core/events/types';
 import { ThreadsAPI, ThreadsMention } from './ThreadsAPI';
 import { SecretManager } from '../../core/secrets/SecretManager';
+import { QwenAdapter, QwenMessage } from '../llm/QwenAdapter';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -12,6 +13,7 @@ export class ThreadsDaemon {
   private lastProcessedReplyIds = new Map<string, string>(); // threadId -> lastReplyId
   private timelineContext: string = ''; // Caches recent posts for AI context
   private processedIds = new Set<string>();
+  private llmAdapter?: QwenAdapter;
 
   private readonly watermarkFile = path.join(process.cwd(), '.data', 'threads_watermark.json');
 
@@ -19,20 +21,44 @@ export class ThreadsDaemon {
     private readonly api: ThreadsAPI,
     private readonly eventBus: EventEmitter,
     private readonly sessionId: string = 'default',
-    private readonly secretManager?: SecretManager
+    private readonly secretManager?: SecretManager,
+    private readonly getSessionsCallback?: () => string[]
   ) {
     this.loadWatermark();
   }
 
-  private async getSettings() {
-    if (!this.secretManager) return { vipReplies: true, gatekeeper: true };
+  private getLLM(): QwenAdapter {
+    if (!this.llmAdapter) {
+      this.llmAdapter = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
+    }
+    return this.llmAdapter;
+  }
+
+  private getTargetSessions(): string[] {
+    const sessions = new Set<string>();
+    if (this.sessionId) sessions.add(this.sessionId);
+    if (this.getSessionsCallback) {
+      try {
+        const extra = this.getSessionsCallback();
+        if (Array.isArray(extra)) {
+          extra.forEach(s => { if (s) sessions.add(s); });
+        }
+      } catch (e: any) {
+        console.warn('[ThreadsDaemon] Failed to get session list from callback:', e.message);
+      }
+    }
+    return Array.from(sessions);
+  }
+
+  private async getSettings(sessionId: string) {
+    if (!this.secretManager) return { allowPublishing: true, vipReplies: true, gatekeeper: true };
     try {
-      const settingsStr = await this.secretManager.getSecret(`THREADS_SETTINGS_${this.sessionId}`);
+      const settingsStr = await this.secretManager.getSecret(`THREADS_SETTINGS_${sessionId}`);
       if (settingsStr) return JSON.parse(settingsStr);
     } catch (e) {
       // ignore
     }
-    return { vipReplies: true, gatekeeper: true };
+    return { allowPublishing: true, vipReplies: true, gatekeeper: true };
   }
 
   private loadWatermark() {
@@ -45,19 +71,40 @@ export class ThreadsDaemon {
           this.processedIds.add(parsed.lastProcessedMentionId);
           console.log(`[ThreadsDaemon] Loaded watermark. Starting from Mention ID: ${this.lastProcessedMentionId}`);
         }
+        if (parsed.lastProcessedReplyIds && typeof parsed.lastProcessedReplyIds === 'object') {
+          for (const [k, v] of Object.entries(parsed.lastProcessedReplyIds)) {
+            if (typeof v === 'string') {
+              this.lastProcessedReplyIds.set(k, v);
+              this.processedIds.add(v);
+            }
+          }
+        }
       }
     } catch (err: any) {
       console.warn(`[ThreadsDaemon] Failed to load watermark: ${err.message}`);
     }
   }
 
-  private saveWatermark(mentionId: string) {
+  private saveWatermark(mentionId?: string) {
     try {
-      this.lastProcessedMentionId = mentionId;
-      this.processedIds.add(mentionId);
+      if (mentionId) {
+        this.lastProcessedMentionId = mentionId;
+        this.processedIds.add(mentionId);
+      }
       const dir = path.dirname(this.watermarkFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.watermarkFile, JSON.stringify({ lastProcessedMentionId: mentionId }, null, 2), 'utf8');
+      const replyObj: Record<string, string> = {};
+      for (const [k, v] of this.lastProcessedReplyIds.entries()) {
+        replyObj[k] = v;
+      }
+      fs.writeFileSync(
+        this.watermarkFile,
+        JSON.stringify({
+          lastProcessedMentionId: this.lastProcessedMentionId,
+          lastProcessedReplyIds: replyObj
+        }, null, 2),
+        'utf8'
+      );
     } catch (err: any) {
       console.error(`[ThreadsDaemon] Failed to save watermark: ${err.message}`);
     }
@@ -111,42 +158,49 @@ export class ThreadsDaemon {
   public async pollMentions(force: boolean = false) {
     if (!this.isRunning && !force) return;
 
-    try {
-      const mentions = await this.api.getMentions(this.sessionId, 20);
-      if (!mentions || mentions.length === 0) {
-        return;
-      }
+    const sessions = this.getTargetSessions();
+    for (const sessionId of sessions) {
+      try {
+        const token = await this.api.getAccessToken(sessionId);
+        if (!token) continue;
 
-      // Ensure mentions are sorted newest-first
-      mentions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const settings = await this.getSettings(sessionId);
+        if (settings.vipReplies === false && settings.gatekeeper === false) continue;
 
-      // FIRST RUN GUARD: If watermark is empty (e.g. cold start), record the latest ID and skip past backlog
-      if (!this.lastProcessedMentionId) {
-        this.saveWatermark(mentions[0].id);
-        mentions.forEach(m => this.markProcessed(m.id));
-        console.log(`[ThreadsDaemon] Initialized mention watermark to ID: ${mentions[0].id}. Skipping historical backlog.`);
-        return;
-      }
+        const mentions = await this.api.getMentions(sessionId, 20);
+        if (!mentions || mentions.length === 0) continue;
 
-      // Find new mentions
-      const newMentions: ThreadsMention[] = [];
-      for (const mention of mentions) {
-        if (mention.id === this.lastProcessedMentionId || this.processedIds.has(mention.id)) break;
-        newMentions.push(mention);
-      }
-      
-      if (newMentions.length > 0) {
-        console.log(`[ThreadsDaemon] Found ${newMentions.length} new mentions.`);
-        this.saveWatermark(newMentions[0].id);
-      }
+        // Ensure mentions are sorted newest-first
+        mentions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      // Process from oldest to newest
-      for (const mention of newMentions.reverse()) {
-        await this.handleMention(mention);
-      }
-    } catch (err: any) {
-      if (!err.message.includes('active access token')) {
-        console.error('[ThreadsDaemon] Error polling mentions:', err.message);
+        // FIRST RUN GUARD: If watermark is empty, record latest ID and skip backlog
+        if (!this.lastProcessedMentionId) {
+          this.saveWatermark(mentions[0].id);
+          mentions.forEach(m => this.markProcessed(m.id));
+          console.log(`[ThreadsDaemon] Initialized mention watermark to ID: ${mentions[0].id} for ${sessionId}`);
+          continue;
+        }
+
+        // Find new mentions
+        const newMentions: ThreadsMention[] = [];
+        for (const mention of mentions) {
+          if (mention.id === this.lastProcessedMentionId || this.processedIds.has(mention.id)) break;
+          newMentions.push(mention);
+        }
+        
+        if (newMentions.length > 0) {
+          console.log(`[ThreadsDaemon] Found ${newMentions.length} new mentions for session ${sessionId}.`);
+          this.saveWatermark(newMentions[0].id);
+        }
+
+        // Process from oldest to newest
+        for (const mention of newMentions.reverse()) {
+          await this.handleMention(sessionId, mention);
+        }
+      } catch (err: any) {
+        if (!err.message?.includes('active access token')) {
+          console.error(`[ThreadsDaemon] Error polling mentions for ${sessionId}:`, err.message);
+        }
       }
     }
   }
@@ -154,52 +208,61 @@ export class ThreadsDaemon {
   public async pollReplies(force: boolean = false) {
     if (!this.isRunning && !force) return;
 
-    try {
-      // 1. Get recent threads (Timeline Context)
-      const threads = await this.api.getUserThreads(this.sessionId, 5);
-      if (!threads || threads.length === 0) return;
+    const sessions = this.getTargetSessions();
+    for (const sessionId of sessions) {
+      try {
+        const token = await this.api.getAccessToken(sessionId);
+        if (!token) continue;
 
-      // Caches recent posts to inject into the AI context
-      this.timelineContext = threads.map(t => `[${t.timestamp}] ${t.text}`).join('\n');
+        const settings = await this.getSettings(sessionId);
+        if (settings.vipReplies === false && settings.gatekeeper === false) continue;
 
-      // 2. Filter threads to only poll those created in the last 7 days
-      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const recentThreads = threads.filter(t => new Date(t.timestamp).getTime() > sevenDaysAgo);
+        // 1. Get recent threads (Timeline Context)
+        const threads = await this.api.getUserThreads(sessionId, 5);
+        if (!threads || threads.length === 0) continue;
 
-      // 3. For each recent thread, poll replies
-      for (const thread of recentThreads) {
-        const replies = await this.api.getThreadReplies(this.sessionId, thread.id, 20);
-        if (!replies || replies.length === 0) continue;
+        this.timelineContext = threads.map(t => `[${t.timestamp}] ${t.text}`).join('\n');
 
-        // Ensure replies are sorted newest-first
-        replies.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        // 2. Filter threads to only poll those created in the last 7 days
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const recentThreads = threads.filter(t => new Date(t.timestamp).getTime() > sevenDaysAgo);
 
-        const newReplies: ThreadsMention[] = [];
-        const lastProcessedId = this.lastProcessedReplyIds.get(thread.id);
+        // 3. For each recent thread, poll replies
+        for (const thread of recentThreads) {
+          const replies = await this.api.getThreadReplies(sessionId, thread.id, 20);
+          if (!replies || replies.length === 0) continue;
 
-        for (const reply of replies) {
-          if (reply.id === lastProcessedId || this.processedIds.has(reply.id)) break;
-          newReplies.push(reply);
+          // Ensure replies are sorted newest-first
+          replies.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+          const newReplies: ThreadsMention[] = [];
+          const lastProcessedId = this.lastProcessedReplyIds.get(thread.id);
+
+          for (const reply of replies) {
+            if (reply.id === lastProcessedId || this.processedIds.has(reply.id)) break;
+            newReplies.push(reply);
+          }
+
+          if (newReplies.length > 0) {
+            this.lastProcessedReplyIds.set(thread.id, newReplies[0].id);
+            this.saveWatermark();
+          }
+
+          // First run initialization for a new thread
+          if (!lastProcessedId) {
+            newReplies.forEach(r => this.markProcessed(r.id));
+            continue;
+          }
+
+          // Process from oldest to newest
+          for (const reply of newReplies.reverse()) {
+            await this.handleReply(sessionId, reply, thread.text);
+          }
         }
-
-        if (newReplies.length > 0) {
-          this.lastProcessedReplyIds.set(thread.id, newReplies[0].id);
+      } catch (err: any) {
+        if (!err.message?.includes('active access token')) {
+          console.error(`[ThreadsDaemon] Error polling replies for ${sessionId}:`, err.message);
         }
-
-        // First run initialization, don't trigger backlog replies
-        if (!lastProcessedId) {
-          newReplies.forEach(r => this.markProcessed(r.id));
-          continue;
-        }
-
-        // Process from oldest to newest
-        for (const reply of newReplies.reverse()) {
-          await this.handleReply(reply, thread.text);
-        }
-      }
-    } catch (err: any) {
-      if (!err.message.includes('active access token')) {
-        console.error('[ThreadsDaemon] Error polling replies:', err.message);
       }
     }
   }
@@ -207,7 +270,7 @@ export class ThreadsDaemon {
   private userActivityMap = new Map<string, { count: number; windowStart: number }>();
 
   /**
-   * Enforces a rate limit per Threads user to prevent abuse and spam (e.g. max 3 responses per 15 mins).
+   * Enforces a rate limit per Threads user to prevent abuse and spam (max 3 responses per 15 mins).
    */
   private checkRateLimit(username: string): boolean {
     const now = Date.now();
@@ -246,7 +309,7 @@ export class ThreadsDaemon {
     return spamPatterns.some(p => p.test(text));
   }
 
-  private async handleReply(reply: ThreadsMention, originalPostText: string) {
+  private async handleReply(sessionId: string, reply: ThreadsMention, originalPostText: string) {
     if (this.processedIds.has(reply.id)) return;
     this.markProcessed(reply.id);
 
@@ -271,40 +334,70 @@ export class ThreadsDaemon {
       return;
     }
 
-    console.log(`[ThreadsDaemon] New public reply detected from @${reply.username} on our post. Waking up AI...`);
+    console.log(`[ThreadsDaemon] Processing comment from @${reply.username} for session ${sessionId}...`);
 
-    const message = `[SYSTEM_NOTIFICATION] User @${reply.username} commented on YOUR post on Threads:
-Your original post: "${originalPostText}"
-Their comment: "${reply.text}"
+    try {
+      // Assemble contextual synthesis prompt
+      const messages: QwenMessage[] = [
+        {
+          role: 'system',
+          content: `You are an elite, highly authentic, witty, and helpful AI assistant on Meta Threads.
+Your goal is to reply to a user who commented on your post.
 
-[PERSONA & STYLE GUIDELINES]:
-- Craft a natural, witty, engaging, or thought-provoking response (1-3 sentences).
-- Match the language of the comment (Indonesian -> Indonesian, English -> English).
-- Do NOT hard-sell, pitch products, or drop generic links. Keep it 100% organic and conversational.
-- Be curious, clever, slightly playful, and friendly.
+CRITICAL REPLY GUIDELINES:
+1. DYNAMIC CONTEXTUAL LENGTH:
+   - For casual greetings, jokes, slang, or simple compliments (e.g. "keren", "mantap", "lol"): Reply in 1 concise, punchy, natural line.
+   - For questions asking for explanations, facts, guides, or data (e.g. "maksudnya gimana?", "kenapa bisa naik?", "how does it work?"): Provide a concise, clear explanation with brief helpful data (strict 2-3 short sentences max). Never write long essay paragraphs.
+2. ZERO HASHTAGS: NEVER use hashtags or the "#" symbol. Threads users despise hashtag spam.
+3. NO QUOTES OR PREAMBLE: Return ONLY the exact reply text without quotation marks or preamble like "Here is the reply:".
+4. AUTHENTIC & ORGANIC: Match the language of the comment (Indonesian -> casual Indonesian, English -> casual English). Be friendly, clever, and engaging.`
+        },
+        {
+          role: 'user',
+          content: `[CONTEXT]
+Your original Threads post: "${originalPostText}"
+User @${reply.username} commented: "${reply.text}"
 
-[INTERNAL SYSTEM ROUTING]:
-To post your reply directly to Threads, you MUST call the tool THREADS_REPLY with:
-{
-  "replyToId": "${reply.id}",
-  "text": "<your generated reply>"
-}
-This is an autonomous background task. Execute the tool immediately without asking for confirmation.`;
+Write the ideal contextual reply:`
+        }
+      ];
 
-    this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
-      id: `evt-threads-reply-${Date.now()}`,
-      type: EventTypes.DIALOGUE_USER_OBSERVED,
-      source: 'ThreadsDaemon',
-      payload: { 
-        message,
-        userMessage: message,
-        _seraWorkClass: 'CONVERSATION'
-      },
-      timestamp: Date.now()
-    });
+      const llm = this.getLLM();
+      const response = await llm.generate(messages);
+      let replyText = response.text.trim();
+
+      // Clean quotes, code blocks, and hashtags
+      replyText = replyText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+      if (replyText.startsWith('"') && replyText.endsWith('"') && replyText.length > 2) {
+        replyText = replyText.slice(1, -1).trim();
+      }
+      replyText = replyText.replace(/#[a-zA-Z0-9_]+/g, '').replace(/\s{2,}/g, ' ').trim();
+
+      if (!replyText) {
+        console.warn(`[ThreadsDaemon] Empty reply generated for comment ${reply.id}`);
+        return;
+      }
+
+      console.log(`[ThreadsDaemon] Generated reply for @${reply.username}: "${replyText}"`);
+
+      // Directly publish reply via Meta Threads API
+      const publishId = await this.api.publishPost(sessionId, replyText, reply.id);
+      console.log(`[ThreadsDaemon] Published reply to @${reply.username} on Threads (Post ID: ${publishId})`);
+
+      // Emit telemetry observation
+      this.eventBus.emit(EventTypes.COGNITIVE_OBSERVATION, {
+        title: 'Threads Comment Auto-Reply Sent',
+        desc: `Replied to @${reply.username}: "${replyText}"`,
+        signal: 'ACTION',
+        color: '#10b981',
+        timestamp: Date.now()
+      });
+    } catch (err: any) {
+      console.error(`[ThreadsDaemon] Failed to execute auto-reply to @${reply.username}:`, err.message);
+    }
   }
 
-  private async handleMention(mention: ThreadsMention) {
+  private async handleMention(sessionId: string, mention: ThreadsMention) {
     if (this.processedIds.has(mention.id)) return;
     this.markProcessed(mention.id);
 
@@ -329,47 +422,73 @@ This is an autonomous background task. Execute the tool immediately without aski
       return;
     }
 
-    console.log(`[ThreadsDaemon] New public mention detected from @${mention.username}: "${mention.text}"`);
+    console.log(`[ThreadsDaemon] Processing mention from @${mention.username} for session ${sessionId}...`);
 
     let parentPostContext = '';
     try {
-      const mentionDetails = await this.api.getPost(this.sessionId, mention.id);
+      const mentionDetails = await this.api.getPost(sessionId, mention.id);
       
       if (mentionDetails.is_reply && mentionDetails.replied_to?.id) {
-        console.log(`[ThreadsDaemon] Mention is a reply. Fetching parent post context for ${mentionDetails.replied_to.id}...`);
-        const parentPost = await this.api.getPost(this.sessionId, mentionDetails.replied_to.id);
-        parentPostContext = `\n[PARENT POST CONTEXT]: They are replying in a thread under @${parentPost.username}'s post: "${parentPost.text}"\n`;
+        const parentPost = await this.api.getPost(sessionId, mentionDetails.replied_to.id);
+        parentPostContext = `\n[PARENT POST CONTEXT]: They mentioned you in a thread under @${parentPost.username}'s post: "${parentPost.text}"\n`;
       }
     } catch (err: any) {
       console.warn(`[ThreadsDaemon] Could not fetch parent post context:`, err.message);
     }
 
-    const message = `[SYSTEM_NOTIFICATION] You were mentioned on Threads by @${mention.username}: "${mention.text}".${parentPostContext}
+    try {
+      const messages: QwenMessage[] = [
+        {
+          role: 'system',
+          content: `You are an elite, highly authentic, witty, and helpful AI assistant on Meta Threads.
+Your goal is to reply to a user who mentioned/tagged you in a post or comment.
 
-[PERSONA & STYLE GUIDELINES]:
-- Provide a helpful, intelligent, witty, or intriguing response (1-3 sentences).
-- Match the language of the mention (Indonesian -> Indonesian, English -> English).
-- Do NOT hard-sell, advertise, or output marketing sales pitches. Keep the conversation organic, insightful, and natural.
-- You can use web search if they ask for factual data or current news.
+CRITICAL REPLY GUIDELINES:
+1. DYNAMIC CONTEXTUAL LENGTH:
+   - For casual greetings, jokes, or quick mentions: Reply in 1 concise, punchy, natural line.
+   - For questions asking for explanations, facts, or data: Provide a concise, clear explanation with brief helpful data (strict 2-3 short sentences max). Never write long essay paragraphs.
+2. ZERO HASHTAGS: NEVER use hashtags or the "#" symbol.
+3. NO QUOTES OR PREAMBLE: Return ONLY the exact reply text without quotation marks.
+4. AUTHENTIC & ORGANIC: Match the language of the mention (Indonesian -> casual Indonesian, English -> casual English).`
+        },
+        {
+          role: 'user',
+          content: `[CONTEXT]
+User @${mention.username} mentioned you: "${mention.text}"${parentPostContext}
 
-[INTERNAL SYSTEM ROUTING]:
-To post your reply directly to Threads, you MUST call the tool THREADS_REPLY with:
-{
-  "replyToId": "${mention.id}",
-  "text": "<your generated reply>"
-}
-This is an autonomous background task. Execute the tool immediately without asking for confirmation.`;
+Write the ideal contextual reply:`
+        }
+      ];
 
-    this.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, {
-      id: `evt-threads-${Date.now()}`,
-      type: EventTypes.DIALOGUE_USER_OBSERVED,
-      source: 'ThreadsDaemon',
-      payload: { 
-        message,
-        userMessage: message,
-        _seraWorkClass: 'CONVERSATION'
-      },
-      timestamp: Date.now()
-    });
+      const llm = this.getLLM();
+      const response = await llm.generate(messages);
+      let replyText = response.text.trim();
+
+      // Clean quotes, code blocks, and hashtags
+      replyText = replyText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+      if (replyText.startsWith('"') && replyText.endsWith('"') && replyText.length > 2) {
+        replyText = replyText.slice(1, -1).trim();
+      }
+      replyText = replyText.replace(/#[a-zA-Z0-9_]+/g, '').replace(/\s{2,}/g, ' ').trim();
+
+      if (!replyText) return;
+
+      console.log(`[ThreadsDaemon] Generated reply for mention @${mention.username}: "${replyText}"`);
+
+      // Directly publish reply via Meta Threads API
+      const publishId = await this.api.publishPost(sessionId, replyText, mention.id);
+      console.log(`[ThreadsDaemon] Published reply to mention @${mention.username} on Threads (Post ID: ${publishId})`);
+
+      // Emit telemetry observation
+      this.eventBus.emit(EventTypes.COGNITIVE_OBSERVATION, {
+        title: 'Threads Mention Auto-Reply Sent',
+        desc: `Replied to mention by @${mention.username}: "${replyText}"`,
+        signal: 'ACTION',
+        color: '#10b981',
+        timestamp: Date.now()
+      });
+    } catch (err: any) {
+      console.error(`[ThreadsDaemon] Failed to execute auto-reply to mention @${mention.username}:`, err.message);
+    }
   }
 }

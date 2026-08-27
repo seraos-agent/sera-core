@@ -21,7 +21,9 @@ import { verifyWalletSignature } from './WalletSignatureVerifier';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
-import { SeraMcpServer } from '../mcp/SeraMcpServer';
+import { SeraMcpServer, SERA_MCP_TOOLS } from '../mcp/SeraMcpServer';
+import { OAuthStore } from './auth/oauth/OAuthStore';
+import { createOAuthRouter } from './auth/oauth/oauthRouter';
 import { TelegramBotManager } from '../capabilities/communication/adapters/TelegramBotManager';
 import { TelegramAdapter } from '../capabilities/communication/adapters/TelegramAdapter';
 import { PredictionEngineService } from '../capabilities/predictions/PredictionEngineService';
@@ -32,7 +34,6 @@ import { HygieneDaemon } from '../core/hygiene/HygieneDaemon';
 import { SupabaseRestClient } from '../core/persistence/SupabaseRestClient';
 
 export { predictionEngine };
-const mcpApiKeyStore = new McpApiKeyStore();
 
 const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -41,6 +42,8 @@ const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
 console.log(`[Server] Google Drive OAuth Service initialized:`, !!googleDriveOAuthService);
 const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
 agentManager.setSecretManager(globalSecretManager);
+export const globalOAuthStore = new OAuthStore(globalSecretManager);
+const mcpApiKeyStore = new McpApiKeyStore(globalOAuthStore);
 export const telegramBotManager = new TelegramBotManager(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
 const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
 
@@ -203,6 +206,9 @@ app.get('/auth/google-drive/callback', async (request, response) => {
   }
 });
 
+// ─── OAuth 2.0 Authorization Server & Dynamic Client Registration (RFC 7591) ──
+app.use(createOAuthRouter(globalOAuthStore));
+
 // ─── MCP Streamable HTTP Transport ────────────────────────────────────────────
 const seraMcpServer = new SeraMcpServer({
   apiKeyStore: mcpApiKeyStore,
@@ -211,7 +217,8 @@ const seraMcpServer = new SeraMcpServer({
 });
 
 // Express CORS and body parser for MCP routes
-app.use('/mcp', (req, res, next) => {
+// Express CORS and body parser for all MCP and SSE routes
+const mcpCorsMiddleware = (req: any, res: any, next: any) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -219,23 +226,44 @@ app.use('/mcp', (req, res, next) => {
     return res.sendStatus(200);
   }
   next();
+};
+
+app.use('/mcp', mcpCorsMiddleware, express.json());
+app.use('/sse', mcpCorsMiddleware);
+app.use('/message', mcpCorsMiddleware, express.json());
+
+import { SERA_LOGO_PNG_BUFFER } from './assets/seraLogoBase64.js';
+
+const SERA_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="none" viewBox="0 0 48 46"><path fill="#863bff" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" style="fill:#863bff;fill:color(display-p3 .5252 .23 1);fill-opacity:1"/><mask id="a" width="48" height="46" x="0" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M25.842 44.938c-.664.844-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.183c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.498 0-3.579-1.842-3.579H1.133c-.92 0-1.456-1.04-.92-1.787L9.91.473c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.578 1.842 3.578h11.377c.943 0 1.473 1.088.89 1.832L25.843 44.94z" style="fill:#000;fill-opacity:1"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#ede6ff" rx="5.508" ry="14.704" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -4.47 31.516)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#ede6ff" rx="10.399" ry="29.851" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -39.328 7.883)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#7e14ff" rx="5.508" ry="30.487" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -25.913 -14.639)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -32.644 -3.334)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -34.34 30.47)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#ede6ff" rx="14.072" ry="22.078" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="rotate(93.35 24.506 48.493)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx=".387" cy="8.972" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(39.51 .387 8.972)"/></g><g filter="url(#k)"><ellipse cx="47.523" cy="-6.092" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 47.523 -6.092)"/></g><g filter="url(#l)"><ellipse cx="41.412" cy="6.333" fill="#47bfff" rx="5.971" ry="9.665" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 41.412 6.333)"/></g><g filter="url(#m)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#n)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#o)"><ellipse cx="35.651" cy="29.907" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 35.651 29.907)"/></g><g filter="url(#p)"><ellipse cx="38.418" cy="32.4" fill="#47bfff" rx="5.971" ry="15.297" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 38.418 32.4)"/></g></g><defs><filter id="b" width="60.045" height="41.654" x="-19.77" y="16.149" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-54.613" y="-7.533" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-49.64" y="2.03" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-45.045" y="20.029" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-43.513" y="21.178" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="15.756" y="-17.901" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-27.636" y="-22.853" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="20.116" y="-38.415" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="24.641" y="-11.323" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="8.244" y="-2.416" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="18.713" y="10.588" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter></defs></svg>`;
+
+app.get('/favicon.svg', (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(SERA_FAVICON_SVG);
 });
-app.use('/mcp', express.json());
+
+app.get('/logo.svg', (req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(SERA_FAVICON_SVG);
+});
+
+const serveLogoPng = (req: any, res: any) => {
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(SERA_LOGO_PNG_BUFFER);
+};
+
+app.get('/sera-logo.png', serveLogoPng);
+app.get('/favicon.png', serveLogoPng);
+app.get('/favicon.ico', serveLogoPng);
 
 // List available MCP tools
 app.get('/mcp/tools', (req, res) => {
   const apiKey = req.headers.authorization?.replace('Bearer ', '') || '';
   const userId = mcpApiKeyStore.resolveUser(apiKey);
-  if (!userId) return res.status(401).json({ error: 'Invalid API key' });
-  res.json({
-    tools: [
-      { name: 'sera_chat', description: 'Send a message to your personal Sera AI agent and receive a response.', inputSchema: { type: 'object', properties: { message: { type: 'string', description: 'The message to send to Sera' } }, required: ['message'] } },
-      { name: 'sera_wallet_balance', description: 'Check the current balance and address of your Sera Agent Vault wallet.', inputSchema: { type: 'object', properties: {} } },
-      { name: 'sera_wallet_transfer', description: 'Propose a token transfer from your Sera Agent Vault (requires dashboard approval).', inputSchema: { type: 'object', properties: { to: { type: 'string' }, amount: { type: 'string' }, asset: { type: 'string' }, reason: { type: 'string' } }, required: ['to', 'amount', 'asset'] } },
-      { name: 'sera_memory_read', description: 'Read your Sera agent\'s confirmed beliefs and working memory.', inputSchema: { type: 'object', properties: {} } },
-      { name: 'sera_billing_status', description: 'Check your remaining Sera Agent Credits balance.', inputSchema: { type: 'object', properties: {} } }
-    ]
-  });
+  if (!userId) return res.status(401).json({ error: 'Invalid API key or OAuth access token' });
+  res.json({ tools: SERA_MCP_TOOLS });
 });
 
 // Execute an MCP tool call (used by sera-mcp-stdio proxy)
@@ -251,9 +279,6 @@ app.post('/mcp/tool', async (req, res) => {
 
   // Delegate to SeraMcpServer's internal handler by simulating the MCP call
   try {
-    // Use a direct approach: inject the API key into _meta and call the server's handler
-    const mockRequest = { params: { name, arguments: args || {}, _meta: { apiKey } } };
-    // We access the server's handler directly via the public method
     const result = await (seraMcpServer as any).handleToolCallDirect(name, args || {}, userId, instance);
     res.json(result);
   } catch (error: any) {
@@ -264,51 +289,59 @@ app.post('/mcp/tool', async (req, res) => {
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 const mcpTransports = new Map<string, SSEServerTransport>();
 
-app.get('/mcp/sse', async (req, res) => {
-  const apiKey = req.query.apiKey as string || req.headers.authorization?.replace('Bearer ', '') || '';
-  const userId = mcpApiKeyStore.resolveUser(apiKey);
-  
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid or missing Sera API Key' });
-  }
+const handleSse = async (req: any, res: any) => {
+  const apiKey = (req.query.apiKey as string) || req.headers.authorization?.replace('Bearer ', '') || '';
+  const userId = (apiKey ? mcpApiKeyStore.resolveUser(apiKey) : 'default') || 'default';
 
-  // Construct the absolute endpoint URL for the client to send messages to
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  const messageEndpoint = `${protocol}://${host}/mcp/message`;
+  // Construct canonical endpoint URL for message posts
+  const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || '';
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+  const baseUrl = isLocal ? `http://${host}` : 'https://mcp.seraos.xyz';
+  const messageEndpoint = `${baseUrl}/message`;
 
   // Create a dedicated transport for this connection using the absolute URL
   const transport = new SSEServerTransport(messageEndpoint, res);
-  await transport.start();
-  
   mcpTransports.set(transport.sessionId, transport);
   
-  // Create a new Server instance just for this connection
-  const serverInstance = seraMcpServer.createServer(apiKey);
-  
-  // We will just connect it
+  // Create and connect the MCP Server instance
+  const serverInstance = seraMcpServer.createServer(apiKey || userId);
   await serverInstance.connect(transport);
   
   res.on('close', () => {
     mcpTransports.delete(transport.sessionId);
   });
-});
+};
 
-app.post('/mcp/message', async (req, res) => {
+const handlePostMessage = async (req: any, res: any) => {
   const sessionId = req.query.sessionId as string;
   const transport = mcpTransports.get(sessionId);
   if (!transport) {
     return res.status(404).json({ error: 'Session not found' });
   }
   
-  // We need to inject the API key into the message if it's a CallToolRequest
-  // The API key was validated in /mcp/sse, but the handler needs it.
-  // We can't easily modify the transport's internal message routing, 
-  // but we can just let it fail auth if not provided?
-  // Actually, Claude Desktop sends headers on /mcp/message as well.
-  
-  await transport.handlePostMessage(req, res);
+  await transport.handlePostMessage(req, res, req.body);
+};
+
+// Root endpoint: handles SSE when requested by MCP client, otherwise serves status HTML
+app.get('/', (req, res) => {
+  if (req.headers.accept?.includes('text/event-stream') || req.headers.authorization || req.query.sessionId) {
+    return handleSse(req, res);
+  }
+  res.send(`<!DOCTYPE html><html><head><title>SERA OS - Autonomous Cognitive Agent</title><link rel="icon" type="image/png" href="/sera-logo.png"><meta name="description" content="SERA OS Agent Runtime and MCP Server"><meta property="og:image" content="/sera-logo.png"></head><body style="background:#09090b;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><img src="/sera-logo.png" width="72" height="72" style="object-fit:contain;margin-bottom:16px" alt="SERA Official Logo" /><h1 style="margin:0 0 8px;font-size:24px;font-weight:700">SERA OS Core Runtime</h1><p style="color:#a1a1aa;margin:0;font-size:14px">Active &amp; Operational • MCP Server Ready</p></div></body></html>`);
 });
+
+app.get('/mcp', (req, res) => {
+  if (req.headers.accept?.includes('text/event-stream') || req.headers.authorization || req.query.sessionId) {
+    return handleSse(req, res);
+  }
+  res.status(200).json({ status: 'active', server: 'SERA MCP Server' });
+});
+
+app.get('/mcp/sse', handleSse);
+app.get('/sse', handleSse);
+
+app.post('/mcp/message', handlePostMessage);
+app.post('/message', handlePostMessage);
 
 // ── Image Upload Route (Multimodal Chat & Social Media) ─────────────────────
 app.post('/api/upload/image', async (req, res) => {

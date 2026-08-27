@@ -82,9 +82,13 @@ export class ExecutionDispatcher {
           timestamp: Date.now()
         } as StandardEvent);
 
-        // 3. Emit notification to user chat/dashboard so the action is visible
-        this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
-          text: `📢 **[Autonomous Scheduled Post Published to Threads]**\n\n"${postText}"`
+        // 3. Emit observation to telemetry stream (NOT to user chat dialogue)
+        this.eventBus.emit(EventTypes.COGNITIVE_OBSERVATION, {
+          title: 'Threads Autonomous Post Published',
+          desc: `Published scheduled post: "${postText.slice(0, 90)}..."`,
+          signal: 'ACTION',
+          color: '#10b981',
+          timestamp: Date.now()
         });
       } catch (err: any) {
         console.error(`[ExecutionDispatcher] Error executing dynamic social action:`, err.message);

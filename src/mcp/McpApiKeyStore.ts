@@ -13,7 +13,10 @@ export class McpApiKeyStore {
   /** userId → Set<apiKey> (a user can have multiple keys) */
   private userToKeys: Map<string, Set<string>> = new Map();
 
-  constructor() {
+  private oauthStore?: any;
+
+  constructor(oauthStore?: any) {
+    this.oauthStore = oauthStore;
     // Automatically register the static environment API key if provided.
     // This allows securing the deployed server with a fixed key.
     if (process.env.SERA_API_KEY) {
@@ -21,6 +24,10 @@ export class McpApiKeyStore {
       this.keyToUser.set(process.env.SERA_API_KEY, adminUserId);
       this.userToKeys.set(adminUserId, new Set([process.env.SERA_API_KEY]));
     }
+  }
+
+  public setOAuthStore(oauthStore: any) {
+    this.oauthStore = oauthStore;
   }
 
   /**
@@ -42,11 +49,24 @@ export class McpApiKeyStore {
   }
 
   /**
-   * Resolves an API key to its owning userId.
-   * Returns null if the key is invalid or revoked.
+   * Resolves an API key or OAuth Bearer token to its owning userId.
+   * Returns null if the key/token is invalid or revoked.
    */
-  public resolveUser(apiKey: string): string | null {
-    return this.keyToUser.get(apiKey) ?? null;
+  public resolveUser(tokenOrKey: string): string | null {
+    if (!tokenOrKey) return null;
+    const clean = tokenOrKey.replace(/^Bearer\s+/i, '').trim();
+    
+    // 1. Direct API Key map check
+    const directUser = this.keyToUser.get(clean);
+    if (directUser) return directUser;
+
+    // 2. OAuth token resolution
+    if (this.oauthStore && typeof this.oauthStore.resolveSession === 'function') {
+      const oauthUser = this.oauthStore.resolveSession(clean);
+      if (oauthUser) return oauthUser;
+    }
+
+    return null;
   }
 
   /**

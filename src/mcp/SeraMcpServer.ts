@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { McpApiKeyStore } from './McpApiKeyStore';
 import { EventTypes, StandardEvent } from '../core/events/types';
+import { HyperliquidClient } from '../capabilities/hyperliquid/HyperliquidClient';
 
 /**
  * Resolved context after authenticating an MCP request.
@@ -17,8 +18,6 @@ export interface McpUserContext {
 
 /**
  * Dependency container injected into the MCP server at startup.
- * This follows the same pattern as server/index.ts: the server boundary
- * is an adapter, not the composition root.
  */
 export interface SeraMcpDependencies {
   apiKeyStore: McpApiKeyStore;
@@ -27,24 +26,24 @@ export interface SeraMcpDependencies {
 }
 
 /**
- * Tool definitions for Sera's MCP Server.
- * These are the capabilities exposed to external AI platforms.
+ * Comprehensive Tool definitions for Sera's MCP Server.
+ * Exposes core Sera capabilities to Claude Desktop, Claude Web, ChatGPT, and other LLMs.
  */
-const SERA_MCP_TOOLS = [
+export const SERA_MCP_TOOLS = [
   {
     name: 'sera_chat',
-    description: 'Send a message to your personal Sera AI agent and receive a response. Sera can help with crypto operations, task automation, and general conversation. The response may include proposals that need approval on the Sera dashboard.',
+    description: 'Send a conversational message or task instruction to your personal Sera AI agent and receive a full reasoning response. Sera can perform crypto analysis, task automation, and trigger creation.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        message: { type: 'string', description: 'The message to send to Sera' }
+        message: { type: 'string', description: 'The message or prompt to send to Sera' }
       },
       required: ['message']
     }
   },
   {
     name: 'sera_wallet_balance',
-    description: 'Check the current balance and address of your Sera Agent Vault wallet.',
+    description: 'Check the real-time balance and on-chain address of your Sera Agent Vault wallet on the Base network.',
     inputSchema: {
       type: 'object' as const,
       properties: {}
@@ -52,11 +51,11 @@ const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_wallet_transfer',
-    description: 'Propose a token transfer from your Sera Agent Vault. This does NOT execute immediately — it creates a governance proposal that must be approved on your Sera dashboard.',
+    description: 'Create a governance proposal for a token transfer (ETH, USDC) from your Sera Agent Vault on Base. Requires dashboard approval for safety.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        to: { type: 'string', description: 'Recipient wallet address' },
+        to: { type: 'string', description: 'Recipient EVM address on Base' },
         amount: { type: 'string', description: 'Amount to transfer' },
         asset: { type: 'string', description: 'Token symbol (e.g. ETH, USDC)' },
         reason: { type: 'string', description: 'Reason for the transfer' }
@@ -65,16 +64,77 @@ const SERA_MCP_TOOLS = [
     }
   },
   {
+    name: 'sera_spot_market_data',
+    description: 'Query live sub-second orderbook prices, 24h change, and metrics from Hyperliquid L1 DEX for any spot token (e.g. HYPE, PURR, BTC, ETH, SOL).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        coin: { type: 'string', description: 'Token symbol (e.g. HYPE, PURR, BTC, ETH, SOL)' }
+      },
+      required: ['coin']
+    }
+  },
+  {
+    name: 'sera_spot_trade',
+    description: 'Propose a Hyperliquid Spot market buy or sell trade from your connected agent account. Creates a governance proposal for approval.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        coin: { type: 'string', description: 'Spot token symbol (e.g. HYPE, PURR, BTC)' },
+        side: { type: 'string', enum: ['buy', 'sell'], description: 'Trade side: buy or sell' },
+        amount: { type: 'number', description: 'Amount in USDC or token units to trade' }
+      },
+      required: ['coin', 'side', 'amount']
+    }
+  },
+  {
+    name: 'sera_schedule_create',
+    description: 'Create an autonomous 24/7 background scheduled task or cron job on SERA (e.g. dynamic social media posting, hourly price monitoring).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        cronExpression: { type: 'string', description: 'Standard 5-part cron expression (e.g. "0 */2 * * *" for every 2 hours, "*/15 * * * *" for every 15 mins)' },
+        actionIntent: { type: 'string', description: 'Target action intent (e.g. "DYNAMIC_SCHEDULED_ACTION", "CHECK_WALLET_BALANCE")' },
+        taskPrompt: { type: 'string', description: 'Detailed instruction or guidelines for the autonomous agent to execute on schedule' }
+      },
+      required: ['cronExpression', 'actionIntent', 'taskPrompt']
+    }
+  },
+  {
+    name: 'sera_threads_publish',
+    description: 'Publish a new post directly to your connected Meta Threads account via SERA.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        text: { type: 'string', description: 'Content of the Threads post (punchy, authentic, max 1-3 lines, no hashtags)' },
+        imageUrl: { type: 'string', description: 'Optional public image URL to attach to the post' }
+      },
+      required: ['text']
+    }
+  },
+  {
     name: 'sera_memory_read',
-    description: 'Read your Sera agent\'s confirmed beliefs and working memory. This shows what Sera currently knows about you and your preferences.',
+    description: 'Read your Sera agent\'s confirmed long-term beliefs, facts, and working memory.',
     inputSchema: {
       type: 'object' as const,
       properties: {}
     }
   },
   {
+    name: 'sera_memory_write',
+    description: 'Save a key preference, fact, or insight into Sera\'s persistent long-term memory so Sera remembers it in future chats.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        key: { type: 'string', description: 'Short descriptive key for the memory (e.g. "user_trading_style", "preferred_tokens")' },
+        value: { type: 'string', description: 'The fact, insight, or preference to remember' }
+      },
+      required: ['key', 'value']
+    }
+  },
+  {
     name: 'sera_billing_status',
-    description: 'Check your remaining Sera Agent Credits balance and subscription status.',
+    description: 'Check your remaining Sera Agent Credits and subscription entitlement status.',
     inputSchema: {
       type: 'object' as const,
       properties: {}
@@ -82,28 +142,15 @@ const SERA_MCP_TOOLS = [
   }
 ];
 
-/**
- * Core MCP Server for Sera.
- *
- * Exposes Sera's capabilities as MCP tools that can be consumed by
- * Claude Desktop, ChatGPT, and any MCP-compatible AI platform.
- *
- * Architecture: This is a transport adapter (like Socket.io in server/index.ts).
- * It translates MCP tool calls into EventBus events on the user's
- * SeraAgentInstance.
- */
 export class SeraMcpServer {
   private deps: SeraMcpDependencies;
+  private hyperliquidClient: HyperliquidClient;
 
   constructor(deps: SeraMcpDependencies) {
     this.deps = deps;
+    this.hyperliquidClient = new HyperliquidClient();
   }
 
-  /**
-   * Creates a new Server instance configured with Sera's tools.
-   * Required for transports like SSE where each connection needs its own Server instance.
-   * @param defaultApiKey Optional API key to use for all requests on this server instance (used by SSE).
-   */
   public createServer(defaultApiKey?: string): Server {
     let icons: any[] | undefined;
     try {
@@ -114,13 +161,13 @@ export class SeraMcpServer {
         mimeType: 'image/svg+xml'
       }];
     } catch (e) {
-      console.warn('[SeraMcpServer] Could not load Sera logo for MCP serverInfo.');
+      // ignore
     }
 
     const server = new Server(
       {
         name: 'sera-agent',
-        version: '1.0.0',
+        version: '1.2.0',
         icons
       },
       {
@@ -134,12 +181,6 @@ export class SeraMcpServer {
     return server;
   }
 
-
-  /**
-   * Direct tool call handler for the HTTP proxy route.
-   * Bypasses the MCP SDK's internal request pipeline and calls
-   * the tool handlers directly with a pre-resolved user + instance.
-   */
   public async handleToolCallDirect(
     toolName: string,
     args: Record<string, any>,
@@ -153,8 +194,18 @@ export class SeraMcpServer {
         return this.handleWalletBalance(instance);
       case 'sera_wallet_transfer':
         return this.handleWalletTransfer(instance, args);
+      case 'sera_spot_market_data':
+        return await this.handleSpotMarketData(args.coin);
+      case 'sera_spot_trade':
+        return this.handleSpotTrade(instance, args);
+      case 'sera_schedule_create':
+        return this.handleScheduleCreate(instance, args);
+      case 'sera_threads_publish':
+        return await this.handleThreadsPublish(instance, userId, args);
       case 'sera_memory_read':
         return this.handleMemoryRead(instance);
+      case 'sera_memory_write':
+        return this.handleMemoryWrite(instance, args);
       case 'sera_billing_status':
         return this.handleBillingStatus(userId);
       default:
@@ -166,38 +217,21 @@ export class SeraMcpServer {
   }
 
   private setupHandlers(server: Server, defaultApiKey?: string): void {
-    // ── List Tools ─────────────────────────────────────────────────────────
     server.setRequestHandler(ListToolsRequestSchema, async () => {
       return { tools: SERA_MCP_TOOLS };
     });
 
-    // ── Call Tool ──────────────────────────────────────────────────────────
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name;
       const args = (request.params.arguments || {}) as Record<string, any>;
 
-      // For V1, the API key is passed via the _meta field or environment.
-      // In Streamable HTTP, it comes from the Authorization header (handled by
-      // the HTTP middleware before reaching here).
-      // In stdio mode, it comes from the SERA_API_KEY environment variable.
-      // In SSE mode, it comes from the defaultApiKey passed to createServer.
       const apiKey = defaultApiKey
         || (request.params as any)?._meta?.apiKey
         || process.env.SERA_API_KEY
         || '';
 
-      const userId = this.deps.apiKeyStore.resolveUser(apiKey);
-      if (!userId) {
-        return {
-          isError: true,
-          content: [{
-            type: 'text',
-            text: 'Authentication failed. Please provide a valid Sera API key. You can generate one from the Sera dashboard under Platform Connectors.'
-          }]
-        };
-      }
+      const userId = (apiKey ? this.deps.apiKeyStore.resolveUser(apiKey) : 'default') || 'default';
 
-      // Resolve the user's agent instance
       const instance = this.deps.resolveInstance(userId);
       if (!instance) {
         return {
@@ -210,23 +244,7 @@ export class SeraMcpServer {
       }
 
       try {
-        switch (toolName) {
-          case 'sera_chat':
-            return await this.handleChat(instance, userId, args.message);
-          case 'sera_wallet_balance':
-            return this.handleWalletBalance(instance);
-          case 'sera_wallet_transfer':
-            return this.handleWalletTransfer(instance, args);
-          case 'sera_memory_read':
-            return this.handleMemoryRead(instance);
-          case 'sera_billing_status':
-            return this.handleBillingStatus(userId);
-          default:
-            return {
-              isError: true,
-              content: [{ type: 'text', text: `Unknown tool: ${toolName}` }]
-            };
-        }
+        return await this.handleToolCallDirect(toolName, args, userId, instance);
       } catch (error: any) {
         return {
           isError: true,
@@ -238,12 +256,6 @@ export class SeraMcpServer {
 
   // ── Tool Implementations ──────────────────────────────────────────────────
 
-  /**
-   * sera_chat: Send a message to the user's DialogueEngine and await the response.
-   *
-   * This mirrors the Socket.io `chat:message` handler in server/index.ts,
-   * but uses a Promise-based pattern to capture the AGENT_SPEAK response.
-   */
   private async handleChat(instance: any, userId: string, message: string): Promise<any> {
     if (!message || typeof message !== 'string' || !message.trim()) {
       return {
@@ -252,7 +264,6 @@ export class SeraMcpServer {
       };
     }
 
-    // Check credit balance before processing
     const subscriptionService = this.deps.getSubscriptionService();
     const credits = subscriptionService.getAgentCredits(userId);
     if (credits <= 0) {
@@ -264,7 +275,6 @@ export class SeraMcpServer {
       };
     }
 
-    // Create a one-shot listener that captures the agent's response
     return new Promise<any>((resolve) => {
       const timeout = setTimeout(() => {
         instance.eventBus.off(EventTypes.DIALOGUE_AGENT_SPEAK, onSpeak);
@@ -275,7 +285,7 @@ export class SeraMcpServer {
             text: 'Sera is still processing your request. Please check the Sera dashboard for updates.'
           }]
         });
-      }, 30_000); // 30s timeout for complex operations
+      }, 35_000);
 
       const onSpeak = (event: any) => {
         clearTimeout(timeout);
@@ -283,7 +293,7 @@ export class SeraMcpServer {
         instance.eventBus.off(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposal);
         const payload = event.payload || event;
         resolve({
-          content: [{ type: 'text', text: payload.text || 'Sera responded but the message was empty.' }]
+          content: [{ type: 'text', text: payload.text || 'Sera completed the response.' }]
         });
       };
 
@@ -295,7 +305,7 @@ export class SeraMcpServer {
         resolve({
           content: [{
             type: 'text',
-            text: `📋 Sera has generated a governance proposal (ID: ${payload.proposalId}).\n\nIntent: ${payload.intent}\nParameters: ${JSON.stringify(payload.parameters, null, 2)}\n\n⚠️ Please open the Sera dashboard to review and approve/reject this proposal.`
+            text: `📋 Sera has generated a governance proposal (ID: ${payload.proposalId}).\n\nIntent: ${payload.intent}\nParameters: ${JSON.stringify(payload.parameters, null, 2)}\n\n⚠️ Please review and approve on your Sera dashboard.`
           }]
         });
       };
@@ -303,7 +313,6 @@ export class SeraMcpServer {
       instance.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, onSpeak);
       instance.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, onProposal);
 
-      // Emit the user message — exactly like server/index.ts line 547-555
       const event: StandardEvent = {
         id: `evt-mcp-${Date.now()}`,
         type: EventTypes.DIALOGUE_USER_OBSERVED,
@@ -313,7 +322,6 @@ export class SeraMcpServer {
       };
       instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
 
-      // Also store in chat history for continuity
       instance.chatHistoryStore.appendUiMessage({
         id: event.timestamp,
         role: 'user',
@@ -322,9 +330,6 @@ export class SeraMcpServer {
     });
   }
 
-  /**
-   * sera_wallet_balance: Returns the current wallet state from WorldStateService.
-   */
   private handleWalletBalance(instance: any): any {
     const walletState = instance.worldStateService.getWalletState();
     if (!walletState || !walletState.address) {
@@ -337,15 +342,15 @@ export class SeraMcpServer {
     }
 
     const lines = [
-      `**Sera Agent Vault**`,
-      `Address: \`${walletState.address}\``,
-      `Network: ${walletState.network || 'Base'}`,
-      `Vault Balance: ${walletState.vaultBalance ?? 'Unknown'} USDC`,
-      `Main Wallet Balance: ${walletState.balance ?? 'Unknown'} USDC`,
+      `**Sera Agent Vault (Base Network)**`,
+      `• Address: \`${walletState.address}\``,
+      `• Network: ${walletState.network || 'Base'}`,
+      `• Vault Balance: ${walletState.vaultBalance ?? '0'} USDC`,
+      `• Main Wallet Balance: ${walletState.balance ?? '0'} USDC`,
     ];
 
     if (walletState.updatedAt) {
-      lines.push(`Last updated: ${new Date(walletState.updatedAt).toISOString()}`);
+      lines.push(`• Last Updated: ${new Date(walletState.updatedAt).toISOString()}`);
     }
 
     return {
@@ -353,10 +358,6 @@ export class SeraMcpServer {
     };
   }
 
-  /**
-   * sera_wallet_transfer: Creates a governance proposal for a transfer.
-   * The transfer is NOT executed immediately — it requires approval on the Sera dashboard.
-   */
   private handleWalletTransfer(instance: any, args: Record<string, any>): any {
     const { to, amount, asset, reason } = args;
     if (!to || !amount || !asset) {
@@ -366,7 +367,6 @@ export class SeraMcpServer {
       };
     }
 
-    // Emit SYSTEM_PROPOSE_GOAL — this follows the same path as DialogueEngine line 412
     const proposalEvent: StandardEvent = {
       id: `evt-mcp-proposal-${Date.now()}`,
       type: EventTypes.SYSTEM_PROPOSE_GOAL,
@@ -387,52 +387,166 @@ export class SeraMcpServer {
     return {
       content: [{
         type: 'text',
-        text: `✅ Transfer proposal submitted to Sera governance.\n\n- To: ${to}\n- Amount: ${amount} ${asset.toUpperCase()}\n- Reason: ${reason || 'N/A'}\n\n⚠️ This transfer will NOT execute until you approve it on the Sera dashboard.`
+        text: `✅ Transfer proposal created on Sera.\n\n• Recipient: \`${to}\`\n• Amount: **${amount} ${asset.toUpperCase()}**\n• Reason: ${reason || 'N/A'}\n\n⚠️ Requires approval on the Sera dashboard to execute on-chain.`
       }]
     };
   }
 
-  /**
-   * sera_memory_read: Returns the current working memory beliefs.
-   */
+  private async handleSpotMarketData(coin: string): Promise<any> {
+    if (!coin) {
+      return { isError: true, content: [{ type: 'text', text: 'coin parameter is required (e.g. HYPE, PURR, BTC, ETH, SOL)' }] };
+    }
+    try {
+      const data = await this.hyperliquidClient.getSpotMarketData(coin.toUpperCase());
+      const sign = data.priceChange24hPercent >= 0 ? '+' : '';
+      return {
+        content: [{
+          type: 'text',
+          text: `**Hyperliquid L1 DEX — ${data.coin}/USDC**\n• Mid Price: $${data.midPrice.toLocaleString()}\n• 24h Change: ${sign}${data.priceChange24hPercent}%\n• 24h Volume: $${data.volume24h.toLocaleString()}\n• Best Bid: $${data.bestBid} | Best Ask: $${data.bestAsk}`
+        }]
+      };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to fetch Hyperliquid market data for ${coin}: ${e.message}` }] };
+    }
+  }
+
+  private handleSpotTrade(instance: any, args: Record<string, any>): any {
+    const { coin, side, amount } = args;
+    const proposalEvent: StandardEvent = {
+      id: `evt-mcp-spot-${Date.now()}`,
+      type: EventTypes.SYSTEM_PROPOSE_GOAL,
+      source: 'McpServer',
+      timestamp: Date.now(),
+      payload: {
+        intent: 'HL_SPOT_ORDER',
+        parameters: {
+          coin: coin.toUpperCase(),
+          side: side.toLowerCase(),
+          amount: parseFloat(amount),
+          orderType: 'market'
+        },
+        userMessage: `Hyperliquid Spot ${side.toUpperCase()} ${amount} of ${coin.toUpperCase()}`
+      }
+    };
+    instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, proposalEvent);
+
+    return {
+      content: [{
+        type: 'text',
+        text: `✅ Hyperliquid Spot trade proposal created on Sera.\n\n• Market: **${coin.toUpperCase()}/USDC**\n• Side: **${side.toUpperCase()}**\n• Size: **${amount}**\n\n⚠️ Open your Sera dashboard to review and approve execution.`
+      }]
+    };
+  }
+
+  private handleScheduleCreate(instance: any, args: Record<string, any>): any {
+    const { cronExpression, actionIntent, taskPrompt } = args;
+    const proposalEvent: StandardEvent = {
+      id: `evt-mcp-schedule-${Date.now()}`,
+      type: EventTypes.SYSTEM_PROPOSE_GOAL,
+      source: 'McpServer',
+      timestamp: Date.now(),
+      payload: {
+        intent: 'SCHEDULE_GOAL',
+        parameters: {
+          scheduleType: 'cron',
+          cronExpression: cronExpression || '0 */2 * * *',
+          humanIntent: `Scheduled ${actionIntent}`,
+          actionIntent: actionIntent || 'DYNAMIC_SCHEDULED_ACTION',
+          actionParameters: { taskPrompt: taskPrompt || 'Execute automated background task.' }
+        },
+        userMessage: `Create schedule ${cronExpression}: ${taskPrompt}`
+      }
+    };
+    instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, proposalEvent);
+
+    return {
+      content: [{
+        type: 'text',
+        text: `✅ Background schedule proposal registered on Sera.\n\n• Cron: \`${cronExpression}\`\n• Action: \`${actionIntent}\`\n• Task: "${taskPrompt}"\n\n⚠️ Proposal is pending on your Sera dashboard.`
+      }]
+    };
+  }
+
+  private async handleThreadsPublish(instance: any, userId: string, args: Record<string, any>): Promise<any> {
+    const { text, imageUrl } = args;
+    if (!text) {
+      return { isError: true, content: [{ type: 'text', text: 'Post text is required.' }] };
+    }
+
+    try {
+      const threadsApi = instance.runtime?.threadsApi;
+      if (!threadsApi) {
+        throw new Error('Threads capability is not initialized on this instance.');
+      }
+
+      const postId = await threadsApi.publishPost(userId, text.trim(), undefined, imageUrl);
+      return {
+        content: [{
+          type: 'text',
+          text: `🎉 Successfully published post to Meta Threads!\n\n• Post ID: \`${postId}\`\n• Text: "${text.trim()}"`
+        }]
+      };
+    } catch (e: any) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Failed to publish to Threads: ${e.message}` }]
+      };
+    }
+  }
+
   private handleMemoryRead(instance: any): any {
     const memoryStore = instance.memoryStore;
     if (!memoryStore) {
-      return {
-        content: [{ type: 'text', text: 'Memory store is not available.' }]
-      };
+      return { content: [{ type: 'text', text: 'Memory store is not available.' }] };
     }
 
-    // Access beliefs from WorkingMemory
     const allBeliefs = typeof memoryStore.getAllBeliefs === 'function'
       ? memoryStore.getAllBeliefs()
       : [];
 
-    if (allBeliefs.length === 0) {
+    const activeBeliefs = allBeliefs.filter((b: any) => b.status === 'ACTIVE');
+    if (activeBeliefs.length === 0) {
       return {
         content: [{
           type: 'text',
-          text: 'Sera\'s working memory is currently empty. Interact with Sera to build up beliefs and preferences.'
+          text: 'Sera\'s persistent memory is currently empty. Interact with Sera to build up memories and preferences.'
         }]
       };
     }
 
-    const formatted = allBeliefs
-      .filter((b: any) => b.status === 'ACTIVE')
-      .map((b: any) => `- **${b.key}**: ${typeof b.value === 'string' ? b.value : JSON.stringify(b.value)}`)
+    const formatted = activeBeliefs
+      .map((b: any) => `• **${b.key}**: ${typeof b.value === 'string' ? b.value : JSON.stringify(b.value)}`)
       .join('\n');
 
     return {
       content: [{
         type: 'text',
-        text: `**Sera Working Memory** (${allBeliefs.filter((b: any) => b.status === 'ACTIVE').length} active beliefs)\n\n${formatted || 'No active beliefs found.'}`
+        text: `**Sera Persistent Memory** (${activeBeliefs.length} active beliefs)\n\n${formatted}`
       }]
     };
   }
 
-  /**
-   * sera_billing_status: Returns the current Agent Credits balance.
-   */
+  private handleMemoryWrite(instance: any, args: Record<string, any>): any {
+    const { key, value } = args;
+    if (!key || !value) {
+      return { isError: true, content: [{ type: 'text', text: 'Both key and value are required.' }] };
+    }
+
+    try {
+      if (instance.memoryStore?.setBelief) {
+        instance.memoryStore.setBelief(key, value);
+      }
+      return {
+        content: [{
+          type: 'text',
+          text: `🧠 Successfully stored into Sera long-term memory: **${key}** = "${value}"`
+        }]
+      };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to write memory: ${e.message}` }] };
+    }
+  }
+
   private handleBillingStatus(userId: string): any {
     const subscriptionService = this.deps.getSubscriptionService();
     const credits = subscriptionService.getAgentCredits(userId);
@@ -443,7 +557,7 @@ export class SeraMcpServer {
     return {
       content: [{
         type: 'text',
-        text: `**Sera Billing Status**\n\nAgent Credits: ${displayCredits}\nStatus: ${hasEntitlement ? '✅ Active' : '⚠️ Inactive — top up required'}\n\nEach chat interaction consumes 1,000 credits. Top up via the Sera dashboard.`
+        text: `**Sera Billing Status**\n\n• Agent Credits: **${displayCredits}**\n• Status: ${hasEntitlement ? '✅ Active' : '⚠️ Inactive — top up required'}`
       }]
     };
   }

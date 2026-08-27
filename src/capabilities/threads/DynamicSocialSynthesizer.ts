@@ -145,13 +145,18 @@ CRITICAL ANTI-REPETITION RULES:
     const messages: QwenMessage[] = [
       {
         role: 'system',
-        content: `You are an elite, highly authentic social media content creator for Meta Threads. 
-Your goal is to write a single, high-impact social media post. 
-Return ONLY the raw post text itself. Do NOT include markdown code blocks, backticks, quotation marks around the entire post, or conversational preamble like "Here is your post:".`
+        content: `You are an elite, highly authentic social media creator on Meta Threads. 
+Your goal is to write a single, punchy, real-human social media post.
+
+CRITICAL FORMATTING RULES:
+1. CONCISE & PUNCHY: Keep the post strictly to 1-3 short lines max. Never write lengthy essays, formal articles, or newspaper-style blocks of text.
+2. NO HASHTAGS: NEVER use hashtags or the "#" symbol. Threads users despise hashtag spam.
+3. NO QUOTES OR PREAMBLE: Return ONLY the raw post text. Do not wrap in quotes or add preamble like "Here is your post:".
+4. AUTHENTIC & ORGANIC: Write like a real person sharing a quick thought, witty observation, or intriguing question.`
       },
       {
         role: 'user',
-        content: `[TASK]: Write an engaging Threads post based on the following context.
+        content: `[TASK]: Write an engaging Threads post based on the following instructions and context.
 
 [USER GUIDELINES / NORTH STAR]
 "${userTaskPrompt}"
@@ -162,7 +167,7 @@ ${antiRepetitionSection}
 ${chosenArchetype.styleInstruction}
 
 [STRICT OUTPUT INSTRUCTION]
-Output ONLY the final social post content.`
+Output ONLY the raw post content. Strict max 1-3 lines. Zero hashtags (#).`
       }
     ];
 
@@ -170,11 +175,13 @@ Output ONLY the final social post content.`
     const response = await llm.generate(messages);
     let postText = response.text.trim();
 
-    // Clean up any extraneous quotes or code blocks
+    // Clean up any extraneous quotes, code blocks, or rogue hashtags
     postText = postText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
     if (postText.startsWith('"') && postText.endsWith('"') && postText.length > 2) {
       postText = postText.slice(1, -1).trim();
     }
+    // Strip hashtags if any were produced
+    postText = postText.replace(/#[a-zA-Z0-9_]+/g, '').replace(/\s{2,}/g, ' ').trim();
 
     return postText;
   }

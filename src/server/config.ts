@@ -26,5 +26,6 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
   // Non-browser clients (health checks, server-side tools) do not send Origin.
   if (!origin) return true;
   if (origin.endsWith('.vercel.app')) return true;
+  if (origin.endsWith('.seraos.xyz') || origin === 'https://seraos.xyz') return true;
   return serverConfig.corsOrigins.includes(origin);
 }

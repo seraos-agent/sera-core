@@ -252,8 +252,14 @@ export class Runtime {
 
     // Initialize and start the autonomous daemon for Threads as a singleton worker
     if (process.env.THREADS_APP_ID && !Runtime.globalThreadsDaemon) {
-      Runtime.globalThreadsDaemon = new ThreadsDaemon(threadsApi, globalEventBus, 'default', this.secretManager);
-      Runtime.globalThreadsDaemon.start(5 * 60 * 1000); // 5-minute autonomous polling
+      const activeSession = options?.sessionId || 'default';
+      Runtime.globalThreadsDaemon = new ThreadsDaemon(
+        threadsApi,
+        globalEventBus,
+        activeSession,
+        this.secretManager
+      );
+      Runtime.globalThreadsDaemon.start(3 * 60 * 1000); // 3-minute autonomous polling
     }
 
 

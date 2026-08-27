@@ -12,11 +12,12 @@ import {
   Shield,
   Power,
   PowerOff,
-  HardDrive
+  HardDrive,
+  Copy,
+  Check
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { QuestDashboard } from "../quests/QuestDashboard";
-import { McpConnectorPanel } from "./McpConnectorPanel";
 import { ActivationModal } from "./ActivationModal";
 
 import type { ThreadsConnectionState } from "../../hooks/useSocket";
@@ -85,6 +86,15 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
 
   const [connectors, setConnectors] = useState<ConnectorSummary[]>([]);
   const [activationTarget, setActivationTarget] = useState<ConnectorSummary | null>(null);
+  const [copiedMcp, setCopiedMcp] = useState<string | null>(null);
+
+  const mcpSseUrl = "https://mcp.seraos.xyz";
+
+  const handleCopyMcp = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMcp(id);
+    setTimeout(() => setCopiedMcp(null), 2000);
+  };
 
   // Fetch connector catalog from backend
   useEffect(() => {
@@ -414,7 +424,101 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
       return <QuestDashboard theme={theme} onBack={() => setActiveCategory(null)} isMobileView={isMobileView} />;
     }
     if (catId === "connectors") {
-      return <McpConnectorPanel theme={theme} onBack={() => setActiveCategory(null)} isMobileView={isMobileView} socket={socket} />;
+      return (
+        <div style={{ animation: "walletPageIn 300ms ease forwards" }}>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: isMobileView ? 24 : 32, fontWeight: 500, color: theme.ink, marginBottom: 8, letterSpacing: -0.5 }}>
+            Platform Connectors
+          </div>
+          <div style={{ fontSize: 14, color: theme.inkSoft, marginBottom: isMobileView ? 24 : 36 }}>
+            Connect external AI platforms to your SERA Agent & Base vault via Model Context Protocol (MCP).
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(280px, 1fr))", gap: isMobileView ? 12 : 20 }}>
+            {/* Claude Card */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img src="/claude.svg" alt="Claude" style={{ width: 24, height: 24, objectFit: "contain" }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.statusSoft, color: theme.status }}>
+                  READY
+                </span>
+              </div>
+              <div>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                  Claude
+                  <span style={{ fontSize: 10, fontWeight: 500, color: theme.inkFaint, background: theme.surface, border: `1px solid ${theme.border}`, padding: "2px 8px", borderRadius: 8 }}>
+                    Anthropic
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
+                  Connect your SERA Agent, memories &amp; Base vault to Claude.
+                </div>
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: 10 }}>
+                <button
+                  onClick={() => handleCopyMcp(mcpSseUrl, 'claude')}
+                  style={{
+                    width: '100%', padding: "10px 14px", borderRadius: 10,
+                    background: copiedMcp === 'claude' ? "#10b981" : theme.ink,
+                    border: "none", color: copiedMcp === 'claude' ? "#fff" : theme.bg,
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {copiedMcp === 'claude' ? (
+                    <><Check size={14} /> MCP URL Copied</>
+                  ) : (
+                    <><Copy size={14} /> Copy MCP URL</>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* ChatGPT Card */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img src="/chatgpt.svg" alt="ChatGPT" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.statusSoft, color: theme.status }}>
+                  READY
+                </span>
+              </div>
+              <div>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                  ChatGPT
+                  <span style={{ fontSize: 10, fontWeight: 500, color: theme.inkFaint, background: theme.surface, border: `1px solid ${theme.border}`, padding: "2px 8px", borderRadius: 8 }}>
+                    OpenAI
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
+                  Connect Custom GPTs and AI actions to your SERA capabilities.
+                </div>
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: 10 }}>
+                <button
+                  onClick={() => handleCopyMcp(mcpSseUrl, 'chatgpt')}
+                  style={{
+                    width: '100%', padding: "10px 14px", borderRadius: 10,
+                    background: copiedMcp === 'chatgpt' ? "#10b981" : theme.ink,
+                    border: "none", color: copiedMcp === 'chatgpt' ? "#fff" : theme.bg,
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {copiedMcp === 'chatgpt' ? (
+                    <><Check size={14} /> MCP URL Copied</>
+                  ) : (
+                    <><Copy size={14} /> Copy MCP URL</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
     }
     if (catId === "storage") {
       return (
