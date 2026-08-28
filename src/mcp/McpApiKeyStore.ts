@@ -58,12 +58,20 @@ export class McpApiKeyStore {
     
     // 1. Direct API Key map check
     const directUser = this.keyToUser.get(clean);
-    if (directUser) return directUser;
+    if (directUser) return directUser.toLowerCase();
 
-    // 2. OAuth token resolution
+    // 2. OAuth token resolution (via OAuthStore)
     if (this.oauthStore && typeof this.oauthStore.resolveSession === 'function') {
       const oauthUser = this.oauthStore.resolveSession(clean);
-      if (oauthUser) return oauthUser;
+      if (oauthUser) return oauthUser.toLowerCase();
+    }
+
+    // 3. If tokenOrKey is ALREADY a valid user ID or wallet address 0x...
+    if (clean.startsWith('0x') && clean.length === 42) {
+      return clean.toLowerCase();
+    }
+    if (clean.includes('@') && clean.includes('.')) {
+      return clean.toLowerCase();
     }
 
     return null;

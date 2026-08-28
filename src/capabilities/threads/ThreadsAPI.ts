@@ -218,14 +218,19 @@ export class ThreadsAPI {
   }
 
   public async getAccessToken(sessionId: string): Promise<string | null> {
-    // 1. Check for personal user token
-    const userToken = await this.secretManager.getSecret(`THREADS_TOKEN_${sessionId}`);
+    const cleanId = (sessionId || '').toLowerCase();
+
+    // 1. Check for personal user token (case-insensitive)
+    let userToken = await this.secretManager.getSecret(`THREADS_TOKEN_${cleanId}`);
+    if (!userToken && cleanId !== sessionId) {
+      userToken = await this.secretManager.getSecret(`THREADS_TOKEN_${sessionId}`);
+    }
     if (userToken) {
       return userToken;
     }
     
-    // 2. Fallback to global bot token if explicitly allowed (e.g. for sera.agent bot)
-    if (process.env.THREADS_ACCESS_TOKEN && sessionId === process.env.THREADS_VIP_USERS?.split(',')[0]) {
+    // 2. Fallback to global bot token if explicitly configured
+    if (process.env.THREADS_ACCESS_TOKEN) {
       return process.env.THREADS_ACCESS_TOKEN;
     }
     

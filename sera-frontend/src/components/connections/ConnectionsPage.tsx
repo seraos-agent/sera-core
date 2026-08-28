@@ -14,7 +14,10 @@ import {
   PowerOff,
   HardDrive,
   Copy,
-  Check
+  Check,
+  Key,
+  RefreshCw,
+  Unplug
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { QuestDashboard } from "../quests/QuestDashboard";
@@ -88,6 +91,13 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
   const [activationTarget, setActivationTarget] = useState<ConnectorSummary | null>(null);
   const [copiedMcp, setCopiedMcp] = useState<string | null>(null);
 
+  // 6-Digit Link Code & Platform Connection State
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linkCodeExpiresAt, setLinkCodeExpiresAt] = useState<number | null>(null);
+  const [linkCodeTimer, setLinkCodeTimer] = useState<string>('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Array<{ client_id: string; client_name: string; created_at: number }>>([]);
+
   const mcpSseUrl = "https://mcp.seraos.xyz";
 
   const handleCopyMcp = (text: string, id: string) => {
@@ -96,23 +106,74 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
     setTimeout(() => setCopiedMcp(null), 2000);
   };
 
-  // Fetch connector catalog from backend
+  // Socket listeners for connector catalog, link codes, and platform status
   useEffect(() => {
     if (!socket) return;
 
     socket.emit('connector:list');
+    socket.emit('mcp:list_platforms');
 
     const handleCatalog = (data: ConnectorSummary[]) => setConnectors(data);
     const handleStatusChanged = (data: ConnectorSummary[]) => setConnectors(data);
 
+    const handleLinkCode = (data: { code: string; expiresAt: number }) => {
+      setLinkCode(data.code);
+      setLinkCodeExpiresAt(data.expiresAt);
+      setIsGeneratingCode(false);
+    };
+
+    const handlePlatforms = (platforms: any[]) => {
+      setConnectedPlatforms(platforms || []);
+    };
+
     socket.on('connector:catalog', handleCatalog);
     socket.on('connector:status_changed', handleStatusChanged);
+    socket.on('mcp:link_code_generated', handleLinkCode);
+    socket.on('mcp:platforms_list', handlePlatforms);
 
     return () => {
       socket.off('connector:catalog', handleCatalog);
-      socket.off("connector:status_changed");
+      socket.off('connector:status_changed', handleStatusChanged);
+      socket.off('mcp:link_code_generated', handleLinkCode);
+      socket.off('mcp:platforms_list', handlePlatforms);
     };
   }, [socket]);
+
+  // Live countdown timer for 6-digit link code
+  useEffect(() => {
+    if (!linkCodeExpiresAt) {
+      setLinkCodeTimer('');
+      return;
+    }
+
+    const updateTimer = () => {
+      const remainingMs = linkCodeExpiresAt - Date.now();
+      if (remainingMs <= 0) {
+        setLinkCode(null);
+        setLinkCodeExpiresAt(null);
+        setLinkCodeTimer('');
+      } else {
+        const mins = Math.floor(remainingMs / 60000);
+        const secs = Math.floor((remainingMs % 60000) / 1000);
+        setLinkCodeTimer(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [linkCodeExpiresAt]);
+
+  const handleGenerateLinkCode = () => {
+    if (!socket) return;
+    setIsGeneratingCode(true);
+    socket.emit('mcp:generate_link_code');
+  };
+
+  const handleDisconnectClaude = () => {
+    if (!socket) return;
+    socket.emit('mcp:disconnect_platform', { clientId: 'claude-ai-mcp' });
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -432,48 +493,124 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
           <div style={{ fontSize: 14, color: theme.inkSoft, marginBottom: isMobileView ? 24 : 36 }}>
             Connect external AI platforms to your SERA Agent & Base vault via Model Context Protocol (MCP).
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(280px, 1fr))", gap: isMobileView ? 12 : 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobileView ? "repeat(1, 1fr)" : "repeat(auto-fill, minmax(320px, 1fr))", gap: isMobileView ? 14 : 20 }}>
             {/* Claude Card */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <img src="/claude.svg" alt="Claude" style={{ width: 24, height: 24, objectFit: "contain" }} />
+            {(() => {
+              const isClaudeConnected = connectedPlatforms.some(p => p.client_id === 'claude-ai-mcp');
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <img src="/claude.svg" alt="Claude" style={{ width: 24, height: 24, objectFit: "contain" }} />
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: isClaudeConnected ? "rgba(16, 185, 129, 0.15)" : theme.statusSoft, color: isClaudeConnected ? "#10b981" : theme.status }}>
+                      {isClaudeConnected ? "🟢 CONNECTED" : "READY"}
+                    </span>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                      Claude
+                      <span style={{ fontSize: 10, fontWeight: 500, color: theme.inkFaint, background: theme.surface, border: `1px solid ${theme.border}`, padding: "2px 8px", borderRadius: 8 }}>
+                        Anthropic
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
+                      Control your personal SERA Agent, Base vault &amp; long-term memories directly from Claude.
+                    </div>
+                  </div>
+
+                  {/* Step 1: MCP Server URL */}
+                  <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: theme.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      1. Server URL
+                    </div>
+                    <button
+                      onClick={() => handleCopyMcp(mcpSseUrl, 'claude-url')}
+                      style={{
+                        width: '100%', padding: "8px 12px", borderRadius: 8,
+                        background: copiedMcp === 'claude-url' ? "#10b981" : theme.ink,
+                        border: "none", color: copiedMcp === 'claude-url' ? "#fff" : theme.bg,
+                        fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      {copiedMcp === 'claude-url' ? <><Check size={13} /> MCP URL Copied</> : <><Copy size={13} /> Copy MCP URL (mcp.seraos.xyz)</>}
+                    </button>
+                  </div>
+
+                  {/* Step 2: 6-Digit Link Code */}
+                  <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12, padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: theme.inkSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        2. Link Code (OTP)
+                      </span>
+                      {linkCodeTimer ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
+                          <Clock size={11} /> Expires in {linkCodeTimer}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {linkCode ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", borderRadius: 10, padding: "10px", textAlign: "center", fontSize: 22, fontWeight: 700, letterSpacing: 6, fontFamily: "monospace", color: "#10b981" }}>
+                          {linkCode.slice(0, 3)} {linkCode.slice(3)}
+                        </div>
+                        <button
+                          onClick={() => handleCopyMcp(linkCode, 'claude-code')}
+                          style={{
+                            width: '100%', padding: "8px 12px", borderRadius: 8,
+                            background: copiedMcp === 'claude-code' ? "#10b981" : "rgba(255,255,255,0.06)",
+                            border: `1px solid ${theme.border}`, color: copiedMcp === 'claude-code' ? "#fff" : theme.ink,
+                            fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            transition: "all 0.2s"
+                          }}
+                        >
+                          {copiedMcp === 'claude-code' ? <><Check size={13} /> Code Copied!</> : <><Copy size={13} /> Copy 6-Digit Code</>}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateLinkCode}
+                        disabled={isGeneratingCode}
+                        style={{
+                          width: '100%', padding: "9px 12px", borderRadius: 8,
+                          background: theme.surface2, border: `1px solid ${theme.border}`,
+                          color: theme.ink, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          transition: "all 0.2s"
+                        }}
+                      >
+                        {isGeneratingCode ? (
+                          <><RefreshCw size={13} className="animate-spin" /> Generating Code...</>
+                        ) : (
+                          <><Key size={13} /> Generate Link Code</>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {isClaudeConnected ? (
+                    <div style={{ marginTop: 'auto', paddingTop: 4 }}>
+                      <button
+                        onClick={handleDisconnectClaude}
+                        style={{
+                          width: '100%', padding: "8px 12px", borderRadius: 8,
+                          background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)",
+                          color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          transition: "all 0.2s"
+                        }}
+                      >
+                        <Unplug size={12} /> Disconnect Claude
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.statusSoft, color: theme.status }}>
-                  READY
-                </span>
-              </div>
-              <div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 15 : 17, fontWeight: 600, color: theme.ink, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                  Claude
-                  <span style={{ fontSize: 10, fontWeight: 500, color: theme.inkFaint, background: theme.surface, border: `1px solid ${theme.border}`, padding: "2px 8px", borderRadius: 8 }}>
-                    Anthropic
-                  </span>
-                </div>
-                <div style={{ fontSize: 13, color: theme.inkSoft, lineHeight: 1.4 }}>
-                  Connect your SERA Agent, memories &amp; Base vault to Claude.
-                </div>
-              </div>
-              <div style={{ marginTop: 'auto', paddingTop: 10 }}>
-                <button
-                  onClick={() => handleCopyMcp(mcpSseUrl, 'claude')}
-                  style={{
-                    width: '100%', padding: "10px 14px", borderRadius: 10,
-                    background: copiedMcp === 'claude' ? "#10b981" : theme.ink,
-                    border: "none", color: copiedMcp === 'claude' ? "#fff" : theme.bg,
-                    fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    transition: "all 0.2s"
-                  }}
-                >
-                  {copiedMcp === 'claude' ? (
-                    <><Check size={14} /> MCP URL Copied</>
-                  ) : (
-                    <><Copy size={14} /> Copy MCP URL</>
-                  )}
-                </button>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* ChatGPT Card */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>

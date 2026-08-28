@@ -44,9 +44,9 @@ import {
 export class GoalBridge {
   private eventBus: EventEmitter;
   private walletAdapter: WalletCustodyProvider;
-  private walletInitialized = false;
-  private walletInitializing: Promise<void> | null = null;
-  private currentWalletId: { address: string; network: string } | null = null;
+  public walletInitialized = false;
+  public walletInitializing: Promise<void> | null = null;
+  public currentWalletId: { address: string; network: string } | null = null;
   private cachedPersonal: string = '0';
   private cachedVault: string = '0';
   private sessionId: string;

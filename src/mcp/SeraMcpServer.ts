@@ -151,7 +151,7 @@ export class SeraMcpServer {
     this.hyperliquidClient = new HyperliquidClient();
   }
 
-  public createServer(defaultApiKey?: string): Server {
+  public createServer(defaultUserId?: string): Server {
     let icons: any[] | undefined;
     try {
       const iconPath = join(__dirname, '../../sera-frontend/public/favicon.svg');
@@ -177,7 +177,7 @@ export class SeraMcpServer {
       }
     );
 
-    this.setupHandlers(server, defaultApiKey);
+    this.setupHandlers(server, defaultUserId);
     return server;
   }
 
@@ -191,7 +191,7 @@ export class SeraMcpServer {
       case 'sera_chat':
         return await this.handleChat(instance, userId, args.message);
       case 'sera_wallet_balance':
-        return this.handleWalletBalance(instance);
+        return await this.handleWalletBalance(instance, userId);
       case 'sera_wallet_transfer':
         return this.handleWalletTransfer(instance, args);
       case 'sera_spot_market_data':
@@ -216,7 +216,7 @@ export class SeraMcpServer {
     }
   }
 
-  private setupHandlers(server: Server, defaultApiKey?: string): void {
+  private setupHandlers(server: Server, defaultUserId?: string): void {
     server.setRequestHandler(ListToolsRequestSchema, async () => {
       return { tools: SERA_MCP_TOOLS };
     });
@@ -225,12 +225,21 @@ export class SeraMcpServer {
       const toolName = request.params.name;
       const args = (request.params.arguments || {}) as Record<string, any>;
 
-      const apiKey = defaultApiKey
-        || (request.params as any)?._meta?.apiKey
-        || process.env.SERA_API_KEY
+      const rawToken = (request.params as any)?._meta?.apiKey
+        || (request.params as any)?._meta?.authorization
+        || (request.params as any)?._meta?.token
         || '';
 
-      const userId = (apiKey ? this.deps.apiKeyStore.resolveUser(apiKey) : 'default') || 'default';
+      let userId = defaultUserId || 'default';
+      if (rawToken) {
+        const resolved = this.deps.apiKeyStore.resolveUser(rawToken);
+        if (resolved) userId = resolved;
+      } else if (defaultUserId && defaultUserId !== 'default') {
+        const resolved = this.deps.apiKeyStore.resolveUser(defaultUserId);
+        userId = resolved || defaultUserId;
+      }
+
+      userId = userId.toLowerCase();
 
       const instance = this.deps.resolveInstance(userId);
       if (!instance) {
@@ -330,9 +339,34 @@ export class SeraMcpServer {
     });
   }
 
-  private handleWalletBalance(instance: any): any {
-    const walletState = instance.worldStateService.getWalletState();
-    if (!walletState || !walletState.address) {
+  private async handleWalletBalance(instance: any, userId?: string): Promise<any> {
+    if (instance.goalBridge?.walletInitializing) {
+      try {
+        await instance.goalBridge.walletInitializing;
+      } catch (e) {
+        // ignore initialization error and fallback to state
+      }
+    }
+
+    const walletState = instance.worldStateService?.getWalletState?.();
+
+    // 1. Personal Wallet is the authenticated user's external Web3 address
+    let personalAddress = (userId && userId.startsWith('0x') && userId.length === 42)
+      ? userId
+      : walletState?.address;
+
+    // 2. Agent Vault Address is the autonomous 1:1 agent custodial wallet on Base
+    let vaultAddress = walletState?.vaultAddress || instance.goalBridge?.currentWalletId?.address;
+
+    // If vaultAddress is somehow duplicated with personal address, resolve true agent vault
+    if (vaultAddress && personalAddress && vaultAddress.toLowerCase() === personalAddress.toLowerCase()) {
+      const bridgeVault = instance.goalBridge?.currentWalletId?.address;
+      vaultAddress = (bridgeVault && bridgeVault.toLowerCase() !== personalAddress.toLowerCase())
+        ? bridgeVault
+        : undefined;
+    }
+
+    if (!personalAddress && !vaultAddress) {
       return {
         content: [{
           type: 'text',
@@ -342,14 +376,15 @@ export class SeraMcpServer {
     }
 
     const lines = [
-      `**Sera Agent Vault (Base Network)**`,
-      `• Address: \`${walletState.address}\``,
-      `• Network: ${walletState.network || 'Base'}`,
-      `• Vault Balance: ${walletState.vaultBalance ?? '0'} USDC`,
-      `• Main Wallet Balance: ${walletState.balance ?? '0'} USDC`,
+      `**Sera Agent Vault & Balances (Base Network)**`,
+      `• Personal Wallet: \`${personalAddress || 'N/A'}\``,
+      `• Agent Vault Address: \`${vaultAddress || 'Synchronizing with Base chain...'}\``,
+      `• Network: Base Mainnet`,
+      `• Vault Balance: ${walletState?.vaultBalance ?? '0'} USDC`,
+      `• Personal Wallet Balance: ${walletState?.balance ?? '0'} USDC`,
     ];
 
-    if (walletState.updatedAt) {
+    if (walletState?.updatedAt) {
       lines.push(`• Last Updated: ${new Date(walletState.updatedAt).toISOString()}`);
     }
 

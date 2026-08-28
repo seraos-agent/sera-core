@@ -216,12 +216,10 @@ const seraMcpServer = new SeraMcpServer({
   getSubscriptionService: () => agentManager.getSubscriptionService(),
 });
 
-// Express CORS and body parser for MCP routes
-// Express CORS and body parser for all MCP and SSE routes
 const mcpCorsMiddleware = (req: any, res: any, next: any) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Mcp-Session-Id');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -287,11 +285,21 @@ app.post('/mcp/tool', async (req, res) => {
 });
 
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 const mcpTransports = new Map<string, SSEServerTransport>();
 
 const handleSse = async (req: any, res: any) => {
-  const apiKey = (req.query.apiKey as string) || req.headers.authorization?.replace('Bearer ', '') || '';
-  const userId = (apiKey ? mcpApiKeyStore.resolveUser(apiKey) : 'default') || 'default';
+  const authHeader = (req.headers.authorization as string) || '';
+  const tokenCandidate = (req.query.apiKey as string) || (req.query.token as string) || authHeader.replace(/^Bearer\s+/i, '') || '';
+  
+  let userId = 'default';
+  if (tokenCandidate) {
+    const resolved = mcpApiKeyStore.resolveUser(tokenCandidate);
+    if (resolved) userId = resolved;
+  }
+  userId = userId.toLowerCase();
+
+  console.log(`[MCP SSE] Incoming SSE connection. Token candidate: ${tokenCandidate ? tokenCandidate.slice(0, 15) + '...' : 'none'}, Bound User: ${userId}`);
 
   // Construct canonical endpoint URL for message posts
   const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || '';
@@ -303,8 +311,8 @@ const handleSse = async (req: any, res: any) => {
   const transport = new SSEServerTransport(messageEndpoint, res);
   mcpTransports.set(transport.sessionId, transport);
   
-  // Create and connect the MCP Server instance
-  const serverInstance = seraMcpServer.createServer(apiKey || userId);
+  // Create and connect the MCP Server instance bound strictly to this user
+  const serverInstance = seraMcpServer.createServer(userId);
   await serverInstance.connect(transport);
   
   res.on('close', () => {
@@ -315,11 +323,79 @@ const handleSse = async (req: any, res: any) => {
 const handlePostMessage = async (req: any, res: any) => {
   const sessionId = req.query.sessionId as string;
   const transport = mcpTransports.get(sessionId);
-  if (!transport) {
-    return res.status(404).json({ error: 'Session not found' });
+  if (transport) {
+    return await transport.handlePostMessage(req, res, req.body);
   }
-  
-  await transport.handlePostMessage(req, res, req.body);
+
+  // --- STATELESS FAIL-SAFE FOR MULTI-REPLICA CLOUD RUN ROUTING ---
+  // If the SSE session was initialized on another Cloud Run replica or closed,
+  // execute the JSON-RPC request directly so Claude NEVER encounters "tool not found" or 404.
+  const body = req.body;
+  const id = body?.id;
+  const method = body?.method;
+  const params = body?.params || {};
+
+  const authHeader = (req.headers.authorization as string) || '';
+  const tokenCandidate = (req.query.apiKey as string) || (req.query.token as string) || authHeader.replace(/^Bearer\s+/i, '') || '';
+  let userId = 'default';
+  if (tokenCandidate) {
+    const resolved = mcpApiKeyStore.resolveUser(tokenCandidate);
+    if (resolved) userId = resolved;
+  }
+  userId = userId.toLowerCase();
+
+  console.log(`[MCP Stateless Message Fallback] Method: ${method}, User: ${userId}, SessionId: ${sessionId}`);
+
+  if (method === 'initialize') {
+    return res.status(200).json({
+      jsonrpc: '2.0',
+      id,
+      result: {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'SERA MCP Server', version: '1.2.0' }
+      }
+    });
+  }
+
+  if (method === 'notifications/initialized' || method === 'ping') {
+    return res.status(200).json({ jsonrpc: '2.0', id, result: {} });
+  }
+
+  if (method === 'tools/list') {
+    return res.status(200).json({
+      jsonrpc: '2.0',
+      id,
+      result: { tools: SERA_MCP_TOOLS }
+    });
+  }
+
+  if (method === 'tools/call') {
+    const toolName = params.name;
+    const args = params.arguments || {};
+    const instance = agentManager.getOrCreateInstance(userId);
+    try {
+      const result = await (seraMcpServer as any).handleToolCallDirect(toolName, args, userId, instance);
+      return res.status(200).json({
+        jsonrpc: '2.0',
+        id,
+        result
+      });
+    } catch (e: any) {
+      console.error(`[MCP Stateless Call Error] Tool: ${toolName}, Error:`, e);
+      return res.status(200).json({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32603, message: e.message || 'Internal tool execution error' }
+      });
+    }
+  }
+
+  return res.status(200).json({
+    jsonrpc: '2.0',
+    id,
+    error: { code: -32601, message: `Method not found: ${method}` }
+  });
 };
 
 // Root endpoint: handles SSE when requested by MCP client, otherwise serves status HTML
@@ -330,13 +406,82 @@ app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html><html><head><title>SERA OS - Autonomous Cognitive Agent</title><link rel="icon" type="image/png" href="/sera-logo.png"><meta name="description" content="SERA OS Agent Runtime and MCP Server"><meta property="og:image" content="/sera-logo.png"></head><body style="background:#09090b;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><img src="/sera-logo.png" width="72" height="72" style="object-fit:contain;margin-bottom:16px" alt="SERA Official Logo" /><h1 style="margin:0 0 8px;font-size:24px;font-weight:700">SERA OS Core Runtime</h1><p style="color:#a1a1aa;margin:0;font-size:14px">Active &amp; Operational • MCP Server Ready</p></div></body></html>`);
 });
 
-app.get('/mcp', (req, res) => {
-  if (req.headers.accept?.includes('text/event-stream') || req.headers.authorization || req.query.sessionId) {
-    return handleSse(req, res);
-  }
-  res.status(200).json({ status: 'active', server: 'SERA MCP Server' });
+// Streamable HTTP at root path — Claude POSTs to the connector URL directly
+app.post('/', mcpCorsMiddleware, express.json(), async (req: any, res: any) => {
+  return handleStreamableHTTP(req, res);
+});
+app.delete('/', mcpCorsMiddleware, (req: any, res: any) => {
+  res.status(405).json({ error: 'Session termination not supported in stateless mode.' });
 });
 
+// ── Streamable HTTP Transport (Stateless, Industry Standard) ────────────────
+// This is the primary MCP transport. Each request is self-contained.
+// No persistent SSE connection required. Works across Cloud Run replicas,
+// mobile networks, and survives browser tab close/reopen without reconnection.
+const resolveUserFromRequest = (req: any): string => {
+  const authHeader = (req.headers.authorization as string) || '';
+  const tokenCandidate = (req.query.apiKey as string) || (req.query.token as string) || authHeader.replace(/^Bearer\s+/i, '') || '';
+  let userId = 'default';
+  if (tokenCandidate) {
+    const resolved = mcpApiKeyStore.resolveUser(tokenCandidate);
+    if (resolved) userId = resolved;
+  }
+  return userId.toLowerCase();
+};
+
+const handleStreamableHTTP = async (req: any, res: any) => {
+  const userId = resolveUserFromRequest(req);
+  console.log(`[MCP Streamable HTTP] POST ${req.path} | User: ${userId} | Method: ${req.body?.method}`);
+
+  try {
+    // Create a fresh stateless transport per request (sessionIdGenerator: undefined)
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+
+    // Create a dedicated MCP Server instance bound to this user
+    const serverInstance = seraMcpServer.createServer(userId);
+    await serverInstance.connect(transport);
+
+    // Handle the request and send the response
+    await transport.handleRequest(req, res, req.body);
+
+    // Clean up after response is sent
+    res.on('close', () => {
+      transport.close().catch(() => {});
+      serverInstance.close().catch(() => {});
+    });
+  } catch (error: any) {
+    console.error('[MCP Streamable HTTP] Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: 'Internal server error' },
+        id: req.body?.id ?? null
+      });
+    }
+  }
+};
+
+app.post('/mcp', handleStreamableHTTP);
+
+app.get('/mcp', (req: any, res: any) => {
+  // Streamable HTTP spec: GET /mcp is for SSE streaming (server-initiated messages)
+  // In stateless mode, we don't support server-initiated SSE streams
+  // But check if this is a legacy SSE client first
+  if (req.headers.accept?.includes('text/event-stream') || req.query.sessionId) {
+    return handleSse(req, res);
+  }
+  res.status(405).json({ error: 'Method Not Allowed. Use POST /mcp for MCP requests.' });
+});
+
+app.delete('/mcp', (req: any, res: any) => {
+  // Stateless mode: no sessions to terminate
+  res.status(405).json({ error: 'Session termination not supported in stateless mode.' });
+});
+
+// ── Legacy SSE Transport (Backward Compatibility) ───────────────────────────
 app.get('/mcp/sse', handleSse);
 app.get('/sse', handleSse);
 
@@ -1401,6 +1546,30 @@ io.on('connection', (socket: Socket) => {
   socket.on('mcp:list_keys', () => {
     if (!requireAuthenticatedSession(socket, 'mcp:list_keys', instance?.eventBus)) return;
     socket.emit('mcp:keys_list', mcpApiKeyStore.listKeys(socket.data.sessionId!));
+  });
+
+  // ── MCP 6-Digit Link Code & Platform Management ──────────────────────────
+  socket.on('mcp:generate_link_code', () => {
+    if (!requireAuthenticatedSession(socket, 'mcp:generate_link_code', instance?.eventBus)) return;
+    try {
+      const codeData = globalOAuthStore.createLinkCode(socket.data.sessionId!.toLowerCase());
+      socket.emit('mcp:link_code_generated', codeData);
+    } catch (err: any) {
+      socket.emit('mcp:link_code_error', { message: err.message });
+    }
+  });
+
+  socket.on('mcp:list_platforms', () => {
+    if (!requireAuthenticatedSession(socket, 'mcp:list_platforms', instance?.eventBus)) return;
+    const platforms = globalOAuthStore.listConnectedPlatforms(socket.data.sessionId!.toLowerCase());
+    socket.emit('mcp:platforms_list', platforms);
+  });
+
+  socket.on('mcp:disconnect_platform', (payload: { clientId?: string }) => {
+    if (!requireAuthenticatedSession(socket, 'mcp:disconnect_platform', instance?.eventBus)) return;
+    globalOAuthStore.revokePlatformSession(socket.data.sessionId!.toLowerCase(), payload?.clientId);
+    const platforms = globalOAuthStore.listConnectedPlatforms(socket.data.sessionId!.toLowerCase());
+    socket.emit('mcp:platforms_list', platforms);
   });
 
   // ── Connector Marketplace Events ────────────────────────────────────────

@@ -156,8 +156,9 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
     // Extract user/session_id if passed in initial URL query (e.g. from unique link)
     const userParam = typeof req.query.user === 'string' ? req.query.user : (typeof session_id === 'string' && session_id !== 'default' ? session_id : '');
     const isPreBound = !!userParam;
+    const errorMessage = typeof req.query.error === 'string' ? req.query.error : '';
 
-    // HTML Consent Page with rich SERA aesthetics
+    // HTML Consent Page with 6-Digit Link Code Pairing
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -170,12 +171,15 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       --bg: #09090b;
       --card-bg: #121216;
       --border: rgba(255, 255, 255, 0.08);
-      --border-focus: rgba(16, 185, 129, 0.4);
+      --border-focus: rgba(16, 185, 129, 0.5);
       --ink: #f4f4f5;
       --ink-soft: #a1a1aa;
       --ink-muted: #71717a;
       --accent: #10b981;
       --accent-hover: #059669;
+      --error-bg: rgba(239, 68, 68, 0.1);
+      --error-border: rgba(239, 68, 68, 0.25);
+      --error-text: #f87171;
     }
     * { box-sizing: border-box; }
     body {
@@ -195,7 +199,7 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       border-radius: 24px;
       padding: 36px 32px;
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
       text-align: center;
       animation: enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -209,12 +213,12 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       align-items: center;
       justify-content: center;
       gap: 12px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .icon-box {
-      width: 56px;
-      height: 56px;
-      border-radius: 18px;
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
       display: flex;
@@ -222,13 +226,13 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       justify-content: center;
     }
     .icon-box img {
-      width: 34px;
-      height: 34px;
+      width: 32px;
+      height: 32px;
       object-fit: contain;
     }
     .icon-box svg {
-      width: 30px;
-      height: 30px;
+      width: 28px;
+      height: 28px;
     }
     .link-dot {
       color: var(--ink-muted);
@@ -236,17 +240,28 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       font-weight: 500;
     }
     h1 {
-      font-size: 21px;
+      font-size: 20px;
       font-weight: 700;
       letter-spacing: -0.02em;
-      margin: 0 0 8px 0;
+      margin: 0 0 6px 0;
       color: var(--ink);
     }
     p.desc {
       color: var(--ink-soft);
-      font-size: 13.5px;
+      font-size: 13px;
       line-height: 1.45;
-      margin: 0 0 28px 0;
+      margin: 0 0 24px 0;
+    }
+    .error-banner {
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
+      font-size: 12.5px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      text-align: left;
+      line-height: 1.4;
     }
     .identity-card {
       background: rgba(255, 255, 255, 0.02);
@@ -260,30 +275,40 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .identity-label {
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
       color: var(--ink-soft);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .input-field {
+    .code-input {
       width: 100%;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(0, 0, 0, 0.45);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 12px 14px;
+      padding: 14px;
       color: var(--ink);
-      font-size: 13.5px;
+      font-size: 22px;
+      font-weight: 700;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      letter-spacing: 0.25em;
+      text-align: center;
       outline: none;
       transition: all 0.15s;
     }
-    .input-field:focus {
+    .code-input:focus {
       border-color: var(--border-focus);
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.7);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    }
+    .code-input::placeholder {
+      font-size: 16px;
+      letter-spacing: 0.1em;
+      color: var(--ink-muted);
+      font-weight: 500;
     }
     .connected-pill {
       display: flex;
@@ -304,6 +329,12 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       border-radius: 50%;
       display: inline-block;
       margin-right: 8px;
+    }
+    .hint-text {
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      margin-top: 8px;
+      text-align: center;
     }
     .btn-row {
       display: flex;
@@ -345,14 +376,16 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       </div>
       <span class="link-dot">⇄</span>
       <div class="icon-box">
-        <svg height="30" width="30" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <svg height="28" width="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757" />
         </svg>
       </div>
     </div>
 
-    <h1>Connect to Claude</h1>
-    <p class="desc">Authorize Claude to command your SERA Agent and vault.</p>
+    <h1>Link Claude to SERA</h1>
+    <p class="desc">Pair Claude directly to your SERA Agent, Base vault &amp; long-term memories.</p>
+
+    ${errorMessage ? `<div class="error-banner">⚠️ ${errorMessage}</div>` : ''}
 
     <form method="POST" action="/oauth/authorize/decision">
       <input type="hidden" name="client_id" value="${client_id}" />
@@ -364,7 +397,7 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
 
       <div class="identity-card">
         <div class="identity-header">
-          <span class="identity-label">${isPreBound ? 'Verified SERA Identity' : 'SERA Identity (Wallet / Email)'}</span>
+          <span class="identity-label">${isPreBound ? 'Verified SERA Identity' : '6-Digit SERA Link Code'}</span>
         </div>
 
         ${isPreBound ? `
@@ -374,7 +407,8 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
             <span style="font-size:11px;font-weight:600;opacity:0.8;">LINKED</span>
           </div>
         ` : `
-          <input type="text" id="sessionId" name="sessionId" class="input-field" placeholder="0x... or user@example.com" required />
+          <input type="text" id="linkCode" name="linkCode" class="code-input" placeholder="123456" maxlength="7" autofocus required />
+          <div class="hint-text">Generated in SERA Dashboard &rarr; Connections &rarr; Claude</div>
         `}
       </div>
 
@@ -401,6 +435,7 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       code_challenge,
       code_challenge_method,
       sessionId,
+      linkCode,
       decision
     } = req.body;
 
@@ -411,11 +446,32 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       return res.redirect(errorUrl.toString());
     }
 
+    let resolvedUserId = '';
+
+    // 1. Verify 6-digit pairing code if provided
+    if (linkCode && typeof linkCode === 'string' && linkCode.trim().length > 0) {
+      const result = oauthStore.verifyAndBurnLinkCode(linkCode);
+      if (!result.success || !result.userId) {
+        // Redirect back to authorize with clean error message
+        const retryUrl = `/oauth/authorize?client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=code&state=${encodeURIComponent(state || '')}&scope=${encodeURIComponent(scope || 'mcp:all')}&code_challenge=${encodeURIComponent(code_challenge || '')}&code_challenge_method=${encodeURIComponent(code_challenge_method || 'S256')}&error=${encodeURIComponent(result.error || 'Invalid or expired link code')}`;
+        return res.redirect(retryUrl);
+      }
+      resolvedUserId = result.userId;
+    } else if (sessionId && typeof sessionId === 'string' && sessionId.trim() !== 'default' && sessionId.trim().length > 0) {
+      resolvedUserId = sessionId.trim();
+    }
+
+    // Strict validation: NEVER fall back to 'default'
+    if (!resolvedUserId) {
+      const retryUrl = `/oauth/authorize?client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(redirect_uri)}&response_type=code&state=${encodeURIComponent(state || '')}&scope=${encodeURIComponent(scope || 'mcp:all')}&code_challenge=${encodeURIComponent(code_challenge || '')}&code_challenge_method=${encodeURIComponent(code_challenge_method || 'S256')}&error=${encodeURIComponent('Please enter a valid 6-digit link code or SERA wallet address.')}`;
+      return res.redirect(retryUrl);
+    }
+
     try {
       const code = oauthStore.createAuthorizationCode({
         client_id,
         redirect_uri,
-        sessionId: sessionId || 'default',
+        sessionId: resolvedUserId,
         scope,
         code_challenge,
         code_challenge_method
@@ -428,6 +484,50 @@ export function createOAuthRouter(oauthStore: OAuthStore): Router {
       return res.redirect(callbackUrl.toString());
     } catch (err: any) {
       res.status(500).send(`Failed to create authorization code: ${err.message}`);
+    }
+  });
+
+  // ── 5. Pairing Code & Connection Management API ──────────────────────────────
+  router.post('/api/mcp/generate-code', (req: Request, res: Response) => {
+    try {
+      const userId = req.body?.userId || req.query?.userId;
+      if (!userId || typeof userId !== 'string' || userId === 'default') {
+        return res.status(400).json({ error: 'Valid authenticated user identity is required' });
+      }
+
+      const linkCodeData = oauthStore.createLinkCode(userId.toLowerCase());
+      res.json(linkCodeData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/api/mcp/connections', (req: Request, res: Response) => {
+    try {
+      const userId = (req.query?.userId as string)?.toLowerCase();
+      if (!userId || userId === 'default') {
+        return res.status(400).json({ error: 'Valid userId is required' });
+      }
+
+      const connections = oauthStore.listConnectedPlatforms(userId);
+      res.json({ connections });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/mcp/disconnect', (req: Request, res: Response) => {
+    try {
+      const userId = req.body?.userId?.toLowerCase();
+      const clientId = req.body?.clientId;
+      if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+
+      const revoked = oauthStore.revokePlatformSession(userId, clientId);
+      res.json({ success: true, revoked });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

@@ -76,6 +76,7 @@ export class Runtime {
   public proposalManager!: ProposalManager;
   public memoryStore: IWorkingMemory;
   public chatHistoryStore: any;
+  public threadsApi!: ThreadsAPI;
 
   public readonly productContracts = new DomainProductContractRegistry();
   private authorityService: AuthorityService;
@@ -246,6 +247,7 @@ export class Runtime {
     const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
 
     const threadsApi = new ThreadsAPI(this.secretManager);
+    this.threadsApi = threadsApi;
     const threadsCap = new ThreadsCapability(threadsApi, this.secretManager);
     const imageGenCap = new ImageGenerationCapability();
     const braveSearchCap = new BraveSearchCapability();
