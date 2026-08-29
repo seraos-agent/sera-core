@@ -10,7 +10,6 @@ import { ThreadsSettingsPage } from "./components/connections/ThreadsSettingsPag
 import { AutomationsPage } from "./components/automations/AutomationsPage";
 import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
-import { PredictionArenaPage } from "./components/predictions/PredictionArenaPage";
 
 import { ConnectGateway } from "./components/auth/ConnectGateway";
 import { LaunchCodeGateway } from './components/auth/LaunchCodeGateway';
@@ -104,7 +103,7 @@ function InnerApp() {
   const [billingOpen, setBillingOpen] = useState(false);
   const [currentView, setCurrentView] = useState<SidebarView>(() => {
     const saved = localStorage.getItem("sera_view") as SidebarView | null;
-    return saved && ["chat", "wallet", "connections", "automations", "profile", "polymarket", "arena", "threads_settings"].includes(saved) ? saved : "chat";
+    return saved && ["chat", "wallet", "connections", "automations", "profile", "threads_settings"].includes(saved) ? saved : "chat";
   });
 
   useEffect(() => {
@@ -502,12 +501,7 @@ function InnerApp() {
             isMobileView={isMobileView}
             onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           />
-        ) : currentView === "arena" ? (
-          <PredictionArenaPage
-            theme={theme}
-            socket={socket}
-            onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          />
+
         ) : currentView === "threads_settings" ? (
           <ThreadsSettingsPage
             theme={theme}

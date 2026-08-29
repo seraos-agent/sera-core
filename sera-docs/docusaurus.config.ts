@@ -113,8 +113,12 @@ const config: Config = {
               to: '/docs/workflows',
             },
             {
-              label: 'Sera Arena',
-              to: '/docs/sera-arena',
+              label: 'Claude Desktop (MCP)',
+              to: '/docs/mcp-claude',
+            },
+            {
+              label: 'Google Drive',
+              to: '/docs/google-drive',
             },
           ],
         },

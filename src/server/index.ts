@@ -16,7 +16,6 @@ import { OAuthStore } from './auth/oauth/OAuthStore';
 import { createOAuthRouter } from './auth/oauth/oauthRouter';
 import { TelegramBotManager } from '../capabilities/communication/adapters/TelegramBotManager';
 import { TelegramAdapter } from '../capabilities/communication/adapters/TelegramAdapter';
-import { predictionEngine, arenaEventBus } from './predictionEngine';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
 import { HygieneDaemon } from '../core/hygiene/HygieneDaemon';
 import { SupabaseRestClient } from '../core/persistence/SupabaseRestClient';
@@ -29,7 +28,6 @@ import { createMediaRouter } from './routes/mediaRoutes';
 import { createMcpRouter } from './routes/mcpRoutes';
 import { registerSocketGateway } from './socket/SocketGateway';
 
-export { predictionEngine };
 
 // ── Identity & OAuth Services Initialization ────────────────────────────────
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
@@ -139,9 +137,7 @@ registerSocketGateway(io, {
   globalOAuthStore,
   globalSecretManager,
   supabaseIdentityService,
-  reownWalletIdentityService,
-  predictionEngine,
-  arenaEventBus
+  reownWalletIdentityService
 });
 
 // ── Server Boot & Treasury Watcher ──────────────────────────────────────────

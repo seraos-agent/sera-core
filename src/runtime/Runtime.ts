@@ -53,8 +53,6 @@ import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 import { ImageGenerationCapability } from '../capabilities/media/ImageGenerationCapability';
 import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
-
-import { SeraArenaToolCapability } from '../capabilities/predictions/SeraArenaToolCapability';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ProposalManager } from '../core/governance/ProposalManager';
@@ -63,7 +61,6 @@ import { McpClientAdapter } from '../capabilities/mcp/client/McpClientAdapter';
 import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { DomainProductContractRegistry } from '../core/products/DomainProductContractRegistry';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
-import { predictionEngine } from '../server/predictionEngine';
 
 import { CognitiveCoordinator } from './coordinators/CognitiveCoordinator';
 import { IntentCoordinator } from './coordinators/IntentCoordinator';
@@ -244,8 +241,6 @@ export class Runtime {
 
     const autonomyAgreementCap = new AutonomyAgreementCapability();
 
-    const seraArenaCap = new SeraArenaToolCapability(predictionEngine);
-
     const threadsApi = new ThreadsAPI(this.secretManager);
     this.threadsApi = threadsApi;
     const threadsCap = new ThreadsCapability(threadsApi, this.secretManager);
@@ -324,20 +319,6 @@ export class Runtime {
     });
 
     // Opt-in connectors: require explicit user activation
-
-
-
-    this.capabilityCatalog.registerConnector({
-      id: 'sera-arena',
-      name: 'Sera Arena (Mainnet)',
-      category: 'finance',
-      description: 'Sera native parimutuel prediction markets on Base',
-      riskSummary: 'Sera Arena is a prediction market platform on the Base network. Activating this connector allows Sera to search active markets, view orderbooks, and execute trades (bet UP/DOWN) using your wallet funds. Trading on prediction markets involves real financial risk — you may lose your entire position if the outcome does not resolve in your favor.',
-      network: 'Base',
-      alwaysActive: false,
-      tools: seraArenaCap.getTools(),
-      executeTool: (name: string, args: any) => seraArenaCap.executeTool(name, args),
-    });
 
     this.capabilityCatalog.registerConnector({
       id: 'hyperliquid',

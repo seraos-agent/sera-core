@@ -11,10 +11,10 @@ import { SeraTool } from '../cognitive/Tool';
  * available to the agent from the moment the system boots.
  */
 export interface ConnectorDefinition {
-  /** Unique machine identifier, e.g. 'sera-arena', 'threads'. */
+  /** Unique machine identifier, e.g. 'google-drive', 'threads'. */
   id: string;
 
-  /** Human-readable display name, e.g. 'Sera Arena (Mainnet)'. */
+  /** Human-readable display name, e.g. 'Google Drive', 'Threads'. */
   name: string;
 
   /** UI grouping category. */

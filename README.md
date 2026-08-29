@@ -1,170 +1,241 @@
-# Sera
+<div align="center">
 
-> "Relationships must become structure before they become meaning."
+# SERA OS
 
-Sera is an operating system for an autonomous AI agent. It is a self-governing cognitive runtime designed to reason, remember, plan, and act with architectural discipline with real, verified enforcement behind that claim, not just aspiration.
+**The Sovereign AI Agent Operating System**  
+*Bridging everyday users to autonomous intelligence, Web3 finance, and verifiable privacy without technical friction.*
 
-## What is Sera
+[![Tests](https://img.shields.io/badge/Tests-135%20passed%20(100%25)-10b981.svg?style=flat-square)](https://github.com/seraos-agent/sera-core)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg?style=flat-square)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.0.0-339933.svg?style=flat-square)](https://nodejs.org/)
+[![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-v1.29-8b5cf6.svg?style=flat-square)](https://modelcontextprotocol.io/)
+[![Base Network](https://img.shields.io/badge/Network-Base%20(EVM)-0052ff.svg?style=flat-square)](https://base.org)
+[![Hyperliquid](https://img.shields.io/badge/DEX-Hyperliquid%20L1-00f0ff.svg?style=flat-square)](https://hyperliquid.xyz)
 
-Most AI agents today operate as simple loops:
+[Website](https://seraos.xyz) • [App](https://app.seraos.xyz) • [Docs](https://docs.seraos.xyz) • [MCP Server](https://mcp.seraos.xyz)
 
-`Read prompt → Call tools → Repeat`
+</div>
 
-Sera takes a different approach. Before interacting with the external world, it constructs an internal representation of reality through a structured cognitive system. Memory, reasoning, governance, and execution are separated into distinct layers connected through an event-driven architecture.
+---
 
-This document describes the system as it actually behaves today, verified through direct code audit and end-to-end execution not as a roadmap of intentions.
+## Ecosystem
 
-## Core Philosophy
+| Platform | Role / Purpose | URL |
+|:---|:---|:---|
+| **Landing Page** | Official homepage and feature overview | [seraos.xyz](https://seraos.xyz) |
+| **Web Dashboard** | User interface for agent chat, vault management, and connectors | [app.seraos.xyz](https://app.seraos.xyz) |
+| **Documentation** | Architectural specs, guides, and tool references | [docs.seraos.xyz](https://docs.seraos.xyz) |
+| **MCP Server** | Streamable HTTP endpoint for Claude Desktop integration | [mcp.seraos.xyz](https://mcp.seraos.xyz) |
 
-### Separation of Mind and Execution
-Reasoning is isolated from execution. The system evaluates state, uncertainty, and goals without assuming the world is stable or correct.
+---
 
-### Motivation as System Physics
-Goals exist in a shared system where constraints create tension. Motivation emerges from relationships between goals, resources, and execution pathways.
+## The Vision: Technology Moves Fast. You Shouldn't Be Left Behind.
 
-### Epistemic Boundaries
-Information is not inherently truth. Observations are classified by verification level and source before they are allowed to influence memory or decisions enforced in code, not just in principle.
+Artificial Intelligence and decentralized Web3 technologies are evolving at breakneck speed. Yet for 99% of people, adopting these breakthroughs creates overwhelming friction:
 
-### Interpretation Without Prescription
-The system may analyze structural patterns in its own state, but interpretation is never automatically converted into unreviewed action. Where autonomy is not yet proven safe, a human checkpoint is kept in the loop deliberately.
+- **Complex Jargon & Anxiety**: Gas fees, private keys, slippage, RPC endpoints, and orderbooks make decentralized finance intimidating. One wrong click can lead to catastrophic loss of funds.
+- **Privacy Erosion**: Most mainstream AI assistants trap user conversations, preferences, and data inside closed corporate silos.
+- **Fragmented Tools**: AI models are isolated inside browser tabs, incapable of taking real-world actions across everyday apps like Google Drive, Meta Threads, or personal messaging.
 
-## Architecture
+**SERA OS solves this by acting as your personal, sovereign autonomous co-pilot:**
 
-### Memory System One Authority, Not Several
-All memory is owned by a single store: **`MemoryStore`**. It holds a unified `Belief` schema (merging what were once separate "memory item" and "belief" models into one), persisted to disk, indexed by category and key, and bounded by eviction so it cannot grow without limit.
+> **You talk in plain language. SERA handles the underlying infrastructure.**  
+> Enjoy the privacy, convenience, and financial freedom of modern tech without needing to understand blockchain code or prompt engineering.
 
-Nothing writes to memory directly. All domain events governance decisions, outcomes, patterns, wallet-related facts pass through **`MemoryIngress`**, which converts them into proposals evaluated by **`MemoryPolicyEngine`** before they are committed. Protected keys (e.g. `wallet.*`) require a verified source; unverified inference cannot silently overwrite them.
+---
 
-- **Episodic memory** (`ExperienceBuilder`) the agent's execution episodes are summarized and appended to a durable log.
-- **Semantic memory** durable facts and learned patterns, each carrying an epistemic status (`HYPOTHESIS` → `CONFIRMED`) rather than being asserted as true on first observation.
-- **`EpisodicSemanticBridge`** distills recurring episodic patterns (e.g. a tool failing repeatedly) into semantic beliefs, requiring repeated evidence before a belief is promoted to `CONFIRMED`.
-- Confirmed, non-protected facts are surfaced into the agent's conversational working memory through `MemoryQueryService`. It builds a token-bounded attention pack by reranking semantic beliefs, vector-matched episodes, and recent episodes; every selected item retains source evidence and protected wallet keys are excluded regardless of status.
+## Core Value Pillars
 
-### Constitution
-Every executed action is evaluated by **`ConstitutionEngine`** against a registered set of rules (`IrreversibleActionRule`, `DestructiveActionRule`, `UnsafeActionRule`) before it is allowed to proceed. This is an enforcement point, not a passive log.
+### 1. Privacy & True Data Sovereignty
+Your data belongs to you, not an advertising algorithm. SERA exports memory snapshots, profile preferences, and weekly journals directly to your own private **Google Drive (`SERA Vault`)**. If you ever disconnect, your memory stays with you.
 
-### Cognitive Kernel & Planning
-`GoalEngine`, `Planner`, and `AttentionEngine` plan and prioritize goals using confirmed memory for example, a plan will actively avoid a tool that memory confirms has failed consistently, and goal priority is boosted using real historical calibration data, not a static default.
+### 2. Zero-Jargon Simplicity
+Say *"Send 20 USDC to Alex"* or *"Buy 50 dollars of Bitcoin on Hyperliquid"*. SERA sponsors gas fees, resolves network routes, and handles order execution automatically in the background.
 
-Three distinct action pathways exist by design:
-1. **Direct action** single-step, user-triggered (e.g. a manual wallet transfer).
-2. **Simple confirmed actions** (`ProposalManager`) the agent proposes a straightforward action via chat, a human approves, and it executes immediately without a full planning cycle.
-3. **Complex goals** (`IntentEngine` → `GoalSynthesizer` → `ProposalGovernance` → human candidate selection → `Runtime`) for multi-step goals, the system synthesizes multiple candidate strategies and requires a human to select and approve one before a goal is registered and planned.
+### 3. Institutional-Grade Safety (Human-in-the-Loop)
+SERA is governed by a hardcoded **`ConstitutionEngine`**. The agent can never perform financial transfers, spot trades, or destructive actions without presenting an interactive, one-click **Approval Card** (`[Approve] / [Reject]`) on your screen.
 
-These three pathways are intentionally independent and do not share state, so a failure or change in one cannot silently affect the other two.
+### 4. Universal Interoperability (MCP & Web2)
+Access your agent everywhere: connect it to **Claude Desktop** via the official Model Context Protocol (`mcp.seraos.xyz`), chat while on the go via **Telegram**, publish autonomously to **Meta Threads**, or manage everything through the **Web Dashboard**.
 
-### Feedback & Calibration
-`FeedbackPipeline` and `OutcomeReflection` convert execution traces into calibration beliefs recording how accurate the system's own predictions were. This is consumed by `AttentionRebalancer` (goal prioritization) and `Planner` (tool selection) verified to measurably change behavior, not merely recorded for display.
+---
 
-### Governance Reflection Loop
-**`GovernanceCoordinator`** runs on a periodic temporal cadence deliberately decoupled from the execution cycle, since governance reflection is a slower, deliberative process rather than something that should run after every action. Each cycle:
+## Feature Comparison: Traditional AI vs SERA OS
 
-1. `GovernanceOutcomeTracker` correlates past governance decisions against calibration history to judge whether they were beneficial.
-2. `GovernanceReflectionEngine` finds stable patterns across those outcomes.
-3. `CalibrationEvaluationEngine` generates new recommendations; `GovernanceCalibrationEngine` adjusts them using the patterns found above.
-4. `MetaGovernanceReview` receives the calibrated recommendation for human review.
+| Capability | Generic AI Chatbot / Naive ReAct Loop | SERA OS |
+|:---|:---|:---|
+| **Memory Retention** | Lost after session resets (amnesia) | **Durable Working Memory** + Weekly Google Drive consolidation |
+| **Execution Safety** | Prompt-only guidelines (vulnerable to prompt injection) | **Deterministic `ConstitutionEngine`** with mandatory human approval gates |
+| **Financial Capability** | Simulated text only / cannot hold or transfer funds | **Native Base Network Vault** (USDC/ETH) + **Hyperliquid Spot DEX** |
+| **External Client Support**| Closed web chat only | **Universal MCP Server** (`mcp.seraos.xyz`) for Claude Desktop |
+| **Data Ownership** | Trapped on corporate servers | **User-owned `SERA Vault`** in Google Drive with pre-purge 90-day archiving |
+| **Outcome Reflection** | Stateless / repeats the same errors | **Self-calibrating reflection loop** that measures prediction accuracy |
 
-This loop has been validated end-to-end with real execution data: a repeated pattern of governance decisions measurably changed the confidence and communication strategy of a subsequent, unrelated recommendation.
+---
 
-**Known gap:** step 4 requires a human to record a judgment on a recommendation before the loop can close and inform future cycles. No production trigger for this step exists yet today it can only be exercised in a controlled validation, not through a live UI. This is a known, named limitation rather than a hidden one.
+## Architectural Workflow
 
-### Capabilities Layer
-- **Dialogue Engine** translates natural language into structured system events, and incorporates confirmed memory (recent facts and activity) into its working context.
-- **LLM Adapter** modular interface to language models.
-- **Agentic Wallet** controlled on-chain execution under explicit permission boundaries.
+```
+                   User Instruction (Claude / Telegram / Web UI)
+                                         │
+                                         ▼
+                             ┌───────────────────────┐
+                             │    Dialogue Engine    │ ◄─── Contextual Recall from
+                             └───────────┬───────────┘      Working Memory & Drive
+                                         │
+                                         ▼ (Generates Proposal)
+                             ┌───────────────────────┐
+                             │  ConstitutionEngine   │
+                             └───────────┬───────────┘
+                                         │
+                   Is action irreversible or financially sensitive?
+                                  ├── YES ──► Emit Interactive Proposal Card
+                                  │           (Pauses execution until user approves)
+                                  └── NO  ──► Direct Safe Execution
+                                         │
+                                         ▼
+                             ┌───────────────────────┐
+                             │      GoalBridge       │
+                             └───────────┬───────────┘
+                                         │
+        ┌───────────────────┬────────────┴───────┬───────────────────┐
+        ▼                   ▼                    ▼                   ▼
+  Base Network         Hyperliquid          Google Drive        Meta Threads
+ (USDC Transfer)      (Spot Trading)       (Vault Storage)      (Publishing)
+        │                   │                    │                   │
+        └───────────────────┴────────────┬───────┴───────────────────┘
+                                         ▼
+                             ┌───────────────────────┐
+                             │   Reflection Engine   │
+                             │ (Calibration & Error) │
+                             └───────────────────────┘
+```
 
-### Sensory Server
-A lightweight communication bridge between the user interface and the cognitive system. It contains no reasoning logic.
+---
 
-`UI (React) → WebSocket → Sensory Layer → Event Bus → Capabilities → Cognitive Kernel`
+## Integrated Capabilities
 
-### Internal Telemetry
-An internal observability layer (`MetricsStore`, `MetricsAggregator`) tracks reflection, memory, governance, and execution KPIs for development and debugging. This is strictly an internal sensor it is not exposed as a user-facing feature.
+SERA connects its cognitive reasoning loop to an extensible catalog of capability connectors:
 
-## Development Status
+### Model Context Protocol (MCP) Server
+- **Claude Desktop Integration**: Connect Claude Desktop to SERA via Streamable HTTP at `https://mcp.seraos.xyz`.
+- **14 Built-In Tools**: Full suite of agent actions covering chat, memory management, vault transfers, Google Drive CRUD, Threads publishing, and temporal scheduling.
+- **6-Digit OTP Pairing**: Connect external clients securely without exposing private keys or long-lived credentials.
 
-This table reflects verified behavior, not planned scope.
+### Google Drive (Second Brain)
+- **Minimal Sandbox**: Scoped strictly to the user's `SERA Vault` folder via Google's `drive.file` scope.
+- **Weekly Memory Consolidation**: Automated Sunday export of agent profile (`SERA_Profile.json`), long-term memory snapshots, and weekly journals.
+- **Pre-Purge Retention Archive**: Automatically preserves expiring conversation data before the 90-day hygiene cleanup.
+- **Media Bridge**: Directly references Drive image files when publishing to social platforms.
 
-| Subsystem | Status |
-|---|---|
-| Unified Memory (`MemoryStore` + `MemoryIngress` + Policy Engine) | Live, verified end-to-end |
-| Episodic → Semantic Memory Bridge | Live, verified |
-| Constitution Enforcement | Live, verified |
-| Simple Action Pipeline (`ProposalManager`) | Live |
-| Complex Goal Pipeline (Intent → Synthesis → Human Approval) | Live, verified. Candidates contain diverse, non-executable strategy DAGs and require human approval; LLM-assisted candidate generation remains a future enhancement. |
-| Feedback & Calibration Loop (task execution) | Live, verified |
-| Governance Reflection Loop | Mechanically verified end-to-end; missing a production trigger for the human review step |
-| Internal Telemetry | Live (internal only) |
-| Autonomous initiative (agent proposing goals without a manual trigger) | Not yet implemented |
-| Self-tuning parameter adaptation (`AdaptationPlanner`/`AdaptationExecutor`) | Built, not yet wired to a live trigger |
-| Frontend candidate-selection UI | Live |
+### Web3 & Financial Operations
+- **Base Network Agent Vault**: Dedicated on-chain wallet managing USDC and ETH with built-in gas sponsoring.
+- **Hyperliquid Spot Trading**: Real-time orderbook pricing (`HL_SPOT_MARKET_DATA`), spot buy/sell execution (`HL_SPOT_ORDER`), resting limit orders, and live portfolio tracking.
+- **Proposal Cards**: High-risk financial operations pause execution until verified by human judgment.
 
-## Known Limitations
+### Social & Multi-Channel
+- **Meta Threads**: Autonomous and approval-gated publishing with image attachment support.
+- **Telegram Bot**: Conversational link to your personal SERA agent on mobile.
+- **Inter-Agent Comm (XMT)**: Direct peer-to-peer communication between autonomous agents.
 
-Documented deliberately, so they are addressed by design rather than rediscovered by accident:
+### Media & Intelligence
+- **Media Studio**: Text-to-image generation powered by state-of-the-art visual diffusion models.
+- **Web Intelligence**: Real-time internet search and synthesis powered by Brave Search API.
+- **Background Scheduling**: 24/7 background task scheduler and cron triggers with safety limits.
 
-- `GoalSynthesizer` produces deterministic, domain-agnostic strategy DAGs today. It does not yet use an LLM to generate or critique bespoke strategies, so LLM-assisted strategic creativity remains a future improvement.
-- The governance reflection loop cannot close autonomously in production until a human-review trigger is built it currently requires simulation to exercise fully.
-- Memory retrieval is hybrid across confirmed semantic beliefs, vector-matched episodes, and recent episodes. It is currently an in-process JSON vector store suitable for small sessions; graph retrieval, metadata filtering at scale, and a production vector backend remain future work.
-
-## Technology Stack
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Core Runtime | Node.js with TypeScript | Deterministic asynchronous execution |
-| Frontend | React with Vite | Agent-facing interface |
-| Communication | Socket.io | Real-time event streaming |
-| Language Model | Qwen via adapter layer | Swappable reasoning engine |
-| Blockchain | Base (Sepolia / Mainnet) via Viem and CDP SDK | On-chain execution layer |
+---
 
 ## Project Structure
 
 ```text
 sera-core/
 ├── src/
-│   ├── capabilities/
-│   │   ├── dialogue/
-│   │   ├── llm/
-│   │   └── wallet/
-│   ├── core/
-│   │   ├── attention/
-│   │   ├── cognition/
-│   │   ├── constitution/
-│   │   ├── feedback/
-│   │   ├── goals/
-│   │   ├── governance/
-│   │   ├── intents/
-│   │   ├── memory/
-│   │   ├── planner/
-│   │   ├── telemetry/
-│   │   └── events/
-│   ├── memory/            # MemoryStore the single memory authority
-│   ├── runtime/
-│   └── server/
-├── sera-frontend/
-├── tests/
-└── .data/                 # Persisted memory and episodic logs (runtime-generated)
+│   ├── capabilities/          # Modular capability connectors
+│   │   ├── autonomy/          # Operating agreements & delegation policies
+│   │   ├── communication/     # Inter-agent messaging
+│   │   ├── dialogue/          # DialogueEngine, system prompts, context builder
+│   │   ├── google-drive/      # Google Drive API v3 capability
+│   │   ├── hyperliquid/       # Hyperliquid spot market client
+│   │   ├── llm/               # Model adapters & dynamic routing
+│   │   ├── mcp/               # Model Context Protocol proxy
+│   │   ├── media/             # Image generation capability
+│   │   ├── search/            # Brave Web Search integration
+│   │   ├── threads/           # Meta Threads publishing adapter
+│   │   └── wallet/            # Base EVM wallet & gas sponsoring
+│   ├── core/                  # Domain-agnostic cognitive kernel
+│   │   ├── attention/         # Attention pack reranking & token budgets
+│   │   ├── constitution/      # Safety rules & action gates
+│   │   ├── feedback/          # Outcome calibration & error analysis
+│   │   ├── goals/             # Goal synthesis & DAG resolution
+│   │   ├── governance/        # Meta-governance reflection & calibration
+│   │   ├── integrations/      # Google Drive OAuth & memory consolidation
+│   │   ├── intents/           # Intent taxonomy & extraction
+│   │   ├── memory/            # MemoryIngress & policy enforcement
+│   │   ├── planner/           # Multi-step action planning
+│   │   └── telemetry/         # Internal cognitive telemetry
+│   ├── mcp/                   # Standalone SeraMcpServer implementation
+│   ├── memory/                # MemoryStore single authority
+│   ├── runtime/               # Runtime composition root & lifecycle
+│   └── server/                # Socket.IO gateway, Express routes, auth
+├── sera-frontend/             # React + Vite web dashboard (app.seraos.xyz)
+├── sera-docs/                 # Docusaurus documentation site (docs.seraos.xyz)
+├── sera-landing/              # Public landing page (seraos.xyz)
+├── tests/                     # 135 unit, integration, and simulation tests (100% pass)
+├── cloudbuild.core.yaml       # Production Cloud Build pipeline
+└── Dockerfile.core            # Multi-stage production container
 ```
 
-## Architectural Constraints
+---
 
-The core system must remain domain-agnostic. The following are **not allowed** inside core or runtime:
-- Domain-specific entities such as products, tokens, or users
-- Business or financial logic
-- Direct external API integrations
+## Technology Stack
 
-The core system only operates on universal primitives: `belief`, `goal`, `observation`, `intent`, `plan`, and `event`. All domain-specific logic lives inside isolated capability modules.
+| Layer | Technology | Purpose |
+|:---|:---|:---|
+| **Runtime & Core** | Node.js (>= 22.0.0), TypeScript 6, Express 5 | Deterministic async execution |
+| **Cognitive Modeling**| Qwen-Plus / Qwen-Max, Model Context Protocol (MCP) SDK | Reasoning, synthesis, and tool protocols |
+| **Web3 & Blockchain** | Base Network (Viem, CDP SDK), Hyperliquid L1 API | On-chain asset custody and spot trading |
+| **Storage & Memory**  | Supabase (PostgreSQL), SQLite (`better-sqlite3`), Google Drive API v3 | Epistemic memory, credentials, and user vault |
+| **Frontend**          | React 19, Vite 8, Reown AppKit, Lucide Icons | Responsive user dashboard |
+| **Documentation**     | Docusaurus 3, Prism React Renderer | Technical documentation and guides |
+| **Infrastructure**    | Google Cloud Run, Google Cloud Build, Vercel | Scalable serverless deployment |
 
-## Running Locally
+---
 
-Requirements: Node.js 22 or higher
+## Developer Quickstart
+
+### Prerequisites
+- Node.js 22.0.0 or higher
+- npm or pnpm
+
+### 1. Installation
 
 ```bash
+git clone https://github.com/seraos-agent/sera-core.git
+cd sera-core
 npm install
+```
+
+### 2. Environment Configuration
+
+```bash
+cp .env.example .env
+```
+
+Key configuration variables:
+- `PORT`: Server port (default `3001` locally, `8080` in production)
+- `SERA_AI_API_KEY`: Model provider key (Qwen / DashScope)
+- `AGENT_PRIVATE_KEY`: Private key for the Base Network Agent Vault
+- `BRAVE_SEARCH_API_KEY`: API key for real-time web search
+- `GOOGLE_DRIVE_CLIENT_ID` & `GOOGLE_DRIVE_CLIENT_SECRET`: OAuth credentials for Google Drive
+- `THREADS_APP_ID` & `THREADS_APP_SECRET`: Meta Developer App credentials
+
+### 3. Starting the Server
+
+```bash
 npm run start:server
 ```
 
-Frontend:
+### 4. Starting the Frontend Dashboard
 
 ```bash
 cd sera-frontend
@@ -172,9 +243,59 @@ npm install
 npm run dev
 ```
 
-Open: http://localhost:5173
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### 5. Running the Test Suite
+
+```bash
+npx vitest run
+```
 
 ---
 
-### Closing Statement
-*Sera is designed to think before it acts and to be honest about the parts of itself that don't think yet.*
+## Programmatic MCP Integration
+
+You can easily connect to SERA from any Node.js application using the official `@modelcontextprotocol/sdk`:
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+const client = new Client(
+  { name: "my-custom-app", version: "1.0.0" },
+  { capabilities: {} }
+);
+
+// Connect via Streamable HTTP / SSE transport
+await client.connect(new SSEClientTransport(new URL("https://mcp.seraos.xyz")));
+
+// Query available capabilities
+const tools = await client.listTools();
+console.log(`Connected to SERA! Available tools: ${tools.tools.length}`);
+```
+
+---
+
+## Production Deployment Protocol
+
+In accordance with architectural standards:
+
+- **Backend Runtime (`sera-core`)**:
+  1. Build container image: `gcloud builds submit --config cloudbuild.core.yaml .`
+  2. Deploy service: `gcloud run deploy sera-core --image asia-southeast1-docker.pkg.dev/sera-core/sera-core-images/sera-core-api:latest --region asia-southeast1 --quiet`
+- **Frontend App (`sera-frontend`)**: Deployed to Vercel via `npm --prefix sera-frontend run build && npx vercel --prod --cwd sera-frontend`.
+- **Documentation (`sera-docs`)**: Deployed to Vercel via `npm --prefix sera-docs run build && npx vercel --prod --cwd sera-docs`.
+
+---
+
+## Security & Responsible AI
+
+- **Non-Custodial Key Isolation**: Sensitive keys are encrypted in isolated stores and never leaked into conversational contexts.
+- **Minimal OAuth Privileges**: Third-party integrations (Google Drive, Threads) request only the minimum required scopes (`drive.file`).
+- **Deterministic Action Gating**: AI intent classification is separated from execution. Even if an LLM is prompted maliciously, the `ConstitutionEngine` and `GoalBridge` reject unverified or unapproved actions.
+
+---
+
+## License
+
+Copyright © 2026 SERA OS. All rights reserved.

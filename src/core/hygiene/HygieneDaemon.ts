@@ -1,5 +1,6 @@
 import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
-
+import { GoogleDriveConnectionRepository } from '../integrations/google-drive/GoogleDriveConnectionRepository';
+import { MemoryConsolidationWorker } from '../integrations/google-drive/MemoryConsolidationWorker';
 /**
  * HygieneDaemon — Automated garbage collection for SERA's persistent state.
  *
@@ -86,11 +87,27 @@ export class HygieneDaemon {
     // Task 2: Clean old episodic memories (created_at > N days)
     try {
       const cutoffDate = new Date(Date.now() - this.episodicRetentionDays * 24 * 60 * 60 * 1000).toISOString();
-      const staleEpisodes = await this.client.select<{ id: string }>(
+      const staleEpisodes = await this.client.select<{ id: string, session_id: string }>(
         'sera_episodic_memories',
-        `created_at=lt.${cutoffDate}&select=id`
+        `created_at=lt.${cutoffDate}&select=id,session_id`
       );
       if (staleEpisodes.length > 0) {
+        try {
+          const gdriveConnections = GoogleDriveConnectionRepository.fromEnvironment();
+          if (gdriveConnections) {
+            const worker = new MemoryConsolidationWorker(this.client, gdriveConnections, () => null);
+            const users = new Map<string, number>();
+            for (const ep of staleEpisodes) {
+              if (ep.session_id) users.set(ep.session_id, (users.get(ep.session_id) || 0) + 1);
+            }
+            for (const [userId, count] of users.entries()) {
+              await worker.consolidatePrePurge(userId, count);
+            }
+          }
+        } catch (err: any) {
+          console.warn('[HygieneDaemon] Pre-purge consolidation failed:', err.message);
+        }
+
         await this.client.delete('sera_episodic_memories', `created_at=lt.${cutoffDate}`);
         episodicMemoriesCleaned = staleEpisodes.length;
       }

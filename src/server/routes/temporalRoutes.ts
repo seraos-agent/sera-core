@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { AgentManager } from '../AgentManager';
 import { Runtime } from '../../runtime/Runtime';
 import { SupabaseRestClient } from '../../core/persistence/SupabaseRestClient';
+import { GoogleDriveConnectionRepository } from '../../core/integrations/google-drive/GoogleDriveConnectionRepository';
+import { MemoryConsolidationWorker } from '../../core/integrations/google-drive/MemoryConsolidationWorker';
 
 export function createTemporalRouter(
   agentManager: AgentManager,
@@ -39,6 +41,22 @@ export function createTemporalRouter(
       }
     } catch (err: any) {
       console.warn('[Server] Temporal tick Threads poll error:', err.message);
+    }
+    // 4. Trigger Weekly Memory Consolidation (Worker internally checks if it's Sunday 00:00 UTC)
+    try {
+      if (supabaseClient) {
+        const gdriveConnections = GoogleDriveConnectionRepository.fromEnvironment();
+        if (gdriveConnections) {
+          const worker = new MemoryConsolidationWorker(
+            supabaseClient,
+            gdriveConnections,
+            (userId: string) => agentManager.getOrCreateInstance(userId)
+          );
+          void worker.runCycle();
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Server] Temporal tick Memory Consolidation error:', err.message);
     }
 
     return res.json({

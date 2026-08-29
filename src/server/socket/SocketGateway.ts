@@ -14,7 +14,6 @@ import { ThreadsOAuthService } from '../auth/threadsAuth';
 import { TelegramBotManager } from '../../capabilities/communication/adapters/TelegramBotManager';
 import { McpApiKeyStore } from '../../mcp/McpApiKeyStore';
 import { OAuthStore } from '../auth/oauth/OAuthStore';
-import { PredictionEngineService } from '../../capabilities/predictions/PredictionEngineService';
 import { StandardEvent, EventTypes } from '../../core/events/types';
 import { SeraUserContext } from '../../core/identity/types';
 import { BaseAdapter } from '../../capabilities/wallet/chains/BaseAdapter';
@@ -30,8 +29,6 @@ export interface SocketGatewayDependencies {
   globalSecretManager: any;
   supabaseIdentityService: SupabaseIdentityService | null;
   reownWalletIdentityService: ReownWalletIdentityService | null;
-  predictionEngine: PredictionEngineService;
-  arenaEventBus: EventEmitter;
 }
 
 let msgIdCounter = Date.now();
@@ -46,19 +43,8 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     globalOAuthStore,
     globalSecretManager,
     supabaseIdentityService,
-    reownWalletIdentityService,
-    predictionEngine,
-    arenaEventBus
+    reownWalletIdentityService
   } = deps;
-
-  // Arena Global Broadcasting
-  arenaEventBus.on('arena:markets_updated', (markets) => {
-    io.emit('arena:markets', markets);
-  });
-
-  arenaEventBus.on('arena:price_tick', (payload) => {
-    io.emit('arena:price_tick', payload);
-  });
 
   io.on('connection', (socket: Socket) => {
     console.log(`[Server] UI Client connected: ${socket.id}`);
@@ -614,49 +600,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
     });
 
-    // --- Arena Events ---
-    socket.on('arena:fetch_markets', () => {
-      socket.emit('arena:markets', predictionEngine.getActiveMarkets());
-    });
-    
-    socket.on('arena:fetch_market_details', (marketId: string) => {
-      const markets = predictionEngine.getActiveMarkets();
-      const market = markets.find(m => m.id === marketId);
-      if (market) {
-        socket.emit('arena:market_details', {
-          market,
-          priceHistory: predictionEngine.priceHistory,
-          orderBook: predictionEngine.getOrderBook(marketId)
-        });
-      }
-    });
-
-    socket.on('arena:fetch_portfolio', () => {
-      if (!socket.data.sessionId) return;
-      socket.emit('arena:portfolio', predictionEngine.getPortfolio(socket.data.sessionId));
-    });
-    
-    const onPortfolioUpdated = (portfolio: any) => {
-      socket.emit('arena:portfolio', portfolio);
-    };
-    
-    if (socket.data.sessionId) {
-      arenaEventBus.on(`arena:portfolio_updated:${socket.data.sessionId}`, onPortfolioUpdated);
-    }
-
-    socket.on('arena:place_order', async (payload: { marketId: string, side: 'UP' | 'DOWN', amount: number }) => {
-      if (!requireAuthenticatedSession(socket, 'arena:place_order', instance?.eventBus)) return;
-      const userId = socket.data.sessionId!;
-      try {
-        await predictionEngine.placeOrder(userId, payload.marketId, payload.side, payload.amount);
-        socket.emit('arena:order_result', { success: true });
-        socket.emit('arena:portfolio', predictionEngine.getPortfolio(userId));
-        io.emit('arena:markets', predictionEngine.getActiveMarkets());
-      } catch (e: any) {
-        socket.emit('arena:order_result', { success: false, message: e.message });
-      }
-    });
-
     socket.on('billing:fetch', (payload: { address: string }) => {
       if (!socket.data.sessionId || (socket.data.personalWalletAddress && payload.address.toLowerCase() !== socket.data.personalWalletAddress)) return;
       const periods = agentManager.getSubscriptionService().getRemainingPeriods(socket.data.sessionId);
@@ -1052,9 +995,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
 
     socket.on('disconnect', () => {
       console.log(`[Server] UI Client disconnected: ${socket.id}`);
-      if (socket.data.sessionId) {
-        arenaEventBus.off(`arena:portfolio_updated:${socket.data.sessionId}`, onPortfolioUpdated);
-      }
       unbindListeners();
     });
   });

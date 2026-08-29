@@ -28,6 +28,8 @@ import {
   TransferAuditEvent,
   TransferAuditRepository,
 } from '../core/persistence/SupabaseTransferAuditRepository';
+import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
+import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -53,6 +55,18 @@ export class GoalBridge {
 
   private readonly spotMarket = new BaseSpotMarketCapability();
   private readonly tokenResolver = new TokenResolverService();
+
+  // Google Drive capability (lazy-initialized)
+  private _googleDriveCapability: GoogleDriveCapability | null = null;
+  private get googleDriveCapability(): GoogleDriveCapability {
+    if (!this._googleDriveCapability) {
+      const connections = GoogleDriveConnectionRepository.fromEnvironment();
+      if (!connections) throw new Error('GoogleDriveConnectionRepository missing environment variables.');
+      this._googleDriveCapability = GoogleDriveCapability.fromEnvironment(connections)!;
+      if (!this._googleDriveCapability) throw new Error('GoogleDriveCapability failed to initialize.');
+    }
+    return this._googleDriveCapability;
+  }
 
   // Hyperliquid spot trading capability (lazy-initialized)
   private _hlSpot: HyperliquidSpotCapability | null = null;
@@ -317,6 +331,16 @@ export class GoalBridge {
           await this.handleThreadsPublish(requestId, actionPayload);
           break;
 
+        case 'gdrive:write_file':
+          await this.handleGDriveWrite(requestId, actionPayload);
+          break;
+        case 'gdrive:read_file':
+          await this.handleGDriveRead(requestId, actionPayload);
+          break;
+        case 'gdrive:create_sheet':
+          await this.handleGDriveCreateSheet(requestId, actionPayload);
+          break;
+
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
       }
@@ -327,15 +351,22 @@ export class GoalBridge {
   }
 
   private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const text = parameters.text;
+    const { text, replyToId, imageUrl, driveFileName } = parameters;
     if (!text) throw new Error('Threads publish requires text parameter.');
-    const container = await this.threadsApi.createContainer(this.sessionId, text, parameters.replyToId);
-    const published = await this.threadsApi.publishContainer(this.sessionId, container.id);
-    this.threadsPostHistoryStore.recordPost(this.sessionId, text, published.id);
+    
+    let finalImageUrl = imageUrl;
+    if (driveFileName) {
+      const files = await this.googleDriveCapability.listFiles(this.sessionId, { name: driveFileName });
+      if (files.length === 0) throw new Error(`Drive image ${driveFileName} not found.`);
+      finalImageUrl = await this.googleDriveCapability.getPublicMediaUrl(this.sessionId, files[0].id);
+    }
+    
+    const publishedId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl);
+    this.threadsPostHistoryStore.recordPost(this.sessionId, text, publishedId);
     this.emitResult(requestId, true, {
       provider: 'Meta Threads',
-      id: published.id,
-      summary: `Successfully published to Threads (ID: ${published.id})`
+      id: publishedId,
+      summary: `Successfully published to Threads (ID: ${publishedId})`
     });
   }
 
@@ -1223,6 +1254,44 @@ export class GoalBridge {
       };
     } catch {
       return null;
+    }
+  }
+
+  private async handleGDriveWrite(requestId: string, payload: any): Promise<void> {
+    try {
+      const { filename, content, mimeType } = payload;
+      const fileId = await this.googleDriveCapability.writeFile(this.sessionId, filename, content, mimeType);
+      this.emitResult(requestId, true, { fileId, filename });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveRead(requestId: string, payload: any): Promise<void> {
+    try {
+      const { filename, fileId } = payload;
+      let targetId = fileId;
+      if (!targetId && filename) {
+        const files = await this.googleDriveCapability.listFiles(this.sessionId, { name: filename });
+        if (files.length === 0) throw new Error(`File ${filename} not found.`);
+        targetId = files[0].id;
+      }
+      if (!targetId) throw new Error('Must provide either filename or fileId');
+      
+      const content = await this.googleDriveCapability.readFile(this.sessionId, targetId);
+      this.emitResult(requestId, true, { content, fileId: targetId });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveCreateSheet(requestId: string, payload: any): Promise<void> {
+    try {
+      const { title, headers, rows } = payload;
+      const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows);
+      this.emitResult(requestId, true, { fileId, title });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
     }
   }
 }

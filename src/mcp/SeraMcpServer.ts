@@ -6,6 +6,8 @@ import { join } from 'path';
 import { McpApiKeyStore } from './McpApiKeyStore';
 import { EventTypes, StandardEvent } from '../core/events/types';
 import { HyperliquidClient } from '../capabilities/hyperliquid/HyperliquidClient';
+import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
+import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 
 /**
  * Resolved context after authenticating an MCP request.
@@ -107,7 +109,8 @@ export const SERA_MCP_TOOLS = [
       type: 'object' as const,
       properties: {
         text: { type: 'string', description: 'Content of the Threads post (punchy, authentic, max 1-3 lines, no hashtags)' },
-        imageUrl: { type: 'string', description: 'Optional public image URL to attach to the post' }
+        imageUrl: { type: 'string', description: 'Optional public image URL to attach to the post' },
+        driveFileName: { type: 'string', description: 'Optional exact filename of an image in your Google Drive SERA Vault to attach' }
       },
       required: ['text']
     }
@@ -138,6 +141,54 @@ export const SERA_MCP_TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {}
+    }
+  },
+  {
+    name: 'sera_gdrive_write',
+    description: 'Write a document or note to your Google Drive SERA Vault.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Name of the file to create or update' },
+        content: { type: 'string', description: 'The text content to write' },
+        mimeType: { type: 'string', description: 'Optional. e.g. text/plain, text/markdown, text/csv' }
+      },
+      required: ['filename', 'content']
+    }
+  },
+  {
+    name: 'sera_gdrive_read',
+    description: 'Read a file from your Google Drive SERA Vault.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Name of the file to read' },
+        fileId: { type: 'string', description: 'Direct file ID (if known)' }
+      }
+    }
+  },
+  {
+    name: 'sera_gdrive_list',
+    description: 'List files inside your Google Drive SERA Vault.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Filter by exact file name' },
+        mimeType: { type: 'string', description: 'Filter by mime type' }
+      }
+    }
+  },
+  {
+    name: 'sera_gdrive_create_sheet',
+    description: 'Create a spreadsheet with headers and data in your Google Drive SERA Vault.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string', description: 'Name of the spreadsheet' },
+        headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
+        rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Data rows' }
+      },
+      required: ['title', 'headers', 'rows']
     }
   }
 ];
@@ -208,6 +259,14 @@ export class SeraMcpServer {
         return this.handleMemoryWrite(instance, args);
       case 'sera_billing_status':
         return this.handleBillingStatus(userId);
+      case 'sera_gdrive_write':
+        return this.handleGDriveWrite(instance, args);
+      case 'sera_gdrive_read':
+        return this.handleGDriveRead(instance, args);
+      case 'sera_gdrive_list':
+        return this.handleGDriveList(instance, args);
+      case 'sera_gdrive_create_sheet':
+        return this.handleGDriveCreateSheet(instance, args);
       default:
         return {
           isError: true,
@@ -503,18 +562,26 @@ export class SeraMcpServer {
   }
 
   private async handleThreadsPublish(instance: any, userId: string, args: Record<string, any>): Promise<any> {
-    const { text, imageUrl } = args;
+    const { text, imageUrl, driveFileName } = args;
     if (!text) {
       return { isError: true, content: [{ type: 'text', text: 'Post text is required.' }] };
     }
 
     try {
-      const threadsApi = instance.runtime?.threadsApi;
+      const threadsApi = instance.runtime?.threadsApi || instance.goalBridge?.threadsApi;
       if (!threadsApi) {
         throw new Error('Threads capability is not initialized on this instance.');
       }
 
-      const postId = await threadsApi.publishPost(userId, text.trim(), undefined, imageUrl);
+      let finalImageUrl = imageUrl;
+      if (driveFileName) {
+        const cap = await this.getGDriveCapability();
+        const files = await cap.listFiles(userId, { name: driveFileName });
+        if (files.length === 0) throw new Error(`Drive image ${driveFileName} not found.`);
+        finalImageUrl = await cap.getPublicMediaUrl(userId, files[0].id);
+      }
+
+      const postId = await threadsApi.publishPost(userId, text.trim(), undefined, finalImageUrl);
       return {
         content: [{
           type: 'text',
@@ -596,4 +663,65 @@ export class SeraMcpServer {
       }]
     };
   }
+
+  private async getGDriveCapability(): Promise<GoogleDriveCapability> {
+    const connections = GoogleDriveConnectionRepository.fromEnvironment();
+    if (!connections) throw new Error('Google Drive integration not configured.');
+    const capability = GoogleDriveCapability.fromEnvironment(connections);
+    if (!capability) throw new Error('Google Drive capability failed to initialize.');
+    return capability;
+  }
+
+  private async handleGDriveWrite(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const fileId = await cap.writeFile(instance.sessionId || instance.userId || 'dev', args.filename, args.content, args.mimeType);
+      return { content: [{ type: 'text', text: `✅ Successfully wrote ${args.filename} (ID: ${fileId}) to Google Drive SERA Vault.` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to write to Google Drive: ${e.message}` }] };
+    }
+  }
+
+  private async handleGDriveRead(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const userId = instance.sessionId || instance.userId || 'dev';
+      let targetId = args.fileId;
+      if (!targetId && args.filename) {
+        const files = await cap.listFiles(userId, { name: args.filename });
+        if (files.length === 0) throw new Error(`File ${args.filename} not found.`);
+        targetId = files[0].id;
+      }
+      if (!targetId) throw new Error('Must provide either filename or fileId');
+      
+      const content = await cap.readFile(userId, targetId);
+      return { content: [{ type: 'text', text: `📄 Content of ${args.filename || args.fileId}:\n\n${content}` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to read from Google Drive: ${e.message}` }] };
+    }
+  }
+
+  private async handleGDriveList(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const files = await cap.listFiles(instance.sessionId || instance.userId || 'dev', args);
+      const formatted = files.length === 0 
+        ? 'Your SERA Vault is currently empty.' 
+        : files.map((f: any) => `- **${f.name}** (ID: \`${f.id}\`, Type: ${f.mimeType})`).join('\n');
+      return { content: [{ type: 'text', text: `📂 Files in Google Drive SERA Vault:\n\n${formatted}` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to list files: ${e.message}` }] };
+    }
+  }
+
+  private async handleGDriveCreateSheet(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const fileId = await cap.createSpreadsheet(instance.sessionId || instance.userId || 'dev', args.title, args.headers, args.rows);
+      return { content: [{ type: 'text', text: `📊 Successfully created spreadsheet "${args.title}" (ID: ${fileId}) in Google Drive.` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to create spreadsheet: ${e.message}` }] };
+    }
+  }
+
 }

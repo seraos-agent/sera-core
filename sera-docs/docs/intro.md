@@ -35,7 +35,7 @@ SERA OS is organized into layered components, each with a clear responsibility:
 ├─────────────────────────────────────────┤
 │           Capabilities Layer            │
 │   Wallet · Hyperliquid                   │
-│   Communication · Paper Trading · MCP   │
+│   Communication · Google Drive · MCP    │
 └─────────────────────────────────────────┘
 ```
 
