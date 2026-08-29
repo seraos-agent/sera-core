@@ -1,1 +1,0 @@
-import * as dotenv from 'dotenv'; dotenv.config(); import { GoogleDriveOAuthService } from './src/core/integrations/google-drive/GoogleDriveOAuthService'; console.log('Result:', GoogleDriveOAuthService.fromEnvironment() ? 'SUCCESS' : 'NULL');

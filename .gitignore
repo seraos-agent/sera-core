@@ -14,3 +14,7 @@ coverage/
 
 .vercel
 LOCAL_DEPLOY_NOTES.md
+
+# Scratchpad
+scratch/*
+!scratch/.gitkeep

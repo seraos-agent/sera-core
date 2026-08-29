@@ -1,1 +1,0 @@
-import * as dotenv from 'dotenv'; dotenv.config(); import { GoogleDriveOAuthService } from './src/core/integrations/google-drive/GoogleDriveOAuthService'; const srv = GoogleDriveOAuthService.fromEnvironment(); srv!.getStatus('dev').then(res => console.log('STATUS:', res)).catch(e => console.error('ERROR:', e));
