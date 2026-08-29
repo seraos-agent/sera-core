@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { McpApiKeyStore } from './McpApiKeyStore';
-import { EventTypes, StandardEvent } from '../core/events/types';
+import { EventTypes, StandardEvent, ProposeGoalPayload } from '../core/events/types';
 import { HyperliquidClient } from '../capabilities/hyperliquid/HyperliquidClient';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
@@ -190,6 +190,37 @@ export const SERA_MCP_TOOLS = [
       },
       required: ['title', 'headers', 'rows']
     }
+  },
+  {
+    name: 'sera_proposal_approve',
+    description: 'Approve and immediately execute a pending governance proposal (e.g. token transfer, spot trade) on-chain without switching to the web dashboard.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        proposalId: { type: 'string', description: 'The proposal ID to approve (e.g. "prop-1788...")' }
+      },
+      required: ['proposalId']
+    }
+  },
+  {
+    name: 'sera_proposal_reject',
+    description: 'Reject or cancel an active pending governance proposal.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        proposalId: { type: 'string', description: 'The proposal ID to reject' },
+        reason: { type: 'string', description: 'Optional reason for cancellation' }
+      },
+      required: ['proposalId']
+    }
+  },
+  {
+    name: 'sera_proposal_list',
+    description: 'List all active governance proposals currently waiting for user approval.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {}
+    }
   }
 ];
 
@@ -267,6 +298,12 @@ export class SeraMcpServer {
         return this.handleGDriveList(instance, args);
       case 'sera_gdrive_create_sheet':
         return this.handleGDriveCreateSheet(instance, args);
+      case 'sera_proposal_approve':
+        return await this.handleProposalApprove(instance, args.proposalId);
+      case 'sera_proposal_reject':
+        return this.handleProposalReject(instance, args.proposalId, args.reason);
+      case 'sera_proposal_list':
+        return this.handleProposalList(instance);
       default:
         return {
           isError: true,
@@ -461,27 +498,34 @@ export class SeraMcpServer {
       };
     }
 
-    const proposalEvent: StandardEvent = {
-      id: `evt-mcp-proposal-${Date.now()}`,
-      type: EventTypes.SYSTEM_PROPOSE_GOAL,
-      source: 'McpServer',
-      timestamp: Date.now(),
-      payload: {
-        intent: 'TRANSFER_FUNDS',
-        parameters: {
-          recipientAddress: to,
-          amount: parseFloat(amount),
-          asset: asset.toUpperCase(),
-        },
-        userMessage: reason || `Transfer ${amount} ${asset} to ${to}`
-      }
+    const payload: ProposeGoalPayload = {
+      intent: 'TRANSFER_FUNDS',
+      parameters: {
+        recipientAddress: to,
+        amount: parseFloat(amount),
+        asset: asset.toUpperCase(),
+      },
+      userMessage: reason || `Transfer ${amount} ${asset} to ${to}`
     };
-    instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, proposalEvent);
+
+    const proposalId = instance.proposalManager?.createProposal
+      ? instance.proposalManager.createProposal(payload)
+      : `prop-${Date.now()}`;
+
+    if (!instance.proposalManager?.createProposal) {
+      instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, {
+        id: `evt-mcp-proposal-${Date.now()}`,
+        type: EventTypes.SYSTEM_PROPOSE_GOAL,
+        source: 'McpServer',
+        timestamp: Date.now(),
+        payload
+      });
+    }
 
     return {
       content: [{
         type: 'text',
-        text: `✅ Transfer proposal created on Sera.\n\n• Recipient: \`${to}\`\n• Amount: **${amount} ${asset.toUpperCase()}**\n• Reason: ${reason || 'N/A'}\n\n⚠️ Requires approval on the Sera dashboard to execute on-chain.`
+        text: `📋 **Transfer Proposal Created**\n\n• **Proposal ID**: \`${proposalId}\`\n• **Recipient**: \`${to}\`\n• **Amount**: **${amount} ${asset.toUpperCase()}** (Base Network)\n• **Reason**: ${reason || 'N/A'}\n• **Status**: \`WAITING_APPROVAL\`\n\n⚠️ **Action Required**: Ask the user to confirm this transfer. When the user confirms, call \`sera_proposal_approve\` with \`proposalId: "${proposalId}"\` to execute immediately on-chain.`
       }]
     };
   }
@@ -506,28 +550,210 @@ export class SeraMcpServer {
 
   private handleSpotTrade(instance: any, args: Record<string, any>): any {
     const { coin, side, amount } = args;
-    const proposalEvent: StandardEvent = {
-      id: `evt-mcp-spot-${Date.now()}`,
-      type: EventTypes.SYSTEM_PROPOSE_GOAL,
-      source: 'McpServer',
-      timestamp: Date.now(),
-      payload: {
-        intent: 'HL_SPOT_ORDER',
-        parameters: {
-          coin: coin.toUpperCase(),
-          side: side.toLowerCase(),
-          amount: parseFloat(amount),
-          orderType: 'market'
-        },
-        userMessage: `Hyperliquid Spot ${side.toUpperCase()} ${amount} of ${coin.toUpperCase()}`
-      }
+    const payload: ProposeGoalPayload = {
+      intent: 'HL_SPOT_ORDER',
+      parameters: {
+        coin: coin.toUpperCase(),
+        side: side.toLowerCase(),
+        amount: parseFloat(amount),
+        orderType: 'market'
+      },
+      userMessage: `Hyperliquid Spot ${side.toUpperCase()} ${amount} of ${coin.toUpperCase()}`
     };
-    instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, proposalEvent);
+
+    const proposalId = instance.proposalManager?.createProposal
+      ? instance.proposalManager.createProposal(payload)
+      : `prop-${Date.now()}`;
+
+    if (!instance.proposalManager?.createProposal) {
+      instance.eventBus.emit(EventTypes.SYSTEM_PROPOSE_GOAL, {
+        id: `evt-mcp-spot-${Date.now()}`,
+        type: EventTypes.SYSTEM_PROPOSE_GOAL,
+        source: 'McpServer',
+        timestamp: Date.now(),
+        payload
+      });
+    }
 
     return {
       content: [{
         type: 'text',
-        text: `✅ Hyperliquid Spot trade proposal created on Sera.\n\n• Market: **${coin.toUpperCase()}/USDC**\n• Side: **${side.toUpperCase()}**\n• Size: **${amount}**\n\n⚠️ Open your Sera dashboard to review and approve execution.`
+        text: `📋 **Hyperliquid Spot Trade Proposal Created**\n\n• **Proposal ID**: \`${proposalId}\`\n• **Market**: **${coin.toUpperCase()}/USDC**\n• **Side**: **${side.toUpperCase()}**\n• **Size**: **${amount}**\n• **Status**: \`WAITING_APPROVAL\`\n\n⚠️ **Action Required**: Ask the user to confirm this trade. When the user confirms, call \`sera_proposal_approve\` with \`proposalId: "${proposalId}"\` to execute immediately on Hyperliquid.`
+      }]
+    };
+  }
+
+  private async handleProposalApprove(instance: any, proposalId: string): Promise<any> {
+    if (!proposalId) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'proposalId is required to approve a proposal.' }]
+      };
+    }
+
+    const proposal = instance.proposalManager?.getProposal?.(proposalId);
+    if (!proposal && instance.proposalManager) {
+      return {
+        isError: true,
+        content: [{
+          type: 'text',
+          text: `Proposal with ID "${proposalId}" was not found or has already been processed.`
+        }]
+      };
+    }
+
+    return new Promise<any>((resolve) => {
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        instance.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+        resolve({
+          content: [{
+            type: 'text',
+            text: `✅ Proposal \`${proposalId}\` approved and queued for execution. Processing on-chain...`
+          }]
+        });
+      }, 15_000);
+
+      const onGoalResult = (event: any) => {
+        const payload = event?.payload || event;
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
+        instance.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+
+        if (payload?.success === false) {
+          resolve({
+            isError: true,
+            content: [{
+              type: 'text',
+              text: `❌ Execution failed for proposal \`${proposalId}\`: ${payload.errorMessage || 'Unknown error'}`
+            }]
+          });
+          return;
+        }
+
+        const data = payload?.data || {};
+        const txHash = data.txHash || data.transactionHash || data.hash;
+        const details = [
+          `✅ **Proposal \`${proposalId}\` Approved and Executed Successfully!**`,
+          `• **Intent**: \`${proposal?.intent || payload?.intent || 'EXECUTED'}\``,
+        ];
+
+        if (txHash) {
+          details.push(`• **Transaction Hash**: \`${txHash}\` (Base Scan: https://basescan.org/tx/${txHash})`);
+        }
+        if (data.recipient || data.to) {
+          details.push(`• **Recipient**: \`${data.recipient || data.to}\``);
+        }
+        if (data.amount && data.asset) {
+          details.push(`• **Amount**: **${data.amount} ${data.asset}**`);
+        }
+        if (data.status) {
+          details.push(`• **Status**: \`${data.status}\``);
+        }
+
+        resolve({
+          content: [{
+            type: 'text',
+            text: details.join('\n')
+          }]
+        });
+      };
+
+      instance.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+
+      const approved = instance.proposalManager?.approveProposal
+        ? instance.proposalManager.approveProposal(proposalId)
+        : true;
+
+      if (!instance.proposalManager?.approveProposal) {
+        instance.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
+          id: `evt-mcp-appr-${Date.now()}`,
+          type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
+          source: 'McpServer',
+          timestamp: Date.now(),
+          payload: { proposalId }
+        });
+      }
+
+      if (!approved) {
+        clearTimeout(timeout);
+        instance.eventBus.off(EventTypes.DOMAIN_GOAL_RESULT, onGoalResult);
+        resolve({
+          isError: true,
+          content: [{
+            type: 'text',
+            text: `Failed to approve proposal "${proposalId}". It may have already been processed or cancelled.`
+          }]
+        });
+      }
+    });
+  }
+
+  private handleProposalReject(instance: any, proposalId: string, reason?: string): any {
+    if (!proposalId) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'proposalId is required to reject a proposal.' }]
+      };
+    }
+
+    const proposal = instance.proposalManager?.getProposal?.(proposalId);
+    if (!proposal && instance.proposalManager) {
+      return {
+        isError: true,
+        content: [{
+          type: 'text',
+          text: `Proposal with ID "${proposalId}" was not found or has already been processed.`
+        }]
+      };
+    }
+
+    const rejected = instance.proposalManager?.rejectProposal
+      ? instance.proposalManager.rejectProposal(proposalId)
+      : true;
+
+    if (!instance.proposalManager?.rejectProposal) {
+      instance.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_REJECTED, {
+        id: `evt-mcp-rej-${Date.now()}`,
+        type: EventTypes.DIALOGUE_PROPOSAL_REJECTED,
+        source: 'McpServer',
+        timestamp: Date.now(),
+        payload: { proposalId, reason }
+      });
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: `🛑 **Proposal Cancelled**\n\nProposal \`${proposalId}\` was rejected and will not be executed.${reason ? ` Reason: ${reason}` : ''}`
+      }]
+    };
+  }
+
+  private handleProposalList(instance: any): any {
+    const list = instance.proposalManager?.listPendingProposals?.() || [];
+    if (list.length === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'No active proposals are currently waiting for approval.'
+        }]
+      };
+    }
+
+    const lines = [`**Pending Governance Proposals (${list.length})**`];
+    for (const p of list) {
+      lines.push(`• **ID**: \`${p.proposalId}\` | **Intent**: \`${p.intent}\` | Parameters: ${JSON.stringify(p.parameters)}`);
+    }
+    lines.push('\nTo execute any proposal, ask user confirmation and call `sera_proposal_approve` with the proposal ID.');
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
       }]
     };
   }

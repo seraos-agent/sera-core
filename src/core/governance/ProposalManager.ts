@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import { EventTypes, ProposeGoalPayload } from '../events/types';
-import { randomUUID } from 'crypto';
 
 export class ProposalManager {
   private eventBus: EventEmitter;
@@ -31,7 +30,7 @@ export class ProposalManager {
     });
   }
 
-  private handleProposeGoal(payload: ProposeGoalPayload): void {
+  public createProposal(payload: ProposeGoalPayload): string {
     const proposalId = `prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     
     // Store in memory
@@ -55,13 +54,30 @@ export class ProposalManager {
     });
     
     console.log(`[ProposalManager] Generated proposal ${proposalId} for ${payload.intent}`);
+    return proposalId;
   }
 
-  private handleProposalApproved(proposalId: string): void {
+  private handleProposeGoal(payload: ProposeGoalPayload): void {
+    this.createProposal(payload);
+  }
+
+  public getProposal(proposalId: string): { intent: string, parameters: Record<string, any>, userMessage?: string } | undefined {
+    return this.pendingProposals.get(proposalId);
+  }
+
+  public listPendingProposals(): Array<{ proposalId: string, intent: string, parameters: Record<string, any>, userMessage?: string }> {
+    const list: Array<{ proposalId: string, intent: string, parameters: Record<string, any>, userMessage?: string }> = [];
+    for (const [proposalId, data] of this.pendingProposals.entries()) {
+      list.push({ proposalId, ...data });
+    }
+    return list;
+  }
+
+  public approveProposal(proposalId: string): boolean {
     const proposal = this.pendingProposals.get(proposalId);
     if (!proposal) {
       console.warn(`[ProposalManager] Unknown or already processed proposal approved: ${proposalId}`);
-      return;
+      return false;
     }
 
     // Spawn the goal for execution
@@ -74,35 +90,42 @@ export class ProposalManager {
       payload: {
         requestId,
         intent: proposal.intent,
-        // Preserve the originating language/context for the completion
-        // narration without exposing it in the proposal card itself.
         parameters: { ...proposal.parameters, _userMessage: proposal.userMessage }
       }
     });
 
     // Clean up
     this.pendingProposals.delete(proposalId);
-    
     console.log(`[ProposalManager] Proposal ${proposalId} approved and spawned as ${requestId}`);
+    return true;
+  }
+
+  public rejectProposal(proposalId: string): boolean {
+    const proposal = this.pendingProposals.get(proposalId);
+    if (!proposal) {
+      return false;
+    }
+    this.pendingProposals.delete(proposalId);
+    
+    this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      type: EventTypes.DIALOGUE_AGENT_SPEAK,
+      source: 'ProposalManager',
+      timestamp: Date.now(),
+      payload: {
+        text: 'Proposal cancelled.'
+      }
+    });
+    
+    console.log(`[ProposalManager] Proposal ${proposalId} rejected`);
+    return true;
+  }
+
+  private handleProposalApproved(proposalId: string): void {
+    this.approveProposal(proposalId);
   }
 
   private handleProposalRejected(proposalId: string): void {
-    const proposal = this.pendingProposals.get(proposalId);
-    if (proposal) {
-      this.pendingProposals.delete(proposalId);
-      
-      // Optionally notify the original source or dialogue engine
-      this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        type: EventTypes.DIALOGUE_AGENT_SPEAK,
-        source: 'ProposalManager',
-        timestamp: Date.now(),
-        payload: {
-          text: 'Proposal cancelled.'
-        }
-      });
-      
-      console.log(`[ProposalManager] Proposal ${proposalId} rejected`);
-    }
+    this.rejectProposal(proposalId);
   }
 }

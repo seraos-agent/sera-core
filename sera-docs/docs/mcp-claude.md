@@ -87,6 +87,14 @@ Once connected, Claude can invoke the following SERA tools through natural langu
 | `sera_spot_market_data` | Query live orderbook prices, 24h volume, and metrics from Hyperliquid L1 for any spot token. |
 | `sera_spot_trade` | Propose a spot buy or sell order on Hyperliquid. Creates a governance proposal for approval. |
 
+### Governance & Proposal Approval
+
+| Tool | Description |
+|------|-------------|
+| `sera_proposal_approve` | Approve and immediately execute a pending governance proposal on-chain directly from Claude. |
+| `sera_proposal_reject` | Reject or cancel an active pending proposal. |
+| `sera_proposal_list` | List all pending governance proposals currently waiting for your approval. |
+
 ### Memory & Knowledge
 
 | Tool | Description |
@@ -121,6 +129,11 @@ Once SERA is connected, you can interact naturally:
 
 > **You:** "Check my SERA wallet balance."  
 > **Claude:** *calls `sera_wallet_balance`* → "Your SERA vault has 142.50 USDC and 0.003 ETH on Base."
+
+> **You:** "Send 25 USDC to 0x71C2... to pay for design work."  
+> **Claude:** *calls `sera_wallet_transfer`* → "I've created transfer proposal `prop-1788...` to send 25 USDC to `0x71C2...` on Base. Would you like me to execute this transaction?"  
+> **You:** "Yes, proceed."  
+> **Claude:** *calls `sera_proposal_approve`* → "Done! The transfer has been executed on Base (Tx Hash: `0x3f8a...`)."
 
 > **You:** "Post something interesting about AI on my Threads."  
 > **Claude:** *calls `sera_threads_publish`* → "Done! I posted: 'The most underrated AI skill isn't prompting it's knowing when to let the agent run autonomously.'"

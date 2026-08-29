@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { McpApiKeyStore } from '../src/mcp/McpApiKeyStore';
-import { SeraMcpServer, SeraMcpDependencies } from '../src/mcp/SeraMcpServer';
+import { SeraMcpServer, SeraMcpDependencies, SERA_MCP_TOOLS } from '../src/mcp/SeraMcpServer';
 import { EventEmitter } from 'events';
 import { EventTypes } from '../src/core/events/types';
 import { SubscriptionService } from '../src/server/billing/SubscriptionService';
 import { SubscriptionLedger } from '../src/server/billing/SubscriptionLedger';
+import { ProposalManager } from '../src/core/governance/ProposalManager';
 
 // ── McpApiKeyStore Tests ──────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ describe('SeraMcpServer', () => {
   let subscriptionService: SubscriptionService;
   let mcpServer: SeraMcpServer;
   let mockEventBus: EventEmitter;
+  let mockProposalManager: ProposalManager;
   let mockInstance: any;
 
   beforeEach(() => {
@@ -67,10 +69,12 @@ describe('SeraMcpServer', () => {
     subscriptionLedger = new SubscriptionLedger();
     subscriptionService = new SubscriptionService(subscriptionLedger);
     mockEventBus = new EventEmitter();
+    mockProposalManager = new ProposalManager(mockEventBus);
 
     // Create a mock SeraAgentInstance with the minimum properties needed
     mockInstance = {
       eventBus: mockEventBus,
+      proposalManager: mockProposalManager,
       worldStateService: {
         getWalletState: () => ({
           address: '0xTestAddress',
@@ -98,6 +102,24 @@ describe('SeraMcpServer', () => {
     };
 
     mcpServer = new SeraMcpServer(deps);
+  });
+
+  it('exposes all 17 MCP tools including proposal approval tools', () => {
+    const toolNames = SERA_MCP_TOOLS.map(t => t.name);
+    expect(toolNames).toContain('sera_chat');
+    expect(toolNames).toContain('sera_wallet_balance');
+    expect(toolNames).toContain('sera_wallet_transfer');
+    expect(toolNames).toContain('sera_spot_market_data');
+    expect(toolNames).toContain('sera_spot_trade');
+    expect(toolNames).toContain('sera_gdrive_write');
+    expect(toolNames).toContain('sera_gdrive_read');
+    expect(toolNames).toContain('sera_gdrive_list');
+    expect(toolNames).toContain('sera_gdrive_create_sheet');
+    expect(toolNames).toContain('sera_threads_publish');
+    expect(toolNames).toContain('sera_proposal_approve');
+    expect(toolNames).toContain('sera_proposal_reject');
+    expect(toolNames).toContain('sera_proposal_list');
+    expect(SERA_MCP_TOOLS.length).toBe(17);
   });
 
   it('returns wallet balance via sera_wallet_balance', async () => {
@@ -136,14 +158,9 @@ describe('SeraMcpServer', () => {
     expect(result.content[0].text).toContain('Active');
   });
 
-  it('creates a transfer proposal via sera_wallet_transfer', async () => {
+  it('creates a transfer proposal via sera_wallet_transfer with structured proposal ID', async () => {
     const userId = 'transfer-user';
     apiKeyStore.generateKey(userId);
-
-    let emittedEvent: any = null;
-    mockEventBus.on(EventTypes.SYSTEM_PROPOSE_GOAL, (event: any) => {
-      emittedEvent = event;
-    });
 
     const result = await mcpServer.handleToolCallDirect(
       'sera_wallet_transfer',
@@ -152,11 +169,117 @@ describe('SeraMcpServer', () => {
       mockInstance
     );
 
-    expect(result.content[0].text).toContain('Transfer proposal created');
+    expect(result.content[0].text).toContain('Transfer Proposal Created');
     expect(result.content[0].text).toContain('0xRecipient');
     expect(result.content[0].text).toContain('10 USDC');
-    expect(emittedEvent).not.toBeNull();
-    expect(emittedEvent.payload.intent).toBe('TRANSFER_FUNDS');
+    expect(result.content[0].text).toContain('sera_proposal_approve');
+
+    const pending = mockProposalManager.listPendingProposals();
+    expect(pending.length).toBe(1);
+    expect(pending[0].intent).toBe('TRANSFER_FUNDS');
+  });
+
+  it('lists active proposals via sera_proposal_list', async () => {
+    const userId = 'test-user';
+    apiKeyStore.generateKey(userId);
+
+    // Initial empty
+    const emptyResult = await mcpServer.handleToolCallDirect('sera_proposal_list', {}, userId, mockInstance);
+    expect(emptyResult.content[0].text).toContain('No active proposals');
+
+    // Create proposal
+    mockProposalManager.createProposal({
+      intent: 'TRANSFER_FUNDS',
+      parameters: { to: '0x123', amount: 25, asset: 'USDC' },
+      userMessage: 'Test transfer'
+    });
+
+    const listResult = await mcpServer.handleToolCallDirect('sera_proposal_list', {}, userId, mockInstance);
+    expect(listResult.content[0].text).toContain('Pending Governance Proposals (1)');
+    expect(listResult.content[0].text).toContain('TRANSFER_FUNDS');
+  });
+
+  it('approves and executes a proposal via sera_proposal_approve', async () => {
+    const userId = 'test-user';
+    apiKeyStore.generateKey(userId);
+
+    const proposalId = mockProposalManager.createProposal({
+      intent: 'TRANSFER_FUNDS',
+      parameters: { recipientAddress: '0xTarget', amount: 50, asset: 'USDC' },
+      userMessage: 'Send 50 USDC'
+    });
+
+    // Simulate GoalBridge execution returning DOMAIN_GOAL_RESULT
+    mockEventBus.on(EventTypes.DOMAIN_GOAL_SPAWNED, (event: any) => {
+      setTimeout(() => {
+        mockEventBus.emit(EventTypes.DOMAIN_GOAL_RESULT, {
+          payload: {
+            requestId: event.payload.requestId,
+            success: true,
+            data: {
+              txHash: '0xabcdef1234567890',
+              recipient: '0xTarget',
+              amount: 50,
+              asset: 'USDC',
+              status: 'CONFIRMED'
+            }
+          }
+        });
+      }, 50);
+    });
+
+    const result = await mcpServer.handleToolCallDirect(
+      'sera_proposal_approve',
+      { proposalId },
+      userId,
+      mockInstance
+    );
+
+    expect(result.content[0].text).toContain('Approved and Executed Successfully');
+    expect(result.content[0].text).toContain('0xabcdef1234567890');
+    expect(result.content[0].text).toContain('0xTarget');
+
+    // Proposal should be cleared
+    expect(mockProposalManager.getProposal(proposalId)).toBeUndefined();
+  });
+
+  it('rejects a proposal via sera_proposal_reject', async () => {
+    const userId = 'test-user';
+    apiKeyStore.generateKey(userId);
+
+    const proposalId = mockProposalManager.createProposal({
+      intent: 'HL_SPOT_ORDER',
+      parameters: { coin: 'HYPE', side: 'buy', amount: 100 },
+      userMessage: 'Buy HYPE'
+    });
+
+    const result = await mcpServer.handleToolCallDirect(
+      'sera_proposal_reject',
+      { proposalId, reason: 'Changed my mind' },
+      userId,
+      mockInstance
+    );
+
+    expect(result.content[0].text).toContain('Proposal Cancelled');
+    expect(result.content[0].text).toContain('Changed my mind');
+
+    // Proposal should be removed
+    expect(mockProposalManager.getProposal(proposalId)).toBeUndefined();
+  });
+
+  it('returns error when approving non-existent proposal ID', async () => {
+    const userId = 'test-user';
+    apiKeyStore.generateKey(userId);
+
+    const result = await mcpServer.handleToolCallDirect(
+      'sera_proposal_approve',
+      { proposalId: 'prop-invalid-999' },
+      userId,
+      mockInstance
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('was not found or has already been processed');
   });
 
   it('handles sera_chat by emitting USER_OBSERVED and capturing AGENT_SPEAK', async () => {
@@ -207,3 +330,4 @@ describe('SeraMcpServer', () => {
     expect(result.content[0].text).toContain('No wallet');
   });
 });
+
