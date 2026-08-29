@@ -27,7 +27,7 @@ export class ThreadsOAuthService {
     if (process.env.THREADS_REDIRECT_URI) {
       return process.env.THREADS_REDIRECT_URI;
     }
-    const publicUrl = process.env.SERA_PUBLIC_URL?.replace(/\/$/, '') || 'https://sera-core-212723620663.asia-southeast1.run.app';
+    const publicUrl = process.env.SERA_PUBLIC_URL?.replace(/\/$/, '') || 'https://api.seraos.xyz';
     const secureUrl = publicUrl.startsWith('http://localhost') ? publicUrl : publicUrl.replace(/^http:\/\//, 'https://');
     return `${secureUrl}/api/auth/threads/callback`;
   }

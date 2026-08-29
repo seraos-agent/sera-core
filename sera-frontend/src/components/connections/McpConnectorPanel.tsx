@@ -15,7 +15,7 @@ export function McpConnectorPanel({ theme, onBack, isMobileView, socket }: McpCo
   const [copied, setCopied] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"oauth" | "desktop">("oauth");
 
-  const coreUrl = import.meta.env.VITE_API_URL || "https://sera-core-212723620663.asia-southeast1.run.app";
+  const coreUrl = import.meta.env.VITE_API_URL || "https://mcp.seraos.xyz";
   const sseUrl = `${coreUrl}/mcp/sse`;
   const oauthDiscoveryUrl = `${coreUrl}/.well-known/oauth-authorization-server`;
 

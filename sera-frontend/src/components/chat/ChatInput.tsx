@@ -75,7 +75,7 @@ export function ChatInput({
       const apiUrl = import.meta.env.VITE_API_URL || 
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
           ? 'http://127.0.0.1:3001' 
-          : 'https://sera-core-212723620663.asia-southeast1.run.app');
+          : 'https://api.seraos.xyz');
 
       try {
         const res = await fetch(`${apiUrl}/api/upload/image`, {

@@ -39,6 +39,6 @@ This file enshrines the core architectural constraints of Sera. As an AI buildin
    - **Backend (`sera-core`)**: NEVER use `gcloud run deploy --source .` directly. The root `Dockerfile` is reserved exclusively for the public landing service (`sera-reception`). To deploy the SERA Core Socket/Agent runtime, you MUST:
      1. Build the container image via Cloud Build using: `gcloud builds submit --config cloudbuild.core.yaml .`
      2. Deploy the built image: `gcloud run deploy sera-core --image asia-southeast1-docker.pkg.dev/sera-core/sera-core-images/sera-core-api:latest --region asia-southeast1 --quiet`
-   - **Frontend (`sera-frontend`)**: Deployed from `sera-frontend/` via Vercel (`npx vercel --prod`). Ensure `VITE_API_URL` is set to the Cloud Run public URL (`https://sera-core-212723620663.asia-southeast1.run.app`).
+   - **Frontend (`sera-frontend`)**: Deployed from `sera-frontend/` via Vercel (`npx vercel --prod`). Ensure `VITE_API_URL` is set to the Cloud Run public URL (`https://api.seraos.xyz`).
    - **CORS Configuration**: All `.vercel.app` preview/production domains and authorized custom domains must be permitted in `src/server/config.ts` via `isAllowedOrigin`.
 

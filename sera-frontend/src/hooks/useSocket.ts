@@ -151,7 +151,7 @@ export function useSocket(
     const wsUrl = import.meta.env.VITE_WS_URL || 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
         ? "ws://127.0.0.1:3001" 
-        : "wss://sera-core-212723620663.asia-southeast1.run.app");
+        : "wss://api.seraos.xyz");
     
     const newSocket = io(wsUrl);
     initialServerHistoryReceived.current = false;
