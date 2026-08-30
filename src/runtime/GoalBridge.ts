@@ -334,6 +334,9 @@ export class GoalBridge {
         case 'gdrive:write_file':
           await this.handleGDriveWrite(requestId, actionPayload);
           break;
+        case 'gdrive:append_file':
+          await this.handleGDriveAppend(requestId, actionPayload);
+          break;
         case 'gdrive:read_file':
           await this.handleGDriveRead(requestId, actionPayload);
           break;
@@ -1267,6 +1270,17 @@ export class GoalBridge {
     }
   }
 
+  private async handleGDriveAppend(requestId: string, payload: any): Promise<void> {
+    try {
+      const { filename, content } = payload;
+      if (!filename || content === undefined) throw new Error('GDrive append requires filename and content.');
+      const fileId = await this.googleDriveCapability.appendToFile(this.sessionId, filename, content);
+      this.emitResult(requestId, true, { fileId, filename });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
   private async handleGDriveRead(requestId: string, payload: any): Promise<void> {
     try {
       const { filename, fileId } = payload;
@@ -1287,8 +1301,8 @@ export class GoalBridge {
 
   private async handleGDriveCreateSheet(requestId: string, payload: any): Promise<void> {
     try {
-      const { title, headers, rows } = payload;
-      const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows);
+      const { title, headers, rows, options } = payload;
+      const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows, options);
       this.emitResult(requestId, true, { fileId, title });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);

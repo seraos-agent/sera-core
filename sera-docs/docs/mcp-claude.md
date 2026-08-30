@@ -107,9 +107,10 @@ Once connected, Claude can invoke the following SERA tools through natural langu
 | Tool | Description |
 |------|-------------|
 | `sera_gdrive_write` | Write a document or note to your Google Drive SERA Vault. |
+| `sera_gdrive_append` | Append text content to an existing document, journal, or log in your Google Drive SERA Vault without overwriting existing data. |
 | `sera_gdrive_read` | Read a file from your Google Drive SERA Vault. |
 | `sera_gdrive_list` | List all files inside your SERA Vault folder. |
-| `sera_gdrive_create_sheet` | Create a spreadsheet with headers and data rows in your SERA Vault. |
+| `sera_gdrive_create_sheet` | Create a professionally formatted Excel spreadsheet (`.xlsx`) with executive headers, borders, zebra striping, smart currency/percentage formatting, and live SUM formulas. Opens seamlessly in Google Sheets. |
 
 ### Social Media
 

@@ -105,12 +105,13 @@ describe('MCP Routes & Streamable HTTP Transport', () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.result.tools).toBeDefined();
-      expect(data.result.tools.length).toBe(17);
+      expect(data.result.tools.length).toBe(18);
       const toolNames = data.result.tools.map((t: any) => t.name);
       expect(toolNames).toContain('sera_chat');
       expect(toolNames).toContain('sera_wallet_balance');
       expect(toolNames).toContain('sera_threads_publish');
       expect(toolNames).toContain('sera_gdrive_write');
+      expect(toolNames).toContain('sera_gdrive_append');
       expect(toolNames).toContain('sera_gdrive_read');
       expect(toolNames).toContain('sera_gdrive_list');
       expect(toolNames).toContain('sera_gdrive_create_sheet');

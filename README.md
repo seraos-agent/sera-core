@@ -5,7 +5,7 @@
 **The Sovereign AI Agent Operating System**  
 *Bridging everyday users to autonomous intelligence, Web3 finance, and verifiable privacy without technical friction.*
 
-[![Tests](https://img.shields.io/badge/Tests-140%20passed%20(100%25)-10b981.svg?style=flat-square)](https://github.com/seraos-agent/sera-core)
+[![Tests](https://img.shields.io/badge/Tests-146%20passed%20(100%25)-10b981.svg?style=flat-square)](https://github.com/seraos-agent/sera-core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg?style=flat-square)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.0.0-339933.svg?style=flat-square)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-v1.29-8b5cf6.svg?style=flat-square)](https://modelcontextprotocol.io/)
@@ -119,11 +119,13 @@ SERA connects its cognitive reasoning loop to an extensible catalog of capabilit
 
 ### Model Context Protocol (MCP) Server
 - **Claude Desktop Integration**: Connect Claude Desktop to SERA via Streamable HTTP at `https://mcp.seraos.xyz`.
-- **17 Built-In Tools**: Full suite of agent actions covering chat, memory management, vault transfers, Hyperliquid spot trading, in-conversation proposal approvals, Google Drive CRUD, Threads publishing, and temporal scheduling.
+- **18 Built-In Tools**: Full suite of agent actions covering chat, memory management, vault transfers, Hyperliquid spot trading, in-conversation proposal approvals, Google Drive rich XLSX creation and append, Threads publishing, and temporal scheduling.
 - **6-Digit OTP Pairing**: Connect external clients securely without exposing private keys or long-lived credentials.
 
 ### Google Drive (Second Brain)
 - **Minimal Sandbox**: Scoped strictly to the user's `SERA Vault` folder via Google's `drive.file` scope.
+- **Rich XLSX Spreadsheet Engine**: Generates executive-ready `.xlsx` workbooks with dark navy headers, zebra striping, borders, auto-fit columns, smart currency/percentage formatting, and live SUM formulas.
+- **Document Append & Journaling**: Incremental notes and log appending without destructive overwrites.
 - **Weekly Memory Consolidation**: Automated Sunday export of agent profile (`SERA_Profile.json`), long-term memory snapshots, and weekly journals.
 - **Pre-Purge Retention Archive**: Automatically preserves expiring conversation data before the 90-day hygiene cleanup.
 - **Media Bridge**: Directly references Drive image files when publishing to social platforms.
@@ -180,7 +182,7 @@ sera-core/
 ├── sera-frontend/             # React + Vite web dashboard (app.seraos.xyz)
 ├── sera-docs/                 # Docusaurus documentation site (docs.seraos.xyz)
 ├── sera-landing/              # Public landing page (seraos.xyz)
-├── tests/                     # 140 unit, integration, and simulation tests (100% pass)
+├── tests/                     # 146 unit, integration, and simulation tests (100% pass)
 ├── cloudbuild.core.yaml       # Production Cloud Build pipeline
 └── Dockerfile.core            # Multi-stage production container
 ```

@@ -180,15 +180,36 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_create_sheet',
-    description: 'Create a spreadsheet with headers and data in your Google Drive SERA Vault.',
+    description: 'Create a professionally formatted Excel spreadsheet (.xlsx) in your Google Drive SERA Vault with executive headers, zebra striping, auto-fit column widths, smart currency/percentage formatting, and live SUM formulas. Opens seamlessly in Google Sheets.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         title: { type: 'string', description: 'Name of the spreadsheet' },
-        headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
-        rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Data rows' }
+        headers: { type: 'array', items: { type: 'string' }, description: 'Column headers (e.g. ["Category", "Amount (IDR)", "Status"])' },
+        rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas like "=SUM(B2:B10)")' },
+        options: {
+          type: 'object',
+          description: 'Optional formatting options (sheetName, themeColor hex without #, includeSummaryRow boolean)',
+          properties: {
+            sheetName: { type: 'string' },
+            themeColor: { type: 'string' },
+            includeSummaryRow: { type: 'boolean' }
+          }
+        }
       },
       required: ['title', 'headers', 'rows']
+    }
+  },
+  {
+    name: 'sera_gdrive_append',
+    description: 'Append text content to an existing document, note, or log in your Google Drive SERA Vault without overwriting existing data.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Name of the file to append to (creates file if not exists)' },
+        content: { type: 'string', description: 'The text content to append' }
+      },
+      required: ['filename', 'content']
     }
   },
   {
@@ -298,6 +319,8 @@ export class SeraMcpServer {
         return this.handleGDriveList(instance, args);
       case 'sera_gdrive_create_sheet':
         return this.handleGDriveCreateSheet(instance, args);
+      case 'sera_gdrive_append':
+        return this.handleGDriveAppend(instance, args);
       case 'sera_proposal_approve':
         return await this.handleProposalApprove(instance, args.proposalId);
       case 'sera_proposal_reject':
@@ -943,11 +966,26 @@ export class SeraMcpServer {
   private async handleGDriveCreateSheet(instance: any, args: Record<string, any>): Promise<any> {
     try {
       const cap = await this.getGDriveCapability();
-      const fileId = await cap.createSpreadsheet(instance.sessionId || instance.userId || 'dev', args.title, args.headers, args.rows);
-      return { content: [{ type: 'text', text: `📊 Successfully created spreadsheet "${args.title}" (ID: ${fileId}) in Google Drive.` }] };
+      const fileId = await cap.createSpreadsheet(
+        instance.sessionId || instance.userId || 'dev',
+        args.title,
+        args.headers,
+        args.rows,
+        args.options
+      );
+      return { content: [{ type: 'text', text: `📊 Successfully created formatted spreadsheet "${args.title}" (ID: ${fileId}) in Google Drive SERA Vault.` }] };
     } catch (e: any) {
       return { isError: true, content: [{ type: 'text', text: `Failed to create spreadsheet: ${e.message}` }] };
     }
   }
 
+  private async handleGDriveAppend(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const fileId = await cap.appendToFile(instance.sessionId || instance.userId || 'dev', args.filename, args.content);
+      return { content: [{ type: 'text', text: `📝 Successfully appended content to "${args.filename}" (ID: ${fileId}) in Google Drive SERA Vault.` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to append to file: ${e.message}` }] };
+    }
+  }
 }

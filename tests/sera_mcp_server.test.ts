@@ -112,6 +112,7 @@ describe('SeraMcpServer', () => {
     expect(toolNames).toContain('sera_spot_market_data');
     expect(toolNames).toContain('sera_spot_trade');
     expect(toolNames).toContain('sera_gdrive_write');
+    expect(toolNames).toContain('sera_gdrive_append');
     expect(toolNames).toContain('sera_gdrive_read');
     expect(toolNames).toContain('sera_gdrive_list');
     expect(toolNames).toContain('sera_gdrive_create_sheet');
@@ -119,7 +120,7 @@ describe('SeraMcpServer', () => {
     expect(toolNames).toContain('sera_proposal_approve');
     expect(toolNames).toContain('sera_proposal_reject');
     expect(toolNames).toContain('sera_proposal_list');
-    expect(SERA_MCP_TOOLS.length).toBe(17);
+    expect(SERA_MCP_TOOLS.length).toBe(18);
   });
 
   it('returns wallet balance via sera_wallet_balance', async () => {

@@ -1,4 +1,5 @@
 import { GoogleDriveConnectionRepository } from '../../core/integrations/google-drive/GoogleDriveConnectionRepository';
+import { SpreadsheetEngine, SpreadsheetOptions } from './SpreadsheetEngine';
 
 export class GoogleDriveCapability {
   constructor(
@@ -87,7 +88,7 @@ export class GoogleDriveCapability {
     return res.text();
   }
 
-  public async writeFile(userId: string, name: string, content: string, mimeType: string = 'text/plain'): Promise<string> {
+  public async writeBuffer(userId: string, name: string, buffer: Buffer, mimeType: string): Promise<string> {
     const token = await this.getAccessToken(userId);
     const folderId = await this.getVaultFolderId(userId);
 
@@ -109,39 +110,71 @@ export class GoogleDriveCapability {
     };
 
     const boundary = '-------314159265358979323846';
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelimiter = `\r\n--${boundary}--`;
+    const delimiter = Buffer.from(`\r\n--${boundary}\r\n`, 'utf-8');
+    const closeDelimiter = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
 
-    const multipartRequestBody =
-      delimiter +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      JSON.stringify(metadata) +
-      delimiter +
-      `Content-Type: ${mimeType}\r\n\r\n` +
-      content +
-      closeDelimiter;
+    const metadataHeader = Buffer.from(
+      `Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}`,
+      'utf-8'
+    );
+    const mediaHeader = Buffer.from(`Content-Type: ${mimeType}\r\n\r\n`, 'utf-8');
+
+    const multipartRequestBody = Buffer.concat([
+      delimiter,
+      metadataHeader,
+      delimiter,
+      mediaHeader,
+      buffer,
+      closeDelimiter
+    ]);
 
     const res = await this.fetchImpl(url, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': String(multipartRequestBody.length)
       },
       body: multipartRequestBody
     });
 
-    if (!res.ok) throw new Error(`Write file failed: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Write buffer failed: ${await res.text()}`);
     const data = await res.json() as any;
     return data.id;
   }
 
-  public async createSpreadsheet(userId: string, title: string, headers: string[], rows: any[][]): Promise<string> {
-    // Implementing as CSV for simplicity per implementation plan
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-    return this.writeFile(userId, title, csvContent, 'text/csv');
+  public async writeFile(userId: string, name: string, content: string, mimeType: string = 'text/plain'): Promise<string> {
+    return this.writeBuffer(userId, name, Buffer.from(content, 'utf-8'), mimeType);
+  }
+
+  public async appendToFile(userId: string, name: string, contentToAppend: string): Promise<string> {
+    const existing = await this.listFiles(userId, { name });
+    if (existing.length === 0) {
+      return this.writeFile(userId, name, contentToAppend, 'text/plain');
+    }
+
+    const currentContent = await this.readFile(userId, existing[0].id);
+    const separator = currentContent.endsWith('\n') ? '' : '\n';
+    const combinedContent = currentContent + separator + contentToAppend;
+    return this.writeFile(userId, name, combinedContent, existing[0].mimeType || 'text/plain');
+  }
+
+  public async createSpreadsheet(
+    userId: string,
+    title: string,
+    headers: string[],
+    rows: any[][],
+    options?: SpreadsheetOptions
+  ): Promise<string> {
+    const fileName = title.toLowerCase().endsWith('.xlsx') ? title : `${title}.xlsx`;
+    const xlsxBuffer = await SpreadsheetEngine.generateWorkbook(title, headers, rows, options);
+    
+    return this.writeBuffer(
+      userId,
+      fileName,
+      xlsxBuffer,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
   }
 
   public async getPublicMediaUrl(userId: string, fileId: string): Promise<string> {
