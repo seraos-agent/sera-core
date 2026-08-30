@@ -130,8 +130,8 @@ function InnerApp() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const handleSendMessage = (text: string, images?: string[]) => {
-    sendMessage(text, images);
+  const handleSendMessage = (text: string, images?: string[], documents?: any[]) => {
+    sendMessage(text, images, documents);
   };
 
   const shellWidth = "100%";

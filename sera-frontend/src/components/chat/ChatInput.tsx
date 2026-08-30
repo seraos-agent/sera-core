@@ -1,8 +1,8 @@
 import React, { useRef, useState } from "react";
-import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic, Loader2 } from "lucide-react";
+import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic, Loader2, FileSpreadsheet } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
-interface ImageAttachment {
+export interface ImageAttachment {
   id: string;
   previewUrl: string;
   publicUrl?: string;
@@ -12,9 +12,18 @@ interface ImageAttachment {
   error?: string;
 }
 
+export interface DocumentAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  content?: string;
+  base64?: string;
+}
+
 interface ChatInputProps {
   theme: ThemeType;
-  onSend: (text: string, images?: string[]) => void;
+  onSend: (text: string, images?: string[], documents?: DocumentAttachment[]) => void;
   disabled?: boolean;
   isProcessing?: boolean;
   onToggleObservations?: () => void;
@@ -38,6 +47,7 @@ export function ChatInput({
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
+  const [documentAttachments, setDocumentAttachments] = useState<DocumentAttachment[]>([]);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,11 +105,45 @@ export function ChatInput({
     };
   };
 
+  const uploadDocumentFile = (file: File) => {
+    const id = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const ext = file.name.toLowerCase().split('.').pop() || '';
+    const isBinary = ext === 'xlsx' || ext === 'xls' || ext === 'pdf';
+
+    const reader = new FileReader();
+    if (isBinary) {
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1] || dataUrl;
+        setDocumentAttachments(prev => [...prev, {
+          id,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          base64
+        }]);
+      };
+    } else {
+      reader.readAsText(file);
+      reader.onload = () => {
+        const text = reader.result as string;
+        setDocumentAttachments(prev => [...prev, {
+          id,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'text/plain',
+          content: text
+        }]);
+      };
+    }
+  };
+
   const handleAttachOption = (type: 'document' | 'image' | 'camera') => {
     setShowAttachMenu(false);
     if (fileInputRef.current) {
       if (type === 'document') {
-        fileInputRef.current.accept = '.pdf,.txt,.csv,.md,.json';
+        fileInputRef.current.accept = '.csv,.xlsx,.xls,.json,.txt,.md,.pdf';
         fileInputRef.current.removeAttribute('capture');
       } else if (type === 'image') {
         fileInputRef.current.accept = 'image/*';
@@ -119,7 +163,7 @@ export function ChatInput({
     if (file.type.startsWith('image/')) {
       uploadImageFile(file);
     } else {
-      setAttachments(prev => [...prev, `[Attached Document: ${file.name}]`]);
+      uploadDocumentFile(file);
     }
     e.target.value = ''; // Reset
   };
@@ -163,8 +207,9 @@ export function ChatInput({
     const hasText = !!input.trim();
     const hasAttachments = attachments.length > 0;
     const hasImages = imageAttachments.length > 0;
+    const hasDocs = documentAttachments.length > 0;
 
-    if ((!hasText && !hasAttachments && !hasImages) || disabled) return;
+    if ((!hasText && !hasAttachments && !hasImages && !hasDocs) || disabled) return;
     
     let finalText = "";
     if (attachments.length > 0) {
@@ -178,14 +223,19 @@ export function ChatInput({
       .map(img => img.publicUrl || img.previewUrl)
       .filter(Boolean);
     
-    onSend(finalText.trim(), imageUrls.length > 0 ? imageUrls : undefined);
+    onSend(
+      finalText.trim(), 
+      imageUrls.length > 0 ? imageUrls : undefined,
+      documentAttachments.length > 0 ? documentAttachments : undefined
+    );
     setInput("");
     setAttachments([]);
     setImageAttachments([]);
+    setDocumentAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
-  const canSend = isProcessing || (input.trim() || attachments.length > 0 || imageAttachments.length > 0) && !disabled;
+  const canSend = isProcessing || (input.trim() || attachments.length > 0 || imageAttachments.length > 0 || documentAttachments.length > 0) && !disabled;
 
   return (
     <div style={{ padding: "0", flexShrink: 0 }}>
@@ -208,8 +258,8 @@ export function ChatInput({
             padding: "12px 14px 10px",
           }}
         >
-          {/* Image & Text Attachments Preview Strip */}
-          {(attachments.length > 0 || imageAttachments.length > 0) && (
+          {/* Image, Document & Text Attachments Preview Strip */}
+          {(attachments.length > 0 || imageAttachments.length > 0 || documentAttachments.length > 0) && (
             <div style={{ display: "flex", gap: 10, padding: "4px 8px 12px", overflowX: "auto", flexWrap: "wrap" }}>
               {/* Image Previews: Clean square thumbnail with floating X button */}
               {imageAttachments.map((img) => (
@@ -264,6 +314,40 @@ export function ChatInput({
                   </button>
                 </div>
               ))}
+
+              {/* Document Attachments: Excel / CSV / TXT chips */}
+              {documentAttachments.map((doc) => {
+                const isSpreadsheet = doc.name.endsWith('.csv') || doc.name.endsWith('.xlsx') || doc.name.endsWith('.xls');
+                const sizeKb = (doc.size / 1024).toFixed(1);
+                return (
+                  <div key={doc.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    background: theme.surface2, padding: "6px 10px", borderRadius: 10,
+                    border: `1px solid ${theme.border}`, fontSize: 13, color: theme.ink
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {isSpreadsheet ? (
+                        <FileSpreadsheet size={16} color="#10B981" />
+                      ) : (
+                        <FileText size={16} color={theme.accent} />
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", maxWidth: 160, overflow: "hidden" }}>
+                        <span style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {doc.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: theme.inkFaint }}>{sizeKb} KB</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setDocumentAttachments(prev => prev.filter(d => d.id !== doc.id))} 
+                      style={{ background: "transparent", border: "none", cursor: "pointer", color: theme.inkSoft, display: "flex", padding: 2, marginLeft: 4 }}
+                      title="Remove file"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                );
+              })}
 
               {/* Pasted text attachments */}
               {attachments.map((_, idx) => (

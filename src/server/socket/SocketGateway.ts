@@ -18,6 +18,7 @@ import { StandardEvent, EventTypes } from '../../core/events/types';
 import { SeraUserContext } from '../../core/identity/types';
 import { BaseAdapter } from '../../capabilities/wallet/chains/BaseAdapter';
 import { generateSessionToken, verifySessionToken, WalletLinkChallenge } from './socketAuth';
+import { DocumentParserService, ParsedDocumentResult } from '../../core/ingestion/DocumentParserService';
 
 export interface SocketGatewayDependencies {
   agentManager: AgentManager;
@@ -652,10 +653,11 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
     });
 
-    const processChatMessage = (rawPayload: any) => {
+    const processChatMessage = async (rawPayload: any) => {
       let message = '';
       let clientMessageId: string | undefined = undefined;
       let images: string[] | undefined = undefined;
+      let documents: ParsedDocumentResult[] | undefined = undefined;
 
       if (typeof rawPayload === 'string') {
         message = rawPayload;
@@ -667,9 +669,30 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         } else if (rawPayload.imageUrl) {
           images = [rawPayload.imageUrl];
         }
+
+        if (Array.isArray(rawPayload.documents) && rawPayload.documents.length > 0) {
+          const parsedList: ParsedDocumentResult[] = [];
+          for (const doc of rawPayload.documents) {
+            if (doc.formattedMarkdownTable && doc.detectedType) {
+              parsedList.push(doc);
+            } else if (doc.content || doc.base64) {
+              try {
+                const parsed = await DocumentParserService.parseDocument(
+                  doc.base64 ? Buffer.from(doc.base64, 'base64') : (doc.content || ''),
+                  doc.name || doc.filename || 'document.csv',
+                  doc.mimeType || doc.type || 'text/csv'
+                );
+                parsedList.push(parsed);
+              } catch (err: any) {
+                console.warn('[SocketGateway] Failed to parse attached document:', err.message);
+              }
+            }
+          }
+          if (parsedList.length > 0) documents = parsedList;
+        }
       }
 
-      if (!message && (!images || images.length === 0)) return;
+      if (!message && (!images || images.length === 0) && (!documents || documents.length === 0)) return;
 
       socketObservationBuffer = [];
       console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
@@ -698,7 +721,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         id: `evt-${msgTimestamp}`,
         type: EventTypes.DIALOGUE_USER_OBSERVED,
         source: 'SocketServer',
-        payload: { message, images },
+        payload: { message, images, documents },
         timestamp: msgTimestamp,
       };
 
@@ -727,7 +750,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
 
       if (!requireAuthenticatedSession(socket, 'chat:message', instance?.eventBus)) return;
-      processChatMessage(rawPayload);
+      await processChatMessage(rawPayload);
     });
 
     socket.on('chat:clear', () => {

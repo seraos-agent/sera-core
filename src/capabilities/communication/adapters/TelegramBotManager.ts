@@ -3,6 +3,7 @@ import { AgentManager } from '../../../server/AgentManager';
 import { SecretManager } from '../../../core/secrets/SecretManager';
 import { EventTypes, StandardEvent } from '../../../core/events/types';
 import { ResponseContext } from '../types';
+import { DocumentParserService } from '../../../core/ingestion/DocumentParserService';
 
 export class TelegramBotManager {
   private bot: Telegraf | null = null;
@@ -83,6 +84,56 @@ export class TelegramBotManager {
       };
 
       instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
+    });
+
+    this.bot.on('document', async (ctx) => {
+      const tgId = ctx.message.from.id.toString();
+      const sessionId = await this.secretManager.getSecret(`TG_USER_${tgId}`);
+
+      if (!sessionId) {
+        ctx.reply('You are not linked. Go to the SERA Dashboard and generate a pairing code. Then send: /start <CODE>');
+        return;
+      }
+
+      const instance = this.agentManager.getOrCreateInstance(sessionId);
+      const doc = ctx.message.document;
+      const fileName = doc.file_name || 'document.csv';
+      const mimeType = doc.mime_type || 'application/octet-stream';
+      const caption = ctx.message.caption || '';
+
+      try {
+        await ctx.sendChatAction('typing');
+        const fileUrl = await ctx.telegram.getFileLink(doc.file_id);
+        const res = await fetch(fileUrl.toString());
+        const arrayBuf = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+
+        const parsedDoc = await DocumentParserService.parseDocument(buffer, fileName, mimeType);
+
+        const responseContext: ResponseContext = {
+          platform: 'telegram',
+          channelId: tgId,
+          senderId: tgId,
+        };
+
+        const event: StandardEvent = {
+          id: `evt-tg-doc-${Date.now()}`,
+          type: EventTypes.DIALOGUE_USER_OBSERVED,
+          source: 'TelegramAdapter',
+          payload: {
+            message: caption || `I uploaded a document: ${fileName}. Please analyze it, summarize the key figures, and let me know if you should create a spreadsheet with charts.`,
+            documents: [parsedDoc],
+            _responseContext: responseContext,
+            responseContext
+          },
+          timestamp: Date.now(),
+        };
+
+        instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
+      } catch (err: any) {
+        console.error('[TelegramBotManager] Error processing document:', err);
+        ctx.reply(`⚠️ Failed to parse document: ${err.message}`);
+      }
     });
 
     // Handle GOAL_REQUIRES_APPROVAL callbacks

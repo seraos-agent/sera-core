@@ -42,7 +42,7 @@ export function useSocket(
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const outboxQueue = useRef<Array<{ id: number; clientMessageId?: string; text: string; images?: string[] }>>([]);
+  const outboxQueue = useRef<Array<{ id: number; clientMessageId?: string; text: string; images?: string[]; documents?: any[] }>>([]);
   const initialServerHistoryReceived = useRef(false);
   const deviceVaultWriteQueue = useRef(Promise.resolve());
   const googleDrivePopup = useRef<Window | null>(null);
@@ -174,7 +174,7 @@ export function useSocket(
       if (outboxQueue.current.length > 0) {
         console.log(`[useSocket] Draining ${outboxQueue.current.length} pending message(s) from outbox...`);
         outboxQueue.current.forEach((item: any) => {
-          newSocket.emit("chat:message", { clientMessageId: item.clientMessageId, message: item.text, images: item.images });
+          newSocket.emit("chat:message", { clientMessageId: item.clientMessageId, message: item.text, images: item.images, documents: item.documents });
         });
         const flushedIds = new Set(outboxQueue.current.map((i: any) => i.clientMessageId || i.id));
         setMessages((prev) => prev.map((m) => (flushedIds.has(m.clientMessageId) || flushedIds.has(m.id)) ? { ...m, status: 'sent' } : m));
@@ -393,8 +393,8 @@ export function useSocket(
     };
   }, [streamReply, setWalletState, setMode, localChatKey]);
 
-  const sendMessage = useCallback((text: string, images?: string[]) => {
-    if ((!text || !text.trim()) && (!images || images.length === 0)) return;
+  const sendMessage = useCallback((text: string, images?: string[], documents?: any[]) => {
+    if ((!text || !text.trim()) && (!images || images.length === 0) && (!documents || documents.length === 0)) return;
     const clientMessageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const msgId = Date.now();
     const isReady = !!(socket && socket.connected && isAuthenticated);
@@ -404,16 +404,17 @@ export function useSocket(
       role: "user", 
       content: text, 
       images,
+      documents,
       status: isReady ? 'sent' : 'pending' 
     };
 
     setMessages((prev) => [...prev, userMsg]);
 
     if (isReady) {
-      socket.emit("chat:message", { clientMessageId, message: text, images });
+      socket.emit("chat:message", { clientMessageId, message: text, images, documents });
     } else {
       console.log(`[useSocket] Socket not yet fully authenticated. Enqueueing message (${clientMessageId}) into Outbox.`);
-      outboxQueue.current.push({ id: msgId, clientMessageId, text, images });
+      outboxQueue.current.push({ id: msgId, clientMessageId, text, images, documents });
       
       // If socket is connected but not auth, trigger a challenge to speed up authentication
       if (socket && socket.connected && !isAuthenticated) {

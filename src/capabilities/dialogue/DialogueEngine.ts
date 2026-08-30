@@ -508,6 +508,26 @@ Guidelines:
           });
         }
 
+        const attachedDocs: any[] = event?.payload?.documents || [];
+        const hasDocs = attachedDocs.length > 0;
+        if (hasDocs) {
+          for (const doc of attachedDocs) {
+            let docSummary = `[SYSTEM NOTIFICATION: DOCUMENT INGESTED]\nFile: ${doc.filename} (${doc.detectedType}, ${doc.totalRows} rows)\n`;
+            if (doc.summaryMetrics && Object.keys(doc.summaryMetrics).length > 0) {
+              docSummary += `Key Metrics: ${JSON.stringify(doc.summaryMetrics, null, 2)}\n\n`;
+            }
+            docSummary += `Data Preview / Table:\n${doc.formattedMarkdownTable}\n\n`;
+            docSummary += `Guidelines for Ingested Documents:
+- Summarize the key figures clearly and accurately (e.g. gross revenue, marketplace/platform fees, net profit/payout, total transactions/orders).
+- If the user asks to save, organize, or create a chart/report for this data, invoke the GDRIVE_CREATE_SPREADSHEET or sera_gdrive_create_sheet tool with 'options.chart' (such as COLUMN, LINE, or PIE) to generate a permanent Google Spreadsheet with live interactive charts in their Google Drive.`;
+
+            messages.push({
+              role: 'user',
+              content: docSummary
+            });
+          }
+        }
+
         const rawTools = typeof this.capabilityCatalog?.availableTools === 'function'
           ? this.capabilityCatalog.availableTools()
           : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
@@ -549,7 +569,7 @@ Guidelines:
         });
 
         // JIT Dynamic Tool Gating: pass only relevant tools to reduce prefill latency and token bloat
-        const availableTools = this.filterToolsJIT(rawTools, userMessage, hasImages);
+        const availableTools = this.filterToolsJIT(rawTools, userMessage, hasImages, hasDocs);
 
         this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
         const toolTier = hasImages ? 'Vision' : (workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution');
@@ -672,7 +692,7 @@ Guidelines:
    * JIT Dynamic Tool Gating: Selects only the necessary tool schemas for the current turn,
    * avoiding 2,000+ token context bloat and reducing prefill latency for casual & domain-specific requests.
    */
-  private filterToolsJIT(allTools: any[], userMessage: string, hasImages: boolean): any[] {
+  private filterToolsJIT(allTools: any[], userMessage: string, hasImages: boolean, hasDocs: boolean = false): any[] {
     const msg = (userMessage || '').toLowerCase();
     
     // Core always-available tools
@@ -680,11 +700,11 @@ Guidelines:
     
     // Determine active domains from user message
     const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap|makasih|thanks|thank you|pagi|siang|sore|malam)[\.!\s]*$/i.test(userMessage.trim());
-    if (isPureGreeting && !hasImages) {
+    if (isPureGreeting && !hasImages && !hasDocs) {
       return allTools.filter(t => coreToolNames.has(t.name));
     }
 
-    const needsDrive = /\b(drive|gdrive|sheet|spreadsheet|excel|xlsx|dokumen|file|doc|catatan|tabel|vault)\b/i.test(msg);
+    const needsDrive = /\b(drive|gdrive|sheet|spreadsheet|excel|xlsx|dokumen|file|doc|catatan|tabel|vault)\b/i.test(msg) || hasDocs;
     const needsWalletTrading = /\b(balance|saldo|transfer|kirim|send|usdc|eth|hype|buy|beli|sell|jual|trade|trading|order|swap|wallet|dompet)\b/i.test(msg);
     const needsSearch = /\b(cari|search|berita|news|harga|price|info|google|kapan|siapa|apakah|berapa)\b/i.test(msg);
     const needsSchedule = /\b(schedule|jadwal|timer|cron|every|setiap|otomatis|automation|menit|jam|hari)\b/i.test(msg);

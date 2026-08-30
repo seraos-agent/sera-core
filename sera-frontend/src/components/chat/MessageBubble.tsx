@@ -1,4 +1,4 @@
-import { Activity, Copy, Check, ExternalLink, Download, Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Activity, Copy, Check, ExternalLink, Download, Maximize2, X, ZoomIn, ZoomOut, FileSpreadsheet, FileText } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
@@ -396,6 +396,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
   }
 
   const hasImages = msg.images && msg.images.length > 0;
+  const hasDocs = msg.documents && msg.documents.length > 0;
   const hasText = Boolean(displayContent && displayContent.trim());
 
   return (
@@ -407,6 +408,52 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
       }}
     >
       <div style={{ maxWidth: "100%", width: isUser ? "auto" : "100%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
+        {/* Document Attachments Card */}
+        {hasDocs && (
+          <div style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: hasText || hasImages ? 8 : 0,
+            justifyContent: isUser ? "flex-end" : "flex-start",
+            maxWidth: "100%"
+          }}>
+            {msg.documents.map((doc: any, i: number) => {
+              const name = doc.name || doc.filename || 'document.csv';
+              const isSpreadsheet = name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls');
+              const sizeKb = doc.size ? (doc.size / 1024).toFixed(1) + ' KB' : (doc.totalRows ? `${doc.totalRows} rows` : 'File');
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: isUser ? theme.bubbleUser : theme.surface2,
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${theme.border}`,
+                    color: isUser ? theme.bubbleUserInk : theme.ink,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
+                  }}
+                >
+                  {isSpreadsheet ? (
+                    <FileSpreadsheet size={18} color="#10B981" />
+                  ) : (
+                    <FileText size={18} color={theme.accent} />
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column", maxWidth: 220, overflow: "hidden" }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {name}
+                    </span>
+                    <span style={{ fontSize: 11, opacity: 0.75 }}>{sizeKb}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Standalone Media Attachment Cards (Separated from Text Bubble) */}
         {hasImages && (
           <div style={{
