@@ -3,11 +3,28 @@ import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
-  const [zoom, setZoom] = useState(1);
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [dismissProgress, setDismissProgress] = useState(0);
 
+  const initialDistanceRef = useRef<number | null>(null);
+  const initialScaleRef = useRef<number>(1);
+  const lastTapRef = useRef<number>(0);
+  const touchStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Reset position when zoom is reset to 1
+  useEffect(() => {
+    if (scale <= 1) {
+      setPosition({ x: 0, y: 0 });
+    }
+  }, [scale]);
+
+  // Keyboard Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -16,74 +33,174 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Double tap / double click to toggle zoom
+  const handleDoubleTap = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      setScale(current => (current > 1.2 ? 1 : 2.5));
+      setPosition({ x: 0, y: 0 });
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  };
+
+  // Touch event handlers for mobile gestures
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // 2 fingers: Pinch gesture
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      initialDistanceRef.current = dist;
+      initialScaleRef.current = scale;
+      setIsDragging(false);
+    } else if (e.touches.length === 1) {
+      // 1 finger: Drag / Pan or Swipe-to-dismiss
+      touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      setDragStart({ x: e.touches[0].clientX - position.x, y: e.touches[0].clientY - position.y });
+      setIsDragging(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialDistanceRef.current !== null) {
+      // Pinching
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const factor = dist / initialDistanceRef.current;
+      const newScale = Math.min(Math.max(initialScaleRef.current * factor, 0.8), 4.5);
+      setScale(newScale);
+    } else if (e.touches.length === 1 && isDragging) {
+      const deltaX = e.touches[0].clientX - touchStartRef.current.x;
+      const deltaY = e.touches[0].clientY - touchStartRef.current.y;
+
+      if (scale > 1.05) {
+        // Pan while zoomed in
+        setPosition({
+          x: e.touches[0].clientX - dragStart.x,
+          y: e.touches[0].clientY - dragStart.y
+        });
+      } else {
+        // Swipe down to dismiss at normal scale
+        if (deltaY > 0) {
+          setDismissProgress(deltaY);
+          setPosition({ x: deltaX * 0.3, y: deltaY });
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    initialDistanceRef.current = null;
+    setIsDragging(false);
+
+    if (scale < 1) {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+    }
+
+    if (scale <= 1.05 && dismissProgress > 90) {
+      onClose();
+    } else {
+      setDismissProgress(0);
+      if (scale <= 1.05) {
+        setPosition({ x: 0, y: 0 });
+      }
+    }
+  };
+
+  // Mouse wheel zoom on desktop
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.25 : 0.25;
+    setScale(s => Math.min(Math.max(s + delta, 1), 4));
+  };
+
+  // Mouse drag on desktop
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale > 1.05) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && scale > 1.05) {
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const opacity = Math.max(0.2, 1 - dismissProgress / 300);
+
   return (
     <div
       onClick={onClose}
+      onWheel={handleWheel}
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.88)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+        background: `rgba(0, 0, 0, ${0.9 * opacity})`,
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 24,
+        overflow: 'hidden',
+        touchAction: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
-      {/* Controls */}
+      {/* Floating Controls */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
-          top: 20,
-          right: 24,
+          top: 16,
+          right: 16,
           display: 'flex',
-          gap: 10,
+          gap: 8,
           zIndex: 100000
         }}
       >
         <button
-          onClick={() => setZoom(z => Math.min(z + 0.25, 3))}
-          title="Zoom In"
+          onClick={() => {
+            setScale(current => (current > 1.2 ? 1 : 2.5));
+            setPosition({ x: 0, y: 0 });
+          }}
+          title="Toggle Zoom"
           style={{
             background: 'rgba(255, 255, 255, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.25)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             color: '#fff',
             borderRadius: '50%',
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            transition: 'background 0.2s'
           }}
         >
-          <ZoomIn size={18} />
-        </button>
-        <button
-          onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))}
-          title="Zoom Out"
-          style={{
-            background: 'rgba(255, 255, 255, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.25)',
-            color: '#fff',
-            borderRadius: '50%',
-            width: 40,
-            height: 40,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'background 0.2s'
-          }}
-        >
-          <ZoomOut size={18} />
+          {scale > 1.2 ? <ZoomOut size={17} /> : <ZoomIn size={17} />}
         </button>
         <a
           href={src}
@@ -93,64 +210,95 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
           title="Download Image"
           style={{
             background: 'rgba(255, 255, 255, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.25)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             color: '#fff',
             borderRadius: '50%',
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
             textDecoration: 'none',
-            transition: 'background 0.2s'
           }}
         >
-          <Download size={18} />
+          <Download size={17} />
         </a>
         <button
           onClick={onClose}
           title="Close (Esc)"
           style={{
             background: 'rgba(255, 255, 255, 0.2)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255, 255, 255, 0.3)',
             color: '#fff',
             borderRadius: '50%',
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            transition: 'background 0.2s'
           }}
         >
-          <X size={20} />
+          <X size={19} />
         </button>
       </div>
 
-      {/* Image Display */}
+      {/* Helper hint for mobile/desktop */}
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: '90vw',
+          position: 'absolute',
+          bottom: 20,
+          background: 'rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          color: 'rgba(255, 255, 255, 0.75)',
+          fontSize: 12,
+          padding: '6px 14px',
+          borderRadius: 20,
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          pointerEvents: 'none'
+        }}
+      >
+        {scale > 1 ? 'Drag to pan • Double-tap to reset' : 'Pinch or double-tap to zoom • Swipe down to close'}
+      </div>
+
+      {/* Interactive Image Container */}
+      <div
+        onClick={handleDoubleTap}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        style={{
+          maxWidth: '96vw',
           maxHeight: '90vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transform: `scale(${zoom})`,
-          transition: 'transform 0.2s ease-out'
+          transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
+          transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in',
+          touchAction: 'none'
         }}
       >
         <img
           src={src}
-          alt="Enlarged preview"
+          alt="Preview"
+          draggable={false}
           style={{
             maxWidth: '100%',
             maxHeight: '85vh',
             objectFit: 'contain',
             borderRadius: 12,
-            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.6)',
+            pointerEvents: 'none'
           }}
         />
       </div>
