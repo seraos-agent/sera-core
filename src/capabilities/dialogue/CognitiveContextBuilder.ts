@@ -48,7 +48,7 @@ export class CognitiveContextBuilder {
     const memoryContext = this.memoryQueryService.toPromptContext(memoryAttention);
 
     // High-Efficiency Streamlined Cognitive Working Memory (Markdown format)
-    let cognitiveStateMarkdown = `[RUNTIME STATE]\n- Current UTC Time: ${new Date().toUTCString()}\n- User Wallet: ${walletState?.address || 'Not connected'}\n- Active Connectors: ${activeCaps}`;
+    let cognitiveStateMarkdown = `[COGNITIVE STATE (WORKING MEMORY)]\n- Current UTC Time: ${new Date().toUTCString()}\n- User Wallet: ${walletState?.address || 'Not connected'}\n- Active Connectors: ${activeCaps}`;
     if (memoryContext?.items && memoryContext.items.length > 0) {
       cognitiveStateMarkdown += `\n\n[RELEVANT MEMORY ATTENTION]\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;
     }
