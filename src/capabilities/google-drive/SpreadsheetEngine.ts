@@ -1,9 +1,26 @@
 import ExcelJS from 'exceljs';
 
+export type ChartType = 'COLUMN' | 'BAR' | 'LINE' | 'PIE' | 'AREA';
+
+export interface ChartPosition {
+  anchorCell?: string;   // e.g. "G2" or cell address
+  widthPixels?: number;  // default 600
+  heightPixels?: number; // default 380
+}
+
+export interface ChartDefinition {
+  title?: string;
+  type: ChartType;
+  categoryColumn?: number; // 0-indexed column for X-axis / labels (default: 0)
+  valueColumns?: number[];  // 0-indexed column(s) for Y-axis / series values (default: inferred numeric columns)
+  position?: ChartPosition;
+}
+
 export interface SpreadsheetOptions {
   sheetName?: string;
   themeColor?: string; // Header background hex without # (default: '0F172A')
   includeSummaryRow?: boolean; // If true, adds a SUM total row for numeric columns
+  chart?: ChartDefinition;     // Optional native chart configuration
 }
 
 export interface SheetDefinition {
@@ -494,5 +511,162 @@ export class SpreadsheetEngine {
       colNum = Math.floor((colNum - 1) / 26);
     }
     return letter;
+  }
+
+  /**
+   * Translates a cell address (e.g. "G2") to 0-indexed { rowIndex, columnIndex }.
+   */
+  public static parseCellAddress(address: string = 'G2'): { rowIndex: number; columnIndex: number } {
+    const match = address.toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (!match) return { rowIndex: 1, columnIndex: 6 };
+    const colStr = match[1];
+    const rowNum = parseInt(match[2], 10);
+    let colIndex = 0;
+    for (let i = 0; i < colStr.length; i++) {
+      colIndex = colIndex * 26 + (colStr.charCodeAt(i) - 64);
+    }
+    return {
+      rowIndex: Math.max(0, rowNum - 1),
+      columnIndex: Math.max(0, colIndex - 1)
+    };
+  }
+
+  /**
+   * Generates a Google Sheets AddChartRequest payload from a ChartDefinition.
+   */
+  public static buildGoogleSheetsChartRequest(
+    sheetId: number,
+    numRows: number,
+    headers: string[],
+    rows: any[][],
+    chartDef: ChartDefinition
+  ): any {
+    const catCol = chartDef.categoryColumn !== undefined ? chartDef.categoryColumn : 0;
+    
+    // Determine value columns
+    let valCols = chartDef.valueColumns;
+    if (!valCols || valCols.length === 0) {
+      const inferences = this.inferColumnInferences(headers, rows);
+      valCols = [];
+      inferences.forEach((inf, idx) => {
+        if (idx !== catCol && (inf.type === 'currency' || inf.type === 'number' || inf.type === 'percentage')) {
+          valCols!.push(idx);
+        }
+      });
+      if (valCols.length === 0) {
+        valCols = [headers.length > 1 ? 1 : 0];
+      }
+    }
+
+    const { rowIndex: anchorRow, columnIndex: anchorCol } = this.parseCellAddress(chartDef.position?.anchorCell || 'G2');
+    const widthPixels = chartDef.position?.widthPixels || 600;
+    const heightPixels = chartDef.position?.heightPixels || 380;
+    const endRow = Math.max(1, numRows + 1);
+
+    if (chartDef.type === 'PIE') {
+      return {
+        addChart: {
+          chart: {
+            spec: {
+              title: chartDef.title || 'Distribution Overview',
+              pieChart: {
+                legendPosition: 'RIGHT_LEGEND',
+                domain: {
+                  sourceRange: {
+                    sources: [{
+                      sheetId,
+                      startRowIndex: 0,
+                      endRowIndex: endRow,
+                      startColumnIndex: catCol,
+                      endColumnIndex: catCol + 1
+                    }]
+                  }
+                },
+                series: {
+                  sourceRange: {
+                    sources: [{
+                      sheetId,
+                      startRowIndex: 0,
+                      endRowIndex: endRow,
+                      startColumnIndex: valCols[0],
+                      endColumnIndex: valCols[0] + 1
+                    }]
+                  }
+                },
+                threeDimensional: false
+              }
+            },
+            position: {
+              overlayPosition: {
+                anchorCell: {
+                  sheetId,
+                  rowIndex: anchorRow,
+                  columnIndex: anchorCol
+                },
+                widthPixels,
+                heightPixels
+              }
+            }
+          }
+        }
+      };
+    }
+
+    const chartType = chartDef.type === 'COLUMN' ? 'COLUMN' :
+      (chartDef.type === 'BAR' ? 'BAR' :
+      (chartDef.type === 'LINE' ? 'LINE' : 'AREA'));
+
+    return {
+      addChart: {
+        chart: {
+          spec: {
+            title: chartDef.title || 'Analytics Overview',
+            basicChart: {
+              chartType,
+              legendPosition: 'BOTTOM_LEGEND',
+              headerCount: 1,
+              domains: [{
+                domain: {
+                  sourceRange: {
+                    sources: [{
+                      sheetId,
+                      startRowIndex: 0,
+                      endRowIndex: endRow,
+                      startColumnIndex: catCol,
+                      endColumnIndex: catCol + 1
+                    }]
+                  }
+                }
+              }],
+              series: valCols.map(vc => ({
+                series: {
+                  sourceRange: {
+                    sources: [{
+                      sheetId,
+                      startRowIndex: 0,
+                      endRowIndex: endRow,
+                      startColumnIndex: vc,
+                      endColumnIndex: vc + 1
+                    }]
+                  }
+                },
+                targetAxis: 'LEFT_AXIS'
+              }))
+            }
+          },
+          position: {
+            overlayPosition: {
+              anchorCell: {
+                sheetId,
+                rowIndex: anchorRow,
+                columnIndex: anchorCol
+              },
+              widthPixels,
+              heightPixels
+            }
+          }
+        }
+      }
+    };
   }
 }

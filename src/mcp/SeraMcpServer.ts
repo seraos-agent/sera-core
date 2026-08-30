@@ -190,11 +190,22 @@ export const SERA_MCP_TOOLS = [
         rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas like "=SUM(B2:B10)")' },
         options: {
           type: 'object',
-          description: 'Optional formatting options (sheetName, themeColor hex without #, includeSummaryRow boolean)',
+          description: 'Optional formatting options (sheetName, themeColor hex without #, includeSummaryRow boolean, chart object with type "COLUMN"|"BAR"|"LINE"|"PIE"|"AREA", title, categoryColumn, valueColumns)',
           properties: {
             sheetName: { type: 'string' },
             themeColor: { type: 'string' },
-            includeSummaryRow: { type: 'boolean' }
+            includeSummaryRow: { type: 'boolean' },
+            chart: {
+              type: 'object',
+              description: 'Native Google Sheets chart configuration',
+              properties: {
+                type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
+                title: { type: 'string' },
+                categoryColumn: { type: 'number', description: '0-indexed column for categories/labels' },
+                valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values' }
+              },
+              required: ['type']
+            }
           }
         }
       },

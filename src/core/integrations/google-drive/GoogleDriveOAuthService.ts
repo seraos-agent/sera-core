@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { GoogleDriveConnectionRepository, GoogleDriveConnectionStatus } from './GoogleDriveConnectionRepository';
 
-const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 interface OAuthState {

@@ -190,6 +190,24 @@ export class GoogleDriveCapability {
     return this.writeFile(userId, name, combinedContent, existing[0].mimeType || 'text/plain');
   }
 
+  public async addNativeChart(userId: string, spreadsheetId: string, chartRequest: any): Promise<void> {
+    const token = await this.getAccessToken(userId);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+    const res = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        requests: [chartRequest]
+      })
+    });
+    if (!res.ok) {
+      console.warn(`[GoogleDriveCapability] Failed to add native chart to ${spreadsheetId}:`, await res.text());
+    }
+  }
+
   public async createSpreadsheet(
     userId: string,
     title: string,
@@ -197,15 +215,37 @@ export class GoogleDriveCapability {
     rows: any[][],
     options?: SpreadsheetOptions
   ): Promise<string> {
+    const hasChart = !!options?.chart;
+    const targetMime = hasChart 
+      ? 'application/vnd.google-apps.spreadsheet' 
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
     const fileName = title.toLowerCase().endsWith('.xlsx') ? title : `${title}.xlsx`;
     const xlsxBuffer = await SpreadsheetEngine.generateWorkbook(title, headers, rows, options);
     
-    return this.writeBuffer(
+    const fileId = await this.writeBuffer(
       userId,
       fileName,
       xlsxBuffer,
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      targetMime
     );
+
+    if (hasChart && options?.chart) {
+      try {
+        const chartRequest = SpreadsheetEngine.buildGoogleSheetsChartRequest(
+          0,
+          rows.length,
+          headers,
+          rows,
+          options.chart
+        );
+        await this.addNativeChart(userId, fileId, chartRequest);
+      } catch (err: any) {
+        console.warn('[GoogleDriveCapability] Chart creation warning:', err.message);
+      }
+    }
+
+    return fileId;
   }
 
   public async getPublicMediaUrl(userId: string, fileId: string): Promise<string> {

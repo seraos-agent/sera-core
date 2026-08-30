@@ -241,4 +241,98 @@ describe('GoogleDriveCapability Operations', () => {
     expect(capturedDeleteUrl).toContain('/files/delete-target-id');
     expect(capturedDeleteMethod).toBe('DELETE');
   });
+
+  it('parses cell addresses accurately for chart positioning', () => {
+    expect(SpreadsheetEngine.parseCellAddress('A1')).toEqual({ rowIndex: 0, columnIndex: 0 });
+    expect(SpreadsheetEngine.parseCellAddress('G2')).toEqual({ rowIndex: 1, columnIndex: 6 });
+    expect(SpreadsheetEngine.parseCellAddress('AA10')).toEqual({ rowIndex: 9, columnIndex: 26 });
+    expect(SpreadsheetEngine.parseCellAddress('invalid')).toEqual({ rowIndex: 1, columnIndex: 6 });
+  });
+
+  it('builds valid Google Sheets AddChartRequest for COLUMN, LINE, and PIE charts', () => {
+    const headers = ['Day', 'Orders', 'Revenue (IDR)', 'Ad Spend (IDR)'];
+    const rows = [
+      ['Mon', 12, 1200000, 300000],
+      ['Tue', 18, 1850000, 400000],
+      ['Wed', 25, 2600000, 500000]
+    ];
+
+    // Column / Bar Chart
+    const columnChartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(0, rows.length, headers, rows, {
+      type: 'COLUMN',
+      title: 'Shopee Daily Revenue',
+      categoryColumn: 0,
+      valueColumns: [2]
+    });
+
+    expect(columnChartReq.addChart).toBeDefined();
+    expect(columnChartReq.addChart.chart.spec.title).toBe('Shopee Daily Revenue');
+    expect(columnChartReq.addChart.chart.spec.basicChart.chartType).toBe('COLUMN');
+    expect(columnChartReq.addChart.chart.spec.basicChart.domains[0].domain.sourceRange.sources[0].startColumnIndex).toBe(0);
+    expect(columnChartReq.addChart.chart.spec.basicChart.series[0].series.sourceRange.sources[0].startColumnIndex).toBe(2);
+
+    // Pie Chart
+    const pieChartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(0, rows.length, headers, rows, {
+      type: 'PIE',
+      title: 'Order Status Distribution',
+      categoryColumn: 0,
+      valueColumns: [1]
+    });
+
+    expect(pieChartReq.addChart.chart.spec.pieChart).toBeDefined();
+    expect(pieChartReq.addChart.chart.spec.pieChart.legendPosition).toBe('RIGHT_LEGEND');
+
+    // Inferred value columns test
+    const autoChartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(0, rows.length, headers, rows, {
+      type: 'LINE',
+      title: 'Auto Inferred Trend'
+    });
+
+    expect(autoChartReq.addChart.chart.spec.basicChart.chartType).toBe('LINE');
+    expect(autoChartReq.addChart.chart.spec.basicChart.series.length).toBeGreaterThan(0);
+  });
+
+  it('creates Google Drive spreadsheet with native chart batchUpdate invocation', async () => {
+    let capturedBatchUrl = '';
+    let capturedBatchBody: any = null;
+
+    const mockFetch = vi.fn().mockImplementation(async (url: string, init?: any) => {
+      if (url.includes('/token')) {
+        return { ok: true, json: async () => ({ access_token: 'mock-access-token' }) };
+      }
+      if (url.includes('/upload/drive/v3/files')) {
+        return { ok: true, json: async () => ({ id: 'new-sheet-123' }) };
+      }
+      if (url.includes('/files?')) {
+        return { ok: true, json: async () => ({ files: [] }) };
+      }
+      if (url.includes(':batchUpdate')) {
+        capturedBatchUrl = url;
+        capturedBatchBody = JSON.parse(init?.body || '{}');
+        return { ok: true, json: async () => ({ spreadsheetId: 'new-sheet-123' }) };
+      }
+      return { ok: true, text: async () => '' };
+    }) as any;
+
+    const cap = new GoogleDriveCapability(mockRepo, 'client-id', 'client-secret', mockFetch);
+    const fileId = await cap.createSpreadsheet(
+      'user-1',
+      'Shopee Store Performance',
+      ['Date', 'Sales', 'Profit'],
+      [['2026-08-01', 5000000, 1500000]],
+      {
+        chart: {
+          type: 'COLUMN',
+          title: 'Daily Store Sales',
+          categoryColumn: 0,
+          valueColumns: [1, 2]
+        }
+      }
+    );
+
+    expect(fileId).toBe('new-sheet-123');
+    expect(capturedBatchUrl).toContain('https://sheets.googleapis.com/v4/spreadsheets/new-sheet-123:batchUpdate');
+    expect(capturedBatchBody.requests).toBeDefined();
+    expect(capturedBatchBody.requests[0].addChart.chart.spec.title).toBe('Daily Store Sales');
+  });
 });
