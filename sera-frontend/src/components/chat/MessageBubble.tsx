@@ -534,11 +534,13 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
               lineHeight: 1.65,
               whiteSpace: isUser ? "pre-wrap" : "normal",
               wordBreak: "break-word",
+              maxWidth: "100%",
+              minWidth: 0,
               opacity: isUser && msg.status === "pending" ? 0.7 : 1,
               transition: "opacity 0.25s ease",
             }}
           >
-            <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
+            <div className="markdown-content" style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0 }}>
               {isUser ? (
                 <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
                   {displayContent && <span>{displayContent}</span>}
@@ -564,7 +566,10 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                     blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
                     table: ({ _node, ...props }: any) => (
                       <div style={{
+                        width: "100%",
+                        maxWidth: "100%",
                         overflowX: "auto",
+                        WebkitOverflowScrolling: "touch",
                         margin: "14px 0",
                         borderRadius: 10,
                         border: `1px solid ${theme.border}`,
@@ -572,9 +577,10 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                         background: theme.surface
                       }}>
                         <table style={{
-                          width: "100%",
+                          minWidth: "100%",
+                          width: "max-content",
                           borderCollapse: "collapse",
-                          fontSize: "0.9em",
+                          fontSize: "0.88em",
                           textAlign: "left",
                           lineHeight: 1.5
                         }} {...props} />
@@ -595,7 +601,8 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                       <td style={{
                         borderBottom: `1px solid ${theme.border}`,
                         padding: "9px 14px",
-                        color: theme.ink
+                        color: theme.ink,
+                        whiteSpace: "nowrap"
                       }} {...props} />
                     ),
                     hr: ({ _node, ...props }: any) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,

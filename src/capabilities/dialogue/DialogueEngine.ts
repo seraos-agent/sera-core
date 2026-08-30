@@ -704,9 +704,10 @@ Guidelines:
       return allTools.filter(t => coreToolNames.has(t.name));
     }
 
+    const isCryptoPriceOrTrade = /\b(crypto|kripto|coin|koin|token|harga|price|rate|kurs|market|pasar|spot|orderbook|trade|trading|order|swap|beli|buy|jual|sell|portfolio|portofolio|holdings|asset|aset|balance|saldo|transfer|kirim|send|usdc|usdt|eth|ethereum|btc|bitcoin|sol|solana|hype|hyperliquid|purr|bnb|xrp|doge|pepe|wif|link|arb|sui|avax|ton|near|apt|ftm|matic|pol|op|tia|sei)\b/i.test(msg);
     const needsDrive = /\b(drive|gdrive|sheet|spreadsheet|excel|xlsx|dokumen|file|doc|catatan|tabel|vault)\b/i.test(msg) || hasDocs;
-    const needsWalletTrading = /\b(balance|saldo|transfer|kirim|send|usdc|eth|hype|buy|beli|sell|jual|trade|trading|order|swap|wallet|dompet)\b/i.test(msg);
-    const needsSearch = /\b(cari|search|berita|news|harga|price|info|google|kapan|siapa|apakah|berapa)\b/i.test(msg);
+    const needsWalletTrading = isCryptoPriceOrTrade || /\b(wallet|dompet)\b/i.test(msg);
+    const needsSearch = /\b(cari|search|berita|news|info|google|kapan|siapa|apakah)\b/i.test(msg) && !isCryptoPriceOrTrade;
     const needsSchedule = /\b(schedule|jadwal|timer|cron|every|setiap|otomatis|automation|menit|jam|hari)\b/i.test(msg);
     const needsSocial = /\b(threads|post|publish|sosmed|social)\b/i.test(msg) || hasImages;
 
@@ -716,14 +717,15 @@ Guidelines:
         coreToolNames.has(t.name) || 
         t.name.includes('SEARCH') || 
         t.name.includes('search') ||
-        t.name === 'CHECK_WALLET_BALANCE'
+        t.name === 'CHECK_WALLET_BALANCE' ||
+        t.name === 'HL_SPOT_MARKET_DATA'
       );
     }
 
     return allTools.filter(t => {
       const name = t.name;
       if (coreToolNames.has(name)) return true;
-      if (needsDrive && (name.includes('DRIVE') || name.includes('drive') || name.includes('SPREADSHEET') || name.includes('sheet'))) return true;
+      if (needsDrive && (name.includes('DRIVE') || name.includes('drive') || name.includes('SPREADSHEET') || name.includes('SHEET') || name.includes('sheet') || name.startsWith('GDRIVE_'))) return true;
       if (needsWalletTrading && (name.includes('WALLET') || name.includes('TRANSFER') || name.includes('HL_') || name.includes('SWAP'))) return true;
       if (needsSearch && (name.includes('SEARCH') || name.includes('search'))) return true;
       if (needsSchedule && (name.includes('SCHEDULE') || name.includes('TRIGGER'))) return true;

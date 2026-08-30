@@ -444,6 +444,115 @@ export class SeraAgentInstance {
           type: 'object',
           properties: {}
         }
+      },
+      // =====================================================================
+      // Google Drive & Spreadsheet Vault Tools
+      // =====================================================================
+      {
+        name: 'GDRIVE_CREATE_SPREADSHEET',
+        description: 'Creates a professionally formatted Excel spreadsheet (.xlsx) in Google Drive with headers, zebra striping, currency/percent formats, and optional native charts (COLUMN, LINE, PIE). Use this to create or save spreadsheets.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Name of the spreadsheet' },
+            headers: { type: 'array', items: { type: 'string' }, description: 'Column headers (e.g. ["Coin", "Price (USDC)", "24h Volume"])' },
+            rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas)' },
+            options: {
+              type: 'object',
+              description: 'Optional formatting options (sheetName, themeColor, chart)',
+              properties: {
+                sheetName: { type: 'string' },
+                themeColor: { type: 'string' },
+                includeSummaryRow: { type: 'boolean' },
+                chart: {
+                  type: 'object',
+                  description: 'Native Google Sheets chart configuration',
+                  properties: {
+                    type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
+                    title: { type: 'string' },
+                    categoryColumn: { type: 'number', description: '0-indexed column for categories/labels' },
+                    valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values' }
+                  },
+                  required: ['type']
+                }
+              }
+            }
+          },
+          required: ['title', 'headers', 'rows']
+        }
+      },
+      {
+        name: 'GDRIVE_CREATE_SHEET',
+        description: 'Alias for GDRIVE_CREATE_SPREADSHEET. Creates a professionally formatted Excel spreadsheet (.xlsx) in Google Drive.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Name of the spreadsheet' },
+            headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
+            rows: { type: 'array', items: { type: 'array' }, description: 'Data rows' },
+            options: { type: 'object' }
+          },
+          required: ['title', 'headers', 'rows']
+        }
+      },
+      {
+        name: 'GDRIVE_WRITE',
+        description: 'Writes a document, note, or markdown file to Google Drive SERA Vault.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Name of the file (e.g. report.md, summary.txt)' },
+            content: { type: 'string', description: 'Text content to write' },
+            mimeType: { type: 'string', description: 'Optional mime type (e.g. text/markdown, text/plain)' }
+          },
+          required: ['filename', 'content']
+        }
+      },
+      {
+        name: 'GDRIVE_APPEND',
+        description: 'Appends text content to an existing document or note in Google Drive SERA Vault without overwriting.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Name of the file to append to' },
+            content: { type: 'string', description: 'Text content to append' }
+          },
+          required: ['filename', 'content']
+        }
+      },
+      {
+        name: 'GDRIVE_READ',
+        description: 'Reads a file from Google Drive SERA Vault by filename or fileId.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Name of the file to read' },
+            fileId: { type: 'string', description: 'Direct file ID if known' }
+          }
+        }
+      },
+      {
+        name: 'GDRIVE_LIST',
+        description: 'Lists or searches files inside Google Drive SERA Vault folder.',
+        parameters: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Filter by exact file name' },
+            searchTerm: { type: 'string', description: 'Search query for file names' },
+            mimeType: { type: 'string', description: 'Filter by mime type' }
+          }
+        }
+      },
+      {
+        name: 'GDRIVE_DELETE',
+        description: 'Deletes an obsolete file from Google Drive SERA Vault.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Name of the file to delete' },
+            fileId: { type: 'string', description: 'Direct file ID if known' }
+          }
+        }
       }
     ];
     this.capabilityCatalog.registerTools(baseTools);

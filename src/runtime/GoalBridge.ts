@@ -331,18 +331,28 @@ export class GoalBridge {
           await this.handleThreadsPublish(requestId, actionPayload);
           break;
 
+        case 'GDRIVE_WRITE':
         case 'gdrive:write_file':
           await this.handleGDriveWrite(requestId, actionPayload);
           break;
+        case 'GDRIVE_APPEND':
         case 'gdrive:append_file':
           await this.handleGDriveAppend(requestId, actionPayload);
           break;
+        case 'GDRIVE_READ':
         case 'gdrive:read_file':
           await this.handleGDriveRead(requestId, actionPayload);
           break;
+        case 'GDRIVE_CREATE_SPREADSHEET':
+        case 'GDRIVE_CREATE_SHEET':
         case 'gdrive:create_sheet':
           await this.handleGDriveCreateSheet(requestId, actionPayload);
           break;
+        case 'GDRIVE_LIST':
+        case 'gdrive:list_files':
+          await this.handleGDriveList(requestId, actionPayload);
+          break;
+        case 'GDRIVE_DELETE':
         case 'gdrive:delete_file':
           await this.handleGDriveDelete(requestId, actionPayload);
           break;
@@ -1307,6 +1317,16 @@ export class GoalBridge {
       const { title, headers, rows, options } = payload;
       const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows, options);
       this.emitResult(requestId, true, { fileId, title });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveList(requestId: string, payload: any): Promise<void> {
+    try {
+      const { name, searchTerm, mimeType } = payload || {};
+      const files = await this.googleDriveCapability.listFiles(this.sessionId, { name, searchTerm, mimeType });
+      this.emitResult(requestId, true, { files, count: files.length });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);
     }
