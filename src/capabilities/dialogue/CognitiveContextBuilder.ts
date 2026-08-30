@@ -38,31 +38,24 @@ export class CognitiveContextBuilder {
     );
 
     const memoryAttention = isShortGreeting
-      ? { items: [], estimatedTokens: 0, tokenBudget: 700, truncated: false }
-      : await this.memoryQueryService.query(userMessage, { tokenBudget: 700 });
+      ? { items: [], estimatedTokens: 0, tokenBudget: 500, truncated: false }
+      : await this.memoryQueryService.query(userMessage, { tokenBudget: 500 });
 
-    const cognitiveState = {
-      relevant_facts: {
-        currentTime: new Date().toUTCString(),
-        userMainWalletAddress: walletState?.address || 'Unknown',
-        activeCapabilities: this.capabilityCatalog ? this.capabilityCatalog.allConnectorSummaries().filter((c: any) => c.isActive).map((c: any) => c.name) : []
-      },
-      memory_attention: this.memoryQueryService.toPromptContext(memoryAttention),
-      constraints: [
-        'User attention is limited. Keep answers concise but genuinely helpful.',
-        'Never hallucinate unverified state.',
-        'CRITICAL - NO DATA HALLUCINATION: You MUST NOT invent, guess, or hallucinate prices, balances, statistics, or any factual data. If the user asks for real-time information, use your web search tool to find accurate data first.',
-        'If the user asks for their balance, you MUST use the CHECK_WALLET_BALANCE tool to fetch it freshly.',
-        'If the user asks to transfer or send funds (including "all" funds), you MUST immediately use the TRANSFER_FUNDS tool. DO NOT use CHECK_WALLET_BALANCE before transferring.',
-        'CRITICAL - SERA IDENTITY: You are SERA Agent, a friendly and proactive AI operational partner. You have your own operational wallet with USDC on Base Network for P2P transfers. You have full access to your Google Drive SERA Vault (writing/reading documents, appending notes, deleting obsolete files, and creating rich formatted multi-currency .xlsx spreadsheets). You can search the web, generate images, publish to social media, schedule automated tasks, buy and sell tokens via spot trading, and assist with a wide range of operational and information needs.',
-        'CRITICAL - SCHEDULING & AUTOMATIONS: Whenever the user requests to execute ANY action periodically/recurringly (e.g., "every 5 minutes", "every Monday at 9am", "daily at 8pm") OR after a time delay (e.g., "in 20 seconds", "in 1 hour"), you MUST IMMEDIATELY invoke the SCHEDULE_GOAL tool to generate a Schedule Proposal Card. DO NOT refuse recurring schedules by claiming the system requires an end time or duration limit! SERA natively supports indefinite recurring schedules via cron. Put the target tool (e.g. TRANSFER_FUNDS, CHECK_WALLET_BALANCE) inside actionIntent, with its parameters inside actionParameters. Specify scheduleType: "cron" with a valid cronExpression (in UTC) for recurring tasks, or scheduleType: "exact" for single delays.',
-        'CRITICAL - PROACTIVE BEHAVIOR: After completing any task, suggest one relevant follow-up action. If the user seems uncertain, offer a concrete suggestion rather than a generic "how can I help". Be the colleague who anticipates needs.',
-      ]
-    };
+    const activeCaps = this.capabilityCatalog
+      ? this.capabilityCatalog.allConnectorSummaries().filter((c: any) => c.isActive).map((c: any) => c.name).join(', ')
+      : 'None';
+
+    const memoryContext = this.memoryQueryService.toPromptContext(memoryAttention);
+
+    // High-Efficiency Streamlined Cognitive Working Memory (Markdown format)
+    let cognitiveStateMarkdown = `[RUNTIME STATE]\n- Current UTC Time: ${new Date().toUTCString()}\n- User Wallet: ${walletState?.address || 'Not connected'}\n- Active Connectors: ${activeCaps}`;
+    if (memoryContext?.items && memoryContext.items.length > 0) {
+      cognitiveStateMarkdown += `\n\n[RELEVANT MEMORY ATTENTION]\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;
+    }
 
     messages.push({
       role: 'system',
-      content: `[COGNITIVE STATE (WORKING MEMORY)]\n${JSON.stringify(cognitiveState, null, 2)}`
+      content: cognitiveStateMarkdown
     });
 
     if (uiCommandExecuted) {
@@ -87,9 +80,15 @@ export class CognitiveContextBuilder {
       const ctxKey = `${activeResponseContext.platform}:${activeResponseContext.channelId}`;
       const history = platformConversationHistory?.get(ctxKey) ?? [];
 
+      // Unified Omnichannel Persona: warm, intelligent, and proactive across all channels
+      const platformName = activeResponseContext.platform || 'external';
+      const channelGuidance = platformName === 'telegram'
+        ? `[PLATFORM: TELEGRAM] You are conversing directly with the user via Telegram. Maintain your warm, intelligent, and proactive SERA personality. Use clear Telegram-friendly Markdown formatting.`
+        : `[PLATFORM: ${platformName.toUpperCase()}] You are conversing via ${platformName}. Maintain your warm, intelligent, and proactive SERA personality.`;
+
       messages.push({
         role: 'system',
-        content: `[PLATFORM CONTEXT] Message arrived via ${activeResponseContext.platform}. Rules for this context: (1) Plain prose only, no markdown bullet lists unless displaying structured data. (2) Clarification questions must be ONE short sentence. (3) Do NOT list your capabilities. (4) Do NOT end with open-ended offers to help. Write like a senior colleague, not a support bot.`
+        content: channelGuidance
       });
 
       if (history.length > 0) {
@@ -99,7 +98,7 @@ export class CognitiveContextBuilder {
         });
         messages.push({
           role: 'system',
-          content: `[CONVERSATION HISTORY - selective context from ${history.length} turns in this channel]`
+          content: `[CONVERSATION HISTORY - ${platformName} channel]`
         });
         messages.push(...context.messages);
       }

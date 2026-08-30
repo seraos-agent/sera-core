@@ -480,18 +480,6 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           });
         }
 
-        // Determine available tools based on intent ──────────────────────────────
-        // Programmatic gate: if the message contains substantive content (question words,
-        // request verbs, or multiple words), inject an explicit override to prevent the
-        // LLM from defaulting to a one-word greeting acknowledgment.
-        const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap)[\.!\s]*$/i.test(userMessage.trim());
-        if (!isPureGreeting) {
-          messages.push({
-            role: 'user',
-            content: `[SYSTEM NOTIFICATION] OVERRIDE: The user's message "${userMessage}" is NOT a pure greeting. It contains a question or substantive request. Provide a complete answer or invoke the appropriate tool.`
-          });
-        }
-
         const attachedImages: string[] = event?.payload?.images || [];
         const hasImages = attachedImages.length > 0;
         if (hasImages) {
@@ -520,25 +508,11 @@ Guidelines:
           });
         }
 
-        const availableTools = typeof this.capabilityCatalog?.availableTools === 'function'
+        const rawTools = typeof this.capabilityCatalog?.availableTools === 'function'
           ? this.capabilityCatalog.availableTools()
           : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
 
-        // ── Inject inactive connector awareness ────────────────────────────
-        // The AI knows about ALL connectors but can only use tools from active ones.
-        // For inactive connectors, it educates the user and suggests activation.
-        if (typeof this.capabilityCatalog?.allConnectorSummaries === 'function') {
-          const inactiveConnectors = this.capabilityCatalog.allConnectorSummaries()
-            .filter((c: any) => !c.isActive && !c.alwaysActive);
-          if (inactiveConnectors.length > 0) {
-            messages.push({
-              role: 'user',
-              content: `[SYSTEM NOTIFICATION] AVAILABLE BUT INACTIVE CONNECTORS: The following connectors are available in Sera but have not been activated by the user yet. You do NOT have tools for these connectors. If the user asks about any of these capabilities, briefly explain what it does, mention the risks, and suggest they activate it from the Workspace page in the sidebar.\n${inactiveConnectors.map((c: any) => `- ${c.name}: ${c.description}`).join('\n')}`
-            });
-          }
-        }
-
-        availableTools.push({
+        rawTools.push({
           name: 'REMEMBER_FACT',
           description: 'Use this tool when the user explicitly instructs you to remember, save, or note a fact, rule, or piece of information.',
           parameters: {
@@ -551,7 +525,7 @@ Guidelines:
           requiresApproval: false
         });
 
-        availableTools.push({
+        rawTools.push({
           name: 'CLEAR_CHAT',
           description: 'Use this tool to clear, delete, reset, or remove the chat history and messages from the screen (e.g. "clear chat", "delete messages", "wipe chat").',
           parameters: {
@@ -561,7 +535,7 @@ Guidelines:
           requiresApproval: false
         });
 
-        availableTools.push({
+        rawTools.push({
           name: 'SET_THEME',
           description: 'Use this tool to change, toggle, or switch the user interface display theme/mode (e.g. Dark Mode or Light Mode). MUST be invoked whenever user asks to change, switch, retry, or fix theme display (e.g. "change mode light", "mode dark", "switch theme", "try again").',
           parameters: {
@@ -574,10 +548,13 @@ Guidelines:
           requiresApproval: false
         });
 
+        // JIT Dynamic Tool Gating: pass only relevant tools to reduce prefill latency and token bloat
+        const availableTools = this.filterToolsJIT(rawTools, userMessage, hasImages);
+
         this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
         const toolTier = hasImages ? 'Vision' : (workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution');
         const response = await this.orchestrator.generate(
-          this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: true, requiresThinking: false }),
+          this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: availableTools.length > 0, requiresThinking: false }),
           messages,
           availableTools,
           this.activeAbortController?.signal
@@ -689,5 +666,49 @@ Guidelines:
 
   private async narrateResult(userMessage: string, result: GoalResultPayload): Promise<void> {
     await this.dialogueResultNarrator.narrate(userMessage, result, this.buildWorkingMemory.bind(this), this.activeAbortController?.signal, this.emitEvent.bind(this));
+  }
+
+  /**
+   * JIT Dynamic Tool Gating: Selects only the necessary tool schemas for the current turn,
+   * avoiding 2,000+ token context bloat and reducing prefill latency for casual & domain-specific requests.
+   */
+  private filterToolsJIT(allTools: any[], userMessage: string, hasImages: boolean): any[] {
+    const msg = (userMessage || '').toLowerCase();
+    
+    // Core always-available tools
+    const coreToolNames = new Set(['REMEMBER_FACT', 'CLEAR_CHAT', 'SET_THEME']);
+    
+    // Determine active domains from user message
+    const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap|makasih|thanks|thank you|pagi|siang|sore|malam)[\.!\s]*$/i.test(userMessage.trim());
+    if (isPureGreeting && !hasImages) {
+      return allTools.filter(t => coreToolNames.has(t.name));
+    }
+
+    const needsDrive = /\b(drive|gdrive|sheet|spreadsheet|excel|xlsx|dokumen|file|doc|catatan|tabel|vault)\b/i.test(msg);
+    const needsWalletTrading = /\b(balance|saldo|transfer|kirim|send|usdc|eth|hype|buy|beli|sell|jual|trade|trading|order|swap|wallet|dompet)\b/i.test(msg);
+    const needsSearch = /\b(cari|search|berita|news|harga|price|info|google|kapan|siapa|apakah|berapa)\b/i.test(msg);
+    const needsSchedule = /\b(schedule|jadwal|timer|cron|every|setiap|otomatis|automation|menit|jam|hari)\b/i.test(msg);
+    const needsSocial = /\b(threads|post|publish|sosmed|social)\b/i.test(msg) || hasImages;
+
+    // If no specific domain is detected, provide core tools + search + wallet balance for general assistance
+    if (!needsDrive && !needsWalletTrading && !needsSearch && !needsSchedule && !needsSocial) {
+      return allTools.filter(t => 
+        coreToolNames.has(t.name) || 
+        t.name.includes('SEARCH') || 
+        t.name.includes('search') ||
+        t.name === 'CHECK_WALLET_BALANCE'
+      );
+    }
+
+    return allTools.filter(t => {
+      const name = t.name;
+      if (coreToolNames.has(name)) return true;
+      if (needsDrive && (name.includes('DRIVE') || name.includes('drive') || name.includes('SPREADSHEET') || name.includes('sheet'))) return true;
+      if (needsWalletTrading && (name.includes('WALLET') || name.includes('TRANSFER') || name.includes('HL_') || name.includes('SWAP'))) return true;
+      if (needsSearch && (name.includes('SEARCH') || name.includes('search'))) return true;
+      if (needsSchedule && (name.includes('SCHEDULE') || name.includes('TRIGGER'))) return true;
+      if (needsSocial && (name.includes('THREADS') || name.includes('POST'))) return true;
+      return false;
+    });
   }
 }
