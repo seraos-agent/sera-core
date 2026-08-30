@@ -459,16 +459,16 @@ export class SeraMcpServer {
         id: `evt-mcp-${Date.now()}`,
         type: EventTypes.DIALOGUE_USER_OBSERVED,
         source: 'McpServer',
-        payload: { message: message.trim() },
+        payload: {
+          message: message.trim(),
+          _responseContext: {
+            platform: 'mcp',
+            channelId: `mcp:${userId}`
+          }
+        },
         timestamp: Date.now(),
       };
       instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
-
-      instance.chatHistoryStore.appendUiMessage({
-        id: event.timestamp,
-        role: 'user',
-        content: message.trim(),
-      });
     });
   }
 

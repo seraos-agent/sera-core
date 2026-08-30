@@ -289,8 +289,10 @@ describe('SeraMcpServer', () => {
     apiKeyStore.generateKey(userId);
     subscriptionService.recordTopUp(userId, 1);
 
+    let observedEvent: any;
     // Simulate the DialogueEngine responding after a short delay
-    mockEventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, () => {
+    mockEventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, (event: any) => {
+      observedEvent = event;
       setTimeout(() => {
         mockEventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
           payload: { text: 'Hello from Sera!' }
@@ -301,9 +303,11 @@ describe('SeraMcpServer', () => {
     const result = await mcpServer.handleToolCallDirect('sera_chat', { message: 'Hi Sera' }, userId, mockInstance);
 
     expect(result.content[0].text).toBe('Hello from Sera!');
-    expect(mockInstance.chatHistoryStore.appendUiMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'user', content: 'Hi Sera' })
-    );
+    expect(observedEvent.payload._responseContext).toEqual({
+      platform: 'mcp',
+      channelId: 'mcp:chat-user'
+    });
+    expect(mockInstance.chatHistoryStore.appendUiMessage).not.toHaveBeenCalled();
   });
 
   it('returns depleted message when credits are zero for sera_chat', async () => {

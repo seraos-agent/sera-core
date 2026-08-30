@@ -57,6 +57,7 @@ export class DialogueEngine {
   private activeAbortController: AbortController | null = null;
 
   private _activeResponseContext: Record<string, any> | undefined = undefined;
+  private _activeUserMessage: string | undefined = undefined;
   private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
   private readonly PLATFORM_HISTORY_MAX_TURNS = 8; // Keep last 8 turns (4 exchanges)
 
@@ -177,6 +178,12 @@ export class DialogueEngine {
       const ctx = enrichedPayload.responseContext;
       if (ctx) {
         console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITH responseContext → platform=${ctx.platform} channel=${ctx.channelId} thread=${ctx.threadRef}`);
+        
+        // Persist turn to platformConversationHistory for multi-turn conversational continuity
+        if (this._activeUserMessage && payload.text) {
+          this.persistPlatformTurn(ctx.platform, ctx.channelId, this._activeUserMessage, payload.text);
+          this._activeUserMessage = undefined; // Clear to prevent double-persistence
+        }
       } else {
         console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITHOUT responseContext (UI/Socket reply only)`);
       }
@@ -190,6 +197,20 @@ export class DialogueEngine {
       source: 'DialogueEngine'
     };
     this.eventBus.emit(type, event);
+  }
+
+  private persistPlatformTurn(platform: string, channelId: string, userMessage: string, assistantText: string): void {
+    const ctxKey = `${platform}:${channelId}`;
+    if (!this.platformConversationHistory.has(ctxKey)) {
+      this.platformConversationHistory.set(ctxKey, []);
+    }
+    const history = this.platformConversationHistory.get(ctxKey)!;
+    history.push({ role: 'user', content: userMessage });
+    history.push({ role: 'assistant', content: assistantText });
+
+    while (history.length > this.PLATFORM_HISTORY_MAX_TURNS * 2) {
+      history.shift();
+    }
   }
 
   private profileFor(
@@ -301,10 +322,11 @@ export class DialogueEngine {
     }
     this.activeAbortController = new AbortController();
 
-    // Capture any response routing context injected by the transport layer (e.g. ThreadsDaemon).
+    // Capture any response routing context injected by the transport layer (e.g. ThreadsDaemon, McpServer).
     // This is stored as opaque state and forwarded on every DIALOGUE_AGENT_SPEAK emit.
     // DialogueEngine does NOT inspect the platform field — it is irrelevant to cognition.
     this._activeResponseContext = (event.payload as any)._responseContext ?? undefined;
+    this._activeUserMessage = userMessage;
 
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +
       (this._activeResponseContext ? ` [routing context: platform=${this._activeResponseContext.platform}]` : ''));
@@ -650,6 +672,7 @@ Guidelines:
       // Clear routing context after every request cycle to prevent cross-request contamination.
       // The next message (from any transport layer) starts with a clean slate.
       this._activeResponseContext = undefined;
+      this._activeUserMessage = undefined;
     }
   }
 
