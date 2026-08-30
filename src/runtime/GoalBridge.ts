@@ -343,6 +343,9 @@ export class GoalBridge {
         case 'gdrive:create_sheet':
           await this.handleGDriveCreateSheet(requestId, actionPayload);
           break;
+        case 'gdrive:delete_file':
+          await this.handleGDriveDelete(requestId, actionPayload);
+          break;
 
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
@@ -1304,6 +1307,16 @@ export class GoalBridge {
       const { title, headers, rows, options } = payload;
       const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows, options);
       this.emitResult(requestId, true, { fileId, title });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveDelete(requestId: string, payload: any): Promise<void> {
+    try {
+      const { filename, fileId } = payload;
+      await this.googleDriveCapability.deleteFile(this.sessionId, { filename, fileId });
+      this.emitResult(requestId, true, { deleted: true, filename: filename || fileId });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);
     }

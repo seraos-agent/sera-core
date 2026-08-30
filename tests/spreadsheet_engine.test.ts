@@ -4,12 +4,12 @@ import { SpreadsheetEngine } from '../src/capabilities/google-drive/SpreadsheetE
 import { GoogleDriveCapability } from '../src/capabilities/google-drive/GoogleDriveCapability';
 
 describe('SpreadsheetEngine', () => {
-  it('generates a valid .xlsx buffer with styled headers and data rows', async () => {
-    const headers = ['Item', 'Category', 'Price (IDR)', 'Quantity'];
+  it('generates a valid .xlsx buffer with styled headers, frozen pane, and data rows', async () => {
+    const headers = ['Item', 'Category', 'Price (IDR)', 'Quantity', 'Status'];
     const rows = [
-      ['Server Hosting', 'Infrastructure', 2500000, 1],
-      ['Domain Name', 'Infrastructure', 150000, 2],
-      ['AI Inference', 'API Services', 4500000, 10]
+      ['Server Hosting', 'Infrastructure', 2500000, 1, 'Completed'],
+      ['Domain Name', 'Infrastructure', 150000, 2, 'Pending'],
+      ['AI Inference', 'API Services', 4500000, 10, 'Failed']
     ];
 
     const buffer = await SpreadsheetEngine.generateWorkbook('Monthly Expenses', headers, rows);
@@ -23,6 +23,10 @@ describe('SpreadsheetEngine', () => {
     const ws = wb.getWorksheet('Monthly Expenses') || wb.getWorksheet(1);
     expect(ws).toBeDefined();
 
+    // Verify Frozen Header view
+    expect(ws!.views[0].state).toBe('frozen');
+    expect((ws!.views[0] as any).ySplit).toBe(1);
+
     // Verify Header row
     const headerRow = ws!.getRow(1);
     expect(headerRow.getCell(1).value).toBe('Item');
@@ -35,10 +39,47 @@ describe('SpreadsheetEngine', () => {
     expect(row2.getCell(3).value).toBe(2500000);
     expect(row2.getCell(3).numFmt).toBe('Rp #,##0');
 
+    // Verify Status Badges
+    const completedCell = ws!.getRow(2).getCell(5);
+    expect(completedCell.value).toBe('Completed');
+    expect(completedCell.fill).toBeDefined();
+
+    const pendingCell = ws!.getRow(3).getCell(5);
+    expect(pendingCell.value).toBe('Pending');
+
+    const failedCell = ws!.getRow(4).getCell(5);
+    expect(failedCell.value).toBe('Failed');
+
     // Verify Summary / Total row exists
     const totalRow = ws!.getRow(5);
     expect(totalRow.getCell(1).value).toBe('Total');
     expect((totalRow.getCell(3).value as any)?.formula).toBe('SUM(C2:C4)');
+  });
+
+  it('supports multi-currency detection including Indian Rupee (INR), EUR, GBP, JPY, SGD, MYR', async () => {
+    const headers = ['Consultant', 'Fee (INR)', 'Euro Project', 'UK Rate', 'Tokyo Retainer'];
+    const rows = [
+      ['Rajesh Sharma', 85000, '€1,200.00', '£450.00', '¥300,000'],
+      ['Priya Patel', '₹120,000.00', '€3,400.00', '£900.00', '¥550,000']
+    ];
+
+    const buffer = await SpreadsheetEngine.generateWorkbook('Global Payroll', headers, rows);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const ws = wb.getWorksheet(1)!;
+
+    // INR formatting
+    expect(ws.getRow(2).getCell(2).numFmt).toBe('₹#,##0.00');
+    expect(ws.getRow(3).getCell(2).numFmt).toBe('₹#,##0.00');
+
+    // EUR formatting
+    expect(ws.getRow(2).getCell(3).numFmt).toBe('€#,##0.00');
+
+    // GBP formatting
+    expect(ws.getRow(2).getCell(4).numFmt).toBe('£#,##0.00');
+
+    // JPY formatting
+    expect(ws.getRow(2).getCell(5).numFmt).toBe('¥#,##0');
   });
 
   it('handles custom theme colors and disables summary row when requested', async () => {
@@ -111,7 +152,7 @@ describe('SpreadsheetEngine', () => {
   });
 });
 
-describe('GoogleDriveCapability Spreadsheet & Append', () => {
+describe('GoogleDriveCapability Operations', () => {
   const mockRepo = {
     getRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
     getStatus: vi.fn().mockResolvedValue({ status: 'CONNECTED', vaultFolderId: 'mock-vault-folder-123' })
@@ -172,5 +213,32 @@ describe('GoogleDriveCapability Spreadsheet & Append', () => {
 
     expect(fileId).toBe('file-exist-id');
     expect(capturedUploadBody.toString()).toContain('Initial line 1\nInitial line 2\nNew appended note entry');
+  });
+
+  it('deletes file from Google Drive Vault', async () => {
+    let capturedDeleteUrl = '';
+    let capturedDeleteMethod = '';
+
+    const mockFetch = vi.fn().mockImplementation(async (url: string, init?: any) => {
+      if (url.includes('/token')) {
+        return { ok: true, json: async () => ({ access_token: 'mock-access-token' }) };
+      }
+      if (url.includes('/files?')) {
+        return { ok: true, json: async () => ({ files: [{ id: 'delete-target-id', name: 'old_data.csv' }] }) };
+      }
+      if (url.includes('/files/delete-target-id')) {
+        capturedDeleteUrl = url;
+        capturedDeleteMethod = init?.method;
+        return { ok: true, status: 204, text: async () => '' };
+      }
+      return { ok: true, text: async () => '' };
+    }) as any;
+
+    const cap = new GoogleDriveCapability(mockRepo, 'client-id', 'client-secret', mockFetch);
+    const success = await cap.deleteFile('user-1', { filename: 'old_data.csv' });
+
+    expect(success).toBe(true);
+    expect(capturedDeleteUrl).toContain('/files/delete-target-id');
+    expect(capturedDeleteMethod).toBe('DELETE');
   });
 });

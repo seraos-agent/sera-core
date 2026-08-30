@@ -169,12 +169,13 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_list',
-    description: 'List files inside your Google Drive SERA Vault.',
+    description: 'List or search files inside your Google Drive SERA Vault folder.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         name: { type: 'string', description: 'Filter by exact file name' },
-        mimeType: { type: 'string', description: 'Filter by mime type' }
+        searchTerm: { type: 'string', description: 'Search for files containing this keyword or phrase' },
+        mimeType: { type: 'string', description: 'Filter by mime type (e.g. text/markdown, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet)' }
       }
     }
   },
@@ -210,6 +211,17 @@ export const SERA_MCP_TOOLS = [
         content: { type: 'string', description: 'The text content to append' }
       },
       required: ['filename', 'content']
+    }
+  },
+  {
+    name: 'sera_gdrive_delete',
+    description: 'Delete an obsolete document, draft, or spreadsheet from your Google Drive SERA Vault.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Name of the file to delete (e.g. "old_notes.md")' },
+        fileId: { type: 'string', description: 'Direct file ID if known' }
+      }
     }
   },
   {
@@ -321,6 +333,8 @@ export class SeraMcpServer {
         return this.handleGDriveCreateSheet(instance, args);
       case 'sera_gdrive_append':
         return this.handleGDriveAppend(instance, args);
+      case 'sera_gdrive_delete':
+        return this.handleGDriveDelete(instance, args);
       case 'sera_proposal_approve':
         return await this.handleProposalApprove(instance, args.proposalId);
       case 'sera_proposal_reject':
@@ -986,6 +1000,19 @@ export class SeraMcpServer {
       return { content: [{ type: 'text', text: `📝 Successfully appended content to "${args.filename}" (ID: ${fileId}) in Google Drive SERA Vault.` }] };
     } catch (e: any) {
       return { isError: true, content: [{ type: 'text', text: `Failed to append to file: ${e.message}` }] };
+    }
+  }
+
+  private async handleGDriveDelete(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      await cap.deleteFile(instance.sessionId || instance.userId || 'dev', {
+        filename: args.filename,
+        fileId: args.fileId
+      });
+      return { content: [{ type: 'text', text: `🗑️ Successfully deleted "${args.filename || args.fileId}" from Google Drive SERA Vault.` }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Failed to delete file from Google Drive: ${e.message}` }] };
     }
   }
 }

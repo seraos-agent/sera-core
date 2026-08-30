@@ -52,13 +52,16 @@ export class GoogleDriveCapability {
     return status.vaultFolderId;
   }
 
-  public async listFiles(userId: string, query?: { name?: string; mimeType?: string }): Promise<any[]> {
+  public async listFiles(userId: string, query?: { name?: string; mimeType?: string; searchTerm?: string }): Promise<any[]> {
     const token = await this.getAccessToken(userId);
     const folderId = await this.getVaultFolderId(userId);
 
     let q = `'${folderId}' in parents and trashed = false`;
     if (query?.name) {
       q += ` and name = '${query.name.replace(/'/g, "\\'")}'`;
+    }
+    if (query?.searchTerm) {
+      q += ` and name contains '${query.searchTerm.replace(/'/g, "\\'")}'`;
     }
     if (query?.mimeType) {
       q += ` and mimeType = '${query.mimeType}'`;
@@ -76,6 +79,34 @@ export class GoogleDriveCapability {
     if (!res.ok) throw new Error(`List files failed: ${await res.text()}`);
     const data = await res.json() as any;
     return data.files || [];
+  }
+
+  public async deleteFile(userId: string, target: { filename?: string; fileId?: string }): Promise<boolean> {
+    const token = await this.getAccessToken(userId);
+    let targetId = target.fileId;
+
+    if (!targetId && target.filename) {
+      const files = await this.listFiles(userId, { name: target.filename });
+      if (files.length === 0) {
+        throw new Error(`File "${target.filename}" not found in your SERA Vault.`);
+      }
+      targetId = files[0].id;
+    }
+
+    if (!targetId) {
+      throw new Error('Must provide filename or fileId to delete file.');
+    }
+
+    const res = await this.fetchImpl(`https://www.googleapis.com/drive/v3/files/${targetId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Delete file failed: ${await res.text()}`);
+    }
+
+    return true;
   }
 
   public async readFile(userId: string, fileId: string): Promise<string> {
