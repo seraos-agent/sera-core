@@ -76,6 +76,7 @@ export class TelegramBotManager {
         source: 'TelegramAdapter',
         payload: { 
           message: ctx.message.text,
+          _responseContext: responseContext,
           responseContext 
         },
         timestamp: Date.now(),

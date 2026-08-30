@@ -322,10 +322,10 @@ export class DialogueEngine {
     }
     this.activeAbortController = new AbortController();
 
-    // Capture any response routing context injected by the transport layer (e.g. ThreadsDaemon, McpServer).
+    // Capture any response routing context injected by the transport layer (e.g. ThreadsDaemon, McpServer, TelegramAdapter).
     // This is stored as opaque state and forwarded on every DIALOGUE_AGENT_SPEAK emit.
     // DialogueEngine does NOT inspect the platform field — it is irrelevant to cognition.
-    this._activeResponseContext = (event.payload as any)._responseContext ?? undefined;
+    this._activeResponseContext = (event.payload as any)._responseContext ?? (event.payload as any).responseContext ?? undefined;
     this._activeUserMessage = userMessage;
 
     console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +

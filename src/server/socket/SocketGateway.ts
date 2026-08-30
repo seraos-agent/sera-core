@@ -148,6 +148,14 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     // Socket-specific listener references to allow proper unbinding
     const onAgentSpeak = (event: any) => {
       const payload = event.payload || event;
+
+      // Channel Segregation: If response is destined for an external platform (e.g. Telegram, MCP, Threads),
+      // do not broadcast to Web UI socket and do not pollute UI chatHistoryStore.
+      const ctx = payload.responseContext;
+      if (ctx && ctx.platform && ctx.platform !== 'ui' && ctx.platform !== 'socket') {
+        return;
+      }
+
       const msgId = ++msgIdCounter;
       const currentObs = [...socketObservationBuffer];
       socketObservationBuffer = [];
@@ -168,6 +176,11 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
 
     const onActivity = (event: any) => {
       const payload = event.payload || event;
+      const ctx = payload.responseContext;
+      if (ctx && ctx.platform && ctx.platform !== 'ui' && ctx.platform !== 'socket') {
+        return;
+      }
+
       const msgId = ++msgIdCounter;
       socket.emit('chat:activity', {
         id: msgId,
@@ -185,6 +198,11 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
 
     const onProposalGenerated = (event: any) => {
       const payload = event.payload || event;
+      const ctx = payload.responseContext;
+      if (ctx && ctx.platform && ctx.platform !== 'ui' && ctx.platform !== 'socket') {
+        return;
+      }
+
       const msgId = ++msgIdCounter;
       const currentObs = [...socketObservationBuffer];
       socketObservationBuffer = [];
