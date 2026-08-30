@@ -1,9 +1,163 @@
-import { Activity, Copy, Check, ExternalLink, Download } from "lucide-react";
+import { Activity, Copy, Check, ExternalLink, Download, Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useState, useEffect } from 'react';
+
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.88)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      {/* Controls */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 24,
+          display: 'flex',
+          gap: 10,
+          zIndex: 100000
+        }}
+      >
+        <button
+          onClick={() => setZoom(z => Math.min(z + 0.25, 3))}
+          title="Zoom In"
+          style={{
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            color: '#fff',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+        >
+          <ZoomIn size={18} />
+        </button>
+        <button
+          onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))}
+          title="Zoom Out"
+          style={{
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            color: '#fff',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+        >
+          <ZoomOut size={18} />
+        </button>
+        <a
+          href={src}
+          download={`Sera_Image_${Date.now()}.png`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Download Image"
+          style={{
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            color: '#fff',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            textDecoration: 'none',
+            transition: 'background 0.2s'
+          }}
+        >
+          <Download size={18} />
+        </a>
+        <button
+          onClick={onClose}
+          title="Close (Esc)"
+          style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            color: '#fff',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Image Display */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: `scale(${zoom})`,
+          transition: 'transform 0.2s ease-out'
+        }}
+      >
+        <img
+          src={src}
+          alt="Enlarged preview"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '85vh',
+            objectFit: 'contain',
+            borderRadius: 12,
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear: () => void }) {
   const [timeLeft, setTimeLeft] = useState(5);
   const [canceled, setCanceled] = useState(false);
@@ -61,6 +215,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
   onClearChat?: () => void;
   walletState: any;
 }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const isUser = msg.role === "user";
 
   // Format content: replace LLM's long dash (em-dash) with a comma for better natural reading.
@@ -92,7 +247,8 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
     );
   }
 
-
+  const hasImages = msg.images && msg.images.length > 0;
+  const hasText = Boolean(displayContent && displayContent.trim());
 
   return (
     <div
@@ -103,124 +259,216 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
       }}
     >
       <div style={{ maxWidth: "100%", width: isUser ? "auto" : "100%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
-        <div
-          style={{
-            background: isUser ? theme.bubbleUser : "transparent",
-            color: isUser ? theme.bubbleUserInk : theme.ink,
-            padding: isUser ? "10px 16px" : "2px 0",
-            borderRadius: isUser ? 18 : 0,
-            borderBottomRightRadius: isUser ? 4 : 0,
-            boxShadow: isUser && theme.bubbleUser === "#FFFFFF" ? "0 1px 2px rgba(0,0,0,0.05), 0 1px 1px rgba(0,0,0,0.02)" : "none",
-            fontFamily: "Inter, sans-serif",
-            fontSize: 14.5,
-            lineHeight: 1.65,
-            whiteSpace: isUser ? "pre-wrap" : "normal",
-            wordBreak: "break-word",
-            opacity: isUser && msg.status === "pending" ? 0.7 : 1,
-            transition: "opacity 0.25s ease",
-          }}
-        >
-          <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
-            {msg.images && msg.images.length > 0 && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: displayContent ? 8 : 0 }}>
-                {msg.images.map((imgUrl: string, i: number) => (
-                  <div key={i} style={{ position: "relative", maxWidth: 320, borderRadius: 12, overflow: "hidden", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
-                    <img 
-                      src={imgUrl} 
-                      alt="attachment" 
-                      style={{ maxWidth: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} 
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-            {isUser ? (
-              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-                {displayContent && <span>{displayContent}</span>}
-                {msg.status === "pending" && (
-                  <span style={{ fontSize: 10, opacity: 0.65, fontStyle: "italic", whiteSpace: "nowrap" }}>
-                    • sending
-                  </span>
-                )}
-              </span>
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({ node, ...props }) => <p style={{ margin: "0 0 12px 0", lineHeight: 1.6 }} {...props} />,
-                  a: ({ node, ...props }) => <a style={{ color: theme.accent, textDecoration: "none", fontWeight: 500 }} target="_blank" rel="noopener noreferrer" {...props} />,
-                  ul: ({ node, ...props }) => <ul style={{ paddingLeft: 22, margin: "0 0 12px 0" }} {...props} />,
-                  ol: ({ node, ...props }) => <ol style={{ paddingLeft: 22, margin: "0 0 12px 0" }} {...props} />,
-                  li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
-                  strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: theme.ink }} {...props} />,
-                  h1: ({ _node, ...props }: any) => <h1 style={{ fontSize: "1.4em", fontWeight: 700, margin: "20px 0 12px 0", color: theme.ink }} {...props} />,
-                  h2: ({ _node, ...props }: any) => <h2 style={{ fontSize: "1.2em", fontWeight: 600, margin: "18px 0 10px 0", color: theme.ink, borderBottom: `1px solid ${theme.border}`, paddingBottom: 6 }} {...props} />,
-                  h3: ({ _node, ...props }: any) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
-                  blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
-                  table: ({ _node, ...props }: any) => <div style={{ overflowX: "auto", margin: "16px 0" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95em" }} {...props} /></div>,
-                  th: ({ _node, ...props }: any) => <th style={{ borderBottom: `2px solid ${theme.border}`, padding: "10px 12px", textAlign: "left", fontWeight: 600, background: theme.surface2 }} {...props} />,
-                  td: ({ _node, ...props }: any) => <td style={{ borderBottom: `1px solid ${theme.border}`, padding: "10px 12px" }} {...props} />,
-                  hr: ({ _node, ...props }: any) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,
-                  pre: ({ _node, ...props }: any) => <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />,
-                  code: ({ _node, className, ...props }: any) => {
-                    const hasNewline = String(props.children).includes('\n');
-                    const match = /language-(\w+)/.exec(className || '');
-                    if (match || hasNewline) {
-                      return <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }} className={className} {...props} />;
-                    }
-                    return <code style={{ background: theme.surface2, padding: "3px 6px", borderRadius: 4, fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: "0.9em", color: theme.accent, border: `1px solid ${theme.border}` }} className={className} {...props} />;
-                  },
-                  img: ({ _node, ...props }: any) => {
-                    return (
-                      <div style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
-                        <img style={{ maxWidth: "100%", height: "auto", borderRadius: 12, display: "block", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }} {...props} />
-                        <a
-                          href={props.src}
-                          download={`Sera_Image_${Date.now()}.png`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            position: "absolute",
-                            bottom: 12,
-                            right: 12,
-                            background: "rgba(0, 0, 0, 0.6)",
-                            backdropFilter: "blur(4px)",
-                            WebkitBackdropFilter: "blur(4px)",
-                            color: "#FFF",
-                            border: "1px solid rgba(255, 255, 255, 0.2)",
-                            borderRadius: "50%",
-                            width: 36,
-                            height: 36,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            transition: "all 0.2s",
-                            textDecoration: "none"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "rgba(0, 0, 0, 0.8)";
-                            e.currentTarget.style.transform = "scale(1.05)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "rgba(0, 0, 0, 0.6)";
-                            e.currentTarget.style.transform = "scale(1)";
-                          }}
-                          title="Download Image"
-                        >
-                          <Download size={18} />
-                        </a>
-                      </div>
-                    );
-                  }
+        {/* Standalone Media Attachment Cards (Separated from Text Bubble) */}
+        {hasImages && (
+          <div style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: hasText ? 8 : 0,
+            justifyContent: isUser ? "flex-end" : "flex-start",
+            maxWidth: "100%"
+          }}>
+            {msg.images.map((imgUrl: string, i: number) => (
+              <div
+                key={i}
+                onClick={() => setLightboxSrc(imgUrl)}
+                style={{
+                  position: "relative",
+                  maxWidth: 320,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  border: `1px solid ${theme.border}`,
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+                  cursor: "pointer",
+                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                  background: theme.surface2
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "scale(1.02)";
+                  e.currentTarget.style.boxShadow = "0 6px 18px rgba(0,0,0,0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "scale(1)";
+                  e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,0,0,0.08)";
                 }}
               >
-                {displayContent}
-              </ReactMarkdown>
-            )}
-            {msg.streaming && <span style={{ display: "inline-block", width: 6, height: 14, background: theme.accent, marginLeft: 3, verticalAlign: "-2px", animation: "chatui-blink 1s step-end infinite" }} />}
+                <img 
+                  src={imgUrl} 
+                  alt="attachment" 
+                  style={{ maxWidth: "100%", maxHeight: 260, display: "block", objectFit: "cover" }} 
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    background: "rgba(0, 0, 0, 0.55)",
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                    color: "#FFF",
+                    borderRadius: "50%",
+                    width: 28,
+                    height: 28,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                  }}
+                  title="Click to view full image"
+                >
+                  <Maximize2 size={13} />
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
+
+        {/* Text Message Bubble */}
+        {(hasText || isUser) && (
+          <div
+            style={{
+              background: isUser ? theme.bubbleUser : "transparent",
+              color: isUser ? theme.bubbleUserInk : theme.ink,
+              padding: isUser ? "10px 16px" : "2px 0",
+              borderRadius: isUser ? 18 : 0,
+              borderBottomRightRadius: isUser ? 4 : 0,
+              boxShadow: isUser && theme.bubbleUser === "#FFFFFF" ? "0 1px 2px rgba(0,0,0,0.05), 0 1px 1px rgba(0,0,0,0.02)" : "none",
+              fontFamily: "Inter, sans-serif",
+              fontSize: 14.5,
+              lineHeight: 1.65,
+              whiteSpace: isUser ? "pre-wrap" : "normal",
+              wordBreak: "break-word",
+              opacity: isUser && msg.status === "pending" ? 0.7 : 1,
+              transition: "opacity 0.25s ease",
+            }}
+          >
+            <div className="markdown-content" style={{ display: "flex", flexDirection: "column" }}>
+              {isUser ? (
+                <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                  {displayContent && <span>{displayContent}</span>}
+                  {msg.status === "pending" && (
+                    <span style={{ fontSize: 10, opacity: 0.65, fontStyle: "italic", whiteSpace: "nowrap" }}>
+                      • sending
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ node, ...props }) => <p style={{ margin: "0 0 12px 0", lineHeight: 1.6 }} {...props} />,
+                    a: ({ node, ...props }) => <a style={{ color: theme.accent, textDecoration: "none", fontWeight: 500 }} target="_blank" rel="noopener noreferrer" {...props} />,
+                    ul: ({ node, ...props }) => <ul style={{ paddingLeft: 22, margin: "0 0 12px 0" }} {...props} />,
+                    ol: ({ node, ...props }) => <ol style={{ paddingLeft: 22, margin: "0 0 12px 0" }} {...props} />,
+                    li: ({ node, ...props }) => <li style={{ marginBottom: 6 }} {...props} />,
+                    strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: theme.ink }} {...props} />,
+                    h1: ({ _node, ...props }: any) => <h1 style={{ fontSize: "1.4em", fontWeight: 700, margin: "20px 0 12px 0", color: theme.ink }} {...props} />,
+                    h2: ({ _node, ...props }: any) => <h2 style={{ fontSize: "1.2em", fontWeight: 600, margin: "18px 0 10px 0", color: theme.ink, borderBottom: `1px solid ${theme.border}`, paddingBottom: 6 }} {...props} />,
+                    h3: ({ _node, ...props }: any) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
+                    blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
+                    table: ({ _node, ...props }: any) => (
+                      <div style={{
+                        overflowX: "auto",
+                        margin: "14px 0",
+                        borderRadius: 10,
+                        border: `1px solid ${theme.border}`,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                        background: theme.surface
+                      }}>
+                        <table style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: "0.9em",
+                          textAlign: "left",
+                          lineHeight: 1.5
+                        }} {...props} />
+                      </div>
+                    ),
+                    th: ({ _node, ...props }: any) => (
+                      <th style={{
+                        borderBottom: `1px solid ${theme.border}`,
+                        padding: "10px 14px",
+                        textAlign: "left",
+                        fontWeight: 600,
+                        background: theme.surface2,
+                        color: theme.ink,
+                        whiteSpace: "nowrap"
+                      }} {...props} />
+                    ),
+                    td: ({ _node, ...props }: any) => (
+                      <td style={{
+                        borderBottom: `1px solid ${theme.border}`,
+                        padding: "9px 14px",
+                        color: theme.ink
+                      }} {...props} />
+                    ),
+                    hr: ({ _node, ...props }: any) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,
+                    pre: ({ _node, ...props }: any) => <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />,
+                    code: ({ _node, className, ...props }: any) => {
+                      const hasNewline = String(props.children).includes('\n');
+                      const match = /language-(\w+)/.exec(className || '');
+                      if (match || hasNewline) {
+                        return <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }} className={className} {...props} />;
+                      }
+                      return <code style={{ background: theme.surface2, padding: "3px 6px", borderRadius: 4, fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: "0.9em", color: theme.accent, border: `1px solid ${theme.border}` }} className={className} {...props} />;
+                    },
+                    img: ({ _node, ...props }: any) => {
+                      return (
+                        <div style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
+                          <img
+                            onClick={() => props.src && setLightboxSrc(props.src)}
+                            style={{ maxWidth: "100%", height: "auto", borderRadius: 12, display: "block", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", cursor: "pointer" }}
+                            {...props}
+                          />
+                          <a
+                            href={props.src}
+                            download={`Sera_Image_${Date.now()}.png`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              position: "absolute",
+                              bottom: 12,
+                              right: 12,
+                              background: "rgba(0, 0, 0, 0.6)",
+                              backdropFilter: "blur(4px)",
+                              WebkitBackdropFilter: "blur(4px)",
+                              color: "#FFF",
+                              border: "1px solid rgba(255, 255, 255, 0.2)",
+                              borderRadius: "50%",
+                              width: 36,
+                              height: 36,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              transition: "all 0.2s",
+                              textDecoration: "none"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = "rgba(0, 0, 0, 0.8)";
+                              e.currentTarget.style.transform = "scale(1.05)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = "rgba(0, 0, 0, 0.6)";
+                              e.currentTarget.style.transform = "scale(1)";
+                            }}
+                            title="Download Image"
+                          >
+                            <Download size={18} />
+                          </a>
+                        </div>
+                      );
+                    }
+                  }}
+                >
+                  {displayContent}
+                </ReactMarkdown>
+              )}
+              {msg.streaming && <span style={{ display: "inline-block", width: 6, height: 14, background: theme.accent, marginLeft: 3, verticalAlign: "-2px", animation: "chatui-blink 1s step-end infinite" }} />}
+            </div>
+          </div>
+        )}
 
         {msg.actionLinks && msg.actionLinks.length > 0 && (
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
@@ -276,6 +524,11 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
           </button>
         )}
       </div>
+
+      {/* Interactive Lightbox Modal */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
     </div>
   );
 }
