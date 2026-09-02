@@ -6,8 +6,9 @@ const DEFAULT_DASHSCOPE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mo
 
 export interface QwenMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> | null;
   name?: string; // used for tool role
+  tool_call_id?: string; // used for tool role
   tool_calls?: any[]; // used when assistant calls a tool
 }
 
@@ -15,6 +16,7 @@ export interface QwenResponse {
   text: string;
   usage: { input_tokens: number; output_tokens: number; total_tokens: number };
   toolCalls?: SeraToolCall[];
+  rawMessage?: any;
 }
 
 /**
@@ -29,14 +31,14 @@ export class QwenAdapter implements ILLMAdapter {
   private readonly endpoint: string;
   private readonly enableThinking: boolean | undefined;
 
-  constructor(model: string = 'qwen-plus') {
+  constructor(model: string = 'qwen3.8-flash') {
     const key = process.env.QWEN_API;
     if (!key) throw new Error('[QwenAdapter] QWEN_API key is not set in environment.');
     this.apiKey = key;
     this.model = model;
     this.endpoint = process.env.QWEN_BASE_URL || DEFAULT_DASHSCOPE_URL;
     // Fast Latency Optimization: Disable thinking mode tokens by default to ensure sub-second / snappy responses.
-    this.enableThinking = process.env.ENABLE_DEEP_THINKING === 'true' && model === 'qwen3.7-max' ? true : false;
+    this.enableThinking = process.env.ENABLE_DEEP_THINKING === 'true' && (model === 'qwen3.8-max' || model === 'qwen3.7-max') ? true : false;
     this.capability = this.capabilityFor(model);
   }
 
@@ -57,15 +59,23 @@ export class QwenAdapter implements ILLMAdapter {
     const body: any = {
       model: this.model,
       messages: messages,
+      max_tokens: parseInt(process.env.QWEN_MAX_TOKENS || '4096', 10),
     };
 
-    // Qwen 3.5/3.7 are hybrid-thinking models. Keep the light lane cheap and
-    // deterministic; reserve reasoning tokens for the explicitly strong lane.
-    if (this.enableThinking !== undefined) body.enable_thinking = this.enableThinking;
+    // Only inject enable_thinking when explicitly requested for deep reasoning
+    if (this.enableThinking === true) {
+      body.enable_thinking = true;
+    }
+
+    const effectiveSignal = abortSignal
+      ? (typeof (AbortSignal as any).any === 'function'
+          ? (AbortSignal as any).any([abortSignal, AbortSignal.timeout(45000)])
+          : abortSignal)
+      : AbortSignal.timeout(45000);
 
     if (dashScopeTools && dashScopeTools.length > 0) {
       body.tools = dashScopeTools;
-      body.tool_choice = 'auto';
+      body.tool_choice = (tools as any)?._toolChoice || 'auto';
     }
 
     const response = await fetch(this.endpoint, {
@@ -75,7 +85,7 @@ export class QwenAdapter implements ILLMAdapter {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: abortSignal
+      signal: effectiveSignal
     });
 
     if (!response.ok) {
@@ -101,7 +111,7 @@ export class QwenAdapter implements ILLMAdapter {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(retryBody),
-          signal: abortSignal
+          signal: effectiveSignal
         });
         
         if (retryResponse.ok) {
@@ -118,7 +128,7 @@ export class QwenAdapter implements ILLMAdapter {
               } catch (e) {
                 console.error('[QwenAdapter] Failed to parse retry tool arguments:', tc.function.arguments);
               }
-              return { name: tc.function.name, arguments: args };
+              return { id: tc.id, name: tc.function.name, arguments: args, raw: tc };
             });
           }
           
@@ -130,6 +140,7 @@ export class QwenAdapter implements ILLMAdapter {
               total_tokens: retryData.usage?.total_tokens || 0,
             },
             toolCalls: retryToolCalls,
+            rawMessage: retryChoice
           };
         }
         // If retry also fails, fall through to throw the original error
@@ -153,8 +164,10 @@ export class QwenAdapter implements ILLMAdapter {
           console.error('[QwenAdapter] Failed to parse tool arguments:', tc.function.arguments);
         }
         return {
+          id: tc.id,
           name: tc.function.name,
-          arguments: args
+          arguments: args,
+          raw: tc
         };
       });
     }
@@ -167,6 +180,7 @@ export class QwenAdapter implements ILLMAdapter {
         total_tokens: data.usage?.total_tokens || 0,
       },
       toolCalls,
+      rawMessage: choice
     };
   }
 
@@ -199,18 +213,18 @@ export class QwenAdapter implements ILLMAdapter {
   }
 
   private capabilityFor(model: string): ModelCapability {
-    if (model === 'qwen3.5-flash') {
+    if (model === 'qwen3.8-flash' || model === 'qwen3.5-flash' || model === 'qwen-flash' || model === 'qwen-turbo') {
       return {
         provider: 'Qwen', model,
-        tiers: ['Execution', 'Social'],
-        supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
+        tiers: ['Execution', 'Social', 'Vision'],
+        supportsVision: true, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
         maxContext: 128_000, priceInput: 0.001, priceOutput: 0.002, latencyClass: 'UltraFast'
       };
     }
-    if (model === 'qwen3.7-max') {
+    if (model === 'qwen3.8-max' || model === 'qwen3.7-max' || model === 'qwen-max' || model === 'qwen-plus') {
       return {
         provider: 'Qwen', model,
-        tiers: ['Reasoning', 'Coding'],
+        tiers: ['Reasoning', 'Coding', 'Execution'],
         supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
         maxContext: 1_000_000, priceInput: 0.012, priceOutput: 0.036, latencyClass: 'Standard'
       };
@@ -225,9 +239,9 @@ export class QwenAdapter implements ILLMAdapter {
     }
     return {
       provider: 'Qwen', model,
-      tiers: ['Reasoning', 'Coding'],
+      tiers: ['Reasoning', 'Coding', 'Execution'],
       supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
-      maxContext: 32_000, priceInput: 0.004, priceOutput: 0.012, latencyClass: 'Fast'
+      maxContext: 128_000, priceInput: 0.004, priceOutput: 0.012, latencyClass: 'Fast'
     };
   }
 }

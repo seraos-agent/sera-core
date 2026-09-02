@@ -382,7 +382,7 @@ export function createPublicReceptionRouter(isAllowedOrigin: (origin: string | u
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'qwen-turbo',
+          model: process.env.QWEN_LIGHT_MODEL || 'qwen3.8-flash',
           input: {
             messages: [
               { role: 'system', content: receptionSystemPrompt },

@@ -145,11 +145,11 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_write',
-    description: 'Write a document or note to your Google Drive SERA Vault.',
+    description: 'Write or update a text document, markdown memo, or raw notes in your Google Drive SERA Vault. NOTE: To create or edit spreadsheets/tables, ALWAYS use sera_gdrive_create_sheet to preserve rich formatting, colors, and formulas.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Name of the file to create or update' },
+        filename: { type: 'string', description: 'Name of the document to create or update' },
         content: { type: 'string', description: 'The text content to write' },
         mimeType: { type: 'string', description: 'Optional. e.g. text/plain, text/markdown, text/csv' }
       },
@@ -158,22 +158,22 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_read',
-    description: 'Read a file from your Google Drive SERA Vault.',
+    description: 'Read a document or spreadsheet from your Google Drive SERA Vault by file name or file ID.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Name of the file to read' },
+        filename: { type: 'string', description: 'Name or title of the file to read (extensions like .xlsx or .md are optional)' },
         fileId: { type: 'string', description: 'Direct file ID (if known)' }
       }
     }
   },
   {
     name: 'sera_gdrive_list',
-    description: 'List or search files inside your Google Drive SERA Vault folder.',
+    description: 'List or search files and spreadsheets inside your Google Drive SERA Vault folder.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        name: { type: 'string', description: 'Filter by exact file name' },
+        name: { type: 'string', description: 'Search or filter by file name/title (extensions like .xlsx or .md are optional)' },
         searchTerm: { type: 'string', description: 'Search for files containing this keyword or phrase' },
         mimeType: { type: 'string', description: 'Filter by mime type (e.g. text/markdown, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet)' }
       }
@@ -181,11 +181,11 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_create_sheet',
-    description: 'Create a professionally formatted Excel spreadsheet (.xlsx) in your Google Drive SERA Vault with executive headers, zebra striping, auto-fit column widths, smart currency/percentage formatting, and live SUM formulas. Opens seamlessly in Google Sheets.',
+    description: 'Create OR update a professionally formatted Excel spreadsheet (.xlsx / Google Sheets) in your Google Drive SERA Vault with executive headers, zebra striping, auto-fit column widths, smart currency/percentage formatting, and live SUM formulas. If a spreadsheet with this title already exists, it updates the spreadsheet in-place preserving its file ID and styling.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        title: { type: 'string', description: 'Name of the spreadsheet' },
+        title: { type: 'string', description: 'Name or title of the spreadsheet' },
         headers: { type: 'array', items: { type: 'string' }, description: 'Column headers (e.g. ["Category", "Amount (IDR)", "Status"])' },
         rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas like "=SUM(B2:B10)")' },
         options: {
@@ -214,12 +214,12 @@ export const SERA_MCP_TOOLS = [
   },
   {
     name: 'sera_gdrive_append',
-    description: 'Append text content to an existing document, note, or log in your Google Drive SERA Vault without overwriting existing data.',
+    description: 'Append new rows to an existing spreadsheet OR append notes to a text document in your Google Drive SERA Vault. For spreadsheets, pass data rows (as a CSV line or JSON array) and they will be inserted cleanly into the table without corrupting the file.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Name of the file to append to (creates file if not exists)' },
-        content: { type: 'string', description: 'The text content to append' }
+        filename: { type: 'string', description: 'Name or title of the spreadsheet or document to append to' },
+        content: { type: 'string', description: 'The text content or row data (CSV string or JSON array) to append' }
       },
       required: ['filename', 'content']
     }

@@ -92,6 +92,21 @@ button {
   margin-bottom: 0 !important;
 }
 
+/* Seamless ChatGPT-style Table Container (Smooth swipe without scrollbar) */
+.clean-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 12px 0 16px 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.clean-table-container::-webkit-scrollbar {
+  display: none;
+}
+
 /* TradingView Logo Tweaks */
 #tv-attr-logo,
 a[href*='tradingview.com'] {

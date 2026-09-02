@@ -17,7 +17,6 @@ import { createOAuthRouter } from './auth/oauth/oauthRouter';
 import { TelegramBotManager } from '../capabilities/communication/adapters/TelegramBotManager';
 import { TelegramAdapter } from '../capabilities/communication/adapters/TelegramAdapter';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
-import { HygieneDaemon } from '../core/hygiene/HygieneDaemon';
 import { SupabaseRestClient } from '../core/persistence/SupabaseRestClient';
 import { EventTypes } from '../core/events/types';
 
@@ -43,14 +42,7 @@ const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
 
 console.log(`[Server] Services Init - Supabase: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Reown: ${reownWalletIdentityService ? 'ACTIVE' : 'LOCAL'}, GDrive: ${!!googleDriveOAuthService}, Threads: ${threadsOAuthService.appId ? 'OK' : 'MISSING'}`);
 
-// ── Hygiene Daemon (Automated Garbage Collection) ────────────────────────────
 const supabaseClient = SupabaseRestClient.fromEnvironment();
-if (supabaseClient) {
-  const hygieneDaemon = new HygieneDaemon(supabaseClient);
-  hygieneDaemon.start();
-} else {
-  console.warn('[Server] HygieneDaemon not started: Supabase credentials missing.');
-}
 
 // ── Communication Bridges ───────────────────────────────────────────────────
 agentManager.onInstanceCreated((instance) => {

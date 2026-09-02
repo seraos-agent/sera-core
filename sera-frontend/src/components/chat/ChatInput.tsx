@@ -375,7 +375,7 @@ export function ChatInput({
             onChange={autoGrow}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ask anything or attach a chart / image..."
+            placeholder="Ask anything..."
             rows={1}
             disabled={disabled}
             style={{

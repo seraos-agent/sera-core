@@ -85,10 +85,9 @@ export interface OutcomeRealizationPattern {
 
 export interface ProposalTrace {
   id: string;
-  proposalSnapshot: any; // Using any to avoid circular import with intents/types for now, or just import it. Let's use any for simplicity.
+  proposalSnapshot: any;
   worldStateSnapshot: any;
   outcome: 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
   selectedCandidateId?: string;
   timestamp: number;
 }
-export * from './aios_types';

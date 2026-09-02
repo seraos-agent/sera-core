@@ -197,12 +197,21 @@ export function useSocket(
     });
 
     newSocket.on("chat:history", (history: any[]) => {
-      const isInitialHistory = !initialServerHistoryReceived.current;
       initialServerHistoryReceived.current = true;
       
+      // Explicit chat clear or empty server history
+      if (Array.isArray(history) && history.length === 0) {
+        setMessages([]);
+        deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
+          .catch(() => undefined)
+          .then(() => deviceMemoryVault.delete(localChatKey))
+          .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
+        return;
+      }
+
       setMessages((previous) => {
         if (!previous || previous.length === 0) return history || [];
-        if (!history || history.length === 0) return previous;
+        if (!history) return previous;
 
         // Smart Deterministic Reconciliation:
         // Merge server history with any local in-flight messages that haven't arrived yet
@@ -230,13 +239,6 @@ export function useSocket(
 
         return merged;
       });
-
-      if (!isInitialHistory && history.length === 0) {
-        deviceVaultWriteQueue.current = deviceVaultWriteQueue.current
-          .catch(() => undefined)
-          .then(() => deviceMemoryVault.delete(localChatKey))
-          .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
-      }
     });
 
     newSocket.on("chat:reply", (data: any) => {

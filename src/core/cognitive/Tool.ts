@@ -43,6 +43,11 @@ export interface SeraTool {
 
 export interface SeraToolCall {
   /**
+   * The unique ID of the tool call (used by OpenAI/DashScope compatible APIs).
+   */
+  id?: string;
+
+  /**
    * The name of the tool that the LLM has selected to call.
    */
   name: string;
@@ -51,4 +56,9 @@ export interface SeraToolCall {
    * The parsed arguments provided by the LLM, matching the tool's parameters schema.
    */
   arguments: Record<string, any>;
+
+  /**
+   * The raw tool call object from the provider.
+   */
+  raw?: any;
 }

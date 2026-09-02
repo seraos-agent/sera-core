@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { EventTypes, GoalResultPayload, StandardEvent } from '../../core/events/types';
 import { ModelOrchestrator } from '../../core/llm/ModelOrchestrator';
 import { QwenMessage } from '../llm/QwenAdapter';
+import { SeraToolCall } from '../../core/cognitive/Tool';
 import { MemoryProposal, MemoryOperation } from '../../core/memory/MemoryProposal';
 import { MemorySource } from '../../core/memory/MemorySource';
 import { EvidenceType } from '../../core/memory/MemoryEvidence';
@@ -9,6 +10,25 @@ import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
 import { FeasibilityEvaluator } from './FeasibilityEvaluator';
 import { ProposalResponseHandler } from './ProposalResponseHandler';
 import { DialogueResultNarrator } from './DialogueResultNarrator';
+
+export interface SingleToolExecutionParams {
+  toolCall: SeraToolCall;
+  toolCallId: string;
+  event: StandardEvent<any>;
+  userMessage: string;
+  sessionId: string;
+  capabilityCatalog: any;
+  autonomyAgreementStore?: any;
+  activeAbortControllerSignal?: AbortSignal;
+  spawnGoalAndAwaitResult: (intent: string, parameters: Record<string, any>) => Promise<GoalResultPayload>;
+  emitEvent: (type: string, payload: Record<string, any>) => void;
+  buildWorkingMemory: (uiCommandExecuted?: boolean, userMessage?: string) => Promise<QwenMessage[]>;
+}
+
+export interface SingleToolExecutionResult {
+  isProposal: boolean;
+  output: any;
+}
 
 export interface ToolExecutionParams {
   event: StandardEvent<any>;
@@ -39,74 +59,80 @@ export class ToolExecutionHandler {
     private readonly dialogueResultNarrator: DialogueResultNarrator
   ) { }
 
-  public async handleToolCall(params: ToolExecutionParams): Promise<boolean> {
+  public static getCognitiveActivityLabel(toolIntent: string): string {
+    const map: Record<string, string> = {
+      'GDRIVE_CREATE_SPREADSHEET': 'Creating spreadsheet',
+      'GDRIVE_READ': 'Verifying sheet data',
+      'GDRIVE_APPEND': 'Updating document',
+      'GDRIVE_LIST': 'Listing files in Vault',
+      'GDRIVE_DELETE': 'Removing file from Vault',
+      'HL_SPOT_MARKET_DATA': 'Fetching market data',
+      'HL_SPOT_ORDER': 'Executing spot order',
+      'HL_SPOT_CANCEL': 'Cancelling spot order',
+      'HL_SPOT_PORTFOLIO': 'Checking portfolio',
+      'HL_SPOT_OPEN_ORDERS': 'Checking open orders',
+      'RESOLVE_BASE_TOKEN': 'Resolving token on-chain',
+      'web_search': 'Searching web',
+      'brave_web_search': 'Searching web',
+      'media_generation': 'Generating media',
+      'generate_image': 'Generating image',
+      'THREADS_PUBLISH': 'Publishing to Threads',
+      'TRANSFER_FUNDS': 'Preparing transfer',
+      'SCHEDULE_GOAL': 'Configuring automation',
+      'ACTIVATE_AUTONOMY_AGREEMENT': 'Configuring agreement',
+      'REMEMBER_FACT': 'Saving to memory',
+      'SET_THEME': 'Updating theme',
+      'CLEAR_CHAT': 'Clearing chat'
+    };
+
+    if (map[toolIntent]) return map[toolIntent];
+    return `${toolIntent.replace(/^GDRIVE_|^HL_|^THREADS_/, '').split('_').join(' ').toLowerCase().replace(/^./, (c: string) => c.toUpperCase())}`;
+  }
+
+  /**
+   * Executes a single tool call within a ReAct loop.
+   * Returns structured output to feed back into the model context or indicates if proposal approval is required.
+   */
+  public async executeSingleTool(params: SingleToolExecutionParams): Promise<SingleToolExecutionResult> {
     const {
+      toolCall,
+      toolCallId,
       event,
       userMessage,
-      response,
-      messages,
+      sessionId,
       capabilityCatalog,
       autonomyAgreementStore,
-      sessionId,
       activeAbortControllerSignal,
-      buildWorkingMemory,
-      spawnGoalAndAwaitResult
+      spawnGoalAndAwaitResult,
+      emitEvent,
+      buildWorkingMemory
     } = params;
 
-    if (!response.toolCalls || response.toolCalls.length === 0) {
-      return false;
-    }
-
-    const toolCall = response.toolCalls[0];
-    console.log(`[DialogueEngine] LLM Native Tool Call selected: ${toolCall.name}`);
-
     const startTime = Date.now();
-    let toolIntent = toolCall.name;
-
+    const toolIntent = toolCall.name;
     let toolParams: Record<string, any> = {};
     try {
-      toolParams = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments;
+      toolParams = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : (toolCall.arguments || {});
     } catch (e) {
-      console.error('[DialogueEngine] Failed to parse tool arguments:', e);
+      console.error('[ToolExecutionHandler] Failed to parse tool arguments:', e);
     }
 
+    // 1. UI Commands
     if (toolIntent === 'SET_THEME') {
       const themeValue = String(toolParams.theme || 'dark').toLowerCase();
       this.eventBus.emit(EventTypes.UI_COMMAND, { command: 'SET_THEME', value: themeValue });
-
-      messages.push({ role: 'assistant', content: `[TOOL_CALL: SET_THEME] ${JSON.stringify(toolParams)}` });
-      messages.push({
-        role: 'user',
-        content: `[SYSTEM NOTIFICATION] You have successfully executed the SET_THEME tool call and updated the UI display theme to ${themeValue.toUpperCase()} MODE. Confirm this naturally and warmly in 1 short sentence in the user's language.`
-      });
-
-      const profile = ExecutionProfileBuilder.forTier('Execution')
-        .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
-        .build();
-
-      const summaryResponse = await this.orchestrator.generate(profile, messages, [], activeAbortControllerSignal);
-      const emit = params.emitEvent || ((type, payload) => this.eventBus.emit(type, payload));
-      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
-      return true;
+      return {
+        isProposal: false,
+        output: { success: true, theme: themeValue, message: `UI display theme switched to ${themeValue} mode successfully.` }
+      };
     }
 
     if (toolIntent === 'CLEAR_CHAT') {
       this.eventBus.emit(EventTypes.UI_COMMAND, { command: 'CLEAR_CHAT_COUNTDOWN' });
-
-      messages.push({ role: 'assistant', content: `[TOOL_CALL: CLEAR_CHAT] ${JSON.stringify(toolParams)}` });
-      messages.push({
-        role: 'user',
-        content: `[SYSTEM NOTIFICATION] You have successfully executed the CLEAR_CHAT tool call. Confirm this naturally and warmly in 1 short sentence in the user's language.`
-      });
-
-      const profile = ExecutionProfileBuilder.forTier('Execution')
-        .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
-        .build();
-
-      const summaryResponse = await this.orchestrator.generate(profile, messages, [], activeAbortControllerSignal);
-      const emit = params.emitEvent || ((type, payload) => this.eventBus.emit(type, payload));
-      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
-      return true;
+      return {
+        isProposal: false,
+        output: { success: true, message: 'Chat history cleared from screen successfully.' }
+      };
     }
 
     if (toolIntent === 'REMEMBER_FACT') {
@@ -121,22 +147,15 @@ export class ToolExecutionHandler {
         category: 'SEMANTIC'
       };
       this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
-
-      messages.push({ role: 'assistant', content: `[TOOL_CALL: REMEMBER_FACT] ${JSON.stringify(toolParams)}` });
-      messages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] You have successfully saved the fact "${fact}" to long-term memory. Acknowledge this briefly in the user's language.` });
-
-      const profile = ExecutionProfileBuilder.forTier('Execution')
-        .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
-        .build();
-
-      const summaryResponse = await this.orchestrator.generate(profile, messages, [], activeAbortControllerSignal);
-      this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
-      return true;
+      return {
+        isProposal: false,
+        output: { success: true, fact, message: `Fact "${fact}" saved to long-term memory.` }
+      };
     }
 
+    // 2. Safety and Proposal Check for Financial/Mutative actions
     let isSafe = false;
     const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'TRANSFER_FUNDS'];
-    const emitEvent = params.emitEvent || ((type: string, payload: Record<string, any>) => this.eventBus.emit(type, payload));
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {
       const isAuthorizedByAgreement = autonomyAgreementStore?.hasFullAccessFor(toolIntent, sessionId) === true;
@@ -160,7 +179,7 @@ export class ToolExecutionHandler {
 
     if (isSafe) {
       this.eventBus.emit(EventTypes.DIALOGUE_ACTIVITY, {
-        content: `${toolIntent.split('_').join(' ').toLowerCase().replace(/^./, (c: string) => c.toUpperCase())}...`
+        content: ToolExecutionHandler.getCognitiveActivityLabel(toolIntent)
       });
 
       let result: any;
@@ -184,14 +203,36 @@ export class ToolExecutionHandler {
         durationMs: duration
       });
 
-      await this.dialogueResultNarrator.narrate(userMessage, result, buildWorkingMemory, activeAbortControllerSignal);
+      let outputData = result.success
+        ? (result.data !== undefined ? result.data : result)
+        : { success: false, error: result.errorMessage || result.data?.error || 'Operation failed' };
+
+      // Lean Output Compression: Prevent tool outputs from blowing up the context window
+      if (toolIntent === 'GDRIVE_CREATE_SPREADSHEET' && outputData?.success) {
+        outputData = {
+          success: true,
+          title: outputData.title,
+          webViewLink: outputData.webViewLink,
+          fileId: outputData.fileId,
+          totalRows: outputData.totalRows,
+          summary: outputData.summary || 'Spreadsheet created successfully in Google Drive.'
+        };
+      } else if (toolIntent === 'GDRIVE_LIST' && Array.isArray(outputData)) {
+        outputData = outputData.slice(0, 10).map((f: any) => ({ name: f.name, id: f.id, mimeType: f.mimeType }));
+      }
+
+      return {
+        isProposal: false,
+        output: outputData
+      };
     } else {
+      // Proposal required
       const feasibility = this.feasibilityEvaluator.evaluate(toolIntent, toolParams);
       if (!feasibility.feasible) {
         const workingMessages = await buildWorkingMemory();
         workingMessages.push({
           role: 'user',
-          content: `[SYSTEM NOTIFICATION] CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone (similar to Claude), but DO NOT apologize. If applicable, provide a logical next step (e.g., "Please top up your balance first"). DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
+          content: `[SYSTEM NOTIFICATION] CRITICAL OVERRIDE: The user requested an action (${toolIntent}) which is currently NOT FEASIBLE. Reason: ${feasibility.reason}. \nAct as a highly intelligent, logical AI assistant. Explain to the user exactly why the request cannot be processed based on the current data. Use a natural, helpful, and professional tone, but DO NOT apologize. If applicable, provide a logical next step. DO NOT pretend to schedule or execute the action. DO NOT ask the user to approve anything.`
         });
 
         const profile = ExecutionProfileBuilder.forTier('Execution')
@@ -200,10 +241,10 @@ export class ToolExecutionHandler {
 
         const failResponse = await this.orchestrator.generate(profile, workingMessages, undefined, activeAbortControllerSignal);
         emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: failResponse.text.trim() });
-        return true;
+        return { isProposal: true, output: { rejected: true, reason: feasibility.reason } };
       }
 
-      console.log(`[DialogueEngine] Tool Call ${toolIntent} requires user approval (Proposal).`);
+      console.log(`[ToolExecutionHandler] Tool Call ${toolIntent} requires user approval (Proposal).`);
       emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
         intent: toolIntent,
         parameters: toolParams,
@@ -240,8 +281,69 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
       });
 
       emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+      return { isProposal: true, output: { proposed: true, intent: toolIntent, parameters: toolParams } };
+    }
+  }
+
+  /**
+   * Backward-compatible handler for single-shot execution.
+   */
+  public async handleToolCall(params: ToolExecutionParams): Promise<boolean> {
+    const {
+      event,
+      userMessage,
+      response,
+      capabilityCatalog,
+      autonomyAgreementStore,
+      sessionId,
+      activeAbortControllerSignal,
+      buildWorkingMemory,
+      spawnGoalAndAwaitResult
+    } = params;
+
+    if (!response.toolCalls || response.toolCalls.length === 0) {
+      return false;
     }
 
+    const toolCall = response.toolCalls[0];
+    const emit = params.emitEvent || ((type, payload) => this.eventBus.emit(type, payload));
+
+    const result = await this.executeSingleTool({
+      toolCall,
+      toolCallId: toolCall.id || 'call_default',
+      event,
+      userMessage,
+      sessionId,
+      capabilityCatalog,
+      autonomyAgreementStore,
+      activeAbortControllerSignal,
+      spawnGoalAndAwaitResult,
+      emitEvent: emit,
+      buildWorkingMemory
+    });
+
+    if (result.isProposal) {
+      return true;
+    }
+
+    if (toolCall.name === 'SET_THEME' || toolCall.name === 'CLEAR_CHAT' || toolCall.name === 'REMEMBER_FACT') {
+      const messages = await buildWorkingMemory();
+      messages.push({ role: 'assistant', content: `[TOOL_CALL: ${toolCall.name}] ${JSON.stringify(toolCall.arguments)}` });
+      messages.push({
+        role: 'user',
+        content: `[SYSTEM NOTIFICATION] You have successfully executed ${toolCall.name}. Output: ${JSON.stringify(result.output)}. Confirm this naturally and warmly in 1 short sentence in the user's language.`
+      });
+
+      const profile = ExecutionProfileBuilder.forTier('Execution')
+        .withEstimatedInputTokens(Math.ceil(JSON.stringify(messages).length / 4))
+        .build();
+
+      const summaryResponse = await this.orchestrator.generate(profile, messages, [], activeAbortControllerSignal);
+      emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryResponse.text.trim() });
+      return true;
+    }
+
+    await this.dialogueResultNarrator.narrate(userMessage, { success: true, data: result.output } as any, buildWorkingMemory, activeAbortControllerSignal, emit);
     return true;
   }
 }

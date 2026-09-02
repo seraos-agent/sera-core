@@ -13,35 +13,6 @@ import { ChatHistoryStore } from '../capabilities/dialogue/ChatHistoryStore';
 import { ObservationStore } from '../core/perception/ObservationStore';
 import { InMemoryTriggerStore } from '../core/triggers/InMemoryTriggerStore';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
-import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
-import { Planner } from '../core/planner/Planner';
-import { StrategyStore } from '../core/strategy/StrategyStore';
-import { StrategyEngine } from '../core/strategy/StrategyEngine';
-import { QwenAdapter } from '../capabilities/llm/QwenAdapter';
-import { ModelRegistry } from '../core/llm/ModelRegistry';
-import { GoalEngine } from '../core/goals/GoalEngine';
-import { AttentionEngine } from '../core/attention/AttentionEngine';
-import { IntentStore } from '../core/intents/IntentStore';
-import { ProposalStore } from '../core/intents/ProposalStore';
-import { IntentEngine } from '../core/intents/IntentEngine';
-import { GoalSynthesizer } from '../core/intents/GoalSynthesizer';
-import { ProposalGovernance } from '../core/intents/ProposalGovernance';
-import { ExecutionTraceStore } from '../core/execution/ExecutionTraceStore';
-import { CoherenceMonitor } from '../core/cognition/CoherenceMonitor';
-import { ProposalEvaluator } from '../core/intents/ProposalEvaluator';
-import { CalibrationEvaluationEngine } from '../core/cognition/CalibrationEvaluationEngine';
-import { GovernanceOutcomeTracker } from '../core/governance/GovernanceOutcomeTracker';
-import { GovernanceReflectionEngine } from '../core/governance/GovernanceReflectionEngine';
-import { GovernanceCalibrationEngine } from '../core/governance/GovernanceCalibrationEngine';
-import { MetaGovernanceReview } from '../core/governance/MetaGovernanceReview';
-import { GovernanceCoordinator } from '../core/governance/GovernanceCoordinator';
-import { ConstitutionEngine } from '../constitution/ConstitutionEngine';
-import { IrreversibleActionRule } from '../constitution/rules/IrreversibleActionRule';
-import { DestructiveActionRule } from '../constitution/rules/DestructiveActionRule';
-import { UnsafeActionRule } from '../constitution/rules/UnsafeActionRule';
-import { SignalArbitrator } from '../core/feedback/SignalArbitrator';
-import { EpistemicPolicyEngine } from '../core/memory/EpistemicPolicyEngine';
-import { FeedbackPipeline } from '../core/feedback/FeedbackPipeline';
 import { TemporalClockService } from '../core/temporal/TemporalClockService';
 import { CognitiveCompressor } from '../core/perception/CognitiveCompressor';
 import { AuditLogger } from '../core/telemetry/AuditLogger';
@@ -53,9 +24,9 @@ import { MemoryIngress } from '../core/memory/MemoryIngress';
 import { CapabilityCatalog } from '../core/capabilities/CapabilityCatalog';
 import { SeraTool } from '../core/cognitive/Tool';
 import { CommunicationBridge } from '../capabilities/communication/CommunicationBridge';
-import { SwarmCoordinator } from '../core/swarm/SwarmCoordinator';
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
 import { SeraUserContext } from '../core/identity/types';
+import { ExecutionDispatcher } from '../runtime/ExecutionDispatcher';
 import { serverConfig } from './config';
 
 export class SeraAgentInstance {
@@ -73,9 +44,8 @@ export class SeraAgentInstance {
   public triggerStore!: InMemoryTriggerStore;
   public triggerEngine!: TriggerEngine;
   public goalBridge!: GoalBridge;
+  public executionDispatcher!: ExecutionDispatcher;
   public temporalClockService!: TemporalClockService;
-  public governanceCoordinator!: GovernanceCoordinator;
-  public metaGovernanceReview!: MetaGovernanceReview;
   public capabilityCatalog!: CapabilityCatalog;
   public communicationBridge!: CommunicationBridge;
   public metricsStore!: InMemoryMetricsStore;
@@ -178,94 +148,14 @@ export class SeraAgentInstance {
       this.secretManager
     );
 
-    const executionDispatcher = new ExecutionDispatcher(this.eventBus, this.sessionId);
-    const plannerLLM = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
-    const planner = new Planner(plannerLLM, this.eventBus);
-    const strategyStore = new StrategyStore();
-    const strategyEngine = new StrategyEngine(strategyStore);
-    const goalEngine = new GoalEngine();
-    const attentionEngine = new AttentionEngine(goalEngine, strategyStore);
-
-    const intentStore = new IntentStore();
-    const proposalStore = new ProposalStore();
-    const intentEngine = new IntentEngine(intentStore, goalEngine);
-    const goalSynthesizer = new GoalSynthesizer();
-    const proposalGovernance = new ProposalGovernance();
-    const swarmWorker = ({ task, role, blackboard }: { task: { id: string; title: string }; role: string; blackboard: readonly unknown[] }) => ({
-      taskId: task.id,
-      role,
-      note: `Completed proposal-only review step: ${task.title}`,
-      priorReviewCount: blackboard.length
-    });
-    const swarmCoordinator = new SwarmCoordinator({
-      RESEARCHER: swarmWorker,
-      PLANNER: swarmWorker,
-      CRITIC: swarmWorker,
-      SYNTHESIZER: swarmWorker
-    }, proposalGovernance, this.eventBus);
-
-    const executionTraceStore = new ExecutionTraceStore(this.eventBus);
-    const coherenceMonitor = new CoherenceMonitor();
-    const proposalEvaluator = new ProposalEvaluator(this.memoryStore);
-    const calibrationEvaluationEngine = new CalibrationEvaluationEngine(this.memoryStore);
-    const governanceOutcomeTracker = new GovernanceOutcomeTracker(this.memoryStore, this.eventBus);
-    const governanceReflectionEngine = new GovernanceReflectionEngine(this.memoryStore, this.eventBus);
-    const governanceCalibrationEngine = new GovernanceCalibrationEngine(this.memoryStore);
-    const metaGovernanceReview = new MetaGovernanceReview(this.eventBus);
-    this.metaGovernanceReview = metaGovernanceReview;
-
-    this.governanceCoordinator = new GovernanceCoordinator(
+    this.executionDispatcher = new ExecutionDispatcher(
       this.eventBus,
-      governanceOutcomeTracker,
-      governanceReflectionEngine,
-      calibrationEvaluationEngine,
-      governanceCalibrationEngine,
-      metaGovernanceReview
-    );
-
-    const constitutionEngine = new ConstitutionEngine();
-    constitutionEngine.register(new IrreversibleActionRule());
-    constitutionEngine.register(new DestructiveActionRule());
-    constitutionEngine.register(new UnsafeActionRule());
-
-    const signalArbitrator = new SignalArbitrator();
-    const epistemicPolicyEngine = new EpistemicPolicyEngine(this.memoryStore, this.eventBus);
-    const feedbackPipeline = new FeedbackPipeline(
-      signalArbitrator,
-      epistemicPolicyEngine,
-      this.memoryStore,
-      goalEngine,
-      coherenceMonitor,
-      this.eventBus
+      this.sessionId
     );
 
     this.runtime = new Runtime(
-      constitutionEngine,
-      feedbackPipeline,
-      coherenceMonitor,
-      calibrationEvaluationEngine,
-      executionTraceStore,
-      planner,
-      strategyStore,
-      strategyEngine,
-      attentionEngine,
-      goalEngine,
-      intentEngine,
-      intentStore,
-      proposalStore,
-      goalSynthesizer,
-      proposalGovernance,
-      proposalEvaluator,
-      governanceOutcomeTracker,
-      governanceReflectionEngine,
-      governanceCalibrationEngine,
-      undefined,
-      undefined,
-      this.eventBus,
-      executionDispatcher,
       this.memoryStore,
       this.chatHistoryStore,
-      swarmCoordinator,
       this.autonomyAgreementStore,
       persistLocally,
       this.subscriptionService
@@ -596,7 +486,6 @@ export class SeraAgentInstance {
 
     this.triggerEngine.start();
     this.temporalClockService.start();
-    this.governanceCoordinator.start();
   }
 
   public stop() {
@@ -608,7 +497,6 @@ export class SeraAgentInstance {
     void this.persistMemorySnapshot();
     this.temporalClockService.stop();
     this.triggerEngine.stop();
-    this.governanceCoordinator.stop();
     this.cognitiveCompressor.stop();
     this.experienceBuilder.stop();
     this.runtime.stop();

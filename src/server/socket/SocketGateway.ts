@@ -106,9 +106,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       socket.emit('observations:history', instance.observationStore.getAll());
       socket.emit('automations:update', instance.triggerStore.getAll());
       socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
-      if (instance.metaGovernanceReview) {
-        socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
-      }
       if (googleDriveOAuthService && socket.data.sessionId) {
         void googleDriveOAuthService.getStatus(socket.data.sessionId)
           .then((status) => {
@@ -251,13 +248,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       socket.emit('autonomy-agreements:update', instance.autonomyAgreementStore.getAll());
     };
 
-    const onGovernanceRecommendationSubmitted = (event: StandardEvent) => {
-      socket.emit('governance:recommendation_pending', event.payload);
-      if (instance.metaGovernanceReview) {
-        socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
-      }
-    };
-
     const onBillingCreditsUpdated = (event: StandardEvent) => {
       socket.emit('billing:update', event.payload);
     };
@@ -277,7 +267,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       instance.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
       instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
       instance.eventBus.on(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
-      instance.eventBus.on(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
       instance.eventBus.on(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
       instance.eventBus.on('system.trigger.registered', onTriggerRegistered);
     };
@@ -293,7 +282,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       instance.eventBus.off(EventTypes.DOMAIN_WALLET_STATE, onWalletUpdate);
       instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, onAutonomyAgreementChanged);
       instance.eventBus.off(EventTypes.AUTONOMY_AGREEMENT_REVOKED, onAutonomyAgreementChanged);
-      instance.eventBus.off(EventTypes.GOVERNANCE_RECOMMENDATION_SUBMITTED, onGovernanceRecommendationSubmitted);
       instance.eventBus.off(EventTypes.BILLING_CREDITS_UPDATED, onBillingCreditsUpdated);
       instance.eventBus.off('system.trigger.registered', onTriggerRegistered);
     };
@@ -609,7 +597,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       try {
         const identity = await reownWalletIdentityService.linkVerifiedWallet(socket.data.sessionId!, address);
         socket.emit('identity:link_success', { address: identity.subject, kind: identity.kind });
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof WalletAlreadyLinkedError) {
           socket.emit('identity:link_error', { code: 'WALLET_ALREADY_LINKED', message: error.message });
           return;
@@ -704,18 +692,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         id: msgTimestamp,
         timestamp: msgTimestamp
       });
-
-      if (serverConfig.allowDevFeatures && serverConfig.demoIntentCommand && message.toLowerCase().trim() === serverConfig.demoIntentCommand) {
-        const intentId = `intent-${msgTimestamp}`;
-        instance.runtime.intentStore?.registerIntent({
-          id: intentId,
-          description: 'Grow Asset Value',
-          status: 'ALIVE',
-          terminality: 'CONTINUOUS',
-          createdAt: msgTimestamp
-        });
-        instance.runtime.executeCycle(msgTimestamp).catch(console.error);
-      }
 
       const event: StandardEvent = {
         id: `evt-${msgTimestamp}`,
@@ -928,40 +904,6 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         } catch (err) {
           console.warn('[Server] Error fetching wallet balance:', err);
         }
-      }
-    });
-
-    socket.on('governance:approve_task', (payload: { taskId: string }) => {
-      if (!requireAuthenticatedSession(socket, 'governance:approve_task', instance?.eventBus)) return;
-      if (instance) {
-        instance.runtime.executionCoordinator.approveTask(payload.taskId);
-      }
-    });
-
-    socket.on('governance:reject_task', (payload: { taskId: string }) => {
-      if (!requireAuthenticatedSession(socket, 'governance:reject_task', instance?.eventBus)) return;
-      if (instance) {
-        instance.runtime.executionCoordinator.rejectTask(payload.taskId);
-      }
-    });
-
-    socket.on('governance:get_recommendations', () => {
-      if (!requireAuthenticatedSession(socket, 'governance:get_recommendations', instance?.eventBus)) return;
-      if (instance?.metaGovernanceReview) {
-        socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
-      }
-    });
-
-    socket.on('governance:respond_recommendation', (payload: { recommendationId: string; decision: 'APPROVED' | 'REJECTED' | 'MODIFIED'; rationale?: string }) => {
-      if (!requireAuthenticatedSession(socket, 'governance:respond_recommendation', instance?.eventBus)) return;
-      if (instance?.metaGovernanceReview) {
-        const decisionResult = instance.metaGovernanceReview.recordDecision(
-          payload.recommendationId,
-          payload.decision,
-          payload.rationale
-        );
-        socket.emit('governance:recommendation_response_result', { success: !!decisionResult, decision: decisionResult });
-        socket.emit('governance:recommendation_list', instance.metaGovernanceReview.getPendingRecommendations());
       }
     });
 

@@ -258,6 +258,8 @@ export class GoalBridge {
     }
   }
 
+  private recentlyHandledRequests: Map<string, number> = new Map();
+
   private emitResult(requestId: string, success: boolean, data: Record<string, any>, errorMessage?: string): void {
     const resultPayload: GoalResultPayload = { requestId, success, data, errorMessage };
     const event: StandardEvent = {
@@ -272,8 +274,27 @@ export class GoalBridge {
   }
 
   private async handleDispatchedAction(event: StandardEvent): Promise<void> {
-    const { actionType, actionPayload, context } = event.payload;
-    const requestId = context?.triggerId || `req-${Date.now()}`;
+    const payload = event?.payload || event || {};
+    const actionType = payload.actionType || payload.intent;
+    const actionPayload = payload.actionPayload || payload.parameters || {};
+    const context = payload.context || {};
+    const requestId = context?.triggerId || payload.requestId || event.correlationId || `req-${Date.now()}`;
+
+    // Deduplicate duplicate dispatches with identical requestId within 10 seconds
+    const now = Date.now();
+    if (this.recentlyHandledRequests.has(requestId)) {
+      const lastHandled = this.recentlyHandledRequests.get(requestId)!;
+      if (now - lastHandled < 10000) {
+        console.log(`[GoalBridge] Skipping duplicate dispatch for requestId: ${requestId} (${actionType})`);
+        return;
+      }
+    }
+    this.recentlyHandledRequests.set(requestId, now);
+    if (this.recentlyHandledRequests.size > 200) {
+      for (const [k, ts] of this.recentlyHandledRequests.entries()) {
+        if (now - ts > 30000) this.recentlyHandledRequests.delete(k);
+      }
+    }
 
     console.log(`\n[GoalBridge] Handling action: ${actionType} (requestId: ${requestId})`);
 
@@ -353,6 +374,8 @@ export class GoalBridge {
           await this.handleGDriveList(requestId, actionPayload);
           break;
         case 'GDRIVE_DELETE':
+        case 'GDRIVE_DELETE_FILE':
+        case 'DELETE_FILE':
         case 'gdrive:delete_file':
           await this.handleGDriveDelete(requestId, actionPayload);
           break;
@@ -415,10 +438,30 @@ export class GoalBridge {
   // ===========================================================================
 
   private async handleHLSpotMarketData(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || parameters.query || '').trim();
-    if (!coin) throw new Error('Please specify a token symbol (e.g. HYPE, ETH, BTC).');
+    const rawCoin = String(parameters.coin || parameters.query || parameters.symbol || '').trim();
+    const isTopQuery = !rawCoin || ['all', 'top', 'coins', 'crypto', 'tokens', 'market', 'rankings', 'overview'].includes(rawCoin.toLowerCase()) || parameters.limit !== undefined;
 
-    const data = await this.hlSpot.getMarketData(coin);
+    if (isTopQuery) {
+      const limit = Number(parameters.limit || 10);
+      const topData = await this.hlSpot.getTopMarketData(limit);
+      this.emitResult(requestId, true, {
+        provider: 'Hyperliquid Spot',
+        mode: 'TOP_MARKET_OVERVIEW',
+        count: topData.length,
+        tokens: topData.map(d => ({
+          symbol: d.coin,
+          name: d.token.fullName,
+          priceUsdc: d.midPrice,
+          bestBid: d.bestBid,
+          bestAsk: d.bestAsk,
+          volume24h: d.volume24h,
+          priceChange24hPercent: d.priceChange24hPercent
+        }))
+      });
+      return;
+    }
+
+    const data = await this.hlSpot.getMarketData(rawCoin);
     this.emitResult(requestId, true, {
       provider: 'Hyperliquid Spot',
       mode: 'SPOT',
@@ -1296,14 +1339,14 @@ export class GoalBridge {
 
   private async handleGDriveRead(requestId: string, payload: any): Promise<void> {
     try {
-      const { filename, fileId } = payload;
-      let targetId = fileId;
+      const filename = payload?.filename || payload?.fileName || payload?.name || payload?.title;
+      let targetId = payload?.fileId || payload?.id;
       if (!targetId && filename) {
         const files = await this.googleDriveCapability.listFiles(this.sessionId, { name: filename });
-        if (files.length === 0) throw new Error(`File ${filename} not found.`);
+        if (files.length === 0) throw new Error(`File "${filename}" not found in your SERA Vault.`);
         targetId = files[0].id;
       }
-      if (!targetId) throw new Error('Must provide either filename or fileId');
+      if (!targetId) throw new Error('Must provide either filename or fileId to read a file.');
       
       const content = await this.googleDriveCapability.readFile(this.sessionId, targetId);
       this.emitResult(requestId, true, { content, fileId: targetId });
@@ -1334,7 +1377,8 @@ export class GoalBridge {
 
   private async handleGDriveDelete(requestId: string, payload: any): Promise<void> {
     try {
-      const { filename, fileId } = payload;
+      const filename = payload?.filename || payload?.fileName || payload?.name || payload?.title;
+      const fileId = payload?.fileId || payload?.id;
       await this.googleDriveCapability.deleteFile(this.sessionId, { filename, fileId });
       this.emitResult(requestId, true, { deleted: true, filename: filename || fileId });
     } catch (e: any) {

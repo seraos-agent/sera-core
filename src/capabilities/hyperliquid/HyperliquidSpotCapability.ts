@@ -101,6 +101,37 @@ export class HyperliquidSpotCapability {
     return { ...marketData, token };
   }
 
+  /**
+   * Fetches real-time top crypto tokens ranked dynamically by 24h trading volume directly from Hyperliquid L1 node.
+   */
+  public async getTopMarketData(limit: number = 10): Promise<Array<HLSpotMarketData & { token: HLResolvedToken }>> {
+    const topMarkets = await this.client.getTopRankedTokens(limit);
+
+    const resolvedResults = await Promise.all(
+      topMarkets.map(async (m) => {
+        try {
+          const token = await this.tokenRegistry.resolveToken(m.coin);
+          return {
+            ...m,
+            token: token || {
+              symbol: m.coin,
+              fullName: m.coin,
+              spotAssetIndex: 10000,
+              pairIndex: 0,
+              szDecimals: 4,
+              weiDecimals: 8,
+              isCanonical: true
+            }
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return resolvedResults.filter((r): r is (HLSpotMarketData & { token: HLResolvedToken }) => r !== null);
+  }
+
   // =========================================================================
   // QUOTING
   // =========================================================================

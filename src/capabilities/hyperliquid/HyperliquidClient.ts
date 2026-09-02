@@ -205,6 +205,52 @@ export class HyperliquidClient {
   }
 
   /**
+   * Fetches real-time top tokens ranked dynamically by 24h trading volume directly from Hyperliquid L1 node.
+   */
+  public async getTopRankedTokens(limit: number = 10): Promise<HLSpotMarketData[]> {
+    try {
+      const perpData = await this.infoRequest({ type: 'metaAndAssetCtxs' });
+      const universe = (perpData as any[])[0]?.universe || [];
+      const assetCtxs = (perpData as any[])[1] || [];
+
+      const list: HLSpotMarketData[] = [];
+
+      for (let i = 0; i < universe.length; i++) {
+        const u = universe[i];
+        const ctx = assetCtxs[i];
+        if (!u || !ctx) continue;
+
+        const midPrice = parseFloat(ctx.midPx || ctx.oraclePx || ctx.markPx || '0');
+        const prevDayPx = parseFloat(ctx.prevDayPx || '0');
+        const volume24h = parseFloat(ctx.dayNtlVlm || '0');
+        const priceChange24hPercent = prevDayPx > 0
+          ? ((midPrice - prevDayPx) / prevDayPx) * 100
+          : 0;
+
+        if (midPrice > 0) {
+          list.push({
+            coin: u.name.toUpperCase(),
+            midPrice,
+            bestBid: midPrice * 0.9995,
+            bestAsk: midPrice * 1.0005,
+            volume24h,
+            prevDayPx,
+            priceChange24hPercent: Number(priceChange24hPercent.toFixed(2))
+          });
+        }
+      }
+
+      // Sort in descending order by actual 24h trading volume (highest volume first)
+      list.sort((a, b) => b.volume24h - a.volume24h);
+
+      return list.slice(0, Math.max(1, limit));
+    } catch (err: any) {
+      console.error('[HyperliquidClient] Failed to fetch top ranked tokens:', err.message);
+      return [];
+    }
+  }
+
+  /**
    * Fetches spot balances for a given wallet address.
    */
   public async getAccountBalances(address?: string): Promise<HLAccountBalance[]> {

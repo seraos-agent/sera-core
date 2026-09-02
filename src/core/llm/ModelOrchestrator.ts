@@ -22,10 +22,19 @@ export class ModelOrchestrator {
     console.log(`  └─ Tier: ${profile.tier}`);
     console.log(`  └─ Constraints: ${JSON.stringify(profile.constraints)}`);
 
-    const candidates = this.policy.rankModels(profile, this.registry.getAdapters());
-    if (candidates.length === 0) {
+    const rawCandidates = this.policy.rankModels(profile, this.registry.getAdapters());
+    if (rawCandidates.length === 0) {
       throw new Error(`[ModelOrchestrator] No model available satisfying profile: ${JSON.stringify(profile)}`);
     }
+
+    // Deduplicate distinct models: Never retry identical model instances sequentially
+    const seen = new Set<string>();
+    const candidates = rawCandidates.filter(adapter => {
+      const key = `${adapter.getCapability().provider}:${adapter.getCapability().model}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     const failures: Error[] = [];
     for (const [index, adapter] of candidates.entries()) {

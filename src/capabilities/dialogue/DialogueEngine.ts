@@ -13,8 +13,6 @@ import { MemoryQueryService } from '../../core/memory/MemoryQueryService';
 import { EpisodicMemoryReader } from '../../core/memory/EpisodicMemoryReader';
 import { VectorMemoryStore } from '../../core/memory/VectorMemoryStore';
 import { ConversationContextCompressor } from './ConversationContextCompressor';
-import { WorkClassificationPolicy } from '../../core/work-classification/WorkClassificationPolicy';
-import { WorkerCapabilityRegistry } from '../../core/work-classification/WorkerCapabilityRegistry';
 import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementStore';
 
 import { SYSTEM_PROMPT, INTENT_EXTRACTION_PROMPT } from './SystemPrompts';
@@ -30,15 +28,14 @@ import { ToolExecutionHandler } from './ToolExecutionHandler';
  *
  * Architecture role: Capability Layer (src/capabilities/dialogue/)
  * - Listens for USER_OBSERVATION events on the shared EventBus
- * - Classifies intent: delegates to GoalBridge for actionable intents, LLM for conversation
- * - Emits SPAWN_GOAL for actionable intents (picked up by GoalBridge)
- * - Listens for GOAL_RESULT events and narrates results back via AGENT_SPEAK
- * - Emits UI_COMMAND for theme changes
+ * - Handles multi-step ReAct autonomous tool chaining
  * - Has zero knowledge of HTTP, Socket.io, or transport layers
  */
 import { ModelOrchestrator } from '../../core/llm/ModelOrchestrator';
 import { ExecutionProfile } from '../../core/llm/types';
 import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
+
+import { SubAgentCoordinator } from '../agents/SubAgentCoordinator';
 
 export class DialogueEngine {
   private orchestrator: ModelOrchestrator;
@@ -50,8 +47,7 @@ export class DialogueEngine {
   private memoryStore: IWorkingMemory;
   private memoryQueryService: MemoryQueryService;
   private readonly conversationContextCompressor = new ConversationContextCompressor();
-  private readonly workClassificationPolicy = new WorkClassificationPolicy();
-  private readonly workerRegistry = new WorkerCapabilityRegistry();
+  private readonly subAgentCoordinator = new SubAgentCoordinator();
   /** The latest UI proposal that can be answered conversationally (for example, "iya"). */
   private pendingProposalId: string | undefined;
   private activeAbortController: AbortController | null = null;
@@ -90,7 +86,7 @@ export class DialogueEngine {
     );
     this.feasibilityEvaluator = new FeasibilityEvaluator(this.worldStateService);
     this.dialogueResultNarrator = new DialogueResultNarrator(this.eventBus, this.orchestrator);
-    this.intentClassifier = new IntentClassifier(this.workClassificationPolicy, this.orchestrator);
+    this.intentClassifier = new IntentClassifier();
     this.cognitiveContextBuilder = new CognitiveContextBuilder(this.worldStateService, this.memoryQueryService, this.chatHistoryStore, this.capabilityCatalog);
     this.proposalResponseHandler = new ProposalResponseHandler(this.eventBus);
     this.toolExecutionHandler = new ToolExecutionHandler(
@@ -100,8 +96,6 @@ export class DialogueEngine {
       this.proposalResponseHandler,
       this.dialogueResultNarrator
     );
-    this.workerRegistry.register({ id: 'dialogue-ui', lane: 'DETERMINISTIC_UI', supportedWorkClasses: ['INSTANT_UI'] });
-    this.workerRegistry.register({ id: 'dialogue-model', lane: 'DIALOGUE', supportedWorkClasses: ['CONVERSATION'] });
 
     this.loadConsentedUsers();
 
@@ -242,13 +236,13 @@ export class DialogueEngine {
       const spawnPayload: SpawnGoalPayload = { requestId, intent, parameters };
       this.emitEvent(EventTypes.DOMAIN_GOAL_SPAWNED, spawnPayload);
 
-      // Timeout safety: resolve with error after 15s if no result
+      // Timeout safety: resolve with error after 30s if no result
       setTimeout(() => {
         if (this.pendingGoals.has(requestId)) {
           this.pendingGoals.delete(requestId);
           resolve({ requestId, success: false, data: {}, errorMessage: 'Goal execution timed out.' });
         }
-      }, 15000);
+      }, 30000);
     });
   }
 
@@ -323,35 +317,33 @@ export class DialogueEngine {
     this.activeAbortController = new AbortController();
 
     // Capture any response routing context injected by the transport layer (e.g. ThreadsDaemon, McpServer, TelegramAdapter).
-    // This is stored as opaque state and forwarded on every DIALOGUE_AGENT_SPEAK emit.
-    // DialogueEngine does NOT inspect the platform field — it is irrelevant to cognition.
-    this._activeResponseContext = (event.payload as any)._responseContext ?? (event.payload as any).responseContext ?? undefined;
-    this._activeUserMessage = userMessage;
+    const attachedImages: string[] = rawPayload.images || [];
+    const attachedDocs: any[] = rawPayload.documents || [];
+    const hasMedia = attachedImages.length > 0 || attachedDocs.length > 0;
 
-    console.log(`[DialogueEngine] Processing DIALOGUE_USER_OBSERVED: "${userMessage}"` +
-      (this._activeResponseContext ? ` [routing context: platform=${this._activeResponseContext.platform}]` : ''));
-
-    if (!userMessage.trim()) {
+    if (!userMessage.trim() && !hasMedia) {
       this._activeResponseContext = undefined;
       return;
     }
 
-    if (this.pendingProposalId && this.isProposalApproval(userMessage)) {
+    const effectiveUserMessage = userMessage.trim() || (attachedImages.length > 0 ? 'Analyze this image.' : 'Analyze this attached document.');
+    this._activeUserMessage = effectiveUserMessage;
+
+    if (this.pendingProposalId && this.isProposalApproval(effectiveUserMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
       this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Applying your approval...' });
       return;
     }
 
-    if (this.pendingProposalId && this.isProposalRejection(userMessage)) {
+    if (this.pendingProposalId && this.isProposalRejection(effectiveUserMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_REJECTED, { proposalId: this.pendingProposalId });
       return;
     }
 
-
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
     try {
       // ── Step 1: Classify intent ──────────────────────────────────────────
-      const classification = await this.intentClassifier.classify(userMessage, this.activeAbortController?.signal);
+      const classification = await this.intentClassifier.classify(effectiveUserMessage, this.activeAbortController?.signal);
       let { intent, parameters, workRoute } = classification;
 
       console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass}`);
@@ -471,7 +463,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         }
       } else {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
-        let messages = await this.buildWorkingMemory(false, userMessage);
+        let messages = await this.buildWorkingMemory(false, effectiveUserMessage);
 
         if (forgetMeExecuted) {
           messages.push({
@@ -484,7 +476,7 @@ You MUST write a brief, natural response asking the user to review and click "Ap
         const hasImages = attachedImages.length > 0;
         if (hasImages) {
           const multimodalContent: any[] = [
-            { type: 'text', text: userMessage || 'Analyze this image.' }
+            { type: 'text', text: effectiveUserMessage }
           ];
           for (const url of attachedImages) {
             multimodalContent.push({
@@ -528,77 +520,159 @@ Guidelines:
           }
         }
 
-        const rawTools = typeof this.capabilityCatalog?.availableTools === 'function'
+        // Aggregate all tools across specialized sub-agents (DeFi, Productivity, Social, System) and catalog
+        const catalogTools = typeof this.capabilityCatalog?.availableTools === 'function'
           ? this.capabilityCatalog.availableTools()
           : (Array.isArray(this.capabilityCatalog) ? [...this.capabilityCatalog] : []);
 
-        rawTools.push({
-          name: 'REMEMBER_FACT',
-          description: 'Use this tool when the user explicitly instructs you to remember, save, or note a fact, rule, or piece of information.',
-          parameters: {
-            type: 'object',
-            properties: {
-              fact: { type: 'string', description: 'The exact fact or information to remember.' }
-            },
-            required: ['fact']
-          },
-          requiresApproval: false
-        });
+        const subAgentTools = this.subAgentCoordinator.getAllTools();
+        const toolMap = new Map<string, any>();
+        for (const t of [...subAgentTools, ...catalogTools]) {
+          if (!toolMap.has(t.name)) {
+            toolMap.set(t.name, t);
+          }
+        }
+        const rawTools = Array.from(toolMap.values());
 
-        rawTools.push({
-          name: 'CLEAR_CHAT',
-          description: 'Use this tool to clear, delete, reset, or remove the chat history and messages from the screen (e.g. "clear chat", "delete messages", "wipe chat").',
-          parameters: {
-            type: 'object',
-            properties: {}
-          },
-          requiresApproval: false
-        });
+        // ── Step 4: Autonomous Multi-Step ReAct Execution Loop ─────────────────────
+        const maxSteps = this.calculateDynamicStepBudget(userMessage, hasImages, hasDocs);
+        let stepCount = 0;
+        let finalAnswer = '';
+        const executedSignatures: string[] = [];
 
-        rawTools.push({
-          name: 'SET_THEME',
-          description: 'Use this tool to change, toggle, or switch the user interface display theme/mode (e.g. Dark Mode or Light Mode). MUST be invoked whenever user asks to change, switch, retry, or fix theme display (e.g. "change mode light", "mode dark", "switch theme", "try again").',
-          parameters: {
-            type: 'object',
-            properties: {
-              theme: { type: 'string', enum: ['dark', 'light'], description: 'The display theme mode to set: "dark" or "light".' }
-            },
-            required: ['theme']
-          },
-          requiresApproval: false
-        });
+        while (stepCount < maxSteps) {
+          stepCount++;
+          if (this.activeAbortController?.signal.aborted) break;
 
-        // JIT Dynamic Tool Gating: pass only relevant tools to reduce prefill latency and token bloat
-        const availableTools = this.filterToolsJIT(rawTools, userMessage, hasImages, hasDocs);
+          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+            content: 'Thinking...' 
+          });
 
-        this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking' });
-        const toolTier = hasImages ? 'Vision' : (workRoute.workClass === 'COMPLEX' && process.env.ENABLE_COMPLEX_AUTONOMY === 'true' ? 'Reasoning' : 'Execution');
-        const response = await this.orchestrator.generate(
-          this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: availableTools.length > 0, requiresThinking: false }),
-          messages,
-          availableTools,
-          this.activeAbortController?.signal
-        );
+          const toolTier = hasImages ? 'Vision' : 'Execution';
+          const response = await this.orchestrator.generate(
+            this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: rawTools.length > 0, requiresThinking: false }),
+            messages,
+            rawTools,
+            this.activeAbortController?.signal
+          );
 
-        // ── Step 4.5: Handle Native Tool Call (Dual Stack) ───────────────────
-        const toolHandled = await this.toolExecutionHandler.handleToolCall({
-          event,
-          userMessage,
-          response,
-          messages,
-          capabilityCatalog: this.capabilityCatalog,
-          autonomyAgreementStore: this.autonomyAgreementStore,
-          sessionId: this.sessionId,
-          activeAbortControllerSignal: this.activeAbortController?.signal,
-          buildWorkingMemory: this.buildWorkingMemory.bind(this),
-          spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
-          emitEvent: this.emitEvent.bind(this)
-        });
+          if (this.activeAbortController?.signal.aborted) break;
 
-        if (toolHandled) return;
+          // Check if Qwen 3.8 selected one or more tools to execute
+          if (response.toolCalls && response.toolCalls.length > 0) {
+            // Append assistant message with tool calls to conversation context
+            const assistantMsg: QwenMessage = {
+              role: 'assistant',
+              content: response.text || null,
+              tool_calls: (response as any).rawMessage?.tool_calls || response.toolCalls.map((tc, idx) => ({
+                id: tc.id || `call_${Date.now()}_${idx}`,
+                type: 'function',
+                function: {
+                  name: tc.name,
+                  arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments)
+                }
+              }))
+            };
+            messages.push(assistantMsg);
 
-        let rawText = response.text.trim();
-        console.log(`[DialogueEngine] Qwen responded (${response.usage?.total_tokens || 0} tokens).`);
+            let proposalEncountered = false;
+
+            for (let i = 0; i < response.toolCalls.length; i++) {
+              const toolCall = response.toolCalls[i];
+              const toolCallId = toolCall.id || assistantMsg.tool_calls?.[i]?.id || `call_${Date.now()}_${i}`;
+              const signature = `${toolCall.name}:${JSON.stringify(toolCall.arguments || {})}`;
+
+              // ── Anti-Infinite Loop Circuit Breaker ──────────────────────────
+              const duplicateCount = executedSignatures.filter((sig, idx) => idx >= executedSignatures.length - 2 && sig === signature).length;
+              if (duplicateCount >= 2) {
+                console.warn(`[DialogueEngine][CircuitBreaker] Infinite loop prevented for ${toolCall.name}. Breaking repeated cycle.`);
+                messages.push({
+                  role: 'tool',
+                  tool_call_id: toolCallId,
+                  name: toolCall.name,
+                  content: JSON.stringify({
+                    warning: `[CIRCUIT BREAKER] You have already executed ${toolCall.name} with identical arguments. Do not call it again with the same parameters. Use the data you have already received to formulate your final answer.`
+                  })
+                });
+                continue;
+              }
+
+              executedSignatures.push(signature);
+
+              console.log(`[DialogueEngine][ReAct Step ${stepCount}/${maxSteps}] Invoking tool: ${toolCall.name} (id: ${toolCallId})`);
+
+              const execResult = await this.toolExecutionHandler.executeSingleTool({
+                toolCall,
+                toolCallId,
+                event,
+                userMessage,
+                sessionId: this.sessionId,
+                capabilityCatalog: this.capabilityCatalog,
+                autonomyAgreementStore: this.autonomyAgreementStore,
+                activeAbortControllerSignal: this.activeAbortController?.signal,
+                spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
+                emitEvent: this.emitEvent.bind(this),
+                buildWorkingMemory: this.buildWorkingMemory.bind(this)
+              });
+
+              if (execResult.isProposal) {
+                // A financial/mutative action requires user proposal approval. Halt the ReAct loop.
+                proposalEncountered = true;
+                break;
+              }
+
+              // Feed the structured tool result back into the context for next iteration
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCallId,
+                name: toolCall.name,
+                content: typeof execResult.output === 'string' ? execResult.output : JSON.stringify(execResult.output)
+              });
+            }
+
+            if (proposalEncountered) {
+              return;
+            }
+
+            // Loop continues to next ReAct step!
+            continue;
+          }
+
+          // No tool calls: model has synthesized the final response!
+          finalAnswer = response.text.trim();
+          break;
+        }
+
+        // Guaranteed Final Synthesis Turn:
+        // If multi-step tool execution completed but final response text is empty,
+        // run an explicit final synthesis turn with tool_choice: 'none' to produce the executive briefing.
+        if (!finalAnswer.trim() && !this.activeAbortController?.signal.aborted) {
+          console.log(`[DialogueEngine] Multi-step tools finished (${stepCount}/${maxSteps} steps). Triggering final report synthesis...`);
+          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
+
+          const synthesisTools: any = [...rawTools];
+          synthesisTools._toolChoice = 'none';
+
+          messages.push({
+            role: 'user',
+            content: '[SYSTEM INSTRUCTION] All operational actions and tools have completed execution. Provide a concise, professional, clear, and well-structured final summary report (under 150 words) to the user now.'
+          });
+
+          try {
+            const synthesisResponse = await this.orchestrator.generate(
+              this.profileFor('Execution', messages, { requiresVision: false, requiresTools: true, requiresThinking: false }),
+              messages,
+              synthesisTools,
+              this.activeAbortController?.signal
+            );
+            finalAnswer = synthesisResponse.text.trim();
+          } catch (e: any) {
+            console.error('[DialogueEngine] Error generating final synthesis response:', e);
+          }
+        }
+
+        let rawText = finalAnswer;
+        console.log(`[DialogueEngine] ReAct loop completed in ${stepCount}/${maxSteps} step(s). Final answer length: ${rawText.length}`);
 
         // Safety Net: Strip any legacy UI commands the LLM might hallucinate from its history
         const darkThemeRegex = /<UI_COMMAND:\s*SET_THEME_DARK\s*>/gi;
@@ -630,31 +704,27 @@ Guidelines:
           rawText = '';
         }
 
-        // LLM messages are no longer persisted
-
-
-        // Parse any markdown links out of the text to render them as UI buttons instead
+        // Parse any markdown links out of the text to optionally render companion buttons
         const actionLinks = [];
         const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
         let match;
         while ((match = markdownLinkRegex.exec(rawText)) !== null) {
-          // If the LLM generates a link, we move it to the actionLinks array
-          actionLinks.push({ label: match[1].includes('http') ? 'View on BaseScan' : match[1], url: match[2] });
+          actionLinks.push({ label: match[1].includes('http') ? 'View Resource' : match[1], url: match[2] });
         }
 
-        // Strip the markdown links and any trailing link emojis from the text
-        rawText = rawText.replace(markdownLinkRegex, '').replace(/🔗\s*/g, '').trim();
-
-        if (rawText) {
-          this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
+        // Deterministic Fallback if model returned empty text: Never leave UI hanging in blank state!
+        if (!rawText.trim()) {
+          const lastTool = executedSignatures[executedSignatures.length - 1];
+          const toolName = lastTool ? lastTool.split(':')[0] : 'Operation';
+          rawText = `✅ **${toolName} completed.** All requested actions have been executed successfully.`;
         }
+
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
       }
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('[DialogueEngine] LLM generation aborted by user.');
-        // We can emit a specific message or just end silently
-        // Let's emit an activity update that clears the processing spinner
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
           text: '[Generation stopped by user]',
         });
@@ -666,15 +736,12 @@ Guidelines:
         });
       }
     } finally {
-      // Clear routing context after every request cycle to prevent cross-request contamination.
-      // The next message (from any transport layer) starts with a clean slate.
       this._activeResponseContext = undefined;
       this._activeUserMessage = undefined;
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-
 
   private isProposalApproval(message: string): boolean {
     return this.proposalResponseHandler.isApproval(message);
@@ -689,48 +756,27 @@ Guidelines:
   }
 
   /**
-   * JIT Dynamic Tool Gating: Selects only the necessary tool schemas for the current turn,
-   * avoiding 2,000+ token context bloat and reducing prefill latency for casual & domain-specific requests.
+   * Dynamically determines the max ReAct execution steps based on task complexity.
    */
-  private filterToolsJIT(allTools: any[], userMessage: string, hasImages: boolean, hasDocs: boolean = false): any[] {
+  private calculateDynamicStepBudget(userMessage: string, hasImages: boolean, hasDocs: boolean): number {
     const msg = (userMessage || '').toLowerCase();
     
-    // Core always-available tools
-    const coreToolNames = new Set(['REMEMBER_FACT', 'CLEAR_CHAT', 'SET_THEME']);
-    
-    // Determine active domains from user message
-    const isPureGreeting = /^(hi|hello|helo|hei|hey|yo|hai|halo|oke|ok|sip|siap|makasih|thanks|thank you|pagi|siang|sore|malam)[\.!\s]*$/i.test(userMessage.trim());
-    if (isPureGreeting && !hasImages && !hasDocs) {
-      return allTools.filter(t => coreToolNames.has(t.name));
+    // Check if task spans multiple operational domains
+    const isMultiDomain = (
+      (/\b(crypto|coin|token|hyperliquid|hl|price|balance|wallet|funds|btc|eth|hype|koin|harga|saldo)\b/i.test(msg) ? 1 : 0) +
+      (/\b(drive|sheet|spreadsheet|excel|doc|document|table|report|chart|graph|dokumen|tabel|laporan|grafik)\b/i.test(msg) || hasDocs ? 1 : 0) +
+      (/\b(threads|post|social|media|picture|drawing|image|photo|sosmed|gambar)\b/i.test(msg) || hasImages ? 1 : 0) +
+      (/\b(search|news|look up|find|google|browse|web|berita|cari)\b/i.test(msg) ? 1 : 0)
+    ) >= 2;
+
+    const hasComplexDirectives = /\b(then|after that|and also|subsequently|analyze|compare|research|comparison|generate.*chart|summarize and create|lalu|kemudian|setelah itu|dan juga|analisis|bandingkan|riset|komparasi|buatkan.*chart)\b/i.test(msg);
+
+    if (isMultiDomain || (hasComplexDirectives && (hasImages || hasDocs || msg.length > 70))) {
+      return 10; // Max budget for deep multi-step workflows
     }
-
-    const isCryptoPriceOrTrade = /\b(crypto|kripto|coin|koin|token|harga|price|rate|kurs|market|pasar|spot|orderbook|trade|trading|order|swap|beli|buy|jual|sell|portfolio|portofolio|holdings|asset|aset|balance|saldo|transfer|kirim|send|usdc|usdt|eth|ethereum|btc|bitcoin|sol|solana|hype|hyperliquid|purr|bnb|xrp|doge|pepe|wif|link|arb|sui|avax|ton|near|apt|ftm|matic|pol|op|tia|sei)\b/i.test(msg);
-    const needsDrive = /\b(drive|gdrive|sheet|spreadsheet|excel|xlsx|dokumen|file|doc|catatan|tabel|vault)\b/i.test(msg) || hasDocs;
-    const needsWalletTrading = isCryptoPriceOrTrade || /\b(wallet|dompet)\b/i.test(msg);
-    const needsSearch = /\b(cari|search|berita|news|info|google|kapan|siapa|apakah)\b/i.test(msg) && !isCryptoPriceOrTrade;
-    const needsSchedule = /\b(schedule|jadwal|timer|cron|every|setiap|otomatis|automation|menit|jam|hari)\b/i.test(msg);
-    const needsSocial = /\b(threads|post|publish|sosmed|social)\b/i.test(msg) || hasImages;
-
-    // If no specific domain is detected, provide core tools + search + wallet balance for general assistance
-    if (!needsDrive && !needsWalletTrading && !needsSearch && !needsSchedule && !needsSocial) {
-      return allTools.filter(t => 
-        coreToolNames.has(t.name) || 
-        t.name.includes('SEARCH') || 
-        t.name.includes('search') ||
-        t.name === 'CHECK_WALLET_BALANCE' ||
-        t.name === 'HL_SPOT_MARKET_DATA'
-      );
+    if (hasComplexDirectives || msg.length > 100 || hasDocs || hasImages) {
+      return 7; // Medium-high budget
     }
-
-    return allTools.filter(t => {
-      const name = t.name;
-      if (coreToolNames.has(name)) return true;
-      if (needsDrive && (name.includes('DRIVE') || name.includes('drive') || name.includes('SPREADSHEET') || name.includes('SHEET') || name.includes('sheet') || name.startsWith('GDRIVE_'))) return true;
-      if (needsWalletTrading && (name.includes('WALLET') || name.includes('TRANSFER') || name.includes('HL_') || name.includes('SWAP'))) return true;
-      if (needsSearch && (name.includes('SEARCH') || name.includes('search'))) return true;
-      if (needsSchedule && (name.includes('SCHEDULE') || name.includes('TRIGGER'))) return true;
-      if (needsSocial && (name.includes('THREADS') || name.includes('POST'))) return true;
-      return false;
-    });
+    return 5; // Standard budget
   }
 }

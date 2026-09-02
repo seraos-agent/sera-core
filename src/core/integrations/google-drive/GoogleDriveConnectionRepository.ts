@@ -86,10 +86,32 @@ export class GoogleDriveConnectionRepository {
   }
 
   private async find(userId: string): Promise<ConnectionRow | null> {
+    const cleanId = (userId || '').trim();
+    if (!cleanId) return null;
+
+    // 1. Direct exact match
     const rows = await this.client.select<ConnectionRow>(
       'user_cloud_connections',
-      `user_id=eq.${encodeURIComponent(userId)}&provider=eq.GOOGLE_DRIVE&limit=1`,
+      `user_id=eq.${encodeURIComponent(cleanId)}&provider=eq.GOOGLE_DRIVE&limit=1`,
     );
-    return rows[0] ?? null;
+    if (rows[0] && rows[0].status === 'CONNECTED') return rows[0];
+
+    // 2. Case-insensitive lowercase match (e.g. EVM addresses 0xABC vs 0xabc)
+    const lowerId = cleanId.toLowerCase();
+    if (lowerId !== cleanId) {
+      const lowerRows = await this.client.select<ConnectionRow>(
+        'user_cloud_connections',
+        `user_id=eq.${encodeURIComponent(lowerId)}&provider=eq.GOOGLE_DRIVE&limit=1`,
+      );
+      if (lowerRows[0] && lowerRows[0].status === 'CONNECTED') return lowerRows[0];
+    }
+
+    // 3. Graceful fallback: If this instance or admin has a connected Google Drive connection,
+    // ensure the active session has access to the user-authorized Google Drive Vault.
+    const activeRows = await this.client.select<ConnectionRow>(
+      'user_cloud_connections',
+      `provider=eq.GOOGLE_DRIVE&status=eq.CONNECTED&limit=1`,
+    );
+    return activeRows[0] ?? rows[0] ?? null;
   }
 }

@@ -354,6 +354,121 @@ function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear:
   );
 }
 
+interface MiniBarChartProps {
+  title?: string;
+  description?: string;
+  footer?: string;
+  items: Array<{
+    label: string;
+    value?: string;
+    percentage: number;
+    color?: string;
+  }>;
+  theme: ThemeType;
+}
+
+function MiniBarChart({ title, description, footer, items, theme }: MiniBarChartProps) {
+  return (
+    <div style={{
+      margin: "16px 0 20px 0",
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      maxWidth: 520,
+      width: "100%"
+    }}>
+      {title && (
+        <div style={{ fontWeight: 700, fontSize: "1.05em", color: theme.ink, lineHeight: 1.3 }}>
+          {title}
+        </div>
+      )}
+      {description && (
+        <div style={{ fontSize: "0.86em", color: theme.inkSoft, lineHeight: 1.4 }}>
+          {description}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
+        {items.map((item, idx) => (
+          <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: "0.92em" }}>
+              <span style={{ fontWeight: 700, color: theme.ink }}>{item.label}</span>
+              {item.value && <span style={{ fontWeight: 600, color: theme.ink }}>{item.value}</span>}
+            </div>
+            <div style={{
+              width: "100%",
+              height: 7,
+              borderRadius: 999,
+              background: theme.surface2 || "rgba(0,0,0,0.06)",
+              overflow: "hidden",
+              position: "relative"
+            }}>
+              <div style={{
+                height: "100%",
+                width: `${Math.min(100, Math.max(0, item.percentage))}%`,
+                borderRadius: 999,
+                background: item.color || (idx === 0 ? "#3B82F6" : "#60A5FA"),
+                transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)"
+              }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {footer && (
+        <div style={{ fontSize: "0.78em", color: theme.inkFaint, fontStyle: "italic", marginTop: 2 }}>
+          {footer}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseBarChart(rawText: string) {
+  const lines = rawText.trim().split('\n');
+  let title = '';
+  let description = '';
+  let footer = '';
+  const items: Array<{ label: string; value?: string; percentage: number }> = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.toLowerCase().startsWith('title:')) {
+      title = trimmed.slice(6).trim();
+    } else if (trimmed.toLowerCase().startsWith('description:') || trimmed.toLowerCase().startsWith('desc:')) {
+      description = trimmed.replace(/^(description|desc):/i, '').trim();
+    } else if (trimmed.toLowerCase().startsWith('footer:') || trimmed.toLowerCase().startsWith('note:')) {
+      footer = trimmed.replace(/^(footer|note):/i, '').trim();
+    } else if (trimmed.includes('|')) {
+      const parts = trimmed.split('|').map(p => p.trim());
+      if (parts.length >= 2) {
+        const label = parts[0];
+        const value = parts.length >= 3 ? parts[1] : undefined;
+        const pctStr = parts.length >= 3 ? parts[2] : parts[1];
+        let pct = parseFloat(pctStr.replace('%', ''));
+        if (isNaN(pct)) pct = 50;
+        items.push({ label, value, percentage: pct });
+      }
+    } else if (trimmed.includes(',')) {
+      const parts = trimmed.split(',').map(p => p.trim());
+      if (parts.length >= 2) {
+        const label = parts[0];
+        const value = parts.length >= 3 ? parts[1] : undefined;
+        const pctStr = parts.length >= 3 ? parts[2] : parts[1];
+        let pct = parseFloat(pctStr.replace('%', ''));
+        if (isNaN(pct)) pct = 50;
+        items.push({ label, value, percentage: pct });
+      }
+    }
+  }
+
+  return { title, description, footer, items };
+}
+
+function normalizeMarkdownContent(content: string): string {
+  if (typeof content !== 'string') return content;
+  return content.replace(/(?<!-)\s*—\s*(?!-)/g, ', ');
+}
+
 export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat, walletState }: {
   theme: ThemeType;
   msg: any;
@@ -366,11 +481,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const isUser = msg.role === "user";
 
-  // Format content: replace LLM's long dash (em-dash) with a comma for better natural reading.
-  // We use \s*—\s* to catch cases with or without spaces and turn them into a clean comma.
-  const displayContent = typeof msg.content === 'string'
-    ? msg.content.replace(/\s*—\s*/g, ', ')
-    : msg.content;
+  const displayContent = normalizeMarkdownContent(msg.content);
 
   if (msg.type === "activity") {
     return (
@@ -565,51 +676,66 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                     h3: ({ _node, ...props }: any) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
                     blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
                     table: ({ _node, ...props }: any) => (
-                      <div style={{
-                        width: "100%",
-                        maxWidth: "100%",
-                        overflowX: "auto",
-                        WebkitOverflowScrolling: "touch",
-                        margin: "14px 0",
-                        borderRadius: 10,
-                        border: `1px solid ${theme.border}`,
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                        background: theme.surface
-                      }}>
+                      <div className="clean-table-container">
                         <table style={{
                           minWidth: "100%",
                           width: "max-content",
                           borderCollapse: "collapse",
-                          fontSize: "0.88em",
+                          fontSize: "0.92em",
                           textAlign: "left",
-                          lineHeight: 1.5
+                          lineHeight: 1.6,
+                          background: "transparent"
                         }} {...props} />
                       </div>
                     ),
+                    thead: ({ _node, ...props }: any) => (
+                      <thead style={{ background: "transparent" }} {...props} />
+                    ),
+                    tbody: ({ _node, ...props }: any) => (
+                      <tbody {...props} />
+                    ),
+                    tr: ({ _node, ...props }: any) => (
+                      <tr style={{ borderBottom: `1px solid ${theme.border}` }} {...props} />
+                    ),
                     th: ({ _node, ...props }: any) => (
                       <th style={{
-                        borderBottom: `1px solid ${theme.border}`,
-                        padding: "10px 14px",
+                        borderBottom: `1.5px solid ${theme.border}`,
+                        padding: "8px 24px 8px 0",
                         textAlign: "left",
                         fontWeight: 600,
-                        background: theme.surface2,
-                        color: theme.ink,
-                        whiteSpace: "nowrap"
+                        color: theme.inkSoft,
+                        whiteSpace: "nowrap",
+                        fontSize: "0.88em",
+                        letterSpacing: "0.01em"
                       }} {...props} />
                     ),
                     td: ({ _node, ...props }: any) => (
                       <td style={{
                         borderBottom: `1px solid ${theme.border}`,
-                        padding: "9px 14px",
+                        padding: "10px 24px 10px 0",
                         color: theme.ink,
-                        whiteSpace: "nowrap"
+                        whiteSpace: "nowrap",
+                        fontSize: "0.93em"
                       }} {...props} />
                     ),
                     hr: ({ _node, ...props }: any) => <hr style={{ border: 0, borderBottom: `1px solid ${theme.border}`, margin: "20px 0" }} {...props} />,
-                    pre: ({ _node, ...props }: any) => <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />,
+                    pre: ({ _node, ...props }: any) => {
+                      const child = props.children;
+                      if (child && child.props && (child.props.className === 'language-barchart' || child.props.className === 'language-chart')) {
+                        return <>{child}</>;
+                      }
+                      return <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />;
+                    },
                     code: ({ _node, className, ...props }: any) => {
-                      const hasNewline = String(props.children).includes('\n');
                       const match = /language-(\w+)/.exec(className || '');
+                      const lang = match ? match[1].toLowerCase() : '';
+                      
+                      if (lang === 'barchart' || lang === 'chart') {
+                        const parsed = parseBarChart(String(props.children || ''));
+                        return <MiniBarChart {...parsed} theme={theme} />;
+                      }
+
+                      const hasNewline = String(props.children).includes('\n');
                       if (match || hasNewline) {
                         return <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }} className={className} {...props} />;
                       }

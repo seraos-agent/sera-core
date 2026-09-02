@@ -1,9 +1,7 @@
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent, MemoryItemMutatedPayload, GoalResultPayload, LlmModelExecutionPayload } from '../events/types';
-import { ExecutionEvent } from '../execution/aios_types';
 import { MetricsStore } from './MetricsStore';
 import { MemoryStatus } from '../memory/MemoryItem';
-import { GovernanceDecision, GovernanceOutcomeRecord, GovernancePattern } from '../cognition/types';
 
 export class MetricsAggregator {
   constructor(
@@ -37,55 +35,7 @@ export class MetricsAggregator {
       this.store.updateMemory({ verified, superseded, invalidated });
     });
 
-    // 2. Governance Decision Events
-    this.eventBus.on(EventTypes.GOVERNANCE_DECISION_RECORDED, (event: StandardEvent<GovernanceDecision>) => {
-      const metrics = this.store.getMetrics().governance;
-      let { actionsReviewed, allowed, confirmationRequired, denied } = metrics;
-      
-      actionsReviewed++;
-      
-      const decision = event.payload.decision;
-      if (decision === 'APPROVED') allowed++;
-      if (decision === 'REJECTED') denied++;
-      // Note: 'MODIFIED' and 'REQUIRES_CONFIRMATION' depend on specific domain outputs, not standard Decisions
-      
-      this.store.updateGovernance({ actionsReviewed, allowed, confirmationRequired, denied });
-    });
-
-    // 3. Governance Outcome Events
-    this.eventBus.on(EventTypes.GOVERNANCE_OUTCOME_RECORDED, (event: StandardEvent<GovernanceOutcomeRecord>) => {
-      const metrics = this.store.getMetrics().governance;
-      let { falsePositive, falseNegative } = metrics;
-      
-      // Attribution matters: a harmful result after approval is a false positive;
-      // a beneficial result after rejection is a false negative. Inconclusive or
-      // unattributed outcomes must not distort either metric.
-      if (event.payload.governanceDecision === 'APPROVED' && event.payload.outcomeAssessment === 'HARMFUL') {
-        falsePositive++;
-      }
-      if (event.payload.governanceDecision === 'REJECTED' && event.payload.outcomeAssessment === 'BENEFICIAL') {
-        falseNegative++;
-      }
-      
-      this.store.updateGovernance({ falsePositive, falseNegative });
-    });
-
-    // 4. Governance Pattern Events (Reflection)
-    this.eventBus.on(EventTypes.GOVERNANCE_PATTERN_RECORDED, (event: StandardEvent<GovernancePattern>) => {
-      const metrics = this.store.getMetrics().reflection;
-      let { observedExperiences, patternsLearned, wrongPatterns, calibrationDelta } = metrics;
-      
-      patternsLearned++;
-      observedExperiences += event.payload.observations; // Approximate total experiences
-      
-      if (event.payload.contradictoryObservations > 0) {
-        wrongPatterns++;
-      }
-      
-      this.store.updateReflection({ observedExperiences, patternsLearned, wrongPatterns, calibrationDelta });
-    });
-
-    // 5. Worker Success Rate
+    // 2. Goal & Tool Execution Success Rate
     this.eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, (event: StandardEvent<GoalResultPayload>) => {
       const metrics = this.store.getMetrics().worker;
       let { success, failure, goalCompletionRate } = metrics;
@@ -104,23 +54,7 @@ export class MetricsAggregator {
       this.store.updateWorker({ success, failure, goalCompletionRate });
     });
 
-    // 6. Execution Trace Metrics
-    this.eventBus.on('system.execution.completed', (event: ExecutionEvent) => {
-      const metrics = this.store.getMetrics().execution;
-      let { totalExecuted, avgLatencyMs } = metrics;
-
-      totalExecuted++;
-      
-      const newLatency = event.payload?.latencyMs;
-      if (newLatency !== undefined) {
-        // Moving average
-        avgLatencyMs = ((avgLatencyMs * (totalExecuted - 1)) + newLatency) / totalExecuted;
-      }
-      
-      this.store.updateExecution({ totalExecuted, avgLatencyMs });
-    });
-
-    // 7. LLM routing telemetry
+    // 3. LLM routing telemetry
     this.eventBus.on(EventTypes.LLM_MODEL_COMPLETED, (event: StandardEvent<LlmModelExecutionPayload>) => {
       const metrics = this.store.getMetrics().llm;
       const requests = metrics.requests + 1;
