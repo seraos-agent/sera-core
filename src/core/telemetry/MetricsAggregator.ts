@@ -75,21 +75,5 @@ export class MetricsAggregator {
         fallbacks: metrics.fallbacks + (event.payload.fallbackUsed ? 1 : 0)
       });
     });
-
-    // 4. Governance outcome telemetry
-    this.eventBus.on(EventTypes.GOVERNANCE_OUTCOME_RECORDED, (event: any) => {
-      const { governanceDecision, outcomeAssessment } = event.payload || {};
-      const current = this.store.getMetrics().governance;
-      let falsePositive = current.falsePositive;
-      let falseNegative = current.falseNegative;
-
-      if (governanceDecision === 'APPROVED' && outcomeAssessment === 'HARMFUL') {
-        falsePositive++;
-      } else if (governanceDecision === 'REJECTED' && outcomeAssessment === 'BENEFICIAL') {
-        falseNegative++;
-      }
-
-      this.store.updateGovernance({ falsePositive, falseNegative });
-    });
   }
 }

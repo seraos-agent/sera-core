@@ -2,7 +2,7 @@ import { createPublicClient, createWalletClient, http, formatEther, parseEther, 
 import { privateKeyToAccount } from 'viem/accounts';
 import { polygon } from 'viem/chains';
 import { ExecutionContext } from '../../../core/execution/ExecutionContext';
-import { TransferIntentParameters } from '../../../core/intents/transfer.types';
+import { TransferIntentParameters } from '../transfer.types';
 import { ExecutionReceipt } from '../types';
 
 export const USDC_POLYGON_MAINNET = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';

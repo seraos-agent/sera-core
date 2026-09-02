@@ -37,8 +37,8 @@ export class QwenAdapter implements ILLMAdapter {
     this.apiKey = key;
     this.model = model;
     this.endpoint = process.env.QWEN_BASE_URL || DEFAULT_DASHSCOPE_URL;
-    // Fast Latency Optimization: Disable thinking mode tokens by default to ensure sub-second / snappy responses.
-    this.enableThinking = process.env.ENABLE_DEEP_THINKING === 'true' && (model === 'qwen3.8-max' || model === 'qwen3.7-max') ? true : false;
+    // Fast Latency Optimization: Pure sub-second response speed with qwen3.8-flash universal model
+    this.enableThinking = false;
     this.capability = this.capabilityFor(model);
   }
 
@@ -213,35 +213,19 @@ export class QwenAdapter implements ILLMAdapter {
   }
 
   private capabilityFor(model: string): ModelCapability {
-    if (model === 'qwen3.8-flash' || model === 'qwen3.5-flash' || model === 'qwen-flash' || model === 'qwen-turbo') {
-      return {
-        provider: 'Qwen', model,
-        tiers: ['Execution', 'Social', 'Vision'],
-        supportsVision: true, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
-        maxContext: 128_000, priceInput: 0.001, priceOutput: 0.002, latencyClass: 'UltraFast'
-      };
-    }
-    if (model === 'qwen3.8-max' || model === 'qwen3.7-max' || model === 'qwen-max' || model === 'qwen-plus') {
-      return {
-        provider: 'Qwen', model,
-        tiers: ['Reasoning', 'Coding', 'Execution'],
-        supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
-        maxContext: 1_000_000, priceInput: 0.012, priceOutput: 0.036, latencyClass: 'Standard'
-      };
-    }
-    if (model === 'qwen-vl-max' || model === 'qwen-vl-plus' || model.startsWith('qwen-vl')) {
-      return {
-        provider: 'Qwen', model,
-        tiers: ['Vision', 'Execution', 'Reasoning'],
-        supportsVision: true, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: false,
-        maxContext: 128_000, priceInput: 0.003, priceOutput: 0.006, latencyClass: 'Fast'
-      };
-    }
     return {
-      provider: 'Qwen', model,
-      tiers: ['Reasoning', 'Coding', 'Execution'],
-      supportsVision: false, supportsStreaming: true, supportsJSON: true, supportsFunctionCalling: true, supportsThinking: true,
-      maxContext: 128_000, priceInput: 0.004, priceOutput: 0.012, latencyClass: 'Fast'
+      provider: 'Qwen',
+      model,
+      tiers: ['Execution', 'Social', 'Vision', 'Reasoning', 'Coding'],
+      supportsVision: true,
+      supportsStreaming: true,
+      supportsJSON: true,
+      supportsFunctionCalling: true,
+      supportsThinking: false,
+      maxContext: 128_000,
+      priceInput: 0.001,
+      priceOutput: 0.002,
+      latencyClass: 'UltraFast'
     };
   }
 }

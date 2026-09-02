@@ -4,7 +4,7 @@ import { WalletId, ExecutionReceipt } from './types';
 import { SpendPermissionAdapter } from './SpendPermissionAdapter';
 import { SecretManager } from '../../core/secrets/SecretManager';
 import { ExecutionContext } from '../../core/execution/ExecutionContext';
-import { TransferIntentParameters } from '../../core/intents/transfer.types';
+import { TransferIntentParameters } from './transfer.types';
 import { BaseAdapter } from './chains/BaseAdapter';
 import { PolygonAdapter } from './chains/PolygonAdapter';
 

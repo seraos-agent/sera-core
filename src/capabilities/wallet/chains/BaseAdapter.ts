@@ -3,7 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import { Attribution } from 'ox/erc8021';
 import { ExecutionContext } from '../../../core/execution/ExecutionContext';
-import { TransferIntentParameters } from '../../../core/intents/transfer.types';
+import { TransferIntentParameters } from '../transfer.types';
 import { ExecutionReceipt } from '../types';
 
 export const USDC_BASE_MAINNET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';

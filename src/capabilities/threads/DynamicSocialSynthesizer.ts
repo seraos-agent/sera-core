@@ -72,7 +72,7 @@ export class DynamicSocialSynthesizer {
 
   private getLLM(): QwenAdapter {
     if (!this.llmAdapter) {
-      this.llmAdapter = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.5-flash');
+      this.llmAdapter = new QwenAdapter(process.env.QWEN_LIGHT_MODEL || 'qwen3.8-flash');
     }
     return this.llmAdapter;
   }
