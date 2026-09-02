@@ -232,6 +232,12 @@ export class SpreadsheetEngine {
     // 1. Add Header Row (Row 16 if Top Hero, else Row 1)
     const headerRow = worksheet.addRow(headers);
     headerRow.height = 28;
+
+    // Freeze header pane so headers stay visible on scroll
+    worksheet.views = [
+      { state: 'frozen', xSplit: 0, ySplit: isHero ? 16 : 1 }
+    ];
+
     headerRow.eachCell((cell) => {
       cell.fill = {
         type: 'pattern',
@@ -373,14 +379,16 @@ export class SpreadsheetEngine {
         } else {
           // Auto-generated summary row (no pre-existing row) -> Fix BUG-05 & BUG-06:
           // Aggregate columns that are conceptually summable (Budget, Spend, Volume, Nominal, Qty, Total, Market Cap, Variance, etc.)
-          // Never aggregate unit prices (Harga/Price), IDs, ranks, rates, or dates!
-          const isUnitPriceOrRate = lowerH.includes('harga') || lowerH.includes('price') || lowerH.includes('kurs') ||
-            lowerH.includes('unit') || lowerH.includes('rate') || lowerH.includes('fee_per') ||
+          const isUnitPriceOrRate = lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+            lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
+            lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
+            lowerH.includes('fee_per') ||
             (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH)) ||
             colInf.type === 'date' || colInf.type === 'status' || colInf.type === 'boolean';
 
           const isSummable = !isUnitPriceOrRate && (
             options?.includeSummaryRow === true ||
+            lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
             lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
             lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
             lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||

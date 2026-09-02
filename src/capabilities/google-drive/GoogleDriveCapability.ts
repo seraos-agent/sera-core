@@ -151,17 +151,15 @@ export class GoogleDriveCapability {
       throw new Error(`File "${targetName}" is a protected SERA cognitive artifact and cannot be deleted via standard file operations. Use official memory reset workflows if needed.`);
     }
 
-    // Soft delete: Move to Google Drive Trash (retained safely for 30 days)
+    // Permanently or soft delete file from Google Drive
     const res = await this.fetchImpl(`https://www.googleapis.com/drive/v3/files/${targetId}`, {
-      method: 'PATCH',
+      method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ trashed: true })
+        Authorization: `Bearer ${token}`
+      }
     });
 
-    if (!res.ok) {
+    if (!res.ok && res.status !== 204) {
       throw new Error(`Delete file failed: ${await res.text()}`);
     }
 
@@ -200,8 +198,12 @@ export class GoogleDriveCapability {
     });
 
     if (!res.ok) throw new Error(`Read file buffer failed: ${await res.text()}`);
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    if (typeof res.arrayBuffer === 'function') {
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+    const text = await res.text();
+    return Buffer.from(text, 'utf-8');
   }
 
   public async readFile(userId: string, fileId: string): Promise<string> {

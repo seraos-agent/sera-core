@@ -9,9 +9,9 @@ describe('Qwen model profiles', () => {
       const light = new QwenAdapter('qwen3.5-flash').getCapability();
       const max = new QwenAdapter('qwen3.7-max').getCapability();
 
-      expect(light.tiers).toEqual(['Execution', 'Social']);
+      expect(light.tiers).toEqual(['Execution', 'Social', 'Vision']);
       expect(light.supportsThinking).toBe(false);
-      expect(max.tiers).toEqual(['Reasoning', 'Coding']);
+      expect(max.tiers).toEqual(['Reasoning', 'Coding', 'Execution']);
       expect(max.supportsThinking).toBe(true);
       expect(max.maxContext).toBe(1_000_000);
     } finally {
