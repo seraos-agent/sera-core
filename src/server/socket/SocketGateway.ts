@@ -707,7 +707,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         id: msgTimestamp,
         clientMessageId,
         role: 'user',
-        content: message,
+        content: message || (images && images.length > 0 ? '[Image Attached]' : (documents && documents.length > 0 ? '[Document Attached]' : '')),
         images
       });
     };

@@ -354,6 +354,98 @@ function ClearChatCountdownCard({ theme, onClear }: { theme: ThemeType, onClear:
   );
 }
 
+function CodeBlockCard({ children, theme }: { children: any; theme: ThemeType }) {
+  const [copied, setCopied] = useState(false);
+
+  const extractText = (child: any): string => {
+    if (!child) return '';
+    if (typeof child === 'string') return child;
+    if (Array.isArray(child)) return child.map(extractText).join('');
+    if (child.props && child.props.children) return extractText(child.props.children);
+    return '';
+  };
+
+  const rawText = extractText(children).trim();
+  const langMatch = children?.props?.className ? /language-(\w+)/.exec(children.props.className) : null;
+  const language = langMatch ? langMatch[1].toUpperCase() : 'LOGIC / CODE';
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!rawText) return;
+    navigator.clipboard.writeText(rawText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div
+      style={{
+        margin: "14px 0",
+        borderRadius: 10,
+        border: `1px solid ${theme.border}`,
+        background: theme.surface2 || "rgba(0,0,0,0.03)",
+        overflow: "hidden",
+        fontSize: "0.9em",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "7px 12px",
+          background: theme.surface || "rgba(0,0,0,0.02)",
+          borderBottom: `1px solid ${theme.border}`,
+          fontSize: "0.78em",
+          fontWeight: 600,
+          color: theme.inkSoft,
+          letterSpacing: "0.04em",
+          userSelect: "none"
+        }}
+      >
+        <span>{language}</span>
+        <button
+          onClick={handleCopy}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: "transparent",
+            border: "none",
+            color: copied ? "#10B981" : theme.inkSoft,
+            cursor: "pointer",
+            fontSize: "0.95em",
+            fontWeight: 500,
+            padding: "2px 6px",
+            borderRadius: 4,
+            transition: "all 0.2s ease"
+          }}
+          title="Salin ke clipboard"
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          <span>{copied ? "Disalin!" : "Salin"}</span>
+        </button>
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: "12px 14px",
+          color: theme.ink,
+          background: "transparent",
+          fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+          fontSize: "0.92em",
+          lineHeight: 1.55,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          overflowX: "hidden",
+        }}
+      >
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 interface MiniBarChartProps {
   title?: string;
   description?: string;
@@ -674,7 +766,24 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                     h1: ({ _node, ...props }: any) => <h1 style={{ fontSize: "1.4em", fontWeight: 700, margin: "20px 0 12px 0", color: theme.ink }} {...props} />,
                     h2: ({ _node, ...props }: any) => <h2 style={{ fontSize: "1.2em", fontWeight: 600, margin: "18px 0 10px 0", color: theme.ink, borderBottom: `1px solid ${theme.border}`, paddingBottom: 6 }} {...props} />,
                     h3: ({ _node, ...props }: any) => <h3 style={{ fontSize: "1.1em", fontWeight: 600, margin: "16px 0 8px 0", color: theme.ink }} {...props} />,
-                    blockquote: ({ _node, ...props }: any) => <blockquote style={{ borderLeft: `3px solid ${theme.accent}`, margin: "12px 0", paddingLeft: 14, color: theme.inkSoft, fontStyle: "italic", background: theme.surface2, padding: "8px 14px", borderRadius: "0 8px 8px 0" }} {...props} />,
+                    blockquote: ({ _node, ...props }: any) => (
+                      <blockquote
+                        style={{
+                          borderLeft: `3.5px solid ${theme.accent}`,
+                          margin: "12px 0",
+                          color: theme.ink,
+                          background: theme.surface2 || "rgba(0,0,0,0.03)",
+                          padding: "10px 16px",
+                          borderRadius: "0 10px 10px 0",
+                          border: `1px solid ${theme.border}`,
+                          borderLeftWidth: 3.5,
+                          borderLeftColor: theme.accent,
+                          fontSize: "0.93em",
+                          lineHeight: 1.55
+                        }}
+                        {...props}
+                      />
+                    ),
                     table: ({ _node, ...props }: any) => (
                       <div className="clean-table-container">
                         <table style={{
@@ -724,7 +833,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                       if (child && child.props && (child.props.className === 'language-barchart' || child.props.className === 'language-chart')) {
                         return <>{child}</>;
                       }
-                      return <pre style={{ background: "#1E1E1E", color: "#D4D4D4", padding: 16, borderRadius: 8, overflowX: "auto", margin: "14px 0", fontSize: "0.9em", border: `1px solid ${theme.border}` }} {...props} />;
+                      return <CodeBlockCard theme={theme}>{child}</CodeBlockCard>;
                     },
                     code: ({ _node, className, ...props }: any) => {
                       const match = /language-(\w+)/.exec(className || '');
@@ -739,7 +848,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                       if (match || hasNewline) {
                         return <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }} className={className} {...props} />;
                       }
-                      return <code style={{ background: theme.surface2, padding: "3px 6px", borderRadius: 4, fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: "0.9em", color: theme.accent, border: `1px solid ${theme.border}` }} className={className} {...props} />;
+                      return <code style={{ background: theme.surface2 || 'rgba(0,0,0,0.04)', padding: "2px 6px", borderRadius: 5, fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: "0.88em", color: theme.ink, border: `1px solid ${theme.border}` }} className={className} {...props} />;
                     },
                     img: ({ _node, ...props }: any) => {
                       return (

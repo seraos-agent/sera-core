@@ -326,7 +326,7 @@ export class DialogueEngine {
       return;
     }
 
-    const effectiveUserMessage = userMessage.trim() || (attachedImages.length > 0 ? 'Analyze this image.' : 'Analyze this attached document.');
+    const effectiveUserMessage = userMessage.trim() || (attachedImages.length > 0 ? 'Analyze and explain the details, numbers, text, and visual content of this attached image.' : 'Analyze this attached document.');
     this._activeUserMessage = effectiveUserMessage;
 
     if (this.pendingProposalId && this.isProposalApproval(effectiveUserMessage)) {
@@ -479,10 +479,12 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             { type: 'text', text: effectiveUserMessage }
           ];
           for (const url of attachedImages) {
-            multimodalContent.push({
-              type: 'image_url',
-              image_url: { url }
-            });
+            if (url && typeof url === 'string' && !url.startsWith('blob:')) {
+              multimodalContent.push({
+                type: 'image_url',
+                image_url: { url }
+              });
+            }
           }
           messages.push({
             role: 'user',

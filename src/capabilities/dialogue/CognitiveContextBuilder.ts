@@ -67,8 +67,11 @@ export class CognitiveContextBuilder {
 
     if (!activeResponseContext) {
       const recentUi = this.chatHistoryStore.getUiMessages()
-        .filter(m => m.type !== 'activity' && m.content)
-        .map(m => ({ role: m.role === 'agent' ? ('assistant' as const) : ('user' as const), content: m.content! }));
+        .filter(m => m.type !== 'activity' && (m.content || (m.images && m.images.length > 0)))
+        .map(m => ({ 
+          role: m.role === 'agent' ? ('assistant' as const) : ('user' as const), 
+          content: m.content || (m.images && m.images.length > 0 ? '[User attached image(s)]' : '') 
+        }));
 
       const context = this.conversationContextCompressor.compress(recentUi, {
         tokenBudget: 1500,

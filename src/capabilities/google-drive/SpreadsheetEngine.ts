@@ -175,6 +175,77 @@ export class SpreadsheetEngine {
   }
 
   /**
+   * Deterministically calculates rendered summary metrics across pure data rows.
+   * Enforces Hybrid Calculation Rule (Bagian A Tier 2: System-calculated reality).
+   */
+  public static calculateSummaryMetrics(
+    headers: string[],
+    rows: any[][],
+    options?: SpreadsheetOptions
+  ): { renderedRows: number; totals: Record<string, number | string> } {
+    const pureDataRows = rows.filter(r => {
+      const first = String(r[0] || '').toLowerCase().trim();
+      return !['total', 'summary', 'jumlah', 'rata-rata', 'average'].includes(first);
+    });
+
+    const columnInferences = this.inferColumnInferences(headers, pureDataRows);
+    const totals: Record<string, number | string> = {};
+
+    headers.forEach((h, colIndex) => {
+      const colInf = columnInferences[colIndex];
+      const lowerH = (h || '').toLowerCase().trim();
+
+      const isUnitPriceOrRate = lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+        lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
+        lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
+        lowerH.includes('fee_per') ||
+        (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH)) ||
+        colInf.type === 'date' || colInf.type === 'status' || colInf.type === 'boolean';
+
+      const isSummable = !isUnitPriceOrRate && (
+        options?.includeSummaryRow === true ||
+        lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
+        lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
+        lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
+        lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
+        lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
+        lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
+        lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
+        lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
+        lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') ||
+        lowerH.includes('spend') || lowerH.includes('actual') || lowerH.includes('target') ||
+        lowerH.includes('variance') || lowerH.includes('selisih')
+      );
+
+      if (isSummable && (colInf.type === 'currency' || colInf.type === 'number' || colInf.type === 'percentage')) {
+        let sum = 0;
+        pureDataRows.forEach(r => {
+          const raw = r[colIndex];
+          if (raw !== null && raw !== undefined && raw !== '') {
+            let num: number;
+            if (typeof raw === 'number') {
+              num = raw;
+            } else if (typeof raw === 'object' && 'formula' in raw) {
+              num = 0;
+            } else {
+              const str = String(raw).replace(/%/g, '').replace(/\+/g, '').replace(/\s+/g, '').replace(/,/g, '.').trim();
+              const parsed = parseFloat(str);
+              num = String(raw).includes('%') ? (parsed / 100) : parsed;
+            }
+            if (!isNaN(num)) sum += num;
+          }
+        });
+        totals[h] = Number.isInteger(sum) ? sum : parseFloat(sum.toFixed(2));
+      }
+    });
+
+    return {
+      renderedRows: pureDataRows.length,
+      totals
+    };
+  }
+
+  /**
    * Generates a multi-sheet .xlsx workbook buffer.
    */
   public static async generateMultiSheetWorkbook(sheets: SheetDefinition[]): Promise<Buffer> {
@@ -356,7 +427,7 @@ export class SpreadsheetEngine {
             cell.value = '-';
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
           } else if (typeof userVal === 'string' && userVal.trim().startsWith('=')) {
-            cell.value = { formula: userVal.trim().substring(1) };
+            cell.value = { formula: this.sanitizeDivisionFormula(userVal.trim().substring(1)) };
             if (colInf.type === 'currency') cell.numFmt = colInf.numFmt || '#,##0';
             else if (colInf.type === 'percentage') cell.numFmt = '0.0%';
             else cell.numFmt = colInf.numFmt || '#,##0';
@@ -480,6 +551,21 @@ export class SpreadsheetEngine {
     });
   }
 
+  /**
+   * Guards formulas with division against #DIV/0! errors by wrapping them with IFERROR(..., "-").
+   * Enforces Hybrid Safeguard Rule (Bagian B Guard 2).
+   */
+  public static sanitizeDivisionFormula(formula: string): string {
+    const trimmed = formula.trim();
+    if (/^IFERROR\s*\(/i.test(trimmed) || /^IF\s*\(/i.test(trimmed)) {
+      return trimmed;
+    }
+    if (trimmed.includes('/')) {
+      return `IFERROR(${trimmed}, "-")`;
+    }
+    return trimmed;
+  }
+
   private static setFormattedCellValue(
     cell: ExcelJS.Cell,
     rawVal: any,
@@ -490,11 +576,11 @@ export class SpreadsheetEngine {
       return null;
     }
 
-    // 0. Formula Object Support (e.g. { formula: '=B2/B7', type: 'percent', decimals: 1 }) -> Fix BUG-02
+    // 0. Formula Object Support (e.g. { formula: '=B2/B7', type: 'percent', decimals: 1 }) -> Fix BUG-02 & Division Guard
     if (typeof rawVal === 'object' && rawVal !== null && 'formula' in rawVal) {
       const formulaStr = String(rawVal.formula || '').trim();
       const cleanFormula = formulaStr.startsWith('=') ? formulaStr.substring(1) : formulaStr;
-      cell.value = { formula: cleanFormula };
+      cell.value = { formula: this.sanitizeDivisionFormula(cleanFormula) };
       
       const type = (rawVal.type || colInf.type || '').toLowerCase();
       if (type === 'percent' || type === 'percentage') {
@@ -511,9 +597,10 @@ export class SpreadsheetEngine {
 
     const strVal = String(rawVal).trim();
 
-    // 1. Explicit Formula starting with '=' -> Fix BUG-02
+    // 1. Explicit Formula starting with '=' -> Fix BUG-02 & Division Guard
     if (strVal.startsWith('=')) {
-      cell.value = { formula: strVal.substring(1) };
+      const cleanFormula = strVal.substring(1);
+      cell.value = { formula: this.sanitizeDivisionFormula(cleanFormula) };
       if (colInf.type === 'currency') {
         cell.numFmt = colInf.numFmt || 'Rp #,##0';
       } else if (colInf.type === 'percentage') {
@@ -1219,8 +1306,16 @@ export class SpreadsheetEngine {
           } else if (val.formula) {
             const formulaStr = String(val.formula).trim().toUpperCase();
             
+            let evalFormula = formulaStr;
+            let ifErrorFallback: string | number | null = null;
+            const ifErrorMatch = formulaStr.match(/^IFERROR\((.+?),\s*["']?([^"']*)["']?\)$/i);
+            if (ifErrorMatch) {
+              evalFormula = ifErrorMatch[1].trim();
+              ifErrorFallback = ifErrorMatch[2] === '-' ? '-' : (!isNaN(parseFloat(ifErrorMatch[2])) ? parseFloat(ifErrorMatch[2]) : ifErrorMatch[2]);
+            }
+
             // Formula: SUM(B2:B6) or SUM(B17:B21)
-            const sumMatch = formulaStr.match(/^SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
+            const sumMatch = evalFormula.match(/^SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
             if (sumMatch) {
               const [, col1, startRow, , endRow] = sumMatch;
               let sum = 0;
@@ -1230,7 +1325,7 @@ export class SpreadsheetEngine {
               val = sum;
             } else {
               // Formula: AVERAGE(B2:B6) or AVERAGE(B17:B21)
-              const avgMatch = formulaStr.match(/^AVERAGE\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
+              const avgMatch = evalFormula.match(/^AVERAGE\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
               if (avgMatch) {
                 const [, col1, startRow, , endRow] = avgMatch;
                 let sum = 0;
@@ -1239,18 +1334,31 @@ export class SpreadsheetEngine {
                   sum += getCellNumeric(col1, r);
                   count++;
                 }
-                val = count > 0 ? sum / count : 0;
+                val = count > 0 ? sum / count : (ifErrorFallback !== null ? ifErrorFallback : 0);
               } else {
-                // Formula: Cell arithmetic like C2*D2 or B2/B7
-                const arithMatch = formulaStr.match(/^([A-Z]+)(\d+)\s*([*+\/-])\s*([A-Z]+)(\d+)$/i);
-                if (arithMatch) {
-                  const [, colA, rowA, op, colB, rowB] = arithMatch;
-                  const numA = getCellNumeric(colA, parseInt(rowA, 10));
-                  const numB = getCellNumeric(colB, parseInt(rowB, 10));
-                  if (op === '*') val = numA * numB;
-                  else if (op === '+') val = numA + numB;
-                  else if (op === '-') val = numA - numB;
-                  else if (op === '/') val = numB !== 0 ? numA / numB : 0;
+                // Formula: (A1-B1)/A1 (Paren arithmetic)
+                const parenArithMatch = evalFormula.match(/^\(?([A-Z]+)(\d+)\s*([*+\/-])\s*([A-Z]+)(\d+)\)?\s*([*+\/-])\s*([A-Z]+)(\d+)$/i);
+                if (parenArithMatch) {
+                  const [, c1, r1, op1, c2, r2, op2, c3, r3] = parenArithMatch;
+                  const n1 = getCellNumeric(c1, parseInt(r1, 10));
+                  const n2 = getCellNumeric(c2, parseInt(r2, 10));
+                  const n3 = getCellNumeric(c3, parseInt(r3, 10));
+                  let step1 = op1 === '-' ? n1 - n2 : (op1 === '+' ? n1 + n2 : n1 * n2);
+                  if (op2 === '/') {
+                    val = n3 !== 0 ? step1 / n3 : (ifErrorFallback !== null ? ifErrorFallback : '-');
+                  }
+                } else {
+                  // Formula: Cell arithmetic like C2*D2 or B2/B7
+                  const arithMatch = evalFormula.match(/^([A-Z]+)(\d+)\s*([*+\/-])\s*([A-Z]+)(\d+)$/i);
+                  if (arithMatch) {
+                    const [, colA, rowA, op, colB, rowB] = arithMatch;
+                    const numA = getCellNumeric(colA, parseInt(rowA, 10));
+                    const numB = getCellNumeric(colB, parseInt(rowB, 10));
+                    if (op === '*') val = numA * numB;
+                    else if (op === '+') val = numA + numB;
+                    else if (op === '-') val = numA - numB;
+                    else if (op === '/') val = numB !== 0 ? numA / numB : (ifErrorFallback !== null ? ifErrorFallback : '-');
+                  }
                 }
               }
             }

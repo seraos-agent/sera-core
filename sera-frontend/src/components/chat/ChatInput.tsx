@@ -5,6 +5,7 @@ import type { ThemeType } from "../../theme";
 export interface ImageAttachment {
   id: string;
   previewUrl: string;
+  dataUrl?: string;
   publicUrl?: string;
   name: string;
   size: number;
@@ -81,27 +82,61 @@ export function ChatInput({
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      const apiUrl = import.meta.env.VITE_API_URL || 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-          ? 'http://127.0.0.1:3001' 
-          : 'https://api.seraos.xyz');
+      const rawDataUrl = reader.result as string;
 
-      try {
-        const res = await fetch(`${apiUrl}/api/upload/image`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataUrl, filename: file.name })
-        });
-        const data = await res.json();
-        if (data && data.url) {
-          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: data.url, uploading: false } : item));
-        } else {
-          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: dataUrl, uploading: false } : item));
+      // Smart Client-Side Resizing (Max 1600px) to ensure lightning-fast upload
+      const img = new Image();
+      img.src = rawDataUrl;
+      img.onload = async () => {
+        let finalDataUrl = rawDataUrl;
+        try {
+          const maxDim = 1600;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              finalDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+            }
+          }
+        } catch {
+          finalDataUrl = rawDataUrl;
         }
-      } catch {
-        setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: dataUrl, uploading: false } : item));
-      }
+
+        // Store dataUrl immediately so image is guaranteed ready for vision even before server upload
+        setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, dataUrl: finalDataUrl } : item));
+
+        const apiUrl = import.meta.env.VITE_API_URL || 
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://127.0.0.1:3001' 
+            : 'https://api.seraos.xyz');
+
+        try {
+          const res = await fetch(`${apiUrl}/api/upload/image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl: finalDataUrl, filename: file.name })
+          });
+          const data = await res.json();
+          if (data && data.url && typeof data.url === 'string' && !data.url.startsWith('blob:')) {
+            setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: data.url, uploading: false } : item));
+          } else {
+            setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: finalDataUrl, uploading: false } : item));
+          }
+        } catch {
+          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: finalDataUrl, uploading: false } : item));
+        }
+      };
     };
   };
 
@@ -203,13 +238,15 @@ export function ChatInput({
     }
   };
 
+  const isImageUploading = imageAttachments.some(img => img.uploading && !img.dataUrl);
+
   const handleSend = () => {
     const hasText = !!input.trim();
     const hasAttachments = attachments.length > 0;
     const hasImages = imageAttachments.length > 0;
     const hasDocs = documentAttachments.length > 0;
 
-    if ((!hasText && !hasAttachments && !hasImages && !hasDocs) || disabled) return;
+    if ((!hasText && !hasAttachments && !hasImages && !hasDocs) || disabled || isImageUploading) return;
     
     let finalText = "";
     if (attachments.length > 0) {
@@ -219,9 +256,10 @@ export function ChatInput({
     }
     finalText += input.trim();
 
+    // CRITICAL: Filter out any local browser blob: URLs so Qwen never encounters download errors!
     const imageUrls = imageAttachments
-      .map(img => img.publicUrl || img.previewUrl)
-      .filter(Boolean);
+      .map(img => img.publicUrl || img.dataUrl)
+      .filter((url): url is string => Boolean(url && !url.startsWith('blob:')));
     
     onSend(
       finalText.trim(), 
@@ -235,7 +273,7 @@ export function ChatInput({
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
-  const canSend = isProcessing || (input.trim() || attachments.length > 0 || imageAttachments.length > 0 || documentAttachments.length > 0) && !disabled;
+  const canSend = isProcessing || (!isImageUploading && (input.trim() || attachments.length > 0 || imageAttachments.length > 0 || documentAttachments.length > 0) && !disabled);
 
   return (
     <div style={{ padding: "0", flexShrink: 0 }}>

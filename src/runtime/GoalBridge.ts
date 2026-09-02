@@ -30,6 +30,7 @@ import {
 } from '../core/persistence/SupabaseTransferAuditRepository';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
+import { SpreadsheetEngine } from '../capabilities/google-drive/SpreadsheetEngine';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -1359,7 +1360,14 @@ export class GoalBridge {
     try {
       const { title, headers, rows, options } = payload;
       const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows, options);
-      this.emitResult(requestId, true, { fileId, title });
+      const summaryMetrics = SpreadsheetEngine.calculateSummaryMetrics(headers || [], rows || [], options);
+      this.emitResult(requestId, true, {
+        fileId,
+        title,
+        renderedRows: summaryMetrics.renderedRows,
+        calculatedSummary: summaryMetrics.totals,
+        _systemMessage: `File "${title}" successfully generated with ${summaryMetrics.renderedRows} data rows. Rendered totals: ${JSON.stringify(summaryMetrics.totals)}.`
+      });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);
     }
