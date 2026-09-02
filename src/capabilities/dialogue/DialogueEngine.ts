@@ -341,12 +341,17 @@ export class DialogueEngine {
     }
 
     this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
+    const successfulToolResults: Array<{ name: string; output: any }> = [];
     try {
-      // ── Step 1: Classify intent ──────────────────────────────────────────
-      const classification = await this.intentClassifier.classify(effectiveUserMessage, this.activeAbortController?.signal);
-      let { intent, parameters, workRoute } = classification;
+      // ── Step 1: Cognitive Intent Distillation ──────────────────────────────
+      const classification = await this.intentClassifier.classify(effectiveUserMessage, {
+        hasImages: attachedImages.length > 0,
+        hasDocs: attachedDocs.length > 0,
+        _activeAbortControllerSignal: this.activeAbortController?.signal
+      });
+      let { intent, parameters, workRoute, distilledIntent } = classification;
 
-      console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass}`);
+      console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass} (${distilledIntent?.primaryGoal})`);
 
       // ── Step 1.5: Intercept Complex Autonomy Tasks ───────────────────────────
       // If this requires swarm or planner coordination, bypass the 1-shot LLM and inject directly into the cognitive loop.
@@ -472,6 +477,14 @@ You MUST write a brief, natural response asking the user to review and click "Ap
           });
         }
 
+        // Inject Cognitive Intent Anchor as the agent's guiding North Star
+        if (distilledIntent?.cognitiveAnchor) {
+          messages.push({
+            role: 'user',
+            content: distilledIntent.cognitiveAnchor
+          });
+        }
+
         const attachedImages: string[] = event?.payload?.images || [];
         const hasImages = attachedImages.length > 0;
         if (hasImages) {
@@ -551,12 +564,44 @@ Guidelines:
           });
 
           const toolTier = hasImages ? 'Vision' : 'Execution';
-          const response = await this.orchestrator.generate(
-            this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: rawTools.length > 0, requiresThinking: false }),
-            messages,
-            rawTools,
-            this.activeAbortController?.signal
-          );
+          let response: any = null;
+          let llmAttempts = 0;
+          const maxLlmAttempts = 3;
+          let lastLlmError: any = null;
+
+          while (llmAttempts < maxLlmAttempts) {
+            llmAttempts++;
+            try {
+              response = await this.orchestrator.generate(
+                this.profileFor(toolTier, messages, { requiresVision: hasImages, requiresTools: rawTools.length > 0, requiresThinking: false }),
+                messages,
+                rawTools,
+                this.activeAbortController?.signal
+              );
+              break;
+            } catch (err: any) {
+              lastLlmError = err;
+              if (this.activeAbortController?.signal?.aborted) break;
+
+              const errText = (err.message || '').toLowerCase();
+              const isRateLimit = errText.includes('429') || errText.includes('quota') || errText.includes('rate limit');
+              const isTransientNetwork = errText.includes('timeout') || errText.includes('econnreset') || errText.includes('502') || errText.includes('503') || errText.includes('504');
+
+              if (llmAttempts < maxLlmAttempts && (isRateLimit || isTransientNetwork || !err.message)) {
+                console.warn(`[DialogueEngine] Transient LLM error (attempt ${llmAttempts}/${maxLlmAttempts}): ${err.message}. Retrying...`);
+                this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+                  content: `Reconnecting to cognitive service (attempt ${llmAttempts + 1}/${maxLlmAttempts})...` 
+                });
+                await new Promise(resolve => setTimeout(resolve, llmAttempts * 1000));
+              } else {
+                throw err;
+              }
+            }
+          }
+
+          if (!response) {
+            throw lastLlmError || new Error('Failed to generate response from model orchestrator');
+          }
 
           if (this.activeAbortController?.signal.aborted) break;
 
@@ -566,7 +611,7 @@ Guidelines:
             const assistantMsg: QwenMessage = {
               role: 'assistant',
               content: response.text || null,
-              tool_calls: (response as any).rawMessage?.tool_calls || response.toolCalls.map((tc, idx) => ({
+              tool_calls: (response as any).rawMessage?.tool_calls || response.toolCalls.map((tc: any, idx: number) => ({
                 id: tc.id || `call_${Date.now()}_${idx}`,
                 type: 'function',
                 function: {
@@ -603,24 +648,45 @@ Guidelines:
 
               console.log(`[DialogueEngine][ReAct Step ${stepCount}/${maxSteps}] Invoking tool: ${toolCall.name} (id: ${toolCallId})`);
 
-              const execResult = await this.toolExecutionHandler.executeSingleTool({
-                toolCall,
-                toolCallId,
-                event,
-                userMessage,
-                sessionId: this.sessionId,
-                capabilityCatalog: this.capabilityCatalog,
-                autonomyAgreementStore: this.autonomyAgreementStore,
-                activeAbortControllerSignal: this.activeAbortController?.signal,
-                spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
-                emitEvent: this.emitEvent.bind(this),
-                buildWorkingMemory: this.buildWorkingMemory.bind(this)
-              });
+              let execResult: any;
+              try {
+                execResult = await this.toolExecutionHandler.executeSingleTool({
+                  toolCall,
+                  toolCallId,
+                  event,
+                  userMessage,
+                  sessionId: this.sessionId,
+                  capabilityCatalog: this.capabilityCatalog,
+                  autonomyAgreementStore: this.autonomyAgreementStore,
+                  activeAbortControllerSignal: this.activeAbortController?.signal,
+                  spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
+                  emitEvent: this.emitEvent.bind(this),
+                  buildWorkingMemory: this.buildWorkingMemory.bind(this)
+                });
+              } catch (toolErr: any) {
+                console.warn(`[DialogueEngine] Tool execution error for ${toolCall.name}:`, toolErr.message);
+                execResult = {
+                  isProposal: false,
+                  output: {
+                    success: false,
+                    error: toolErr.message || 'Tool execution encountered an unexpected error',
+                    instruction: 'Self-correct your arguments, verify parameters, or try an alternative tool.'
+                  }
+                };
+              }
 
               if (execResult.isProposal) {
                 // A financial/mutative action requires user proposal approval. Halt the ReAct loop.
                 proposalEncountered = true;
                 break;
+              }
+
+              // Track successful tool results for partial progress preservation
+              if (execResult.output && execResult.output.success !== false) {
+                successfulToolResults.push({
+                  name: toolCall.name,
+                  output: execResult.output
+                });
               }
 
               // Feed the structured tool result back into the context for next iteration
@@ -733,8 +799,39 @@ Guidelines:
       } else {
         console.error('[DialogueEngine] Error:', error.message);
         console.error('[DialogueEngine] Stack:', error.stack);
+
+        const errMsg = (error?.message || '').toLowerCase();
+        let fallbackNotice = '';
+
+        if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('balance') || errMsg.includes('rate limit')) {
+          fallbackNotice = `⚠️ **AI Service Capacity / Quota Limit Exceeded**\n` +
+            `The cognitive model service has reached its API capacity or quota limit.\n\n` +
+            `• **Diagnosis**: HTTP 429 / Insufficient Quota from upstream model provider.\n` +
+            `• **Action**: Please check your API quota or provider account.`;
+        } else if (errMsg.includes('timeout') || errMsg.includes('econnreset') || errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('504')) {
+          fallbackNotice = `⚠️ **AI Gateway Timeout / Service Unavailable**\n` +
+            `Unable to establish a stable connection with the upstream model provider after multiple retry attempts.\n\n` +
+            `• **Diagnosis**: Upstream cognitive service is experiencing high latency or temporary degradation.\n` +
+            `• **Action**: Please wait a moment and send your message again.`;
+        } else {
+          fallbackNotice = `⚠️ **Cognitive Execution Interrupted**\n` +
+            `An unexpected system error occurred during execution:\n` +
+            `\`${error?.message || 'Unknown cognitive error'}\`\n\n` +
+            `• **Action**: Please try rephrasing your request.`;
+        }
+
+        // If tools succeeded prior to failure, surface them to the user so work is not lost!
+        if (successfulToolResults && successfulToolResults.length > 0) {
+          fallbackNotice += `\n\n---\nℹ️ **Completed Actions Before Interruption**:\n` +
+            successfulToolResults.map(r => {
+              const link = r.output?.webViewLink ? ` - [Open File](${r.output.webViewLink})` : '';
+              const title = r.output?.title ? ` ("${r.output.title}")` : '';
+              return `• \`${r.name}\`${title}: Succeeded${link}`;
+            }).join('\n');
+        }
+
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-          text: 'I apologize, but I encountered an error while communicating with the cognitive system. Please try again.',
+          text: fallbackNotice,
         });
       }
     } finally {
