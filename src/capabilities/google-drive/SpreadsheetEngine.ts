@@ -195,7 +195,11 @@ export class SpreadsheetEngine {
       const colInf = columnInferences[colIndex];
       const lowerH = (h || '').toLowerCase().trim();
 
-      const isUnitPriceOrRate = lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+      const isRatioOrRate = lowerH.includes('margin') || lowerH.includes('growth') ||
+        lowerH.includes('rasio') || lowerH.includes('ratio') || lowerH.includes('roi') ||
+        lowerH.includes('yield') || (colInf.type === 'percentage' && !lowerH.includes('bobot') && !lowerH.includes('alokasi') && !lowerH.includes('porsi') && !lowerH.includes('share'));
+
+      const isUnitPriceOrRate = isRatioOrRate || lowerH.includes('unit price') || lowerH.includes('unit_price') ||
         lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
         lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
         lowerH.includes('fee_per') ||
@@ -205,6 +209,7 @@ export class SpreadsheetEngine {
       const isSummable = !isUnitPriceOrRate && (
         options?.includeSummaryRow === true ||
         lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
+        lowerH.includes('cost') || lowerH.includes('hpp') ||
         lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
         lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
         lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
@@ -236,6 +241,55 @@ export class SpreadsheetEngine {
           }
         });
         totals[h] = Number.isInteger(sum) ? sum : parseFloat(sum.toFixed(2));
+      }
+    });
+
+    // Derived calculation for Margin & Ratios
+    headers.forEach((h, colIndex) => {
+      const lowerH = (h || '').toLowerCase().trim();
+      if (lowerH.includes('margin')) {
+        const profitKey = Object.keys(totals).find(k => {
+          const lk = k.toLowerCase();
+          return lk.includes('profit') || lk.includes('laba') || lk.includes('net');
+        });
+        const revenueKey = Object.keys(totals).find(k => {
+          const lk = k.toLowerCase();
+          return (lk.includes('revenue') || lk.includes('omset') || lk.includes('penjualan') || lk.includes('sales') || lk.includes('total') || lk.includes('harga')) && k !== profitKey;
+        });
+        const costKey = Object.keys(totals).find(k => {
+          const lk = k.toLowerCase();
+          return lk.includes('cost') || lk.includes('hpp') || lk.includes('biaya') || lk.includes('expense');
+        });
+
+        if (profitKey && revenueKey && typeof totals[profitKey] === 'number' && typeof totals[revenueKey] === 'number' && (totals[revenueKey] as number) > 0) {
+          const marginVal = ((totals[profitKey] as number) / (totals[revenueKey] as number)) * 100;
+          totals[h] = `${marginVal.toFixed(1)}%`;
+        } else if (revenueKey && costKey && typeof totals[revenueKey] === 'number' && typeof totals[costKey] === 'number' && (totals[revenueKey] as number) > 0) {
+          const marginVal = (((totals[revenueKey] as number) - (totals[costKey] as number)) / (totals[revenueKey] as number)) * 100;
+          totals[h] = `${marginVal.toFixed(1)}%`;
+        } else {
+          let sumVal = 0;
+          let countVal = 0;
+          pureDataRows.forEach(r => {
+            const raw = r[colIndex];
+            if (raw !== null && raw !== undefined && raw !== '' && raw !== '-') {
+              let num: number = 0;
+              if (typeof raw === 'number') num = raw;
+              else if (typeof raw === 'object' && 'result' in raw && typeof raw.result === 'number') num = raw.result;
+              else {
+                const parsed = parseFloat(String(raw).replace(/%/g, '').replace(/,/g, '.').trim());
+                if (!isNaN(parsed)) num = String(raw).includes('%') || parsed > 1 ? parsed : parsed * 100;
+              }
+              if (num > 0) {
+                sumVal += num;
+                countVal++;
+              }
+            }
+          });
+          if (countVal > 0) {
+            totals[h] = `${(sumVal / countVal).toFixed(1)}%`;
+          }
+        }
       }
     });
 
@@ -304,9 +358,9 @@ export class SpreadsheetEngine {
     const headerRow = worksheet.addRow(headers);
     headerRow.height = 28;
 
-    // Freeze header pane so headers stay visible on scroll
+    // Fluid layout without freeze pane: ensures clean natural scrolling in both side-by-side and top hero layouts
     worksheet.views = [
-      { state: 'frozen', xSplit: 0, ySplit: isHero ? 16 : 1 }
+      { showGridLines: true }
     ];
 
     headerRow.eachCell((cell) => {
@@ -336,6 +390,21 @@ export class SpreadsheetEngine {
 
     // Determine column types & currency formats based on headers & pure data rows
     const columnInferences = this.inferColumnInferences(headers, pureDataRows);
+    const rowOffset = isHero ? 15 : 0;
+
+    // Pre-identify Revenue/Omset and Cost/HPP columns for Margin computation
+    const profitColIdx = headers.findIndex(h => {
+      const lh = h.toLowerCase();
+      return lh.includes('profit') || lh.includes('laba') || lh.includes('net');
+    });
+    const revColIdx = headers.findIndex(h => {
+      const lh = h.toLowerCase();
+      return (lh.includes('revenue') || lh.includes('omset') || lh.includes('penjualan') || lh.includes('sales') || lh.includes('harga') || lh.includes('price')) && h !== headers[profitColIdx];
+    });
+    const costColIdx = headers.findIndex(h => {
+      const lh = h.toLowerCase();
+      return lh.includes('cost') || lh.includes('hpp') || lh.includes('biaya') || lh.includes('expense');
+    });
 
     // 2. Add Pure Data Rows (Strictly excludes Total row)
     pureDataRows.forEach((rowValues, rowIndex) => {
@@ -343,10 +412,69 @@ export class SpreadsheetEngine {
       row.height = 22;
       const isZebra = rowIndex % 2 === 1;
 
-      headers.forEach((_, colIndex) => {
-        const rawVal = rowValues[colIndex] !== undefined ? rowValues[colIndex] : '';
+      headers.forEach((h, colIndex) => {
+        let rawVal = rowValues[colIndex] !== undefined ? rowValues[colIndex] : '';
         const cell = row.getCell(colIndex + 1);
         const colInf = columnInferences[colIndex];
+        const lowerH = (h || '').toLowerCase().trim();
+
+        // 1. If formula is present, shift relative row numbers to match actual worksheet row
+        if (typeof rawVal === 'string' && rawVal.trim().startsWith('=')) {
+          rawVal = this.shiftFormulaRowNumbers(rawVal.trim(), rowOffset);
+        } else if (typeof rawVal === 'object' && rawVal !== null && 'formula' in rawVal) {
+          rawVal = {
+            ...rawVal,
+            formula: this.shiftFormulaRowNumbers(String(rawVal.formula || ''), rowOffset)
+          };
+        }
+
+        // 2. Intelligent Margin calculation & result binding
+        if (lowerH.includes('margin')) {
+          let computedMargin: number | undefined;
+          const parseNum = (v: any) => {
+            if (typeof v === 'number') return v;
+            const parsed = parseFloat(String(v || '').replace(/[^0-9.-]+/g, ''));
+            return isNaN(parsed) ? 0 : parsed;
+          };
+
+          if (profitColIdx !== -1 && revColIdx !== -1) {
+            const pVal = parseNum(rowValues[profitColIdx]);
+            const rVal = parseNum(rowValues[revColIdx]);
+            if (rVal > 0) computedMargin = pVal / rVal;
+          } else if (revColIdx !== -1 && costColIdx !== -1) {
+            const rVal = parseNum(rowValues[revColIdx]);
+            const cVal = parseNum(rowValues[costColIdx]);
+            if (rVal > 0) computedMargin = (rVal - cVal) / rVal;
+          }
+
+          if (computedMargin !== undefined) {
+            const currentTargetRow = row.number; // e.g. 17 in Top Hero or 2 in Side-by-Side
+            let boundFormula: string;
+            if (profitColIdx !== -1 && revColIdx !== -1) {
+              const pLetter = this.getColumnLetter(profitColIdx + 1);
+              const rLetter = this.getColumnLetter(revColIdx + 1);
+              boundFormula = `IFERROR(${pLetter}${currentTargetRow}/${rLetter}${currentTargetRow}, "-")`;
+            } else if (revColIdx !== -1 && costColIdx !== -1) {
+              const rLetter = this.getColumnLetter(revColIdx + 1);
+              const cLetter = this.getColumnLetter(costColIdx + 1);
+              boundFormula = `IFERROR((${rLetter}${currentTargetRow}-${cLetter}${currentTargetRow})/${rLetter}${currentTargetRow}, "-")`;
+            } else {
+              boundFormula = typeof rawVal === 'string' && rawVal.startsWith('=') ? rawVal.substring(1) : '';
+            }
+
+            const rawStr = String(rawVal ?? '').trim();
+            if (!rawVal || rawStr === '0' || rawStr === '0%' || rawStr === '-' || rawStr === '0.0%' || rawStr.startsWith('=')) {
+              rawVal = {
+                formula: boundFormula || (rawStr.startsWith('=') ? rawStr.substring(1) : ''),
+                result: parseFloat(computedMargin.toFixed(4)),
+                type: 'percent',
+                decimals: 1
+              };
+            } else if (typeof rawVal === 'object' && 'formula' in rawVal) {
+              rawVal.result = parseFloat(computedMargin.toFixed(4));
+            }
+          }
+        }
 
         // Format and assign value
         const statusStyle = this.setFormattedCellValue(cell, rawVal, colInf);
@@ -449,57 +577,104 @@ export class SpreadsheetEngine {
           }
         } else {
           // Auto-generated summary row (no pre-existing row) -> Fix BUG-05 & BUG-06:
-          // Aggregate columns that are conceptually summable (Budget, Spend, Volume, Nominal, Qty, Total, Market Cap, Variance, etc.)
-          const isUnitPriceOrRate = lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+          // Check if column is a ratio / percentage rate (e.g. Margin, Growth, Ratio, Yield, ROI)
+          const isRatioOrRate = lowerH.includes('margin') || lowerH.includes('growth') ||
+            lowerH.includes('rasio') || lowerH.includes('ratio') || lowerH.includes('roi') ||
+            lowerH.includes('yield') || (colInf.type === 'percentage' && !lowerH.includes('bobot') && !lowerH.includes('alokasi') && !lowerH.includes('porsi') && !lowerH.includes('share'));
+
+          const isUnitPriceOrRate = isRatioOrRate || lowerH.includes('unit price') || lowerH.includes('unit_price') ||
             lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
             lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
             lowerH.includes('fee_per') ||
             (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH)) ||
             colInf.type === 'date' || colInf.type === 'status' || colInf.type === 'boolean';
 
-          const isSummable = !isUnitPriceOrRate && (
-            options?.includeSummaryRow === true ||
-            lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
-            lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
-            lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
-            lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
-            lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
-            lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
-            lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
-            lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
-            lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') ||
-            lowerH.includes('spend') || lowerH.includes('actual') || lowerH.includes('target') ||
-            lowerH.includes('variance') || lowerH.includes('selisih')
-          );
+          if (lowerH.includes('margin')) {
+            // Intelligent overall Margin formula & result binding for summary row
+            const summaryRowNum = summaryRow.number;
+            let marginFormula = `IFERROR(AVERAGE(${colLetter}${firstDataRowNum}:${colLetter}${lastDataRowNum}), "-")`;
+            let calculatedSummaryMargin: number | undefined;
 
-          if (isSummable && (colInf.type === 'currency' || colInf.type === 'number' || colInf.type === 'percentage')) {
-            let sum = 0;
-            pureDataRows.forEach((r) => {
-              const raw = r[colIndex];
-              if (raw !== null && raw !== undefined && raw !== '') {
-                let num: number;
-                if (typeof raw === 'number') {
-                  num = raw;
-                } else if (typeof raw === 'object' && 'formula' in raw) {
-                  num = 0;
-                } else {
-                  const str = String(raw).replace(/%/g, '').replace(/\+/g, '').replace(/\s+/g, '').replace(/,/g, '.').trim();
-                  const parsed = parseFloat(str);
-                  num = String(raw).includes('%') ? (parsed / 100) : parsed;
-                }
-                if (!isNaN(num)) sum += num;
-              }
-            });
-            cell.value = {
-              formula: `SUM(${colLetter}${firstDataRowNum}:${colLetter}${lastDataRowNum})`,
-              result: Number.isInteger(sum) ? sum : parseFloat(sum.toFixed(2))
+            const parseNum = (v: any) => {
+              if (typeof v === 'number') return v;
+              const parsed = parseFloat(String(v || '').replace(/[^0-9.-]+/g, ''));
+              return isNaN(parsed) ? 0 : parsed;
             };
-            cell.numFmt = colInf.numFmt || (colInf.type === 'percentage' ? '0.0%' : '#,##0');
+
+            if (profitColIdx !== -1 && revColIdx !== -1) {
+              const pLetter = this.getColumnLetter(profitColIdx + 1);
+              const rLetter = this.getColumnLetter(revColIdx + 1);
+              marginFormula = `IFERROR(${pLetter}${summaryRowNum}/${rLetter}${summaryRowNum}, "-")`;
+              
+              const totalProfit = pureDataRows.reduce((acc, r) => acc + parseNum(r[profitColIdx]), 0);
+              const totalRev = pureDataRows.reduce((acc, r) => acc + parseNum(r[revColIdx]), 0);
+              if (totalRev > 0) {
+                calculatedSummaryMargin = totalProfit / totalRev;
+              }
+            } else if (revColIdx !== -1 && costColIdx !== -1) {
+              const rLetter = this.getColumnLetter(revColIdx + 1);
+              const cLetter = this.getColumnLetter(costColIdx + 1);
+              marginFormula = `IFERROR((${rLetter}${summaryRowNum}-${cLetter}${summaryRowNum})/${rLetter}${summaryRowNum}, "-")`;
+              
+              const totalRev = pureDataRows.reduce((acc, r) => acc + parseNum(r[revColIdx]), 0);
+              const totalCost = pureDataRows.reduce((acc, r) => acc + parseNum(r[costColIdx]), 0);
+              if (totalRev > 0) {
+                calculatedSummaryMargin = (totalRev - totalCost) / totalRev;
+              }
+            }
+
+            cell.value = {
+              formula: marginFormula,
+              ...(calculatedSummaryMargin !== undefined ? { result: parseFloat(calculatedSummaryMargin.toFixed(4)) } : {})
+            };
+            cell.numFmt = '0.0%';
             cell.alignment = { vertical: 'middle', horizontal: 'right' };
           } else {
-            // Leave non-summable / text columns clean with a dash
-            cell.value = '-';
-            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            const isSummable = !isUnitPriceOrRate && (
+              options?.includeSummaryRow === true ||
+              lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
+              lowerH.includes('cost') || lowerH.includes('hpp') ||
+              lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
+              lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
+              lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
+              lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
+              lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
+              lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
+              lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
+              lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') ||
+              lowerH.includes('spend') || lowerH.includes('actual') || lowerH.includes('target') ||
+              lowerH.includes('variance') || lowerH.includes('selisih')
+            );
+
+            if (isSummable && (colInf.type === 'currency' || colInf.type === 'number' || colInf.type === 'percentage')) {
+              let sum = 0;
+              pureDataRows.forEach((r) => {
+                const raw = r[colIndex];
+                if (raw !== null && raw !== undefined && raw !== '') {
+                  let num: number;
+                  if (typeof raw === 'number') {
+                    num = raw;
+                  } else if (typeof raw === 'object' && 'formula' in raw) {
+                    num = 0;
+                  } else {
+                    const str = String(raw).replace(/%/g, '').replace(/\+/g, '').replace(/\s+/g, '').replace(/,/g, '.').trim();
+                    const parsed = parseFloat(str);
+                    num = String(raw).includes('%') ? (parsed / 100) : parsed;
+                  }
+                  if (!isNaN(num)) sum += num;
+                }
+              });
+              cell.value = {
+                formula: `SUM(${colLetter}${firstDataRowNum}:${colLetter}${lastDataRowNum})`,
+                result: Number.isInteger(sum) ? sum : parseFloat(sum.toFixed(2))
+              };
+              cell.numFmt = colInf.numFmt || (colInf.type === 'percentage' ? '0.0%' : '#,##0');
+              cell.alignment = { vertical: 'middle', horizontal: 'right' };
+            } else {
+              // Leave non-summable / text columns clean with a dash
+              cell.value = '-';
+              cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            }
           }
         }
 
@@ -566,6 +741,20 @@ export class SpreadsheetEngine {
     return trimmed;
   }
 
+  /**
+   * Shifts formula relative row numbers when data rows are offset (e.g. +15 rows for Top Hero banner).
+   */
+  public static shiftFormulaRowNumbers(formula: string, rowOffset: number): string {
+    if (rowOffset === 0) return formula;
+    return formula.replace(/\b([A-Z]+)(\d+)\b/g, (match, col, rowStr) => {
+      const rowNum = parseInt(rowStr, 10);
+      if (rowNum >= 2 && rowNum < 100) {
+        return `${col}${rowNum + rowOffset}`;
+      }
+      return match;
+    });
+  }
+
   private static setFormattedCellValue(
     cell: ExcelJS.Cell,
     rawVal: any,
@@ -580,7 +769,11 @@ export class SpreadsheetEngine {
     if (typeof rawVal === 'object' && rawVal !== null && 'formula' in rawVal) {
       const formulaStr = String(rawVal.formula || '').trim();
       const cleanFormula = formulaStr.startsWith('=') ? formulaStr.substring(1) : formulaStr;
-      cell.value = { formula: this.sanitizeDivisionFormula(cleanFormula) };
+      const cellObj: any = { formula: this.sanitizeDivisionFormula(cleanFormula) };
+      if (rawVal.result !== undefined && rawVal.result !== null) {
+        cellObj.result = rawVal.result;
+      }
+      cell.value = cellObj;
       
       const type = (rawVal.type || colInf.type || '').toLowerCase();
       if (type === 'percent' || type === 'percentage') {
@@ -1374,7 +1567,8 @@ export class SpreadsheetEngine {
           const isPercent = numFmt.includes('%') || 
             header.includes('porsi') || header.includes('%') || header.includes('percent') || 
             header.includes('share') || header.includes('proporsi') || header.includes('alokasi') ||
-            header.includes('rasio') || header.includes('ratio');
+            header.includes('rasio') || header.includes('ratio') || header.includes('margin') ||
+            header.includes('growth') || header.includes('roi') || header.includes('yield');
 
           if (isPercent) {
             const pct = (val > 1 ? val : val * 100);

@@ -23,9 +23,9 @@ describe('SpreadsheetEngine', () => {
     const ws = wb.getWorksheet('Monthly Expenses') || wb.getWorksheet(1);
     expect(ws).toBeDefined();
 
-    // Verify Frozen Header view
-    expect(ws!.views[0].state).toBe('frozen');
-    expect((ws!.views[0] as any).ySplit).toBe(1);
+    // Verify Fluid clean view without frozen header pane
+    expect(ws!.views[0].showGridLines).toBe(true);
+    expect(ws!.views[0].state).not.toBe('frozen');
 
     // Verify Header row
     const headerRow = ws!.getRow(1);
@@ -334,5 +334,44 @@ describe('GoogleDriveCapability Operations', () => {
     expect(capturedBatchUrl).toContain('https://sheets.googleapis.com/v4/spreadsheets/new-sheet-123:batchUpdate');
     expect(capturedBatchBody.requests).toBeDefined();
     expect(capturedBatchBody.requests[0].addChart.chart.spec.title).toBe('Daily Store Sales');
+  });
+
+  it('calculates non-zero Margin % across data rows and summary row with fluid view and formula shifting', async () => {
+    const headers = ['Produk', 'Harga Jual', 'HPP', 'Margin (%)'];
+    const rows = [
+      ['Kemeja Pria', 150000, 90000, ''],
+      ['Celana Chino', 200000, 120000, '']
+    ];
+
+    const buffer = await SpreadsheetEngine.generateWorkbook('Laporan Profit', headers, rows);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const ws = wb.getWorksheet(1)!;
+
+    // Verify fluid layout (NO freeze pane)
+    expect(ws.views[0].showGridLines).toBe(true);
+    expect(ws.views[0].state).not.toBe('frozen');
+
+    // Verify data row 1 margin calculation
+    const row2Margin = ws.getRow(2).getCell(4);
+    expect((row2Margin.value as any)?.result).toBe(0.4); // (150000 - 90000) / 150000 = 0.40 (40.0%)
+    expect(row2Margin.numFmt).toBe('0.0%');
+
+    // Verify data row 2 margin calculation
+    const row3Margin = ws.getRow(3).getCell(4);
+    expect((row3Margin.value as any)?.result).toBe(0.4); // (200000 - 120000) / 200000 = 0.40 (40.0%)
+    expect(row3Margin.numFmt).toBe('0.0%');
+
+    // Verify summary row margin formula & result
+    const summaryRow = ws.getRow(4);
+    expect(summaryRow.getCell(1).value).toBe('Total');
+    const summaryMargin = summaryRow.getCell(4);
+    expect((summaryMargin.value as any)?.formula).toBe('IFERROR((B4-C4)/B4, "-")');
+    expect((summaryMargin.value as any)?.result).toBe(0.4);
+    expect(summaryMargin.numFmt).toBe('0.0%');
+
+    // Verify calculateSummaryMetrics emits non-zero margin
+    const metrics = SpreadsheetEngine.calculateSummaryMetrics(headers, rows);
+    expect(metrics.totals['Margin (%)']).toBe('40.0%');
   });
 });
