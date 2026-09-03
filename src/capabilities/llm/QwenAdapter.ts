@@ -67,26 +67,52 @@ export class QwenAdapter implements ILLMAdapter {
       body.enable_thinking = true;
     }
 
+    const timeoutMs = parseInt(process.env.QWEN_TIMEOUT_MS || '120000', 10);
     const effectiveSignal = abortSignal
       ? (typeof (AbortSignal as any).any === 'function'
-          ? (AbortSignal as any).any([abortSignal, AbortSignal.timeout(45000)])
+          ? (AbortSignal as any).any([abortSignal, AbortSignal.timeout(timeoutMs)])
           : abortSignal)
-      : AbortSignal.timeout(45000);
+      : AbortSignal.timeout(timeoutMs);
 
     if (dashScopeTools && dashScopeTools.length > 0) {
       body.tools = dashScopeTools;
       body.tool_choice = (tools as any)?._toolChoice || 'auto';
     }
 
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: effectiveSignal
-    });
+    let response: Response;
+    try {
+      response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: effectiveSignal
+      });
+    } catch (fetchErr: any) {
+      if (abortSignal?.aborted) throw fetchErr;
+      const isTimeout = fetchErr.name === 'TimeoutError' || (fetchErr.message && fetchErr.message.includes('timeout'));
+      if (isTimeout) {
+        console.warn(`[QwenAdapter] Upstream call timed out after ${timeoutMs}ms. Retrying once...`);
+        const retrySignal = abortSignal
+          ? (typeof (AbortSignal as any).any === 'function'
+              ? (AbortSignal as any).any([abortSignal, AbortSignal.timeout(timeoutMs)])
+              : abortSignal)
+          : AbortSignal.timeout(timeoutMs);
+        response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: retrySignal
+        });
+      } else {
+        throw fetchErr;
+      }
+    }
 
     if (!response.ok) {
       const err = await response.text();

@@ -50,7 +50,7 @@ export class CognitiveContextBuilder {
     // High-Efficiency Streamlined Cognitive Working Memory (Markdown format)
     let cognitiveStateMarkdown = `[COGNITIVE STATE (WORKING MEMORY)]\n- User Wallet: ${walletState?.address || 'Not connected'}\n- Active Connectors: ${activeCaps}`;
     if (memoryContext?.items && memoryContext.items.length > 0) {
-      cognitiveStateMarkdown += `\n\n[RELEVANT MEMORY ATTENTION]\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;
+      cognitiveStateMarkdown += `\n\n[ARCHIVED HISTORICAL MEMORY (PREVIOUS SESSIONS - BACKGROUND ONLY)]\n(Notice: The following are past historical memories. Do NOT assert or hallucinate that past bugs, errors, or previous testing claims apply to the current test or active session unless explicitly requested by the user):\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;
     }
 
     messages.push({

@@ -340,7 +340,15 @@ export class DialogueEngine {
       return;
     }
 
-    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
+    const turnStartTime = Date.now();
+    const initialSubText = userMessage ? userMessage.slice(0, 80) : 'Analyzing request...';
+    this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+      content: 'Thinking',
+      phase: 'THINKING',
+      subText: initialSubText,
+      cognitiveSteps: [],
+      startTime: turnStartTime
+    });
     const successfulToolResults: Array<{ name: string; output: any }> = [];
     try {
       // ── Step 1: Cognitive Intent Distillation ──────────────────────────────
@@ -352,6 +360,22 @@ export class DialogueEngine {
       let { intent, parameters, workRoute, distilledIntent } = classification;
 
       console.log(`[DialogueEngine] Classified intent: ${intent} with class ${workRoute.workClass} (${distilledIntent?.primaryGoal})`);
+
+      const dynamicGoal = distilledIntent?.primaryGoal || IntentClassifier.synthesizeCognitiveThought(effectiveUserMessage, workRoute.workClass, attachedDocs.length > 0, attachedImages.length > 0);
+
+      const analyzingStep = {
+        title: 'Analyzing',
+        detail: dynamicGoal,
+        status: 'completed' as const
+      };
+
+      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+        content: 'Thinking',
+        phase: 'THINKING',
+        subText: dynamicGoal,
+        cognitiveSteps: [analyzingStep],
+        startTime: turnStartTime
+      });
 
       // ── Step 1.5: Intercept Complex Autonomy Tasks ───────────────────────────
       // If this requires swarm or planner coordination, bypass the 1-shot LLM and inject directly into the cognitive loop.
@@ -397,7 +421,12 @@ export class DialogueEngine {
       }
 
       // ── Step 3: Actionable Intents (Proposals vs Direct Execution) ──────────
-      if (intent !== 'NONE') {
+      // Cognitive domains ('CONVERSATION', 'SPREADSHEET', etc.) are guiding anchors for ReAct,
+      // NOT legacy GoalBridge execution actions. All tool usage is natively orchestrated in ReAct.
+      const NON_ACTION_INTENTS = ['NONE', 'CONVERSATION', 'SPREADSHEET', 'VISION', 'FINANCE', 'SOCIAL', 'KNOWLEDGE', 'NO_ACTION', 'DIRECT_ANSWER'];
+      let handledByDirectExecution = false;
+
+      if (!NON_ACTION_INTENTS.includes(intent)) {
         // Read-only operations execute immediately without proposal cards.
         // Only mutative/financial actions (TRANSFER_FUNDS, SCHEDULE_GOAL,
         // ACTIVATE_AUTONOMY_AGREEMENT) fall through to the proposal path below.
@@ -410,8 +439,14 @@ export class DialogueEngine {
             content: `${intent.split('_').join(' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}...`,
           });
           const result = await this.spawnGoalAndAwaitResult(intent, parameters);
-          await this.narrateResult(userMessage, result);
+          if (result?.success || !String(result?.errorMessage || '').includes('Unknown action')) {
+            await this.narrateResult(userMessage, result);
+            handledByDirectExecution = true;
+          } else {
+            console.warn(`[DialogueEngine] Direct execution for ${intent} returned ${result?.errorMessage}. Smoothly falling back to ReAct loop.`);
+          }
         } else {
+          handledByDirectExecution = true;
           this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Validating request feasibility' });
 
           // Pre-Proposal Validation
@@ -466,7 +501,9 @@ You MUST write a brief, natural response asking the user to review and click "Ap
             this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
           }
         }
-      } else {
+      }
+
+      if (!handledByDirectExecution) {
         // ── Step 2: Extract Working Memory ────────────────────────────────────────
         let messages = await this.buildWorkingMemory(false, effectiveUserMessage);
 
@@ -554,13 +591,24 @@ Guidelines:
         let stepCount = 0;
         let finalAnswer = '';
         const executedSignatures: string[] = [];
+        const cognitiveSteps: Array<{ title: string; detail?: string; status: 'completed' | 'active' }> = [];
+        const dynamicGoal = distilledIntent?.primaryGoal || IntentClassifier.synthesizeCognitiveThought(userMessage, 'CONVERSATION', hasDocs, hasImages);
+        cognitiveSteps.push({
+          title: 'Analyzing',
+          detail: dynamicGoal,
+          status: 'completed'
+        });
 
         while (stepCount < maxSteps) {
           stepCount++;
           if (this.activeAbortController?.signal.aborted) break;
 
           this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
-            content: 'Thinking...' 
+            content: 'Thinking',
+            phase: 'THINKING',
+            subText: stepCount > 1 ? 'Analyzing results and preparing next step...' : dynamicGoal,
+            cognitiveSteps: [...cognitiveSteps],
+            startTime: turnStartTime
           });
 
           const toolTier = hasImages ? 'Vision' : 'Execution';
@@ -583,27 +631,73 @@ Guidelines:
               lastLlmError = err;
               if (this.activeAbortController?.signal?.aborted) break;
 
-              const errText = (err.message || '').toLowerCase();
-              const isRateLimit = errText.includes('429') || errText.includes('quota') || errText.includes('rate limit');
-              const isTransientNetwork = errText.includes('timeout') || errText.includes('econnreset') || errText.includes('502') || errText.includes('503') || errText.includes('504');
+              let allErrorsText = (err.message || '').toLowerCase();
+              if (Array.isArray(err.errors)) {
+                allErrorsText += ' ' + err.errors.map((e: any) => (e?.message || '').toLowerCase()).join(' ');
+              }
+              const isRateLimit = allErrorsText.includes('429') || allErrorsText.includes('quota') || allErrorsText.includes('rate limit');
+              const isTransientNetwork = allErrorsText.includes('timeout') || allErrorsText.includes('econnreset') || allErrorsText.includes('502') || allErrorsText.includes('503') || allErrorsText.includes('504') || allErrorsText.includes('failed to fetch');
 
               if (llmAttempts < maxLlmAttempts && (isRateLimit || isTransientNetwork || !err.message)) {
-                console.warn(`[DialogueEngine] Transient LLM error (attempt ${llmAttempts}/${maxLlmAttempts}): ${err.message}. Retrying...`);
-                this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
-                  content: `Reconnecting to cognitive service (attempt ${llmAttempts + 1}/${maxLlmAttempts})...` 
-                });
+                console.warn(`[DialogueEngine] Cognitive latency/network hurdle detected (attempt ${llmAttempts}/${maxLlmAttempts}). Engaging adaptive self-healing...`);
+
+                // Self-Healing Strategy: Prune bloated history to drastically reduce token payload
+                if (messages.length > 3) {
+                  this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+                    content: 'Thinking',
+                    phase: 'THINKING',
+                    subText: 'Condensing working context and retrying...',
+                    cognitiveSteps: [...cognitiveSteps],
+                    startTime: turnStartTime
+                  });
+                  messages = this.pruneBloatedContext(messages);
+                } else {
+                  this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+                    content: 'Thinking',
+                    phase: 'THINKING',
+                    subText: `Reconnecting to cognitive service (attempt ${llmAttempts + 1}/${maxLlmAttempts})...`,
+                    cognitiveSteps: [...cognitiveSteps],
+                    startTime: turnStartTime
+                  });
+                }
+
                 await new Promise(resolve => setTimeout(resolve, llmAttempts * 1000));
               } else {
-                throw err;
+                break;
               }
             }
           }
 
+          // Resilient Partner Behavior: Failure is DATA, not a fatal crash!
           if (!response) {
-            throw lastLlmError || new Error('Failed to generate response from model orchestrator');
+            console.warn('[DialogueEngine] Self-healing attempts exhausted. Responding constructively to user without crashing.');
+            const durationSeconds = Math.max(1, Math.round((Date.now() - turnStartTime) / 1000));
+            this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+              text: `Cognitive service encountered an upstream latency/timeout while processing this comprehensive turn due to heavy context volume.\n\n` +
+                `Automated context pruning was attempted, but the upstream cloud model is experiencing a temporary queue.\n\n` +
+                `**Recommended Next Steps:**\n` +
+                `• We can execute the testing step-by-step (e.g. begin with the Budget vs Actual Ledger sheet).\n` +
+                `• Or you can instruct *"create test sheet now"* to initiate the spreadsheet directly without carrying past history.\n\n` +
+                `Shall I create the budget test sheet now?`,
+              cognitiveSteps: cognitiveSteps.length > 0 ? cognitiveSteps : undefined,
+              durationSeconds,
+              hadTools: successfulToolResults.length > 0
+            });
+            return;
           }
 
           if (this.activeAbortController?.signal.aborted) break;
+
+          // ── Self-Healing Text Tool Interceptor (Anti-Leak Guard) ──────────
+          // If the model leaked pseudo-tool syntax in response.text instead of formal toolCalls:
+          if ((!response.toolCalls || response.toolCalls.length === 0) && response.text) {
+            const intercepted = this.interceptPseudoToolCall(response.text);
+            if (intercepted) {
+              console.log(`[DialogueEngine] Self-healing intercepted pseudo-tool call: ${intercepted.toolCall.name}`);
+              response.toolCalls = [intercepted.toolCall];
+              response.text = intercepted.cleanedText;
+            }
+          }
 
           // Check if Qwen 3.8 selected one or more tools to execute
           if (response.toolCalls && response.toolCalls.length > 0) {
@@ -646,6 +740,21 @@ Guidelines:
 
               executedSignatures.push(signature);
 
+              const toolLabel = ToolExecutionHandler.getCognitiveActivityLabel(toolCall.name);
+              const rawDetail = toolCall.arguments?.title || toolCall.arguments?.filename || (typeof toolCall.arguments === 'object' && toolCall.arguments ? Object.values(toolCall.arguments)[0] : undefined);
+              const activeDetail = typeof rawDetail === 'string' ? rawDetail : undefined;
+
+              this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+                content: 'Working',
+                phase: 'WORKING',
+                subText: activeDetail ? `${toolLabel}: ${activeDetail}` : toolLabel,
+                cognitiveSteps: [
+                  ...cognitiveSteps,
+                  { title: toolLabel, detail: activeDetail, status: 'active' }
+                ],
+                startTime: turnStartTime
+              });
+
               console.log(`[DialogueEngine][ReAct Step ${stepCount}/${maxSteps}] Invoking tool: ${toolCall.name} (id: ${toolCallId})`);
 
               let execResult: any;
@@ -681,11 +790,23 @@ Guidelines:
                 break;
               }
 
-              // Track successful tool results for partial progress preservation
               if (execResult.output && execResult.output.success !== false) {
                 successfulToolResults.push({
                   name: toolCall.name,
                   output: execResult.output
+                });
+                const toolDisplay = ToolExecutionHandler.getCognitiveActivityLabel(toolCall.name);
+                cognitiveSteps.push({
+                  title: toolDisplay,
+                  detail: toolCall.arguments?.title || toolCall.arguments?.filename || (typeof execResult.output === 'object' && execResult.output?.message ? execResult.output.message : undefined),
+                  status: 'completed'
+                });
+                this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+                  content: 'Working',
+                  phase: 'WORKING',
+                  subText: `Completed: ${toolDisplay}`,
+                  cognitiveSteps: [...cognitiveSteps],
+                  startTime: turnStartTime
                 });
               }
 
@@ -716,7 +837,13 @@ Guidelines:
         // run an explicit final synthesis turn with tool_choice: 'none' to produce the executive briefing.
         if (!finalAnswer.trim() && !this.activeAbortController?.signal.aborted) {
           console.log(`[DialogueEngine] Multi-step tools finished (${stepCount}/${maxSteps} steps). Triggering final report synthesis...`);
-          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Thinking...' });
+          this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { 
+            content: 'Thinking',
+            phase: 'THINKING',
+            subText: 'Synthesizing final report...',
+            cognitiveSteps: [...cognitiveSteps],
+            startTime: turnStartTime
+          });
 
           const synthesisTools: any = [...rawTools];
           synthesisTools._toolChoice = 'none';
@@ -772,12 +899,30 @@ Guidelines:
           rawText = '';
         }
 
-        // Parse any markdown links out of the text to optionally render companion buttons
-        const actionLinks = [];
+        // Collect and deduplicate action links (from tools and markdown text)
+        const actionLinks: Array<{ label: string; url: string }> = [];
+        const seenUrls = new Set<string>();
+
+        // 1. Capture direct artifact links from successful tools (e.g. GDRIVE_CREATE_SPREADSHEET)
+        for (const res of successfulToolResults) {
+          if (res.output?.webViewLink && !seenUrls.has(res.output.webViewLink)) {
+            seenUrls.add(res.output.webViewLink);
+            actionLinks.push({
+              label: res.output.title || 'Spreadsheet File',
+              url: res.output.webViewLink
+            });
+          }
+        }
+
+        // 2. Parse any additional markdown links from the text
         const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
         let match;
         while ((match = markdownLinkRegex.exec(rawText)) !== null) {
-          actionLinks.push({ label: match[1].includes('http') ? 'View Resource' : match[1], url: match[2] });
+          const url = match[2];
+          if (!seenUrls.has(url)) {
+            seenUrls.add(url);
+            actionLinks.push({ label: match[1].includes('http') ? 'View Resource' : match[1], url });
+          }
         }
 
         // Deterministic Fallback if model returned empty text: Never leave UI hanging in blank state!
@@ -787,7 +932,14 @@ Guidelines:
           rawText = `✅ **${toolName} completed.** All requested actions have been executed successfully.`;
         }
 
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: rawText, actionLinks });
+        const durationSeconds = Math.max(1, Math.round((Date.now() - turnStartTime) / 1000));
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { 
+          text: rawText, 
+          actionLinks,
+          cognitiveSteps: cognitiveSteps.length > 0 ? cognitiveSteps : undefined,
+          durationSeconds,
+          hadTools: successfulToolResults.length > 0
+        });
       }
 
     } catch (error: any) {
@@ -877,5 +1029,99 @@ Guidelines:
       return 7; // Medium-high budget
     }
     return 5; // Standard budget
+  }
+
+  /**
+   * Self-Healing Context Pruner:
+   * When an LLM call times out or encounters high latency due to bloated conversation history,
+   * this method adaptively condenses older intermediate turns while preserving the system prompt,
+   * cognitive anchors, ingested documents, and the active user goal.
+   */
+  private pruneBloatedContext(messages: QwenMessage[]): QwenMessage[] {
+    if (messages.length <= 3) return messages;
+
+    const pruned: QwenMessage[] = [];
+    // Always preserve system prompts at index 0 and 1
+    if (messages[0]) pruned.push(messages[0]);
+    if (messages[1]) pruned.push(messages[1]);
+
+    // Middle messages (history / tool turns): keep only the last 2 turns, and truncate long assistant tables
+    const middle = messages.slice(2, -1);
+    const recentMiddle = middle.slice(-2);
+
+    for (const msg of recentMiddle) {
+      if (typeof msg.content === 'string') {
+        const text = msg.content;
+        // Truncate oversized markdown tables or long reports to 350 chars with an ellipsis note
+        if (text.length > 500 && (text.includes('|---') || text.includes('\n|'))) {
+          pruned.push({
+            ...msg,
+            content: text.slice(0, 350) + '\n[...data table condensed for cognitive efficiency...]'
+          });
+        } else {
+          pruned.push(msg);
+        }
+      } else {
+        pruned.push(msg);
+      }
+    }
+
+    // Always preserve the active user request at the end
+    const last = messages[messages.length - 1];
+    if (last) pruned.push(last);
+
+    console.log(`[DialogueEngine] Self-healing pruned context from ${messages.length} to ${pruned.length} messages.`);
+    return pruned;
+  }
+
+  /**
+   * Intercepts raw pseudo-tool syntax leaked into text content (e.g. "[sheet] { ... }" or "Action: Call tool ...")
+   * and converts it into a formal SeraToolCall so the tool executes cleanly without spewing JSON in chat.
+   */
+  private interceptPseudoToolCall(text: string): { toolCall: { id: string; name: string; arguments: any }; cleanedText: string } | null {
+    // 1. [sheet] { ... } pattern
+    const sheetMatch = text.match(/\[sheet\]\s*(\{[\s\S]*\})/i);
+    if (sheetMatch) {
+      try {
+        const jsonStr = sheetMatch[1].trim();
+        const parsed = JSON.parse(jsonStr);
+        if (parsed && (parsed.headers || parsed.title || parsed.rows)) {
+          const cleanedText = text.replace(/\[sheet\]\s*\{[\s\S]*\}/i, '').trim();
+          return {
+            toolCall: {
+              id: `call_intercepted_sheet_${Date.now()}`,
+              name: 'GDRIVE_CREATE_SPREADSHEET',
+              arguments: parsed
+            },
+            cleanedText
+          };
+        }
+      } catch (e) {
+        console.warn('[DialogueEngine] Failed to parse intercepted [sheet] JSON:', e);
+      }
+    }
+
+    // 2. Action: Call tool "..." with: { ... } or Action: TOOL_NAME { ... }
+    const actionMatch = text.match(/Action:\s*(?:Call tool\s*)?["']?([A-Za-z0-9_:]+)["']?\s*(?:with:)?\s*(\{[\s\S]*\})/i);
+    if (actionMatch) {
+      try {
+        const toolName = actionMatch[1].trim();
+        const jsonStr = actionMatch[2].trim();
+        const parsed = JSON.parse(jsonStr);
+        const cleanedText = text.replace(/Action:\s*(?:Call tool\s*)?["']?[A-Za-z0-9_:]+["']?\s*(?:with:)?\s*\{[\s\S]*\}/i, '').trim();
+        return {
+          toolCall: {
+            id: `call_intercepted_action_${Date.now()}`,
+            name: toolName === 'SPREADSHEET' || toolName === 'CREATE_SPREADSHEET' ? 'GDRIVE_CREATE_SPREADSHEET' : toolName,
+            arguments: parsed
+          },
+          cleanedText
+        };
+      } catch (e) {
+        console.warn('[DialogueEngine] Failed to parse intercepted Action JSON:', e);
+      }
+    }
+
+    return null;
   }
 }

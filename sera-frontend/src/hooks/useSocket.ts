@@ -33,7 +33,7 @@ export function useSocket(
 ) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [currentActivity, setCurrentActivity] = useState<string | null>(null);
+  const [currentActivity, setCurrentActivity] = useState<any | null>(null);
   const [memoryVault, setMemoryVault] = useState<MemoryVaultDescriptor | null>(null);
   const [deviceVault, setDeviceVault] = useState<DeviceVaultDescriptor>(() => deviceVaultDescriptor('CHECKING'));
   const [googleDrive, setGoogleDrive] = useState<GoogleDriveConnectionState>({ provider: 'GOOGLE_DRIVE', status: 'UNAVAILABLE' });
@@ -48,6 +48,7 @@ export function useSocket(
   const googleDrivePopup = useRef<Window | null>(null);
   const threadsPopup = useRef<Window | null>(null);
   const skipNextDeviceVaultWrite = useRef(false);
+  const turnStartTimeRef = useRef<number>(Date.now());
 
   const localChatKey = `chat-history:${deviceScope}`;
 
@@ -88,14 +89,22 @@ export function useSocket(
       .catch(() => setDeviceVault(deviceVaultDescriptor('UNAVAILABLE')));
   }, [messages, localChatKey, deviceVault.status]);
 
-  const streamReply = useCallback((fullText: string, id: number, actionLinks?: any[]) => {
+  const streamReply = useCallback((fullText: string, id: number, actionLinks?: any[], cognitiveSteps?: any[], durationSeconds?: number, hadTools?: boolean) => {
     setCurrentActivity(null); // Clear activity when starting to stream reply
     setMessages((prev) => {
       const exists = prev.find(m => m.id === id);
       if (!exists) {
-        return [...prev, { id, role: "agent", content: fullText, streaming: false, actionLinks }];
+        return [...prev, { id, role: "agent", content: fullText, streaming: false, actionLinks, cognitiveSteps, durationSeconds, hadTools }];
       }
-      return prev.map((m) => (m.id === id ? { ...m, content: fullText, streaming: false, actionLinks } : m));
+      return prev.map((m) => (m.id === id ? {
+        ...m,
+        content: fullText,
+        streaming: false,
+        actionLinks: actionLinks || m.actionLinks,
+        cognitiveSteps: cognitiveSteps || m.cognitiveSteps,
+        durationSeconds: durationSeconds !== undefined ? durationSeconds : m.durationSeconds,
+        hadTools: hadTools !== undefined ? hadTools : m.hadTools
+      } : m));
     });
   }, []);
 
@@ -214,8 +223,40 @@ export function useSocket(
         if (!history) return previous;
 
         // Smart Deterministic Reconciliation:
-        // Merge server history with any local in-flight messages that haven't arrived yet
-        const merged = [...history];
+        // Merge server history with any local in-flight messages that haven't arrived yet,
+        // and preserve rich client-side attributes (like durationSeconds, hadTools) if server history has partial data.
+        const merged = history.map((serverMsg) => {
+          const matchingLocal = previous.find((localMsg) => {
+            if (localMsg.clientMessageId && serverMsg.clientMessageId) {
+              return localMsg.clientMessageId === serverMsg.clientMessageId;
+            }
+            if (localMsg.id && serverMsg.id && localMsg.id === serverMsg.id) {
+              return true;
+            }
+            if (localMsg.role === serverMsg.role && localMsg.content === serverMsg.content) {
+              const timeDiff = Math.abs((localMsg.id || 0) - (serverMsg.id || 0));
+              return timeDiff < 120000;
+            }
+            return false;
+          });
+
+          if (matchingLocal) {
+            return {
+              ...matchingLocal,
+              ...serverMsg,
+              durationSeconds: (typeof serverMsg.durationSeconds === 'number' && serverMsg.durationSeconds > 0)
+                ? serverMsg.durationSeconds
+                : matchingLocal.durationSeconds,
+              hadTools: serverMsg.hadTools !== undefined
+                ? serverMsg.hadTools
+                : matchingLocal.hadTools,
+              cognitiveSteps: (serverMsg.cognitiveSteps && serverMsg.cognitiveSteps.length > 0)
+                ? serverMsg.cognitiveSteps
+                : matchingLocal.cognitiveSteps,
+            };
+          }
+          return serverMsg;
+        });
 
         previous.forEach((localMsg) => {
           const alreadyInServer = history.some((serverMsg) => {
@@ -243,12 +284,35 @@ export function useSocket(
 
     newSocket.on("chat:reply", (data: any) => {
       setCurrentActivity(null);
-      streamReply(data.content, data.id || Date.now(), data.actionLinks);
+      const measuredSeconds = Math.max(1, Math.round((Date.now() - turnStartTimeRef.current) / 1000));
+      const finalDuration = (typeof data.durationSeconds === 'number' && data.durationSeconds > 0)
+        ? data.durationSeconds
+        : measuredSeconds;
+      streamReply(data.content, data.id || Date.now(), data.actionLinks, data.cognitiveSteps, finalDuration, data.hadTools);
     });
 
     newSocket.on("chat:activity", (data: any) => {
-      // Set ephemeral activity instead of pushing to permanent messages
-      setCurrentActivity(data.content);
+      if (!data) return;
+      if (typeof data === 'string') {
+        setCurrentActivity((prev: any) => ({
+          phase: data.toLowerCase().includes('working') ? 'WORKING' : 'THINKING',
+          subText: data,
+          cognitiveSteps: prev?.cognitiveSteps || [],
+          startTime: prev?.startTime || turnStartTimeRef.current || Date.now()
+        }));
+      } else {
+        if (data.startTime) {
+          turnStartTimeRef.current = data.startTime;
+        }
+        setCurrentActivity((prev: any) => ({
+          phase: data.phase || (String(data.content || '').toLowerCase().includes('working') ? 'WORKING' : 'THINKING'),
+          subText: data.subText || (data.content && !data.content.toLowerCase().startsWith('thinking') ? data.content : prev?.subText),
+          cognitiveSteps: (Array.isArray(data.cognitiveSteps) && data.cognitiveSteps.length > 0)
+            ? data.cognitiveSteps
+            : (prev?.cognitiveSteps || []),
+          startTime: data.startTime || prev?.startTime || turnStartTimeRef.current
+        }));
+      }
     });
 
     newSocket.on("chat:proposal", (data: any) => {
@@ -411,6 +475,16 @@ export function useSocket(
     };
 
     setMessages((prev) => [...prev, userMsg]);
+
+    const now = Date.now();
+    turnStartTimeRef.current = now;
+
+    setCurrentActivity({
+      phase: 'THINKING',
+      subText: undefined,
+      cognitiveSteps: [],
+      startTime: now
+    });
 
     if (isReady) {
       socket.emit("chat:message", { clientMessageId, message: text, images, documents });

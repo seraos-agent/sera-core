@@ -9,9 +9,13 @@ export interface UiMessage {
   type?: 'activity';
   content?: string;
   images?: string[];
+  documents?: any[];
   proposal?: any;
   actionLinks?: { label: string; url: string }[];
   observations?: any[];
+  cognitiveSteps?: any[];
+  durationSeconds?: number;
+  hadTools?: boolean;
 }
 
 export interface ChatHistoryState {

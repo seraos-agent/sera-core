@@ -178,10 +178,6 @@ export class ToolExecutionHandler {
     }
 
     if (isSafe) {
-      this.eventBus.emit(EventTypes.DIALOGUE_ACTIVITY, {
-        content: ToolExecutionHandler.getCognitiveActivityLabel(toolIntent)
-      });
-
       let result: any;
       const connector = capabilityCatalog?.getConnectorForTool?.(toolIntent);
       if (connector && typeof connector.executeTool === 'function') {

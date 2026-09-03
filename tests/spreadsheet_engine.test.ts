@@ -374,4 +374,83 @@ describe('GoogleDriveCapability Operations', () => {
     const metrics = SpreadsheetEngine.calculateSummaryMetrics(headers, rows);
     expect(metrics.totals['Margin (%)']).toBe('40.0%');
   });
+
+  it('handles non-standard numeric values: negative, zero, decimals, big numbers >10 digits without string degradation', async () => {
+    const headers = ['Produk', 'Stok', 'Diskon', 'Omset', 'Market Cap'];
+    const rows = [
+      ['Kopi Arabika', 0, -50000, 12.5, 1600000000000],
+      ['Kopi Robusta', 100, '(25.000)', '1.500.000,50', '2500000000000']
+    ];
+
+    const buffer = await SpreadsheetEngine.generateWorkbook('Test Data Sulit', headers, rows);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const ws = wb.getWorksheet(1)!;
+
+    // Row 2
+    const row2 = ws.getRow(2);
+    expect(row2.getCell(2).value).toBe(0); // Stok 0 is number 0
+    expect(typeof row2.getCell(2).value).toBe('number');
+
+    expect(row2.getCell(3).value).toBe(-50000); // Diskon -50000 is number
+    expect(typeof row2.getCell(3).value).toBe('number');
+
+    expect(row2.getCell(4).value).toBe(12.5); // Omset decimal 12.5 is number
+    expect(typeof row2.getCell(4).value).toBe('number');
+
+    expect(row2.getCell(5).value).toBe(1600000000000); // Big number > 10 digits
+    expect(typeof row2.getCell(5).value).toBe('number');
+
+    // Row 3 (Accounting format & Indonesian thousands/decimals)
+    const row3 = ws.getRow(3);
+    expect(row3.getCell(3).value).toBe(-25000); // (25.000) parsed as -25000
+    expect(typeof row3.getCell(3).value).toBe('number');
+
+    expect(row3.getCell(4).value).toBe(1500000.5); // 1.500.000,50 parsed as 1500000.5
+    expect(typeof row3.getCell(4).value).toBe('number');
+
+    expect(row3.getCell(5).value).toBe(2500000000000);
+    expect(typeof row3.getCell(5).value).toBe('number');
+  });
+
+  it('evaluates valid static formulas (=1+1), cell formulas (=C2-D2), and escapes non-formula strings (=BukanFormula)', async () => {
+    const headers = ['Item', 'Formula Statis', 'Formula Sel', 'Teks Literal'];
+    const rows = [
+      ['Row 1', '=1+1', '=C2-D2', '=BukanFormula+Test'],
+      ['Row 2', '=10*5', '=IF(B2>5, "Tinggi", "Rendah")', '=Rp 50.000']
+    ];
+
+    const buffer = await SpreadsheetEngine.generateWorkbook('Test Formula Hardening', headers, rows);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const ws = wb.getWorksheet(1)!;
+
+    // Valid static formula =1+1 should evaluate result: 2
+    const cellB2 = ws.getRow(2).getCell(2);
+    expect((cellB2.value as any)?.formula).toBe('1+1');
+    expect((cellB2.value as any)?.result).toBe(2);
+
+    // Valid cell formula =C2-D2 should be preserved
+    const cellC2 = ws.getRow(2).getCell(3);
+    expect((cellC2.value as any)?.formula).toBe('C2-D2');
+
+    // Non-formula string =BukanFormula+Test must NOT be sent as formula (escaped as literal text)
+    const cellD2 = ws.getRow(2).getCell(4);
+    expect(cellD2.value).toBe('=BukanFormula+Test');
+    expect((cellD2.value as any)?.formula).toBeUndefined();
+
+    // Valid static formula =10*5 should evaluate result: 50
+    const cellB3 = ws.getRow(3).getCell(2);
+    expect((cellB3.value as any)?.formula).toBe('10*5');
+    expect((cellB3.value as any)?.result).toBe(50);
+
+    // Valid IF formula should be preserved
+    const cellC3 = ws.getRow(3).getCell(3);
+    expect((cellC3.value as any)?.formula).toContain('IF');
+
+    // Non-formula string =Rp 50.000 must NOT be sent as formula
+    const cellD3 = ws.getRow(3).getCell(4);
+    expect(cellD3.value).toBe('=Rp 50.000');
+    expect((cellD3.value as any)?.formula).toBeUndefined();
+  });
 });

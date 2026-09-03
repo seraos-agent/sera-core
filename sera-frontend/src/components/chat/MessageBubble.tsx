@@ -3,7 +3,8 @@ import type { ThemeType } from "../../theme";
 import { ProposalCard } from "./ProposalCard";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { CognitiveProcessCard } from './CognitiveProcessCard';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   const [scale, setScale] = useState(1);
@@ -561,7 +562,161 @@ function normalizeMarkdownContent(content: string): string {
   return content.replace(/(?<!-)\s*—\s*(?!-)/g, ', ');
 }
 
-export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat, walletState }: {
+
+
+function DraggableTableContainer({ children, theme }: { children: React.ReactNode; theme: ThemeType }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const isDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const startScrollLeftRef = useRef(0);
+  const hasMovedRef = useRef(false);
+
+  const checkScrollability = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollWidth > el.clientWidth + 2;
+    setCanScrollLeft(hasOverflow && el.scrollLeft > 4);
+    setCanScrollRight(hasOverflow && Math.ceil(el.scrollLeft + el.clientWidth) < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    checkScrollability();
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(() => {
+      checkScrollability();
+    });
+    observer.observe(el);
+
+    const timer = setTimeout(checkScrollability, 100);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [checkScrollability]);
+
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isDownRef.current) return;
+      const el = containerRef.current;
+      if (!el) return;
+
+      const deltaX = e.clientX - startXRef.current;
+      if (Math.abs(deltaX) > 3) {
+        if (!hasMovedRef.current) {
+          hasMovedRef.current = true;
+          setIsDragging(true);
+        }
+        el.scrollLeft = startScrollLeftRef.current - deltaX;
+        checkScrollability();
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (isDownRef.current) {
+        isDownRef.current = false;
+        setIsDragging(false);
+      }
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [checkScrollability]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.scrollWidth <= el.clientWidth + 2) return;
+
+    isDownRef.current = true;
+    startXRef.current = e.clientX;
+    startScrollLeftRef.current = el.scrollLeft;
+    hasMovedRef.current = false;
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.scrollWidth <= el.clientWidth + 2) return;
+
+    // Convert vertical wheel to horizontal scroll for this table container on desktop
+    if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth - 1;
+
+      if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atStart)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+        checkScrollability();
+      }
+    } else {
+      checkScrollability();
+    }
+  };
+
+  const hasOverflow = canScrollLeft || canScrollRight;
+
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '100%', margin: '14px 0 18px 0' }}>
+      {/* Subtle Left Scroll Indicator */}
+      {canScrollLeft && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 5,
+          width: 32,
+          background: `linear-gradient(to right, ${theme.surface || theme.bg}, transparent)`,
+          pointerEvents: 'none',
+          zIndex: 3,
+          borderRadius: '4px 0 0 4px',
+        }} />
+      )}
+
+      {/* Subtle Right Scroll Indicator */}
+      {canScrollRight && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 5,
+          width: 32,
+          background: `linear-gradient(to left, ${theme.surface || theme.bg}, transparent)`,
+          pointerEvents: 'none',
+          zIndex: 3,
+          borderRadius: '0 4px 4px 0',
+        }} />
+      )}
+
+      <div
+        ref={containerRef}
+        className="clean-table-container"
+        onMouseDown={handleMouseDown}
+        onScroll={checkScrollability}
+        onWheel={handleWheel}
+        style={{
+          cursor: isDragging ? 'grabbing' : (hasOverflow ? 'grab' : 'auto'),
+          userSelect: isDragging ? 'none' : 'auto',
+          WebkitUserSelect: isDragging ? 'none' : 'auto',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearChat, walletState, isMobileView }: {
   theme: ThemeType;
   msg: any;
   onCopy: (id: number, content: string) => void;
@@ -569,11 +724,32 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
   onApprove: (proposalId: string, action: 'APPROVE' | 'REJECT', candidateId?: string) => void;
   onClearChat?: () => void;
   walletState: any;
+  isMobileView?: boolean;
 }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const isUser = msg.role === "user";
 
-  const displayContent = normalizeMarkdownContent(msg.content);
+  let cleanedContent = normalizeMarkdownContent(msg.content || '')
+    .replace(/\[sheet\]\s*\{[\s\S]*\}/gi, '');
+
+  // If companion action button links exist at the end of the message, strip duplicate inline links from body text
+  if (msg.actionLinks && msg.actionLinks.length > 0) {
+    for (const link of msg.actionLinks) {
+      if (link.url) {
+        const escapedUrl = link.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Match standalone link lines e.g. "📄 [Title](url)" or "- [Title](url)"
+        const lineRegex = new RegExp(`^\\s*(?:📄|•|-|\\*|🔗)?\\s*\\[[^\\]]+\\]\\(${escapedUrl}\\)\\s*$`, 'gim');
+        cleanedContent = cleanedContent.replace(lineRegex, '');
+
+        // Match any inline instance
+        const inlineRegex = new RegExp(`(?:📄|🔗)?\\s*\\[[^\\]]+\\]\\(${escapedUrl}\\)`, 'gi');
+        cleanedContent = cleanedContent.replace(inlineRegex, '');
+      }
+    }
+    cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+  }
+
+  const displayContent = cleanedContent.trim();
 
   if (msg.type === "activity") {
     return (
@@ -722,6 +898,18 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
           </div>
         )}
 
+        {/* Cognitive Process Dropdown (Strictly at the TOP of Agent Message) */}
+        {!isUser && msg.cognitiveSteps && msg.cognitiveSteps.length > 0 && (
+          <CognitiveProcessCard
+            theme={theme}
+            steps={msg.cognitiveSteps}
+            isLive={msg.streaming}
+            durationSeconds={msg.durationSeconds}
+            hadTools={msg.hadTools}
+            startTime={msg.startTime}
+          />
+        )}
+
         {/* Text Message Bubble */}
         {(hasText || isUser) && (
           <div
@@ -733,8 +921,8 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
               borderBottomRightRadius: isUser ? 4 : 0,
               boxShadow: isUser && theme.bubbleUser === "#FFFFFF" ? "0 1px 2px rgba(0,0,0,0.05), 0 1px 1px rgba(0,0,0,0.02)" : "none",
               fontFamily: "Inter, sans-serif",
-              fontSize: 14.5,
-              lineHeight: 1.65,
+              fontSize: isMobileView ? 15.5 : 14.5,
+              lineHeight: isMobileView ? 1.68 : 1.65,
               whiteSpace: isUser ? "pre-wrap" : "normal",
               wordBreak: "break-word",
               maxWidth: "100%",
@@ -785,7 +973,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                       />
                     ),
                     table: ({ _node, ...props }: any) => (
-                      <div className="clean-table-container">
+                      <DraggableTableContainer theme={theme}>
                         <table style={{
                           minWidth: "100%",
                           width: "max-content",
@@ -795,7 +983,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                           lineHeight: 1.6,
                           background: "transparent"
                         }} {...props} />
-                      </div>
+                      </DraggableTableContainer>
                     ),
                     thead: ({ _node, ...props }: any) => (
                       <thead style={{ background: "transparent" }} {...props} />
@@ -852,7 +1040,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                     },
                     img: ({ _node, ...props }: any) => {
                       return (
-                        <div style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
+                        <span style={{ position: "relative", display: "inline-block", marginTop: 12, maxWidth: "100%" }}>
                           <img
                             onClick={() => props.src && setLightboxSrc(props.src)}
                             style={{ maxWidth: "100%", height: "auto", borderRadius: 12, display: "block", border: `1px solid ${theme.border}`, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", cursor: "pointer" }}
@@ -894,7 +1082,7 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
                           >
                             <Download size={18} />
                           </a>
-                        </div>
+                        </span>
                       );
                     }
                   }}
@@ -908,25 +1096,45 @@ export function MessageBubble({ theme, msg, onCopy, copied, onApprove, onClearCh
         )}
 
         {msg.actionLinks && msg.actionLinks.length > 0 && (
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            {msg.actionLinks.map((link: any, idx: number) => (
-              <a
-                key={idx}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  background: theme.surface2, border: `1px solid ${theme.border}`,
-                  padding: "6px 12px", borderRadius: 8, textDecoration: "none",
-                  color: theme.ink, fontFamily: "Inter, sans-serif", fontSize: 13,
-                  fontWeight: 500, transition: "background 0.2s"
-                }}
-              >
-                {link.label}
-                <ExternalLink size={13} color={theme.inkSoft} />
-              </a>
-            ))}
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            {msg.actionLinks.map((link: any, idx: number) => {
+              const isSheet = (link.label || '').toLowerCase().includes('sheet') || (link.url || '').includes('spreadsheets') || (link.label || '').toLowerCase().includes('google');
+              return (
+                <a
+                  key={idx}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: isSheet ? `${theme.accent}12` : theme.surface2,
+                    border: `1px solid ${isSheet ? theme.accent + '40' : theme.border}`,
+                    padding: "8px 14px",
+                    borderRadius: 10,
+                    textDecoration: "none",
+                    color: isSheet ? theme.accent : theme.ink,
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    transition: "all 0.2s ease",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.04)"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.04)";
+                  }}
+                >
+                  {isSheet ? <FileSpreadsheet size={16} color={theme.accent} /> : <ExternalLink size={14} color={theme.inkSoft} />}
+                  <span>{link.label}</span>
+                </a>
+              );
+            })}
           </div>
         )}
 

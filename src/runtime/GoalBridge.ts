@@ -368,6 +368,10 @@ export class GoalBridge {
         case 'GDRIVE_CREATE_SPREADSHEET':
         case 'GDRIVE_CREATE_SHEET':
         case 'gdrive:create_sheet':
+        case 'SPREADSHEET':
+        case 'CREATE_SPREADSHEET':
+        case 'sera_gdrive_create_sheet':
+        case 'SHEET_CREATE':
           await this.handleGDriveCreateSheet(requestId, actionPayload);
           break;
         case 'GDRIVE_LIST':
@@ -379,6 +383,13 @@ export class GoalBridge {
         case 'DELETE_FILE':
         case 'gdrive:delete_file':
           await this.handleGDriveDelete(requestId, actionPayload);
+          break;
+
+        case 'CONVERSATION':
+        case 'NONE':
+        case 'NO_ACTION':
+        case 'DIRECT_ANSWER':
+          this.emitResult(requestId, true, { summary: 'Conversational turn completed successfully.' });
           break;
 
         default:

@@ -424,7 +424,7 @@ export function ChatInput({
               background: "transparent",
               color: theme.ink,
               fontFamily: "Inter, sans-serif",
-              fontSize: 15,
+              fontSize: isMobileView ? 16 : 15,
               lineHeight: 1.5,
               padding: "2px 8px 10px",
               maxHeight: 160,

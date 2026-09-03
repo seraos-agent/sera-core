@@ -6,6 +6,7 @@ import { ChatInput } from "./ChatInput";
 import { Socket } from "socket.io-client";
 import { CognitiveStreamPanel } from "./CognitiveStreamPanel";
 import { GovernanceRecommendationCard } from "./proposal/GovernanceRecommendationCard";
+import { CognitiveProcessCard } from "./CognitiveProcessCard";
 
 interface ChatViewProps {
   theme: ThemeType;
@@ -15,7 +16,7 @@ interface ChatViewProps {
   onOpenSidebar: () => void;
   onSend: (text: string, images?: string[], documents?: any[]) => void;
   socket: Socket | null;
-  currentActivity: string | null;
+  currentActivity: any | null;
   onCancelChat: () => void;
   walletState: any;
   governanceRecommendations?: any[];
@@ -117,6 +118,7 @@ export function ChatView({
                 onApprove={handleApprove}
                 onClearChat={() => socket?.emit("chat:clear")}
                 walletState={walletState}
+                isMobileView={isMobileView}
               />
             ))}
 
@@ -136,22 +138,15 @@ export function ChatView({
 
 
             {currentActivity && (
-              <div style={{ display: "flex", justifyContent: "flex-start", margin: "20px 0 16px" }}>
-                <div style={{
-                  display: "inline-flex", alignItems: "center", gap: 8,
-                  padding: "8px 16px", borderRadius: 20,
-                  background: theme.surface2, border: `1px solid ${theme.border}`,
-                  fontSize: 12.5, color: theme.inkSoft, fontFamily: "Inter, sans-serif",
-                  fontWeight: 500, boxShadow: "0 2px 10px rgba(0,0,0,0.05)"
-                }}>
-                  <div className="activity-spinner" style={{
-                    width: 13, height: 13, border: `2px solid ${theme.accent}40`, borderTopColor: theme.accent, borderRadius: "50%", animation: "spin 1s linear infinite"
-                  }} />
-                  <span>{currentActivity}</span>
-                  <style>{`
-                  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                `}</style>
-                </div>
+              <div style={{ display: "flex", justifyContent: "flex-start", margin: "16px 0 12px" }}>
+                <CognitiveProcessCard
+                  theme={theme}
+                  phase={typeof currentActivity === 'object' ? currentActivity.phase : (String(currentActivity).toLowerCase().includes('working') ? 'WORKING' : 'THINKING')}
+                  subText={typeof currentActivity === 'object' ? currentActivity.subText : String(currentActivity)}
+                  steps={typeof currentActivity === 'object' ? currentActivity.cognitiveSteps : []}
+                  isLive={true}
+                  startTime={typeof currentActivity === 'object' ? currentActivity.startTime : undefined}
+                />
               </div>
             )}
 

@@ -92,19 +92,36 @@ button {
   margin-bottom: 0 !important;
 }
 
-/* Seamless ChatGPT-style Table Container (Smooth swipe without scrollbar) */
+/* Smooth Interactive Table Container with Desktop Scrollbar & Drag Support */
 .clean-table-container {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  margin: 12px 0 16px 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  margin: 0;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.28) transparent;
 }
 
 .clean-table-container::-webkit-scrollbar {
-  display: none;
+  height: 5px;
+  display: block;
+}
+
+.clean-table-container::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.clean-table-container::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.clean-table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
 }
 
 /* TradingView Logo Tweaks */
@@ -113,4 +130,27 @@ a[href*='tradingview.com'] {
   transform: scale(0.6) !important;
   transform-origin: bottom left !important;
   opacity: 0.5 !important;
+}
+
+/* Mobile Typography Enhancements */
+@media (max-width: 768px) {
+  .markdown-content {
+    font-size: 15.5px !important;
+    line-height: 1.68 !important;
+  }
+  .markdown-content p {
+    font-size: 15.5px !important;
+    line-height: 1.68 !important;
+  }
+  .markdown-content table {
+    font-size: 0.95em !important;
+  }
+  .markdown-content th,
+  .markdown-content td {
+    font-size: 0.95em !important;
+  }
+  .markdown-content li {
+    font-size: 15.5px !important;
+    line-height: 1.68 !important;
+  }
 }

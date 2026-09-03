@@ -89,7 +89,7 @@ export class DialogueResultNarrator {
     const marketEvidencePolicy = '';
     const narratePrompt = result.success
       ? `The user asked: "${userMessage}". The Sera system retrieved this data: ${sanitizedDataStr}. Narrate this result naturally, helpfully, and concisely in the same language the user used. If the data contains web search results, summarize the key findings clearly and include relevant sources/links if helpful. Do NOT mention internal raw transaction hashes unless relevant.${marketEvidencePolicy}`
-      : `The user asked: "${userMessage}". The Sera system failed to complete the action. Error: ${result.errorMessage}. Inform the user naturally and concisely.`;
+      : `The user asked: "${userMessage}". An action failed to execute. Error: ${result.errorMessage}. Explain the failure objectively and concisely. Do NOT propose unrelated tasks or random trial tests (such as checking BTC prices or generating images). Acknowledge the issue plainly without excessive apologies.`;
 
     const messages = await buildWorkingMemory();
     messages.push({ role: 'user', content: narratePrompt });

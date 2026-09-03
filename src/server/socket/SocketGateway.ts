@@ -58,6 +58,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     let instance = agentManager.getOrCreateInstance('dev');
     let walletLinkChallenge: WalletLinkChallenge | undefined;
     let socketObservationBuffer: any[] = [];
+    let currentTurnStartTime = Date.now();
 
     const challengeCache = new Map<string, string>();
 
@@ -143,6 +144,8 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
     };
 
+    let sessionCognitiveSteps: any[] = [];
+
     // Socket-specific listener references to allow proper unbinding
     const onAgentSpeak = (event: any) => {
       const payload = event.payload || event;
@@ -154,14 +157,26 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         return;
       }
 
-      const msgId = ++msgIdCounter;
+      msgIdCounter = Math.max(Date.now(), msgIdCounter + 1);
+      const msgId = msgIdCounter;
       const currentObs = [...socketObservationBuffer];
       socketObservationBuffer = [];
+      sessionCognitiveSteps = [];
       
+      const measuredSeconds = Math.max(1, Math.round((Date.now() - currentTurnStartTime) / 1000));
+      const finalDuration = (typeof payload.durationSeconds === 'number' && payload.durationSeconds > 0)
+        ? payload.durationSeconds
+        : measuredSeconds;
+      const hadTools = Boolean(payload.hadTools || (payload.cognitiveSteps && payload.cognitiveSteps.length > 1));
+      const cognitiveSteps = payload.cognitiveSteps || (currentObs.length > 0 ? currentObs.map((o: any) => ({ title: o.name || 'Observasi Kognitif', detail: o.summary || o.type })) : undefined);
+
       socket.emit('chat:reply', {
         id: msgId,
         content: payload.text,
         actionLinks: payload.actionLinks,
+        cognitiveSteps,
+        durationSeconds: finalDuration,
+        hadTools,
       });
       instance.chatHistoryStore.appendUiMessage({
         id: msgId,
@@ -169,6 +184,9 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         content: payload.text,
         actionLinks: payload.actionLinks,
         observations: currentObs.length > 0 ? currentObs : undefined,
+        cognitiveSteps,
+        durationSeconds: finalDuration,
+        hadTools,
       });
     };
 
@@ -179,10 +197,20 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         return;
       }
 
+      if (Array.isArray(payload.cognitiveSteps) && payload.cognitiveSteps.length > 0) {
+        sessionCognitiveSteps = payload.cognitiveSteps;
+      }
+
       const msgId = ++msgIdCounter;
       socket.emit('chat:activity', {
         id: msgId,
-        content: payload.content,
+        content: payload.content || (payload.phase === 'WORKING' ? 'Working' : 'Thinking'),
+        phase: payload.phase || (String(payload.content || '').toLowerCase().includes('working') ? 'WORKING' : 'THINKING'),
+        subText: payload.subText || payload.content || 'Analyzing request...',
+        cognitiveSteps: (Array.isArray(payload.cognitiveSteps) && payload.cognitiveSteps.length > 0)
+          ? payload.cognitiveSteps
+          : (sessionCognitiveSteps.length > 0 ? sessionCognitiveSteps : []),
+        startTime: payload.startTime,
       });
     };
 
@@ -683,9 +711,11 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       if (!message && (!images || images.length === 0) && (!documents || documents.length === 0)) return;
 
       socketObservationBuffer = [];
+      sessionCognitiveSteps = [];
       console.log(`[Server] Received chat:message → dispatching USER_OBSERVATION for ${socket.data.sessionId}`);
 
       const msgTimestamp = Date.now();
+      currentTurnStartTime = msgTimestamp;
 
       socket.emit('chat:ack', {
         clientMessageId,
@@ -708,7 +738,8 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         clientMessageId,
         role: 'user',
         content: message || (images && images.length > 0 ? '[Image Attached]' : (documents && documents.length > 0 ? '[Document Attached]' : '')),
-        images
+        images,
+        documents
       });
     };
 
