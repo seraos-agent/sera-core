@@ -170,24 +170,36 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       const hadTools = Boolean(payload.hadTools || (payload.cognitiveSteps && payload.cognitiveSteps.length > 1));
       const cognitiveSteps = payload.cognitiveSteps || (currentObs.length > 0 ? currentObs.map((o: any) => ({ title: o.name || 'Observasi Kognitif', detail: o.summary || o.type })) : undefined);
 
-      socket.emit('chat:reply', {
+      const replyData = {
         id: msgId,
         content: payload.text,
         actionLinks: payload.actionLinks,
         cognitiveSteps,
         durationSeconds: finalDuration,
         hadTools,
-      });
-      instance.chatHistoryStore.appendUiMessage({
-        id: msgId,
-        role: 'agent',
-        content: payload.text,
-        actionLinks: payload.actionLinks,
-        observations: currentObs.length > 0 ? currentObs : undefined,
-        cognitiveSteps,
-        durationSeconds: finalDuration,
-        hadTools,
-      });
+      };
+
+      if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
+        io.to(`user:${socket.data.sessionId}`).emit('chat:reply', replyData);
+        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
+      } else {
+        socket.emit('chat:reply', replyData);
+        socket.emit('chat:activity', null);
+      }
+
+      const existingMsgs = instance.chatHistoryStore.getUiMessages();
+      if (!existingMsgs.some((m: any) => m.id === msgId)) {
+        instance.chatHistoryStore.appendUiMessage({
+          id: msgId,
+          role: 'agent',
+          content: payload.text,
+          actionLinks: payload.actionLinks,
+          observations: currentObs.length > 0 ? currentObs : undefined,
+          cognitiveSteps,
+          durationSeconds: finalDuration,
+          hadTools,
+        });
+      }
     };
 
     const onActivity = (event: any) => {
@@ -202,7 +214,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
 
       const msgId = ++msgIdCounter;
-      socket.emit('chat:activity', {
+      const activityData = {
         id: msgId,
         content: payload.content || (payload.phase === 'WORKING' ? 'Working' : 'Thinking'),
         phase: payload.phase || (String(payload.content || '').toLowerCase().includes('working') ? 'WORKING' : 'THINKING'),
@@ -211,7 +223,13 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
           ? payload.cognitiveSteps
           : (sessionCognitiveSteps.length > 0 ? sessionCognitiveSteps : []),
         startTime: payload.startTime,
-      });
+      };
+
+      if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
+        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', activityData);
+      } else {
+        socket.emit('chat:activity', activityData);
+      }
     };
 
     const onUiCommand = (event: any) => {
@@ -771,6 +789,11 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     socket.on('chat:cancel', () => {
       if (!requireAuthenticatedSession(socket, 'chat:cancel', instance?.eventBus)) return;
       console.log(`[Server] Received chat:cancel → dispatching DIALOGUE_USER_CANCELLED for ${socket.data.sessionId}`);
+      if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
+        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
+      } else {
+        socket.emit('chat:activity', null);
+      }
       const event: StandardEvent = {
         id: `evt-${Date.now()}`,
         type: EventTypes.DIALOGUE_USER_CANCELLED,

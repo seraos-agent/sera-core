@@ -26,9 +26,10 @@ export class CognitiveContextBuilder {
     userMessage?: string,
     activeResponseContext?: Record<string, any>,
     platformConversationHistory?: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>,
-    maxPlatformHistoryTurns: number = 8
+    maxPlatformHistoryTurns: number = 8,
+    overrideSystemPrompt?: string
   ): Promise<QwenMessage[]> {
-    const messages: QwenMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+    const messages: QwenMessage[] = [{ role: 'system', content: overrideSystemPrompt || SYSTEM_PROMPT }];
     const walletState = this.worldStateService.getWalletState();
 
     const isShortGreeting = Boolean(

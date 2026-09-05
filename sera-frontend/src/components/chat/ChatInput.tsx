@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Camera, Square, Mic, Loader2, FileSpreadsheet } from "lucide-react";
+import { Plus, ArrowUp, Bell, FileText, X, PanelLeft, Image as ImageIcon, Square, Mic, Loader2, FileSpreadsheet, Play } from "lucide-react";
 import type { ThemeType } from "../../theme";
 
 export interface ImageAttachment {
@@ -10,6 +10,7 @@ export interface ImageAttachment {
   name: string;
   size: number;
   uploading: boolean;
+  isVideo?: boolean;
   error?: string;
 }
 
@@ -67,24 +68,53 @@ export function ChatInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAttachMenu]);
 
-  const uploadImageFile = (file: File) => {
-    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const uploadMediaFile = (file: File) => {
+    const isVideo = file.type.startsWith('video/');
+    const id = `${isVideo ? 'vid' : 'img'}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const previewUrl = URL.createObjectURL(file);
     const newAttachment: ImageAttachment = {
       id,
       previewUrl,
-      name: file.name || 'image.png',
+      name: file.name || (isVideo ? 'video.mp4' : 'image.png'),
       size: file.size,
-      uploading: true
+      uploading: true,
+      isVideo
     };
     setImageAttachments(prev => [...prev, newAttachment]);
+
+    const apiUrl = import.meta.env.VITE_API_URL || 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+        ? 'http://127.0.0.1:3001' 
+        : 'https://api.seraos.xyz');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
       const rawDataUrl = reader.result as string;
 
-      // Smart Client-Side Resizing (Max 1600px) to ensure lightning-fast upload
+      if (isVideo) {
+        // Video: Store raw dataUrl immediately without canvas resize
+        setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, dataUrl: rawDataUrl } : item));
+
+        try {
+          const res = await fetch(`${apiUrl}/api/upload/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl: rawDataUrl, filename: file.name })
+          });
+          const data = await res.json();
+          if (data && data.url && typeof data.url === 'string' && !data.url.startsWith('blob:')) {
+            setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: data.url, uploading: false } : item));
+          } else {
+            setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: rawDataUrl, uploading: false } : item));
+          }
+        } catch {
+          setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, publicUrl: rawDataUrl, uploading: false } : item));
+        }
+        return;
+      }
+
+      // Smart Client-Side Resizing (Max 1600px) for lightning-fast image upload
       const img = new Image();
       img.src = rawDataUrl;
       img.onload = async () => {
@@ -113,16 +143,10 @@ export function ChatInput({
           finalDataUrl = rawDataUrl;
         }
 
-        // Store dataUrl immediately so image is guaranteed ready for vision even before server upload
         setImageAttachments(prev => prev.map(item => item.id === id ? { ...item, dataUrl: finalDataUrl } : item));
 
-        const apiUrl = import.meta.env.VITE_API_URL || 
-          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://127.0.0.1:3001' 
-            : 'https://api.seraos.xyz');
-
         try {
-          const res = await fetch(`${apiUrl}/api/upload/image`, {
+          const res = await fetch(`${apiUrl}/api/upload/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dataUrl: finalDataUrl, filename: file.name })
@@ -174,19 +198,15 @@ export function ChatInput({
     }
   };
 
-  const handleAttachOption = (type: 'document' | 'image' | 'camera') => {
+  const handleAttachOption = (type: 'document' | 'image') => {
     setShowAttachMenu(false);
     if (fileInputRef.current) {
       if (type === 'document') {
         fileInputRef.current.accept = '.csv,.xlsx,.xls,.json,.txt,.md,.pdf';
-        fileInputRef.current.removeAttribute('capture');
       } else if (type === 'image') {
-        fileInputRef.current.accept = 'image/*';
-        fileInputRef.current.removeAttribute('capture');
-      } else if (type === 'camera') {
-        fileInputRef.current.accept = 'image/*';
-        fileInputRef.current.setAttribute('capture', 'environment');
+        fileInputRef.current.accept = 'image/*,video/*';
       }
+      fileInputRef.current.removeAttribute('capture');
       fileInputRef.current.click();
     }
   };
@@ -195,8 +215,8 @@ export function ChatInput({
     const file = e.target.files?.[0];
     if (!file) return;
     
-    if (file.type.startsWith('image/')) {
-      uploadImageFile(file);
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      uploadMediaFile(file);
     } else {
       uploadDocumentFile(file);
     }
@@ -220,11 +240,11 @@ export function ChatInput({
     const items = e.clipboardData?.items;
     if (items) {
       for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith('image/')) {
+        if (items[i].type.startsWith('image/') || items[i].type.startsWith('video/')) {
           const file = items[i].getAsFile();
           if (file) {
             e.preventDefault();
-            uploadImageFile(file);
+            uploadMediaFile(file);
             return;
           }
         }
@@ -299,7 +319,7 @@ export function ChatInput({
           {/* Image, Document & Text Attachments Preview Strip */}
           {(attachments.length > 0 || imageAttachments.length > 0 || documentAttachments.length > 0) && (
             <div style={{ display: "flex", gap: 10, padding: "4px 8px 12px", overflowX: "auto", flexWrap: "wrap" }}>
-              {/* Image Previews: Clean square thumbnail with floating X button */}
+              {/* Image & Video Previews: Clean square thumbnail with floating X button */}
               {imageAttachments.map((img) => (
                 <div 
                   key={img.id} 
@@ -314,11 +334,29 @@ export function ChatInput({
                     flexShrink: 0
                   }}
                 >
-                  <img 
-                    src={img.previewUrl} 
-                    alt="preview" 
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} 
-                  />
+                  {img.isVideo ? (
+                    <>
+                      <video 
+                        src={img.previewUrl} 
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} 
+                        muted 
+                        playsInline 
+                      />
+                      <div style={{
+                        position: "absolute", bottom: 2, left: 2,
+                        background: "rgba(0,0,0,0.65)", borderRadius: 4, padding: "1px 3px",
+                        display: "flex", alignItems: "center", gap: 2, color: "#fff", fontSize: 8, fontWeight: 700
+                      }}>
+                        <Play size={7} fill="#fff" /> VID
+                      </div>
+                    </>
+                  ) : (
+                    <img 
+                      src={img.previewUrl} 
+                      alt="preview" 
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} 
+                    />
+                  )}
                   {img.uploading && (
                     <div style={{
                       position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)",
@@ -486,7 +524,7 @@ export function ChatInput({
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                       <FileText size={16} color={theme.inkSoft} />
-                      Document
+                      File
                     </button>
                     <button
                       onClick={() => handleAttachOption('image')}
@@ -500,21 +538,7 @@ export function ChatInput({
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                       <ImageIcon size={16} color={theme.inkSoft} />
-                      Image
-                    </button>
-                    <button
-                      onClick={() => handleAttachOption('camera')}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                        background: "transparent", border: "none", borderRadius: 6,
-                        color: theme.ink, fontSize: 13, fontWeight: 500, cursor: "pointer",
-                        transition: "background 0.2s", width: "100%", textAlign: "left"
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = theme.surface2}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      <Camera size={16} color={theme.inkSoft} />
-                      Camera
+                      Gallery
                     </button>
                   </div>
                 )}

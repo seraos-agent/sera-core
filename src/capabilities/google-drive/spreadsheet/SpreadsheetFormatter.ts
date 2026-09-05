@@ -157,7 +157,7 @@ export class SpreadsheetFormatter {
         
         const type = (rawVal.type || colInf.type || '').toLowerCase();
         if (type === 'percent' || type === 'percentage') {
-          cell.numFmt = rawVal.decimals ? `0.${'0'.repeat(rawVal.decimals)}%` : '0.0%';
+          cell.numFmt = rawVal.decimals ? `0.${'0'.repeat(rawVal.decimals)}%` : (colInf.numFmt || '0.0%');
         } else if (type === 'currency') {
           cell.numFmt = rawVal.numFmt || colInf.numFmt || 'Rp #,##0';
         } else if (type === 'number') {
@@ -188,7 +188,7 @@ export class SpreadsheetFormatter {
         if (colInf.type === 'currency') {
           cell.numFmt = colInf.numFmt || 'Rp #,##0';
         } else if (colInf.type === 'percentage') {
-          cell.numFmt = '0.0%';
+          cell.numFmt = colInf.numFmt || '0.0%';
         } else if (colInf.type === 'number') {
           cell.numFmt = colInf.numFmt || '#,##0';
         }
@@ -242,7 +242,7 @@ export class SpreadsheetFormatter {
           numeric = numeric / 100;
         }
         cell.value = numeric;
-        cell.numFmt = '0.0%';
+        cell.numFmt = colInf.numFmt || '0.0%';
         return null;
       }
     }
@@ -375,7 +375,100 @@ export class SpreadsheetFormatter {
         return { type: 'status' };
       }
 
-      // 1. Detect explicit currency directly from header (e.g. "Total (USD)", "Harga (Rp)", "Nominal (SAR)")
+      // Dedicated Category / Identifier / Name / Asset / Ticker columns are text
+      if (
+        (lowerHeader === 'aset' || lowerHeader === 'asset' ||
+         lowerHeader === 'koin' || lowerHeader === 'coin' ||
+         lowerHeader === 'token' || lowerHeader === 'ticker' ||
+         lowerHeader === 'symbol' || lowerHeader === 'simbol' ||
+         lowerHeader === 'pair' || lowerHeader === 'pasangan' ||
+         lowerHeader === 'item' || lowerHeader === 'produk' ||
+         lowerHeader === 'product' || lowerHeader === 'name' ||
+         lowerHeader === 'nama' || lowerHeader === 'deskripsi' ||
+         lowerHeader === 'description' || lowerHeader === 'kategori' ||
+         lowerHeader === 'category' || lowerHeader === 'id' ||
+         lowerHeader === 'kode' || lowerHeader === 'code') &&
+        !lowerHeader.includes('price') && !lowerHeader.includes('harga') &&
+        !lowerHeader.includes('nominal') && !lowerHeader.includes('amount') &&
+        !lowerHeader.includes('total') && !lowerHeader.includes('vol')
+      ) {
+        return { type: 'text' };
+      }
+
+      // 1. Percentage & Ratio (HIGH PRIORITY: Check before currency to prevent "Bobot Volume" / "Share" being misclassified)
+      if (
+        lowerHeader.includes('percent') || 
+        lowerHeader.includes('%') || 
+        lowerHeader.includes('persen') ||
+        lowerHeader.includes('persentase') ||
+        lowerHeader.includes('pnl') || 
+        lowerHeader.includes('percentage') ||
+        lowerHeader.includes('porsi') ||
+        lowerHeader.includes('share') ||
+        lowerHeader.includes('proporsi') ||
+        lowerHeader.includes('alokasi') ||
+        lowerHeader.includes('allocation') ||
+        lowerHeader.includes('bobot') ||
+        lowerHeader.includes('rasio') ||
+        lowerHeader.includes('ratio') ||
+        lowerHeader.includes('perubahan') ||
+        lowerHeader.includes('change') ||
+        lowerHeader.includes('growth') ||
+        lowerHeader.includes('pertumbuhan') ||
+        (lowerHeader.includes('delta') && lowerHeader.includes('%')) ||
+        lowerHeader.includes('margin') ||
+        lowerHeader.includes('marjin') ||
+        lowerHeader.includes('yield') ||
+        lowerHeader.includes('roi') ||
+        lowerHeader.includes('apr') ||
+        lowerHeader.includes('apy') ||
+        lowerHeader.includes('win rate') ||
+        lowerHeader.includes('churn rate') ||
+        lowerHeader.includes('conversion rate') ||
+        lowerHeader.includes('success rate') ||
+        lowerHeader.includes('interest rate') ||
+        lowerHeader.includes('tax rate')
+      ) {
+        // High-precision 3-decimal formatting for Spread % or slippage/bps
+        if (
+          lowerHeader.includes('spread') ||
+          lowerHeader.includes('slippage') ||
+          lowerHeader.includes('bps')
+        ) {
+          return { type: 'percentage', numFmt: '0.000%' };
+        }
+        // Professional 2-decimal formatting for portfolio / volume ratios
+        if (
+          lowerHeader.includes('bobot') ||
+          lowerHeader.includes('porsi') ||
+          lowerHeader.includes('share') ||
+          lowerHeader.includes('proporsi') ||
+          lowerHeader.includes('rasio') ||
+          lowerHeader.includes('ratio') ||
+          lowerHeader.includes('weight') ||
+          lowerHeader.includes('allocation') ||
+          lowerHeader.includes('alokasi')
+        ) {
+          return { type: 'percentage', numFmt: '0.00%' };
+        }
+        return { type: 'percentage', numFmt: '0.0%' };
+      }
+
+      // 2. Spread, Differences, and Deltas without currency (Lock to fixed 4-decimal precision)
+      if (
+        (lowerHeader.includes('spread') ||
+         lowerHeader.includes('selisih') ||
+         lowerHeader.includes('gap') ||
+         lowerHeader.includes('difference') ||
+         (lowerHeader.includes('delta') && !lowerHeader.includes('%'))) &&
+        !lowerHeader.includes('rp') && !lowerHeader.includes('idr') &&
+        !lowerHeader.includes('$') && !lowerHeader.includes('usd') &&
+        !lowerHeader.includes('eur')
+      ) {
+        return { type: 'number', numFmt: '#,##0.0000' };
+      }
+
+      // 3. Detect explicit currency directly from header (e.g. "Total (USD)", "Harga (Rp)", "Nominal (SAR)")
       const headerMeta = CurrencyRegistry.detectFromText(header);
       if (headerMeta && (
         lowerHeader.includes('harga') || lowerHeader.includes('price') ||
@@ -396,37 +489,49 @@ export class SpreadsheetFormatter {
         };
       }
 
-      // 2. Check data rows for explicit currency symbols or ISO codes across rows
+      // 4. Check data rows for explicit currency symbols or ISO codes across rows
       const detectedCurrencies = new Set<string>();
+      let hasNumericCurrencyValues = false;
       for (const row of rows) {
-        const val = String(row[colIndex] || '');
+        const raw = row[colIndex];
+        if (raw === undefined || raw === null || raw === '') continue;
+        const val = String(raw).trim();
+        // CRITICAL GUARD: Skip formulas! In Excel formulas, $ is absolute cell reference, NOT currency!
+        if (val.startsWith('=')) continue;
+        if (typeof raw === 'object' && 'formula' in raw) continue;
+        // Require that the value contains numeric digits to be considered a currency amount
+        if (!/\d/.test(val)) continue;
+
+        hasNumericCurrencyValues = true;
         const meta = CurrencyRegistry.detectFromText(val);
         if (meta) {
           detectedCurrencies.add(meta.code);
         }
       }
 
-      if (detectedCurrencies.size > 1) {
-        // Multi-currency column detected! Flag as mixed currency so summary row won't aggregate blindly
-        return {
-          type: 'currency',
-          currency: 'GENERIC',
-          isMixedCurrency: true,
-          numFmt: '#,##0.00'
-        };
-      } else if (detectedCurrencies.size === 1) {
-        const singleCode = Array.from(detectedCurrencies)[0];
-        const meta = CurrencyRegistry.lookup(singleCode);
-        if (meta) {
+      if (hasNumericCurrencyValues) {
+        if (detectedCurrencies.size > 1) {
+          // Multi-currency column detected! Flag as mixed currency so summary row won't aggregate blindly
           return {
             type: 'currency',
-            currency: meta.code,
-            numFmt: meta.numFmt
+            currency: 'GENERIC',
+            isMixedCurrency: true,
+            numFmt: '#,##0.00'
           };
+        } else if (detectedCurrencies.size === 1) {
+          const singleCode = Array.from(detectedCurrencies)[0];
+          const meta = CurrencyRegistry.lookup(singleCode);
+          if (meta) {
+            return {
+              type: 'currency',
+              currency: meta.code,
+              numFmt: meta.numFmt
+            };
+          }
         }
       }
 
-      // 3. Generic currency / financial amount keywords
+      // 5. Generic currency / financial amount keywords
       if (
         lowerHeader.includes('price') ||
         lowerHeader.includes('cost') ||
@@ -444,7 +549,6 @@ export class SpreadsheetFormatter {
         lowerHeader.includes('budget') ||
         lowerHeader.includes('aktual') ||
         lowerHeader.includes('actual') ||
-        lowerHeader.includes('selisih') ||
         lowerHeader.includes('variance') ||
         lowerHeader.includes('biaya') ||
         lowerHeader.includes('omset') ||
@@ -456,37 +560,6 @@ export class SpreadsheetFormatter {
         return { type: 'currency', currency: 'IDR', numFmt: 'Rp #,##0' };
       }
 
-      if (
-        lowerHeader.includes('percent') || 
-        lowerHeader.includes('%') || 
-        lowerHeader.includes('pnl') || 
-        lowerHeader.includes('percentage') ||
-        lowerHeader.includes('porsi') ||
-        lowerHeader.includes('share') ||
-        lowerHeader.includes('proporsi') ||
-        lowerHeader.includes('alokasi') ||
-        lowerHeader.includes('allocation') ||
-        lowerHeader.includes('bobot') ||
-        lowerHeader.includes('rasio') ||
-        lowerHeader.includes('ratio') ||
-        lowerHeader.includes('perubahan') ||
-        lowerHeader.includes('change') ||
-        lowerHeader.includes('growth') ||
-        lowerHeader.includes('delta') ||
-        lowerHeader.includes('margin') ||
-        lowerHeader.includes('yield') ||
-        lowerHeader.includes('roi') ||
-        lowerHeader.includes('apr') ||
-        lowerHeader.includes('apy')
-      ) {
-        return { type: 'percentage', numFmt: '0.0%' };
-      }
-
-      if (lowerHeader.includes('rate') && !lowerHeader.includes('currency')) {
-        // If header has rate (like win rate, conversion rate)
-        return { type: 'percentage', numFmt: '0.0%' };
-      }
-
       if (lowerHeader.includes('date') || lowerHeader.includes('time')) {
         return { type: 'date' };
       }
@@ -495,14 +568,23 @@ export class SpreadsheetFormatter {
         return { type: 'number', numFmt: '#,##0' };
       }
 
-      // Check if all numeric values in column are integers
+      if (lowerHeader.includes('rate') && !lowerHeader.includes('currency') && !lowerHeader.includes('kurs') && !lowerHeader.includes('fx')) {
+        return { type: 'percentage', numFmt: '0.0%' };
+      }
+
+      // 6. Check data values for numeric and currency symbols
       let hasNumbers = false;
       let allIntegers = true;
+      let hasFormulas = false;
+
       for (const row of rows) {
         const val = row[colIndex];
         if (val !== undefined && val !== null && val !== '') {
           const str = String(val).trim();
-          if (str.startsWith('=')) return { type: 'formula' };
+          if (str.startsWith('=')) {
+            hasFormulas = true;
+            continue;
+          }
           if (str.includes('₹') || str.includes('INR')) return { type: 'currency', currency: 'INR', numFmt: '₹#,##0.00' };
           if (str.includes('€') || str.includes('EUR')) return { type: 'currency', currency: 'EUR', numFmt: '€#,##0.00' };
           if (str.includes('£') || str.includes('GBP')) return { type: 'currency', currency: 'GBP', numFmt: '£#,##0.00' };
@@ -511,7 +593,7 @@ export class SpreadsheetFormatter {
           if (str.includes('RM') || str.includes('MYR')) return { type: 'currency', currency: 'MYR', numFmt: 'RM #,##0.00' };
           if (str.includes('Rp') || str.includes('IDR')) return { type: 'currency', currency: 'IDR', numFmt: 'Rp #,##0' };
           if (str.includes('$') || str.includes('USD')) return { type: 'currency', currency: 'USD', numFmt: '$#,##0.00' };
-          if (str.endsWith('%') || str.includes('%')) return { type: 'percentage', numFmt: '0.0%' };
+          if (str.endsWith('%') || str.includes('%')) return { type: 'percentage', numFmt: '0.00%' };
           
           const cleanNumStr = str.replace(/,/g, '');
           const num = typeof val === 'number' ? val : Number(cleanNumStr);
@@ -522,6 +604,16 @@ export class SpreadsheetFormatter {
             }
           }
         }
+      }
+
+      if (hasFormulas && !hasNumbers) {
+        if (lowerHeader.includes('spread') || lowerHeader.includes('selisih') || lowerHeader.includes('delta')) {
+          return { type: 'number', numFmt: '#,##0.0000' };
+        }
+        if (lowerHeader.includes('bobot') || lowerHeader.includes('rasio') || lowerHeader.includes('ratio') || lowerHeader.includes('%') || lowerHeader.includes('percent')) {
+          return { type: 'percentage', numFmt: '0.00%' };
+        }
+        return { type: 'number', numFmt: '#,##0.00' };
       }
 
       if (hasNumbers) {

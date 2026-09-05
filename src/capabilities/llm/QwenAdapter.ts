@@ -17,6 +17,7 @@ export interface QwenResponse {
   usage: { input_tokens: number; output_tokens: number; total_tokens: number };
   toolCalls?: SeraToolCall[];
   rawMessage?: any;
+  reasoningText?: string;
 }
 
 /**
@@ -198,8 +199,11 @@ export class QwenAdapter implements ILLMAdapter {
       });
     }
 
+    const reasoningText = choice.reasoning_content || choice.reasoning || '';
+
     return {
       text: choice.content || '',
+      reasoningText: reasoningText ? String(reasoningText).trim() : undefined,
       usage: {
         input_tokens: data.usage?.prompt_tokens || 0,
         output_tokens: data.usage?.completion_tokens || 0,

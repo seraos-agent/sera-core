@@ -173,14 +173,20 @@ describe('GoogleDriveCapability Operations', () => {
         capturedBody = init?.body;
         return { ok: true, json: async () => ({ id: 'mock-new-file-id' }) };
       }
-      if (url.includes('/files?')) {
+      if (url.includes('/files')) {
         return { ok: true, json: async () => ({ files: [] }) };
       }
-      return { ok: true, text: async () => '' };
+      return { ok: true, json: async () => ({}) };
     }) as any;
 
     const cap = new GoogleDriveCapability(mockRepo, 'client-id', 'client-secret', mockFetch);
-    const fileId = await cap.createSpreadsheet('user-1', 'Financial Report', ['Month', 'Cost'], [['Jan', 1000]]);
+    const testBuffer = Buffer.from('mock-xlsx-data');
+    const fileId = await cap.writeBuffer(
+      'user-1',
+      'Financial Report.xlsx',
+      testBuffer,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
 
     expect(fileId).toBe('mock-new-file-id');
     expect(capturedUrl).toContain('uploadType=multipart');
@@ -300,22 +306,35 @@ describe('GoogleDriveCapability Operations', () => {
       if (url.includes('/token')) {
         return { ok: true, json: async () => ({ access_token: 'mock-access-token' }) };
       }
-      if (url.includes('/upload/drive/v3/files')) {
-        return { ok: true, json: async () => ({ id: 'new-sheet-123' }) };
+      if (url === 'https://sheets.googleapis.com/v4/spreadsheets' && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            spreadsheetId: 'new-sheet-123',
+            spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/new-sheet-123/edit',
+            sheets: [{ properties: { sheetId: 0, title: 'Sheet1' } }]
+          })
+        };
       }
-      if (url.includes('/files?')) {
-        return { ok: true, json: async () => ({ files: [] }) };
+      if (url.includes('/values/') && init?.method === 'PUT') {
+        return { ok: true, json: async () => ({ updatedCells: 4 }) };
       }
       if (url.includes(':batchUpdate')) {
         capturedBatchUrl = url;
         capturedBatchBody = JSON.parse(init?.body || '{}');
-        return { ok: true, json: async () => ({ spreadsheetId: 'new-sheet-123' }) };
+        return { ok: true, json: async () => ({ replies: [] }) };
       }
-      return { ok: true, text: async () => '' };
+      if (url.includes('/permissions')) {
+        return { ok: true, json: async () => ({ id: 'perm-1' }) };
+      }
+      if (url.includes('/files')) {
+        return { ok: true, json: async () => ({ files: [], id: 'new-sheet-123', webViewLink: 'https://docs.google.com/spreadsheets/d/new-sheet-123/edit' }) };
+      }
+      return { ok: true, json: async () => ({}) };
     }) as any;
 
     const cap = new GoogleDriveCapability(mockRepo, 'client-id', 'client-secret', mockFetch);
-    const fileId = await cap.createSpreadsheet(
+    const result = await cap.createSpreadsheet(
       'user-1',
       'Shopee Store Performance',
       ['Date', 'Sales', 'Profit'],
@@ -330,10 +349,12 @@ describe('GoogleDriveCapability Operations', () => {
       }
     );
 
-    expect(fileId).toBe('new-sheet-123');
+    expect(result.fileId).toBe('new-sheet-123');
     expect(capturedBatchUrl).toContain('https://sheets.googleapis.com/v4/spreadsheets/new-sheet-123:batchUpdate');
     expect(capturedBatchBody.requests).toBeDefined();
-    expect(capturedBatchBody.requests[0].addChart.chart.spec.title).toBe('Daily Store Sales');
+    const chartReq = capturedBatchBody.requests.find((r: any) => r.addChart !== undefined);
+    expect(chartReq).toBeDefined();
+    expect(chartReq.addChart.chart.spec.title).toBe('Daily Store Sales');
   });
 
   it('calculates non-zero Margin % across data rows and summary row with fluid view and formula shifting', async () => {

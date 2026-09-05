@@ -186,30 +186,49 @@ export const SERA_MCP_TOOLS = [
       type: 'object' as const,
       properties: {
         title: { type: 'string', description: 'Name or title of the spreadsheet' },
-        headers: { type: 'array', items: { type: 'string' }, description: 'Column headers (e.g. ["Category", "Amount (IDR)", "Status"])' },
-        rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas like "=SUM(B2:B10)")' },
+        sheets: {
+          type: 'array',
+          description: 'Optional array of worksheets for multi-tab workbooks. Each item has { name, headers, rows, options }',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Worksheet tab name' },
+              headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
+              rows: { type: 'array', items: { type: 'array' }, description: 'Data rows' },
+              options: { type: 'object', description: 'Sheet-specific formatting or chart options' }
+            },
+            required: ['name', 'headers', 'rows']
+          }
+        },
+        headers: { type: 'array', items: { type: 'string' }, description: 'Column headers for single-sheet mode (e.g. ["Category", "Amount (IDR)", "Status"])' },
+        rows: { type: 'array', items: { type: 'array' }, description: 'Data rows for single-sheet mode (array of arrays containing numbers, strings, or formulas)' },
         options: {
           type: 'object',
-          description: 'Optional formatting options (sheetName, themeColor hex without #, includeSummaryRow boolean, chart object with type "COLUMN"|"BAR"|"LINE"|"PIE"|"AREA", title, categoryColumn, valueColumns)',
+          description: 'Optional formatting and placement options',
           properties: {
-            sheetName: { type: 'string' },
-            themeColor: { type: 'string' },
-            includeSummaryRow: { type: 'boolean' },
+            sheetName: { type: 'string', description: 'Name of the worksheet tab' },
+            targetSheet: { type: 'string', description: 'Target sheet tab for updates or charts' },
+            mode: { type: 'string', enum: ['overwrite', 'append'], description: 'Overwrite existing data or append new rows (default: overwrite)' },
+            folder: { type: 'string', description: 'Target subfolder within SERA Vault (e.g. "Spreadsheets", "Reports & Research")' },
+            themeColor: { type: 'string', description: 'Theme color hex without #' },
+            includeSummaryRow: { type: 'boolean', description: 'Include automated TOTAL/Summary row' },
             chart: {
               type: 'object',
               description: 'Native Google Sheets chart configuration',
               properties: {
                 type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
                 title: { type: 'string' },
-                categoryColumn: { type: 'number', description: '0-indexed column for categories/labels' },
-                valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values' }
+                categoryColumn: { type: 'number', description: '0-indexed column for categories/labels (0 = Column A, 1 = Column B, etc.)' },
+                valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values' },
+                anchorRow: { type: 'number', description: '0-indexed starting row to place chart' },
+                anchorCol: { type: 'number', description: '0-indexed starting column to place chart' }
               },
               required: ['type']
             }
           }
         }
       },
-      required: ['title', 'headers', 'rows']
+      required: ['title']
     }
   },
   {
@@ -991,14 +1010,17 @@ export class SeraMcpServer {
   private async handleGDriveCreateSheet(instance: any, args: Record<string, any>): Promise<any> {
     try {
       const cap = await this.getGDriveCapability();
-      const fileId = await cap.createSpreadsheet(
+      const result = await cap.createSpreadsheet(
         instance.sessionId || instance.userId || 'dev',
         args.title,
         args.headers,
         args.rows,
-        args.options
+        args.options,
+        args.sheets
       );
-      return { content: [{ type: 'text', text: `📊 Successfully created formatted spreadsheet "${args.title}" (ID: ${fileId}) in Google Drive SERA Vault.` }] };
+      const fileId = typeof result === 'string' ? result : result.fileId;
+      const webViewLink = typeof result === 'object' && result.webViewLink ? ` (${result.webViewLink})` : '';
+      return { content: [{ type: 'text', text: `📊 Successfully ${typeof result === 'object' && result.isUpdate ? 'updated' : 'created'} formatted spreadsheet "${args.title}" (ID: ${fileId})${webViewLink} in Google Drive SERA Vault.` }] };
     } catch (e: any) {
       return { isError: true, content: [{ type: 'text', text: `Failed to create spreadsheet: ${e.message}` }] };
     }

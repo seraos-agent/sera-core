@@ -61,6 +61,7 @@ export class SpreadsheetMetrics {
         lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
         lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
         lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
+        lowerH.includes('stok') || lowerH.includes('stock') || lowerH.includes('inventory') ||
         lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
         lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') || lowerH.includes('anggaran') ||
         lowerH.includes('spend') || lowerH.includes('actual') || lowerH.includes('aktual') || lowerH.includes('target') ||

@@ -178,6 +178,30 @@ export class SeraAgentInstance {
     this.experienceBuilder = new ExperienceBuilder(this.eventBus, this.sessionId, { persistLocally });
     const episodicSemanticBridge = new EpisodicSemanticBridge(this.eventBus, this.memoryStore);
 
+    // Central Guaranteed Chat History Persistence:
+    // Ensures agent replies are NEVER lost if a client WebSocket disconnects or reconnects mid-turn.
+    this.eventBus.on(EventTypes.DIALOGUE_AGENT_SPEAK, (event: any) => {
+      const payload = event.payload || event;
+      const ctx = payload.responseContext;
+      if (ctx && ctx.platform && ctx.platform !== 'ui' && ctx.platform !== 'socket') {
+        return;
+      }
+
+      const msgId = payload.id || Date.now();
+      const existing = this.chatHistoryStore.getUiMessages().find((m: any) => m.id === msgId);
+      if (!existing) {
+        this.chatHistoryStore.appendUiMessage({
+          id: msgId,
+          role: 'agent',
+          content: payload.text,
+          actionLinks: payload.actionLinks,
+          cognitiveSteps: payload.cognitiveSteps,
+          durationSeconds: payload.durationSeconds,
+          hadTools: payload.hadTools,
+        });
+      }
+    });
+
     this.capabilityCatalog = new CapabilityCatalog();
     const baseTools: SeraTool[] = [
       {
@@ -340,49 +364,83 @@ export class SeraAgentInstance {
       // =====================================================================
       {
         name: 'GDRIVE_CREATE_SPREADSHEET',
-        description: 'Creates a professionally formatted Excel spreadsheet (.xlsx) in Google Drive with headers, zebra striping, currency/percent formats, and optional native charts (COLUMN, LINE, PIE). Use this to create or save spreadsheets.',
+        description: 'Creates or updates a professionally formatted Excel spreadsheet (.xlsx / Google Sheets) in Google Drive with executive styling, zebra striping, currency/percent formats, live formulas, and optional native charts. Supports multi-tab workbooks (via sheets array), append mode, and automatic subfolder organization.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'Name of the spreadsheet' },
-            headers: { type: 'array', items: { type: 'string' }, description: 'Column headers (e.g. ["Coin", "Price (USDC)", "24h Volume"])' },
-            rows: { type: 'array', items: { type: 'array' }, description: 'Data rows (array of arrays containing numbers, strings, or formulas)' },
+            sheets: {
+              type: 'array',
+              description: 'Optional array of worksheets for multi-tab workbooks. Each sheet has name, headers, rows, and options.',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Name of the sheet tab' },
+                  headers: { type: 'array', items: { type: 'string' }, description: 'Column headers for this sheet' },
+                  rows: { type: 'array', items: { type: 'array' }, description: 'Data rows for this sheet' },
+                  options: { type: 'object', description: 'Sheet-specific formatting or chart options' }
+                },
+                required: ['name', 'headers', 'rows']
+              }
+            },
+            headers: { type: 'array', items: { type: 'string' }, description: 'Column headers for single-sheet mode (e.g. ["Product", "Price (IDR)", "Sales"])' },
+            rows: { type: 'array', items: { type: 'array' }, description: 'Data rows for single-sheet mode (array of arrays containing numbers, strings, or formulas)' },
             options: {
               type: 'object',
-              description: 'Optional formatting options (sheetName, themeColor, chart)',
+              description: 'Optional formatting and placement options',
               properties: {
-                sheetName: { type: 'string' },
-                themeColor: { type: 'string' },
-                includeSummaryRow: { type: 'boolean' },
+                sheetName: { type: 'string', description: 'Name of the worksheet tab (default: Sheet1)' },
+                targetSheet: { type: 'string', description: 'Specific sheet tab to target when updating or charting' },
+                mode: { type: 'string', enum: ['overwrite', 'append'], description: 'Overwrite existing data or append new rows to existing table (default: overwrite)' },
+                folder: { type: 'string', description: 'Target subfolder within SERA Vault (e.g. "Spreadsheets", "Reports & Research", "Media & Creative")' },
+                themeColor: { type: 'string', description: 'Hex theme color without # (e.g. "0F5132")' },
+                includeSummaryRow: { type: 'boolean', description: 'Include automated TOTAL/Summary row' },
                 chart: {
                   type: 'object',
                   description: 'Native Google Sheets chart configuration',
                   properties: {
                     type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
                     title: { type: 'string' },
-                    categoryColumn: { type: 'number', description: '0-indexed column for categories/labels' },
-                    valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values' }
+                    categoryColumn: { type: 'number', description: '0-indexed column for categories/labels (0 = Column A, 1 = Column B, etc.)' },
+                    valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values (e.g. [1, 2] for Columns B and C)' },
+                    anchorRow: { type: 'number', description: '0-indexed starting row to place chart (e.g. 0 to place beside table)' },
+                    anchorCol: { type: 'number', description: '0-indexed starting column to place chart (e.g. 5 for Column F)' }
                   },
                   required: ['type']
                 }
               }
             }
           },
-          required: ['title', 'headers', 'rows']
+          required: ['title']
         }
       },
       {
         name: 'GDRIVE_CREATE_SHEET',
-        description: 'Alias for GDRIVE_CREATE_SPREADSHEET. Creates a professionally formatted Excel spreadsheet (.xlsx) in Google Drive.',
+        description: 'Alias for GDRIVE_CREATE_SPREADSHEET. Creates or updates a professionally formatted Excel spreadsheet (.xlsx) in Google Drive with multi-tab workbook and append support.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'Name of the spreadsheet' },
+            sheets: { type: 'array', items: { type: 'object' }, description: 'Array of worksheets for multi-tab workbooks' },
             headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
             rows: { type: 'array', items: { type: 'array' }, description: 'Data rows' },
             options: { type: 'object' }
           },
-          required: ['title', 'headers', 'rows']
+          required: ['title']
+        }
+      },
+      {
+        name: 'GDRIVE_UPDATE_CELL',
+        description: 'Updates a specific cell or small range in an existing Google Sheets spreadsheet without rebuilding the entire file.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Name or title of the spreadsheet (or file ID)' },
+            cell: { type: 'string', description: 'Cell address (e.g. "B5", "C10")' },
+            value: { description: 'New value (number, string, or formula starting with =)' },
+            sheetName: { type: 'string', description: 'Optional tab name (defaults to first sheet)' }
+          },
+          required: ['title', 'cell', 'value']
         }
       },
       {

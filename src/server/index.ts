@@ -9,6 +9,8 @@ import { isAllowedOrigin } from './config';
 import { SupabaseIdentityService } from '../core/identity/SupabaseIdentityService';
 import { ReownWalletIdentityService } from '../core/identity/ReownWalletIdentityService';
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
+import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
+import { MemoryConsolidationWorker } from '../core/integrations/google-drive/MemoryConsolidationWorker';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
@@ -32,6 +34,7 @@ import { registerSocketGateway } from './socket/SocketGateway';
 const supabaseIdentityService = SupabaseIdentityService.fromEnvironment();
 const reownWalletIdentityService = ReownWalletIdentityService.fromEnvironment();
 const googleDriveOAuthService = GoogleDriveOAuthService.fromEnvironment();
+const googleDriveConnectionRepository = GoogleDriveConnectionRepository.fromEnvironment();
 const globalSecretManager = agentManager.getOrCreateInstance('dev').runtime.secretManager;
 agentManager.setSecretManager(globalSecretManager);
 
@@ -99,7 +102,24 @@ app.get('/health', (_request, response) => {
 app.use(createTemporalRouter(agentManager, supabaseClient));
 
 // 3. Google Drive OAuth Callback
-app.use(createGoogleDriveRouter(googleDriveOAuthService, io));
+app.use(createGoogleDriveRouter(googleDriveOAuthService, io, async (userId) => {
+  const inst = agentManager.getOrCreateInstance(userId);
+  if (inst?.runtime?.capabilityCatalog) {
+    io.to(`user:${userId}`).emit('connector:status_changed', inst.runtime.capabilityCatalog.allConnectorSummaries());
+  }
+  if (googleDriveConnectionRepository && supabaseClient) {
+    try {
+      const memoryWorker = new MemoryConsolidationWorker(
+        supabaseClient,
+        googleDriveConnectionRepository,
+        (uid) => agentManager.getOrCreateInstance(uid)
+      );
+      await memoryWorker.rehydrateFromVault(userId);
+    } catch (err: any) {
+      console.warn('[Server] Vault rehydration on connect warning:', err.message);
+    }
+  }
+}));
 
 // 4. Multimodal Image Uploads
 app.use(createMediaRouter());

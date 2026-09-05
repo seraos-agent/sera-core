@@ -42,6 +42,20 @@ export class ProductivitySubAgent implements ISubAgent {
         }
       },
       {
+        name: 'GDRIVE_UPDATE_CELL',
+        description: 'Updates a specific cell or small range in an existing Google Sheets spreadsheet without rebuilding the entire file.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Name or title of the spreadsheet (or file ID)' },
+            cell: { type: 'string', description: 'Cell address (e.g. "B5", "C10")' },
+            value: { description: 'New value (number, string, or formula starting with =)' },
+            sheetName: { type: 'string', description: 'Optional tab name (defaults to first sheet)' }
+          },
+          required: ['title', 'cell', 'value']
+        }
+      },
+      {
         name: 'GDRIVE_LIST',
         description: 'Lists or searches recent spreadsheets and documents in your Google Drive SERA Vault.',
         parameters: {
@@ -72,22 +86,97 @@ export class ProductivitySubAgent implements ISubAgent {
             fileId: { type: 'string', description: 'Optional direct Google Drive file ID' }
           }
         }
+      },
+      {
+        name: 'GDRIVE_SAVE_MEDIA',
+        description: 'Saves an attached photo or video from the current chat (or a media URL) directly into the user Google Drive SERA Vault inside "🎨 Media & Creative".',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Name of the file to save (e.g. "promo-launch.jpg" or "product-video.mp4")' },
+            mediaUrl: { type: 'string', description: 'Optional media URL. If omitted, automatically uses the photo or video attached in the current chat message.' },
+            folder: { type: 'string', description: 'Optional subfolder name. Defaults to "🎨 Media & Creative".' }
+          },
+          required: ['filename']
+        }
+      },
+      {
+        name: 'GDRIVE_CREATE_FOLDER',
+        description: 'Creates a new folder inside Google Drive SERA Vault (or nested inside another folder).',
+        parameters: {
+          type: 'object',
+          properties: {
+            folderName: { type: 'string', description: 'Name of the folder to create (e.g. "Katalog Promo 2026")' },
+            parentFolder: { type: 'string', description: 'Optional parent folder path or name. Defaults to SERA Vault root.' }
+          },
+          required: ['folderName']
+        }
+      },
+      {
+        name: 'GDRIVE_RENAME',
+        description: 'Renames an existing file or folder in Google Drive SERA Vault.',
+        parameters: {
+          type: 'object',
+          properties: {
+            targetName: { type: 'string', description: 'Current name or file/folder ID of the item to rename' },
+            newName: { type: 'string', description: 'The new name for the file or folder' }
+          },
+          required: ['targetName', 'newName']
+        }
+      },
+      {
+        name: 'GDRIVE_MOVE',
+        description: 'Moves a file to a designated target folder in Google Drive SERA Vault.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', description: 'Filename or file ID to move' },
+            targetFolder: { type: 'string', description: 'Destination folder name or path (e.g. "🎨 Media & Creative", "Katalog Promo", or "root")' }
+          },
+          required: ['filename', 'targetFolder']
+        }
+      },
+      {
+        name: 'GDRIVE_DELETE_FOLDER',
+        description: 'Safely removes or trashes an unwanted folder from Google Drive SERA Vault.',
+        parameters: {
+          type: 'object',
+          properties: {
+            folderName: { type: 'string', description: 'Name or ID of the folder to delete' }
+          },
+          required: ['folderName']
+        }
+      },
+      {
+        name: 'GDRIVE_TIDY_VAULT',
+        description: 'Automatically scans uncategorized files sitting at the root of Google Drive SERA Vault and moves them into their appropriate subfolders (Media to "🎨 Media & Creative", Spreadsheets to "📊 Spreadsheets & Analysis", Documents to "📑 Reports & Research").',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
       }
     ];
   }
 
   getSystemPrompt(): string {
     return `You are the SERA Productivity & Workspace Specialist Sub-Agent.
-Your mission is to organize, analyze, format, and save tabular data into Google Drive spreadsheets with live interactive charts, and manage Google Drive workspace files.
+Your mission is to organize, analyze, format, and save tabular data into Google Drive spreadsheets with live interactive charts, and manage Google Drive workspace files and folders.
 
 CRITICAL RULES:
 - HUMAN-FRIENDLY TERMINOLOGY: Always use popular, friendly terms like "Spreadsheet / Google Sheets" for tables and "Document / Notes" for text. Never confuse users with raw extensions like .xlsx or .csv.
 - When the user asks to save data, create a spreadsheet, or export an analysis:
   YOU MUST IMMEDIATELY INVOKE GDRIVE_CREATE_SPREADSHEET with clean headers, numeric rows, and appropriate chart options.
 - When the user asks to edit or update an existing spreadsheet, call GDRIVE_CREATE_SPREADSHEET with the same title to update it in-place preserving its rich format and formulas.
+- When the user asks to change or update a single cell value or formula (e.g. "ubah sel B5 jadi 250000" or "set cell C2 =ROW()-1"), invoke GDRIVE_UPDATE_CELL.
+- When the user sends a photo or video in chat and asks to save it to Google Drive (or "simpan foto/video"), invoke GDRIVE_SAVE_MEDIA with a clean, descriptive filename.
+- When the user asks to create a folder (e.g. "buat folder baru", "bikin folder"), invoke GDRIVE_CREATE_FOLDER.
+- When the user asks to rename a file or folder (e.g. "ganti nama folder", "rename file"), invoke GDRIVE_RENAME.
+- When the user asks to move a file into a folder (e.g. "pindahkan file ini ke folder itu"), invoke GDRIVE_MOVE.
+- When the user asks to delete a folder (e.g. "hapus folder"), invoke GDRIVE_DELETE_FOLDER.
+- When the user asks to tidy up, organize, or clean their Google Drive (e.g. "rapikan google drive", "rapikan file", "tidy vault"), invoke GDRIVE_TIDY_VAULT.
 - When the user asks to delete or remove an unwanted/duplicate file or spreadsheet, invoke GDRIVE_DELETE with the file name or file ID.
 - If the user asks for visual distribution (e.g. "pie chart market cap" or "bar chart revenue"):
   Pass options.chart: { type: 'PIE' | 'COLUMN' | 'BAR' | 'LINE', title: '...', categoryColumn: 0, valueColumns: [1] }.
-- NEVER say you cannot create spreadsheets, charts, or delete files. You have full native Google Drive capability.`;
+- NEVER say you cannot create spreadsheets, charts, save media, or manage folders. You have full native Google Drive capability.`;
   }
 }

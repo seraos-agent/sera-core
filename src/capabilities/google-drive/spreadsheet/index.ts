@@ -5,3 +5,4 @@ export * from './SpreadsheetMetrics';
 export * from './SpreadsheetChartBuilder';
 export * from './SpreadsheetLayoutBuilder';
 export * from './SpreadsheetReader';
+export * from './GoogleSheetsFormatter';

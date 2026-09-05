@@ -115,12 +115,19 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
     }
   };
 
-  // Mouse wheel zoom on desktop
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.25 : 0.25;
-    setScale(s => Math.min(Math.max(s + delta, 1), 4));
-  };
+  // Mouse wheel zoom on desktop (attached as non-passive listener to allow preventDefault)
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = modalRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.25 : 0.25;
+      setScale(s => Math.min(Math.max(s + delta, 1), 4));
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Mouse drag on desktop
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -147,8 +154,8 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
 
   return (
     <div
+      ref={modalRef}
       onClick={onClose}
-      onWheel={handleWheel}
       style={{
         position: 'fixed',
         top: 0,
@@ -644,25 +651,31 @@ function DraggableTableContainer({ children, theme }: { children: React.ReactNod
     hasMovedRef.current = false;
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  // Convert vertical wheel to horizontal scroll for this table container on desktop (non-passive listener)
+  useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    if (el.scrollWidth <= el.clientWidth + 2) return;
 
-    // Convert vertical wheel to horizontal scroll for this table container on desktop
-    if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
-      const atStart = el.scrollLeft <= 0;
-      const atEnd = Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth - 1;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth + 2) return;
 
-      if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atStart)) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
+      if (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaX) === 0) {
+        const atStart = el.scrollLeft <= 0;
+        const atEnd = Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth - 1;
+
+        if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atStart)) {
+          e.preventDefault();
+          el.scrollLeft += e.deltaY;
+          checkScrollability();
+        }
+      } else {
         checkScrollability();
       }
-    } else {
-      checkScrollability();
-    }
-  };
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [checkScrollability]);
 
   const hasOverflow = canScrollLeft || canScrollRight;
 
@@ -703,7 +716,6 @@ function DraggableTableContainer({ children, theme }: { children: React.ReactNod
         className="clean-table-container"
         onMouseDown={handleMouseDown}
         onScroll={checkScrollability}
-        onWheel={handleWheel}
         style={{
           cursor: isDragging ? 'grabbing' : (hasOverflow ? 'grab' : 'auto'),
           userSelect: isDragging ? 'none' : 'auto',

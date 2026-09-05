@@ -21,20 +21,26 @@ export class SpreadsheetChartBuilder {
   }
 
   /**
-   * Translates a cell address (e.g. "G2") to 0-indexed { rowIndex, columnIndex }.
+   * Translates a cell address (e.g. "G2" or "E") to 0-indexed { rowIndex, columnIndex }.
    */
   public static parseCellAddress(address: string = 'G2'): { rowIndex: number; columnIndex: number } {
-    const match = address.toUpperCase().match(/^([A-Z]+)(\d+)$/);
-    if (!match) return { rowIndex: 1, columnIndex: 6 };
+    if (!address || typeof address !== 'string') {
+      return { rowIndex: 1, columnIndex: 6 };
+    }
+    const clean = address.trim().toUpperCase();
+    const match = clean.match(/^([A-Z]{1,3})(\d+)$/);
+    if (!match) {
+      const colOnlyMatch = clean.match(/^([A-Z]{1,3})$/);
+      if (colOnlyMatch) {
+        return { rowIndex: 0, columnIndex: Math.max(0, this.columnLetterToIndex(colOnlyMatch[1])) };
+      }
+      return { rowIndex: 1, columnIndex: 6 };
+    }
     const colStr = match[1];
     const rowNum = parseInt(match[2], 10);
-    let colIndex = 0;
-    for (let i = 0; i < colStr.length; i++) {
-      colIndex = colIndex * 26 + (colStr.charCodeAt(i) - 64);
-    }
     return {
-      rowIndex: Math.max(0, rowNum - 1),
-      columnIndex: Math.max(0, colIndex - 1)
+      rowIndex: Math.max(0, isNaN(rowNum) ? 0 : rowNum - 1),
+      columnIndex: Math.max(0, this.columnLetterToIndex(colStr))
     };
   }
 
@@ -69,8 +75,8 @@ export class SpreadsheetChartBuilder {
   }
 
   /**
-   * Determines if a spreadsheet should use Top Hero Banner layout (wide/large data)
-   * or Side-by-Side Compact layout (compact data: <= 8 rows and <= 4 columns).
+   * Determines if a spreadsheet should use Stacked Below-Table layout (wide data > 8 cols)
+   * or Side-by-Side layout (compact data <= 8 cols).
    */
   public static isTopHeroLayout(
     headers: string[],
@@ -78,16 +84,7 @@ export class SpreadsheetChartBuilder {
     chartDef?: ChartDefinition
   ): boolean {
     if (!chartDef) return false;
-    if (chartDef.position?.anchorCell) {
-      const anchor = chartDef.position.anchorCell.toUpperCase();
-      return anchor === 'A1' || anchor === 'A2';
-    }
-    // If compact data (<= 4 columns and <= 8 rows): Side-by-Side!
-    if (headers.length <= 4 && rows.length <= 8) {
-      return false;
-    }
-    // Large / wide dataset (> 8 rows or > 4 columns): Top Hero Banner!
-    return true;
+    return headers.length > 8;
   }
 
   /**
@@ -177,38 +174,95 @@ export class SpreadsheetChartBuilder {
       }
     }
 
-    // Smart Adaptive Layout: Top Hero for large/wide data, Side-by-Side Compact for small data
-    const isTopHero = this.isTopHeroLayout(headers, rows, chartDef);
-    const defaultAnchor = isTopHero 
-      ? 'A1' 
-      : `${this.getColumnLetter(headers.length + 2)}1`; // Aligned at Row 1 (e.g. E1)
+    // Smart Adaptive Layout:
+    // When data has <= 8 columns, place chart Side-by-Side to the right of the table (zero overlap)
+    // When data has > 8 columns, place chart Below the table (zero overlap)
+    const isSideBySide = headers.length <= 8;
+    const defaultSideBySideAnchor = `${this.getColumnLetter(headers.length + 2)}1`; // e.g. Column J1 for 8 cols, Column F1 for 4 cols
+    const defaultBelowTableAnchor = `A${rows.length + 3}`; // 2 blank rows gap below the table
 
-    const anchor = chartDef.position?.anchorCell || defaultAnchor;
-    const { rowIndex: anchorRow, columnIndex: anchorCol } = this.parseCellAddress(anchor);
+    let anchor = chartDef.position?.anchorCell;
+
+    // CRITICAL OVERLAP GUARD:
+    // In native Google Sheets API, table data is written starting at A1 (Row 0, Col 0).
+    // If anchor is not provided, or is explicitly set to 'A1' / 'A2', placing a floating chart at A1
+    // causes the chart to float directly ON TOP of the data table, hiding all rows and numbers!
+    // We automatically resolve this to Side-by-Side (for <= 8 columns) or Below Table (for > 8 columns).
+    if (!anchor || anchor.toUpperCase() === 'A1' || anchor.toUpperCase() === 'A2') {
+      anchor = isSideBySide ? defaultSideBySideAnchor : defaultBelowTableAnchor;
+    }
+
+    let { rowIndex: anchorRow, columnIndex: anchorCol } = this.parseCellAddress(anchor);
     
-    // Proportional dimensions: slim & neat for compact tables, wide for hero dashboards
-    const widthPixels = chartDef.position?.widthPixels || (isTopHero ? 820 : 520);
-    const heightPixels = chartDef.position?.heightPixels || (
-      isTopHero 
-        ? 290 
-        : Math.max(220, Math.min(250, (rows.length + 2) * 24 + 40))
-    );
+    // Explicit anchorRow / anchorCol numeric overrides if provided
+    const explicitAnchorRow = chartDef.anchorRow !== undefined ? chartDef.anchorRow : chartDef.position?.anchorRow;
+    const explicitAnchorCol = chartDef.anchorCol !== undefined ? chartDef.anchorCol : chartDef.position?.anchorCol;
 
-    // Count pure data rows (strictly excluding any Total / Summary row from chart ranges)
+    if (explicitAnchorRow !== undefined && !isNaN(Number(explicitAnchorRow))) {
+      anchorRow = Math.max(0, Number(explicitAnchorRow));
+    }
+    if (explicitAnchorCol !== undefined && !isNaN(Number(explicitAnchorCol))) {
+      anchorCol = Math.max(0, Number(explicitAnchorCol));
+    }
+
+    // Sanitize: ensure anchor coordinates are always valid finite integers (prevents Row NaN, Col NaN)
+    if (!isFinite(anchorRow) || isNaN(anchorRow)) anchorRow = 0;
+    if (!isFinite(anchorCol) || isNaN(anchorCol)) anchorCol = 0;
+    anchorRow = Math.max(0, Math.round(anchorRow));
+    anchorCol = Math.max(0, Math.round(anchorCol));
+
+    // Secondary Overlap Guard: If coordinates still point to (0, 0), shift away from A1 data
+    if (anchorRow === 0 && anchorCol === 0) {
+      if (isSideBySide) {
+        anchorCol = headers.length + 1;
+        anchorRow = 0;
+      } else {
+        anchorRow = rows.length + 2;
+        anchorCol = 0;
+      }
+    }
+    
+    // Proportional dimensions: neat side-by-side or wide below-table
+    const defaultWidth = isSideBySide ? 580 : 820;
+    const defaultHeight = isSideBySide 
+      ? Math.max(260, Math.min(340, (rows.length + 2) * 28 + 40))
+      : 300;
+
+    const widthPixels = chartDef.position?.widthPixels || defaultWidth;
+    const heightPixels = chartDef.position?.heightPixels || defaultHeight;
+
+    // Count pure data rows (strictly excluding any Total / Summary or Guard / Test row from chart ranges)
     let pureDataRowCount = 0;
     for (const r of rows) {
       const firstCell = String(r[0] || '').toLowerCase().trim();
-      if (firstCell === 'total' || firstCell === 'summary' || firstCell === 'jumlah' || firstCell === 'rata-rata' || firstCell === 'average') {
+      const isExcludedRow = (
+        firstCell === 'total' ||
+        firstCell === 'summary' ||
+        firstCell === 'jumlah' ||
+        firstCell === 'rata-rata' ||
+        firstCell === 'average' ||
+        firstCell.includes('(guard)') ||
+        firstCell.includes('(uji)') ||
+        firstCell.includes('(test)') ||
+        firstCell.startsWith('guard') ||
+        firstCell.startsWith('uji ') ||
+        firstCell.startsWith('test ') ||
+        firstCell.includes('dummy') ||
+        firstCell.includes('mock') ||
+        firstCell.includes('zero')
+      );
+      if (isExcludedRow) {
         break;
       }
       pureDataRowCount++;
     }
     if (pureDataRowCount === 0) pureDataRowCount = numRows;
 
-    // Determine row bounds for Domain & Series:
-    // If Top Hero, header is at index 15 (row 16), data rows are 16..15+pureDataRowCount
-    // If Side-by-Side (compact mode), header is at index 0 (row 1), data rows are 1..pureDataRowCount
-    const startRowIdx = isTopHero ? 15 : 0;
+    // Native Google Sheets API: data is always written starting at A1 (row index 0).
+    // The chart overlay position is independent of data location — no row offset needed.
+    // (The previous offset of 15 was a remnant from ExcelJS binary layout where Top Hero
+    //  charts occupied rows 0-14 and pushed data to row 16. This does not apply to Sheets API.)
+    const startRowIdx = 0;
 
     if (chartDef.type === 'PIE') {
       let pieValCol = valCols[0];
@@ -338,7 +392,11 @@ export class SpreadsheetChartBuilder {
                   rgbColor: { red: 0.106, green: 0.212, blue: 0.365 } // Executive Navy #1B365D
                 } : (idx === 1 ? {
                   rgbColor: { red: 0.058, green: 0.317, blue: 0.196 } // Emerald #0F5132
-                } : undefined),
+                } : (idx === 2 ? {
+                  rgbColor: { red: 0.851, green: 0.467, blue: 0.024 } // Amber #D97706
+                } : (idx === 3 ? {
+                  rgbColor: { red: 0.486, green: 0.227, blue: 0.929 } // Violet #7C3AED
+                } : undefined))),
                 dataLabel: showDataLabels ? {
                   type: 'DATA',
                   placement: 'OUTSIDE_END'

@@ -71,14 +71,20 @@ export class GoogleDriveConnectionRepository {
     return this.encryption.decrypt(Buffer.from(row.refresh_token_ciphertext, 'base64')).toString('utf8');
   }
 
+  async getCachedVaultFolderId(userId: string): Promise<string | null> {
+    const row = await this.find(userId);
+    return row?.vault_folder_id ?? null;
+  }
+
   async revoke(userId: string): Promise<void> {
     const now = new Date().toISOString();
+    const existing = await this.find(userId);
     await this.client.upsert('user_cloud_connections', {
       user_id: userId,
       provider: 'GOOGLE_DRIVE',
       status: 'REVOKED',
       refresh_token_ciphertext: null,
-      vault_folder_id: null,
+      vault_folder_id: existing?.vault_folder_id ?? null,
       scopes: [],
       revoked_at: now,
       updated_at: now,

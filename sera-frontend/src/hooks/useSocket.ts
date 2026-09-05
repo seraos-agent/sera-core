@@ -49,6 +49,7 @@ export function useSocket(
   const threadsPopup = useRef<Window | null>(null);
   const skipNextDeviceVaultWrite = useRef(false);
   const turnStartTimeRef = useRef<number>(Date.now());
+  const isCancelledRef = useRef(false);
 
   const localChatKey = `chat-history:${deviceScope}`;
 
@@ -110,6 +111,7 @@ export function useSocket(
 
   const cancelChat = useCallback(() => {
     if (socket) {
+      isCancelledRef.current = true;
       socket.emit("chat:cancel");
       // Give immediate visual feedback by clearing the spinner
       setCurrentActivity(null);
@@ -173,11 +175,13 @@ export function useSocket(
     newSocket.on("disconnect", () => {
       console.log("[useSocket] Socket disconnected from Core.");
       setIsAuthenticated(false);
+      setCurrentActivity(null);
     });
 
     newSocket.on("auth:success", () => {
       console.log("[useSocket] Socket authenticated successfully.");
       setIsAuthenticated(true);
+      isCancelledRef.current = false;
 
       // Drain and flush pending outbox messages
       if (outboxQueue.current.length > 0) {
@@ -208,6 +212,14 @@ export function useSocket(
     newSocket.on("chat:history", (history: any[]) => {
       initialServerHistoryReceived.current = true;
       
+      // If latest message from server history is from agent, clear any lingering activity spinner
+      if (Array.isArray(history) && history.length > 0) {
+        const lastMsg = history[history.length - 1];
+        if (lastMsg?.role === 'agent') {
+          setCurrentActivity(null);
+        }
+      }
+
       // Explicit chat clear or empty server history
       if (Array.isArray(history) && history.length === 0) {
         setMessages([]);
@@ -292,7 +304,11 @@ export function useSocket(
     });
 
     newSocket.on("chat:activity", (data: any) => {
-      if (!data) return;
+      if (!data) {
+        setCurrentActivity(null);
+        return;
+      }
+      if (isCancelledRef.current) return;
       if (typeof data === 'string') {
         setCurrentActivity((prev: any) => ({
           phase: data.toLowerCase().includes('working') ? 'WORKING' : 'THINKING',
@@ -461,6 +477,7 @@ export function useSocket(
 
   const sendMessage = useCallback((text: string, images?: string[], documents?: any[]) => {
     if ((!text || !text.trim()) && (!images || images.length === 0) && (!documents || documents.length === 0)) return;
+    isCancelledRef.current = false;
     const clientMessageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const msgId = Date.now();
     const isReady = !!(socket && socket.connected && isAuthenticated);

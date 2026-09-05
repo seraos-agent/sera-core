@@ -2,6 +2,7 @@ import { SeraTool } from '../../core/cognitive/Tool';
 import { ThreadsAPI } from './ThreadsAPI';
 import { SecretManager } from '../../core/secrets/SecretManager';
 import { ThreadsPostHistoryStore } from './ThreadsPostHistoryStore';
+import { GoogleDriveCapability } from '../google-drive/GoogleDriveCapability';
 
 export class ThreadsCapability {
   private readonly historyStore: ThreadsPostHistoryStore;
@@ -9,7 +10,8 @@ export class ThreadsCapability {
   constructor(
     private readonly api: ThreadsAPI,
     private readonly secretManager?: SecretManager,
-    historyStore?: ThreadsPostHistoryStore
+    historyStore?: ThreadsPostHistoryStore,
+    private readonly googleDriveCapability?: GoogleDriveCapability
   ) {
     this.historyStore = historyStore || new ThreadsPostHistoryStore();
   }
@@ -18,12 +20,14 @@ export class ThreadsCapability {
     return [
       {
         name: 'THREADS_PUBLISH',
-        description: 'Publishes a text post to the connected Threads account. Use this to share updates or thoughts with your audience.',
+        description: 'Publishes a post (with optional attached image, video, or Google Drive media file) to the connected Threads account. Use this to share updates or thoughts with your audience.',
         parameters: {
           type: 'object',
           properties: {
             text: { type: 'string', description: 'The text content of the post to publish.' },
-            imageUrl: { type: 'string', description: 'Optional. The URL of an image to attach to the post. Use this if you generated an image.' },
+            imageUrl: { type: 'string', description: 'Optional. The URL of an image to attach to the post.' },
+            videoUrl: { type: 'string', description: 'Optional. The URL of a video to attach to the post.' },
+            driveFileName: { type: 'string', description: 'Optional. Name of the photo or video file in Google Drive (🎨 Media & Creative folder) to bridge and publish.' },
           },
           required: ['text'],
         },
@@ -71,9 +75,35 @@ export class ThreadsCapability {
             // ignore
           }
         }
+
+        let finalImageUrl = args.imageUrl;
+        let finalVideoUrl = args.videoUrl;
+        let bridgeFileKey: string | undefined;
+
+        if (args.driveFileName && this.googleDriveCapability) {
+          try {
+            const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(sessionId, args.driveFileName);
+            if (bridge.isVideo) {
+              finalVideoUrl = bridge.publicUrl;
+            } else {
+              finalImageUrl = bridge.publicUrl;
+            }
+            bridgeFileKey = bridge.fileKey;
+          } catch (bridgeErr: any) {
+            return { success: false, error: `Failed to bridge media from Google Drive: ${bridgeErr.message}` };
+          }
+        }
         
-        const postId = await this.api.publishPost(sessionId, args.text, undefined, args.imageUrl);
+        const postId = await this.api.publishPost(sessionId, args.text, undefined, finalImageUrl, finalVideoUrl);
         this.historyStore.recordPost(sessionId, args.text, postId);
+
+        // Auto-cleanup temporary CDN bridge media key to keep server storage slim
+        if (bridgeFileKey && this.googleDriveCapability) {
+          this.googleDriveCapability.cleanupCdnBridge(bridgeFileKey).catch((e: any) => {
+            console.warn('[ThreadsCapability] Bridge media cleanup warning:', e.message);
+          });
+        }
+
         return { success: true, postId, message: `Successfully published to Threads.` };
       
       case 'THREADS_REPLY':

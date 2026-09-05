@@ -10,7 +10,8 @@ export function renderGoogleDriveCallbackPage(title: string, message: string, is
 
 export function createGoogleDriveRouter(
   googleDriveOAuthService: GoogleDriveOAuthService | null,
-  io: SocketIOServer
+  io: SocketIOServer,
+  onConnected?: (userId: string) => Promise<void>
 ): Router {
   const router = Router();
 
@@ -31,6 +32,11 @@ export function createGoogleDriveRouter(
     try {
       const completed = await googleDriveOAuthService.completeAuthorization(code, state);
       io.to(`user:${completed.userId}`).emit('google_drive:status', completed.status);
+      if (onConnected) {
+        onConnected(completed.userId).catch(err => {
+          console.warn('[GoogleDrive] Warning in onConnected callback:', err.message);
+        });
+      }
       response.type('html').send(renderGoogleDriveCallbackPage('Google Drive connected', 'Your SERA Vault folder is ready. SERA stores only validated memory projections there.', true));
     } catch (error) {
       console.error('[GoogleDrive] OAuth callback failed:', error);

@@ -18,6 +18,8 @@ import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 import { ImageGenerationCapability } from '../capabilities/media/ImageGenerationCapability';
 import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
+import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
+import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
 import { ProposalManager } from '../core/governance/ProposalManager';
@@ -73,7 +75,9 @@ export class Runtime {
     const autonomyAgreementCap = new AutonomyAgreementCapability();
     const threadsApi = new ThreadsAPI(this.secretManager);
     this.threadsApi = threadsApi;
-    const threadsCap = new ThreadsCapability(threadsApi, this.secretManager);
+    const googleDriveRepo = GoogleDriveConnectionRepository.fromEnvironment();
+    const googleDriveCap = googleDriveRepo ? (GoogleDriveCapability.fromEnvironment(googleDriveRepo) || undefined) : undefined;
+    const threadsCap = new ThreadsCapability(threadsApi, this.secretManager, undefined, googleDriveCap);
     const imageGenCap = new ImageGenerationCapability();
     const braveSearchCap = new BraveSearchCapability();
 

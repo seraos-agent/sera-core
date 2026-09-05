@@ -1,7 +1,10 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { GoogleDriveConnectionRepository, GoogleDriveConnectionStatus } from './GoogleDriveConnectionRepository';
 
-const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
+const GOOGLE_DRIVE_SCOPES = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/spreadsheets'
+];
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 interface OAuthState {
@@ -59,7 +62,7 @@ export class GoogleDriveOAuthService {
     url.searchParams.set('client_id', this.config.clientId);
     url.searchParams.set('redirect_uri', this.redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', GOOGLE_DRIVE_SCOPE);
+    url.searchParams.set('scope', GOOGLE_DRIVE_SCOPES.join(' '));
     url.searchParams.set('access_type', 'offline');
     url.searchParams.set('prompt', 'consent');
     url.searchParams.set('state', this.signState({ userId, nonce: randomUUID(), expiresAt: Date.now() + 10 * 60 * 1000 }));
@@ -72,15 +75,13 @@ export class GoogleDriveOAuthService {
     if (!token.access_token || !token.refresh_token) {
       throw new Error('Google did not return an offline access grant. Disconnect SERA in Google Account permissions and try again.');
     }
-    const existing = await this.connections.getStatus(statePayload.userId);
-    const vaultFolderId = existing.status === 'CONNECTED' && existing.vaultFolderId
-      ? existing.vaultFolderId
-      : await this.createVaultFolder(token.access_token);
+    const cachedVaultId = await this.connections.getCachedVaultFolderId(statePayload.userId);
+    const vaultFolderId = await this.findOrCreateVaultFolder(token.access_token, cachedVaultId || undefined);
     const status = await this.connections.saveConnected({
       userId: statePayload.userId,
       refreshToken: token.refresh_token,
       vaultFolderId,
-      scopes: [GOOGLE_DRIVE_SCOPE],
+      scopes: GOOGLE_DRIVE_SCOPES,
     });
     return { userId: statePayload.userId, status };
   }
@@ -113,6 +114,53 @@ export class GoogleDriveOAuthService {
     const body = await response.json() as GoogleTokenResponse;
     if (!response.ok) throw new Error(body.error_description || body.error || 'Google authorization code exchange failed.');
     return body;
+  }
+
+  private async findOrCreateVaultFolder(accessToken: string, cachedVaultId?: string): Promise<string> {
+    // 1. If we have a cached vault ID, check if it still exists and is not trashed in Google Drive
+    if (cachedVaultId) {
+      try {
+        const verifyRes = await this.fetchImpl(`https://www.googleapis.com/drive/v3/files/${cachedVaultId}?fields=id,name,trashed`, {
+          headers: { authorization: `Bearer ${accessToken}` }
+        });
+        if (verifyRes.ok) {
+          const data = await verifyRes.json() as { id?: string; name?: string; trashed?: boolean };
+          if (data.id && !data.trashed) {
+            console.log(`[GoogleDriveOAuthService] Reusing verified existing SERA Vault by ID: ${data.id}`);
+            return data.id;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[GoogleDriveOAuthService] Warning verifying cached vault ID ${cachedVaultId}:`, err.message);
+      }
+    }
+
+    // 2. Search Google Drive root for an existing 'SERA Vault' folder
+    try {
+      const url = new URL('https://www.googleapis.com/drive/v3/files');
+      url.searchParams.set('q', "'root' in parents and mimeType = 'application/vnd.google-apps.folder' and name = 'SERA Vault' and trashed = false");
+      url.searchParams.set('fields', 'files(id, name, modifiedTime)');
+      url.searchParams.set('orderBy', 'modifiedTime desc');
+
+      const searchRes = await this.fetchImpl(url.toString(), {
+        headers: { authorization: `Bearer ${accessToken}` }
+      });
+
+      if (searchRes.ok) {
+        const data = await searchRes.json() as { files?: Array<{ id: string; name: string; modifiedTime?: string }> };
+        if (data.files && data.files.length > 0) {
+          const foundId = data.files[0].id;
+          console.log(`[GoogleDriveOAuthService] Found existing SERA Vault in Google Drive root (ID: ${foundId}, found ${data.files.length} candidate(s)). Reusing it.`);
+          return foundId;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[GoogleDriveOAuthService] Warning searching for existing SERA Vault:', err.message);
+    }
+
+    // 3. Fallback: create fresh SERA Vault folder in root
+    console.log('[GoogleDriveOAuthService] No existing SERA Vault found. Creating a new one.');
+    return this.createVaultFolder(accessToken);
   }
 
   private async createVaultFolder(accessToken: string): Promise<string> {

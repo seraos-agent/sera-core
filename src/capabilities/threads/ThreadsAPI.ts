@@ -29,15 +29,18 @@ export class ThreadsAPI {
   ) {}
 
   /**
-   * Creates a text container for a Threads post.
+   * Creates a container for a Threads post (TEXT, IMAGE, or VIDEO).
    */
-  async createContainer(sessionId: string, text: string, replyToId?: string, imageUrl?: string): Promise<ThreadsContainerResponse> {
+  async createContainer(sessionId: string, text: string, replyToId?: string, imageUrl?: string, videoUrl?: string): Promise<ThreadsContainerResponse> {
     const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token. Please connect Threads first.');
 
     const url = new URL(`${this.baseUrl}/me/threads`);
     
-    if (imageUrl) {
+    if (videoUrl) {
+      url.searchParams.append('media_type', 'VIDEO');
+      url.searchParams.append('video_url', videoUrl);
+    } else if (imageUrl) {
       url.searchParams.append('media_type', 'IMAGE');
       url.searchParams.append('image_url', imageUrl);
     } else {
@@ -65,18 +68,55 @@ export class ThreadsAPI {
   }
 
   /**
-   * Publishes a previously created container.
+   * Polls the container status (required for VIDEO containers or delayed IMAGE processing).
    */
-  async publishContainer(sessionId: string, creationId: string): Promise<ThreadsPublishResponse> {
+  async waitForContainerReady(sessionId: string, creationId: string, maxWaitMs: number = 60000): Promise<void> {
     const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
+
+    const startTime = Date.now();
+    const statusUrl = new URL(`${this.baseUrl}/${creationId}`);
+    statusUrl.searchParams.append('fields', 'status,error_message');
+    statusUrl.searchParams.append('access_token', token);
+
+    while (Date.now() - startTime < maxWaitMs) {
+      const res = await this.fetchImpl(statusUrl.toString(), { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const status = data.status?.toUpperCase();
+        if (status === 'FINISHED') {
+          return;
+        }
+        if (status === 'ERROR') {
+          throw new Error(`Threads container processing failed: ${data.error_message || 'Video/Media transcoding error'}`);
+        }
+        if (status === 'EXPIRED') {
+          throw new Error('Threads container expired before it could be published.');
+        }
+      }
+      // Poll every 2.5 seconds
+      await new Promise(resolve => setTimeout(resolve, 2500));
+    }
+  }
+
+  /**
+   * Publishes a previously created container.
+   */
+  async publishContainer(sessionId: string, creationId: string, isVideo: boolean = false): Promise<ThreadsPublishResponse> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    // If video, poll until container status is FINISHED before calling threads_publish
+    if (isVideo) {
+      await this.waitForContainerReady(sessionId, creationId);
+    }
 
     const url = new URL(`${this.baseUrl}/me/threads_publish`);
     url.searchParams.append('creation_id', creationId);
     url.searchParams.append('access_token', token);
 
     let attempts = 0;
-    while (attempts < 5) {
+    while (attempts < 6) {
       const response = await this.fetchImpl(url.toString(), {
         method: 'POST',
       });
@@ -88,10 +128,10 @@ export class ThreadsAPI {
       const errorText = await response.text();
       
       // Meta's API may return "The requested resource does not exist" (error_subcode 4279009) 
-      // if the container is still processing. We should wait and retry.
-      if (errorText.includes('4279009') || errorText.includes('does not exist')) {
+      // or if the container is still processing. We should wait and retry.
+      if (errorText.includes('4279009') || errorText.includes('does not exist') || errorText.includes('not ready')) {
         attempts++;
-        if (attempts >= 5) {
+        if (attempts >= 6) {
           throw new Error(`Failed to publish Threads container after retries: ${errorText}`);
         }
         // Wait 3 seconds before trying again
@@ -107,9 +147,10 @@ export class ThreadsAPI {
   /**
    * High-level method to create and publish a post immediately.
    */
-  async publishPost(sessionId: string, text: string, replyToId?: string, imageUrl?: string): Promise<string> {
-    const container = await this.createContainer(sessionId, text, replyToId, imageUrl);
-    const published = await this.publishContainer(sessionId, container.id);
+  async publishPost(sessionId: string, text: string, replyToId?: string, imageUrl?: string, videoUrl?: string): Promise<string> {
+    const isVideo = Boolean(videoUrl);
+    const container = await this.createContainer(sessionId, text, replyToId, imageUrl, videoUrl);
+    const published = await this.publishContainer(sessionId, container.id, isVideo);
     return published.id;
   }
 

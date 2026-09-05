@@ -62,10 +62,17 @@ export class ToolExecutionHandler {
   public static getCognitiveActivityLabel(toolIntent: string): string {
     const map: Record<string, string> = {
       'GDRIVE_CREATE_SPREADSHEET': 'Creating spreadsheet',
+      'GDRIVE_UPDATE_CELL': 'Updating spreadsheet cell',
       'GDRIVE_READ': 'Verifying sheet data',
       'GDRIVE_APPEND': 'Updating document',
       'GDRIVE_LIST': 'Listing files in Vault',
       'GDRIVE_DELETE': 'Removing file from Vault',
+      'GDRIVE_SAVE_MEDIA': 'Saving media to Google Drive',
+      'GDRIVE_CREATE_FOLDER': 'Creating folder in Google Drive',
+      'GDRIVE_RENAME': 'Renaming item in Google Drive',
+      'GDRIVE_MOVE': 'Moving file in Google Drive',
+      'GDRIVE_DELETE_FOLDER': 'Removing folder from Google Drive',
+      'GDRIVE_TIDY_VAULT': 'Organizing Google Drive files',
       'HL_SPOT_MARKET_DATA': 'Fetching market data',
       'HL_SPOT_ORDER': 'Executing spot order',
       'HL_SPOT_CANCEL': 'Cancelling spot order',
@@ -115,6 +122,20 @@ export class ToolExecutionHandler {
       toolParams = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : (toolCall.arguments || {});
     } catch (e) {
       console.error('[ToolExecutionHandler] Failed to parse tool arguments:', e);
+    }
+
+    // Autofill attached media URL for GDRIVE_SAVE_MEDIA if omitted by LLM
+    if (toolIntent === 'GDRIVE_SAVE_MEDIA' && !toolParams.mediaUrl) {
+      const attachedImages = event?.payload?.images;
+      const attachedMedia = event?.payload?.mediaUrls;
+      if (Array.isArray(attachedImages) && attachedImages.length > 0) {
+        toolParams.mediaUrl = attachedImages[0];
+      } else if (Array.isArray(attachedMedia) && attachedMedia.length > 0) {
+        toolParams.mediaUrl = attachedMedia[0];
+      } else if (typeof event?.payload?.message === 'string') {
+        const urlMatch = event.payload.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) toolParams.mediaUrl = urlMatch[0];
+      }
     }
 
     // 1. UI Commands
@@ -213,8 +234,35 @@ export class ToolExecutionHandler {
           totalRows: outputData.totalRows,
           summary: outputData.summary || 'Spreadsheet created successfully in Google Drive.'
         };
+      } else if (toolIntent === 'GDRIVE_UPDATE_CELL' && outputData?.success) {
+        outputData = {
+          success: true,
+          cell: outputData.cell,
+          value: outputData.value,
+          webViewLink: outputData.webViewLink,
+          fileId: outputData.fileId,
+          summary: outputData.summary || `Cell ${outputData.cell} updated successfully.`
+        };
       } else if (toolIntent === 'GDRIVE_LIST' && Array.isArray(outputData)) {
         outputData = outputData.slice(0, 10).map((f: any) => ({ name: f.name, id: f.id, mimeType: f.mimeType }));
+      } else if (toolIntent === 'GDRIVE_SAVE_MEDIA' && outputData?.success) {
+        outputData = {
+          success: true,
+          filename: outputData.filename,
+          folder: outputData.folder,
+          webViewLink: outputData.webViewLink,
+          fileId: outputData.fileId,
+          summary: outputData.summary || `Media file "${outputData.filename}" saved to Google Drive.`
+        };
+      } else if (toolIntent === 'GDRIVE_READ') {
+        if (typeof outputData === 'string' && outputData.length > 2000) {
+          outputData = outputData.slice(0, 2000) + '\n...[Content truncated for brevity]';
+        } else if (outputData && typeof outputData === 'object' && typeof outputData.content === 'string' && outputData.content.length > 2000) {
+          outputData = {
+            ...outputData,
+            content: outputData.content.slice(0, 2000) + '\n...[Content truncated for brevity]'
+          };
+        }
       }
 
       return {

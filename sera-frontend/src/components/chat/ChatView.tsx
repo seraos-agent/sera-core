@@ -43,6 +43,19 @@ export function ChatView({
   const [copied, setCopied] = useState<number | null>(null);
   const [showObservations, setShowObservations] = useState(false);
 
+  const isNearBottomRef = useRef(true);
+
+  const checkIfNearBottom = useCallback(() => {
+    if (!scrollRef.current) return true;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    // Within 140px of bottom is considered "near bottom"
+    return scrollHeight - scrollTop - clientHeight <= 140;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    isNearBottomRef.current = checkIfNearBottom();
+  }, [checkIfNearBottom]);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     if (!scrollRef.current) return;
     const { scrollHeight, clientHeight } = scrollRef.current;
@@ -56,16 +69,33 @@ export function ChatView({
 
   // Instant scroll on new messages / activity state changes
   useEffect(() => {
-    scrollToBottom('smooth');
-    const timer = setTimeout(() => scrollToBottom('auto'), 80);
-    return () => clearTimeout(timer);
+    const lastMsg = messages[messages.length - 1];
+    const isUserSentLast = lastMsg?.role === 'user';
+
+    // If user sent a message, ALWAYS scroll to bottom
+    if (isUserSentLast) {
+      isNearBottomRef.current = true;
+      scrollToBottom('smooth');
+      const timer = setTimeout(() => scrollToBottom('auto'), 80);
+      return () => clearTimeout(timer);
+    }
+
+    // Otherwise, only auto-scroll if the user is already near the bottom
+    if (isNearBottomRef.current) {
+      scrollToBottom('smooth');
+      const timer = setTimeout(() => scrollToBottom('auto'), 80);
+      return () => clearTimeout(timer);
+    }
   }, [messages, currentActivity, showObservations, scrollToBottom]);
 
-  // Use ResizeObserver on the messages content wrapper to guarantee auto-scroll on any dynamic height change
+  // Use ResizeObserver on the messages content wrapper ONLY if user is already near bottom
   useEffect(() => {
     if (!contentRef.current) return;
     const observer = new ResizeObserver(() => {
-      scrollToBottom('smooth');
+      // Do NOT yank scroll to bottom if user scrolled up to view/expand old messages
+      if (isNearBottomRef.current) {
+        scrollToBottom('smooth');
+      }
     });
     observer.observe(contentRef.current);
     return () => observer.disconnect();
@@ -98,12 +128,17 @@ export function ChatView({
 
 
       {/* Messages area */}
-      <div ref={scrollRef} style={{
-        flex: 1, overflowY: "auto",
-        padding: isMobileView ? "68px 14px 180px" : "80px 26px 200px",
-        maskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
-        WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
-      }}>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: isMobileView ? "68px 14px 180px" : "80px 26px 200px",
+          maskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0px, black 56px, black 100%)",
+        }}
+      >
         {messages.length === 0 ? (
           <EmptyState theme={theme} />
         ) : (

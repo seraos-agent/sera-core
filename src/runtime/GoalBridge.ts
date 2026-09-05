@@ -374,6 +374,11 @@ export class GoalBridge {
         case 'SHEET_CREATE':
           await this.handleGDriveCreateSheet(requestId, actionPayload);
           break;
+        case 'GDRIVE_UPDATE_CELL':
+        case 'UPDATE_CELL':
+        case 'gdrive:update_cell':
+          await this.handleGDriveUpdateCell(requestId, actionPayload);
+          break;
         case 'GDRIVE_LIST':
         case 'gdrive:list_files':
           await this.handleGDriveList(requestId, actionPayload);
@@ -383,6 +388,40 @@ export class GoalBridge {
         case 'DELETE_FILE':
         case 'gdrive:delete_file':
           await this.handleGDriveDelete(requestId, actionPayload);
+          break;
+        case 'GDRIVE_SAVE_MEDIA':
+        case 'gdrive:save_media':
+        case 'SAVE_MEDIA':
+          await this.handleGDriveSaveMedia(requestId, actionPayload);
+          break;
+        case 'GDRIVE_CREATE_FOLDER':
+        case 'CREATE_FOLDER':
+        case 'gdrive:create_folder':
+          await this.handleGDriveCreateFolder(requestId, actionPayload);
+          break;
+        case 'GDRIVE_RENAME':
+        case 'RENAME':
+        case 'RENAME_FILE':
+        case 'RENAME_FOLDER':
+        case 'gdrive:rename':
+          await this.handleGDriveRename(requestId, actionPayload);
+          break;
+        case 'GDRIVE_MOVE':
+        case 'MOVE':
+        case 'MOVE_FILE':
+        case 'gdrive:move':
+          await this.handleGDriveMove(requestId, actionPayload);
+          break;
+        case 'GDRIVE_DELETE_FOLDER':
+        case 'DELETE_FOLDER':
+        case 'gdrive:delete_folder':
+          await this.handleGDriveDeleteFolder(requestId, actionPayload);
+          break;
+        case 'GDRIVE_TIDY_VAULT':
+        case 'TIDY_VAULT':
+        case 'gdrive:tidy_vault':
+        case 'RAPIKAN_DRIVE':
+          await this.handleGDriveTidyVault(requestId, actionPayload);
           break;
 
         case 'CONVERSATION':
@@ -402,18 +441,33 @@ export class GoalBridge {
   }
 
   private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const { text, replyToId, imageUrl, driveFileName } = parameters;
+    const { text, replyToId, imageUrl, videoUrl, driveFileName } = parameters;
     if (!text) throw new Error('Threads publish requires text parameter.');
     
     let finalImageUrl = imageUrl;
+    let finalVideoUrl = videoUrl;
+    let bridgeFileKey: string | undefined;
+
     if (driveFileName) {
-      const files = await this.googleDriveCapability.listFiles(this.sessionId, { name: driveFileName });
-      if (files.length === 0) throw new Error(`Drive image ${driveFileName} not found.`);
-      finalImageUrl = await this.googleDriveCapability.getPublicMediaUrl(this.sessionId, files[0].id);
+      const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, driveFileName);
+      if (bridge.isVideo) {
+        finalVideoUrl = bridge.publicUrl;
+      } else {
+        finalImageUrl = bridge.publicUrl;
+      }
+      bridgeFileKey = bridge.fileKey;
     }
     
-    const publishedId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl);
+    const publishedId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl, finalVideoUrl);
     this.threadsPostHistoryStore.recordPost(this.sessionId, text, publishedId);
+
+    // Ephemeral CDN cleanup: delete the temporary bridge file after Meta finishes downloading
+    if (bridgeFileKey) {
+      this.googleDriveCapability.cleanupCdnBridge(bridgeFileKey).catch((e: any) => {
+        console.warn('[GoalBridge] Bridge cleanup warning:', e.message);
+      });
+    }
+
     this.emitResult(requestId, true, {
       provider: 'Meta Threads',
       id: publishedId,
@@ -1369,15 +1423,70 @@ export class GoalBridge {
 
   private async handleGDriveCreateSheet(requestId: string, payload: any): Promise<void> {
     try {
-      const { title, headers, rows, options } = payload;
-      const fileId = await this.googleDriveCapability.createSpreadsheet(this.sessionId, title, headers, rows, options);
-      const summaryMetrics = SpreadsheetEngine.calculateSummaryMetrics(headers || [], rows || [], options);
-      this.emitResult(requestId, true, {
-        fileId,
+      const { title, headers, rows, options, sheets, mode, folder, sheetName } = payload;
+      const effectiveOptions = {
+        ...options,
+        mode: mode || options?.mode,
+        folder: folder || options?.folder,
+        sheetName: sheetName || options?.sheetName
+      };
+
+      const result = await this.googleDriveCapability.createSpreadsheet(
+        this.sessionId,
         title,
+        headers,
+        rows,
+        effectiveOptions,
+        sheets
+      );
+
+      const effectiveHeaders = headers || (sheets && sheets[0]?.headers) || [];
+      const effectiveRows = rows || (sheets && sheets[0]?.rows) || [];
+      const summaryMetrics = SpreadsheetEngine.calculateSummaryMetrics(effectiveHeaders, effectiveRows, effectiveOptions);
+
+      const sheetNames = sheets && sheets.length > 0 
+        ? sheets.map((s: any) => s.name) 
+        : [effectiveOptions.sheetName || 'Sheet1'];
+
+      this.emitResult(requestId, true, {
+        fileId: result.fileId,
+        webViewLink: result.webViewLink,
+        title,
+        isUpdate: result.isUpdate,
+        sheetNames,
         renderedRows: summaryMetrics.renderedRows,
         calculatedSummary: summaryMetrics.totals,
-        _systemMessage: `File "${title}" successfully generated with ${summaryMetrics.renderedRows} data rows. Rendered totals: ${JSON.stringify(summaryMetrics.totals)}.`
+        summary: `Spreadsheet "${title}" ${result.isUpdate ? 'updated in-place' : 'created'} with tabs [${sheetNames.join(', ')}] and ${summaryMetrics.renderedRows} data rows.`,
+        _systemMessage: `File "${title}" ${result.isUpdate ? 'successfully updated in-place' : 'successfully generated'} with tabs [${sheetNames.join(', ')}] and ${summaryMetrics.renderedRows} data rows. View link: ${result.webViewLink}. Rendered totals: ${JSON.stringify(summaryMetrics.totals)}.`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveUpdateCell(requestId: string, payload: any): Promise<void> {
+    try {
+      const { title, cell, value, sheetName, fileId } = payload || {};
+      const target = title || fileId;
+      if (!target) throw new Error('Must provide spreadsheet title or fileId to update a cell.');
+      if (!cell) throw new Error('Must provide cell address (e.g. "B5").');
+      if (value === undefined) throw new Error('Must provide a new value for the cell.');
+
+      const result = await this.googleDriveCapability.updateCell(
+        this.sessionId,
+        target,
+        cell,
+        value,
+        sheetName
+      );
+
+      this.emitResult(requestId, true, {
+        fileId: result.fileId,
+        cell: result.cell,
+        value: result.value,
+        webViewLink: result.webViewLink,
+        summary: `Cell ${cell} in spreadsheet "${target}" updated to: ${value}`,
+        _systemMessage: `Cell ${cell} in spreadsheet "${target}" successfully updated to: ${value}. View link: ${result.webViewLink}`
       });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);
@@ -1404,4 +1513,138 @@ export class GoalBridge {
       this.emitResult(requestId, false, {}, e.message);
     }
   }
+
+  private async handleGDriveSaveMedia(requestId: string, payload: any): Promise<void> {
+    try {
+      const filename = payload?.filename || payload?.name || payload?.title;
+      const mediaUrl = payload?.mediaUrl || payload?.url || payload?.dataUrl;
+      const folder = payload?.folder || '🎨 Media & Creative';
+      const mimeType = payload?.mimeType;
+
+      if (!filename) throw new Error('Saving media to Google Drive requires a filename.');
+      if (!mediaUrl) throw new Error('Saving media to Google Drive requires attached media or a mediaUrl.');
+
+      const result = await this.googleDriveCapability.saveMedia(
+        this.sessionId,
+        filename,
+        mediaUrl,
+        mimeType,
+        folder
+      );
+
+      this.emitResult(requestId, true, {
+        fileId: result.fileId,
+        filename: result.filename,
+        webViewLink: result.webViewLink,
+        folder: result.folder,
+        isVideo: result.isVideo,
+        summary: `Media file "${result.filename}" successfully saved to Google Drive in folder "${result.folder}".`,
+        _userMessage: `Foto/video "${result.filename}" berhasil disimpan ke Google Drive di folder ${result.folder}. Link: ${result.webViewLink}`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveCreateFolder(requestId: string, payload: any): Promise<void> {
+    try {
+      const folderName = payload?.folderName || payload?.name || payload?.title;
+      const parentFolder = payload?.parentFolder || payload?.parent;
+      if (!folderName) throw new Error('Folder name is required to create a folder.');
+
+      const result = await this.googleDriveCapability.createFolder(this.sessionId, folderName, parentFolder);
+      this.emitResult(requestId, true, {
+        folderId: result.folderId,
+        folderName: result.folderName,
+        webViewLink: result.webViewLink,
+        summary: `Folder "${result.folderName}" successfully created in Google Drive SERA Vault.`,
+        _userMessage: `Folder "${result.folderName}" berhasil dibuat di Google Drive SERA Vault. Link: ${result.webViewLink}`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveRename(requestId: string, payload: any): Promise<void> {
+    try {
+      const targetName = payload?.targetName || payload?.name || payload?.oldName || payload?.filename || payload?.fileId;
+      const newName = payload?.newName || payload?.title;
+      if (!targetName) throw new Error('Target item name or ID is required for rename.');
+      if (!newName) throw new Error('New name is required for rename.');
+
+      const result = await this.googleDriveCapability.renameItem(this.sessionId, targetName, newName);
+      this.emitResult(requestId, true, {
+        id: result.id,
+        oldName: result.oldName,
+        newName: result.newName,
+        isFolder: result.isFolder,
+        summary: `${result.isFolder ? 'Folder' : 'File'} "${result.oldName}" successfully renamed to "${result.newName}".`,
+        _userMessage: `${result.isFolder ? 'Folder' : 'File'} "${result.oldName}" berhasil diubah namanya menjadi "${result.newName}".`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveMove(requestId: string, payload: any): Promise<void> {
+    try {
+      const filename = payload?.filename || payload?.targetFile || payload?.name || payload?.fileId;
+      const targetFolder = payload?.targetFolder || payload?.destinationFolder || payload?.folder;
+      if (!filename) throw new Error('Filename or ID is required to move a file.');
+      if (!targetFolder) throw new Error('Destination folder is required to move a file.');
+
+      const result = await this.googleDriveCapability.moveItem(this.sessionId, filename, targetFolder);
+      this.emitResult(requestId, true, {
+        id: result.id,
+        name: result.name,
+        destinationFolder: result.destinationFolder,
+        webViewLink: result.webViewLink,
+        summary: `File "${result.name}" successfully moved to folder "${result.destinationFolder}".`,
+        _userMessage: `File "${result.name}" berhasil dipindahkan ke folder "${result.destinationFolder}".`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveDeleteFolder(requestId: string, payload: any): Promise<void> {
+    try {
+      const folderName = payload?.folderName || payload?.name || payload?.folderId || payload?.id;
+      if (!folderName) throw new Error('Folder name or ID is required to delete a folder.');
+
+      const result = await this.googleDriveCapability.deleteFolder(this.sessionId, folderName, false);
+      this.emitResult(requestId, true, {
+        id: result.id,
+        name: result.name,
+        trashed: result.trashed,
+        summary: `Folder "${result.name}" successfully moved to Google Drive Trash.`,
+        _userMessage: `Folder "${result.name}" berhasil dipindahkan ke Sampah (Trash) Google Drive.`
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
+
+  private async handleGDriveTidyVault(requestId: string, payload: any): Promise<void> {
+    try {
+      const result = await this.googleDriveCapability.tidyVault(this.sessionId);
+      const summaryMsg = result.movedCount > 0
+        ? `Organized ${result.movedCount} file(s) into their appropriate subfolders.`
+        : 'All files in your SERA Vault are already neatly organized in their subfolders.';
+      const userMsg = result.movedCount > 0
+        ? `Beres! Sebanyak ${result.movedCount} file yang tercecer di Google Drive berhasil dirapikan ke subfolder masing-masing:\n` +
+          result.items.map(item => `• ${item.name} ➔ ${item.destinationFolder}`).join('\n')
+        : 'Google Drive SERA Vault Anda sudah rapi! Semua file sudah berada di subfoldernya masing-masing.';
+
+      this.emitResult(requestId, true, {
+        movedCount: result.movedCount,
+        items: result.items,
+        summary: summaryMsg,
+        _userMessage: userMsg
+      });
+    } catch (e: any) {
+      this.emitResult(requestId, false, {}, e.message);
+    }
+  }
 }
+

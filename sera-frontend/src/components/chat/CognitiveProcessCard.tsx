@@ -19,30 +19,64 @@ export interface CognitiveProcessCardProps {
   hadTools?: boolean;
 }
 
-function getCleanSubText(subText?: string, phase?: string): string | null {
+function getCleanSubText(subText?: string): string | null {
   if (!subText) return null;
   const trimmed = subText.trim();
   const lower = trimmed.toLowerCase();
 
-  // Filter out redundant "Thinking" or "Working" text
+  // Filter out redundant raw placeholders
   if (
     lower === 'thinking' ||
     lower === 'thinking...' ||
     lower === 'working' ||
-    lower === 'working...' ||
-    lower === 'memproses...' ||
-    lower === 'memproses' ||
-    (phase === 'THINKING' && (lower.startsWith('thinking') || lower.startsWith('menganalisis niat & strategi kognitif'))) ||
-    (phase === 'WORKING' && lower.startsWith('working'))
+    lower === 'working...'
   ) {
     return null;
   }
 
-  // Cap length nicely for inline display
-  if (trimmed.length > 50) {
-    return trimmed.slice(0, 48) + '...';
+  // Cap nicely for inline display (allows natural cognitive phrasing)
+  if (trimmed.length > 80) {
+    return trimmed.slice(0, 77) + '...';
   }
   return trimmed;
+}
+
+/**
+ * Extracts only the executive intent / opening formulation from raw reasoning text (Option A).
+ * Discards internal scratchpad calculations, prompt rule debates, and self-checks.
+ */
+function extractExecutiveSummary(rawReasoning?: string): string {
+  if (!rawReasoning || typeof rawReasoning !== 'string') return '';
+  const trimmed = rawReasoning.trim();
+  if (!trimmed) return '';
+
+  // Clean meta headers like "Thinking Process:" or "Thought Process:"
+  let cleaned = trimmed
+    .replace(/^(?:thinking process|thought process|reasoning process|reasoning):\s*/i, '')
+    .trim();
+
+  // Split into distinct blocks separated by blank lines
+  const blocks = cleaned.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  let candidate = blocks[0] || cleaned;
+
+  // If the first block is a short header (< 30 chars), combine with the next block
+  if (candidate.length < 30 && blocks.length > 1) {
+    candidate = `${candidate} ${blocks[1]}`;
+  }
+
+  // If the executive block is overly verbose (> 320 chars), extract the first 1-2 complete sentences
+  if (candidate.length > 320) {
+    const sentenceMatch = candidate.match(/^((?:[^.!?\n]+[.!?\n]){1,2})/);
+    if (sentenceMatch && sentenceMatch[1].trim().length >= 35) {
+      candidate = sentenceMatch[1].trim();
+    } else {
+      const truncated = candidate.slice(0, 300);
+      const lastSpace = truncated.lastIndexOf(' ');
+      candidate = (lastSpace > 200 ? truncated.slice(0, lastSpace) : truncated).trim() + '...';
+    }
+  }
+
+  return candidate.trim();
 }
 
 export function CognitiveProcessCard({
@@ -86,7 +120,7 @@ export function CognitiveProcessCard({
     mainTitle = `${actionVerb} ${effectiveDuration}s`;
   }
 
-  const cleanSub = isLive ? getCleanSubText(subText, phase) : null;
+  const cleanSub = isLive ? getCleanSubText(subText) : null;
 
   return (
     <div style={{
@@ -198,75 +232,121 @@ export function CognitiveProcessCard({
       </button>
 
       {/* Sub-process Flow Capsule (Only renders inside a container when toggled open) */}
-      {isOpen && (
-        <div style={{
-          marginTop: 6,
-          padding: "10px 14px 12px",
-          borderRadius: 12,
-          background: theme.surface2,
-          border: `1px solid ${theme.border}`,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
-        }}>
-          {steps && steps.length > 0 ? (
-            steps.map((step, idx) => {
-              const isStepActive = isLive && (step.status === 'active' || (!step.status && idx === steps.length - 1));
-              return (
-                <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                  {isStepActive ? (
-                    <div style={{
-                      marginTop: 4,
-                      width: 9,
-                      height: 9,
-                      borderRadius: "50%",
-                      border: `2px solid ${theme.accent}35`,
-                      borderTopColor: theme.accent,
-                      animation: "cognitive-spin 0.85s linear infinite",
-                      flexShrink: 0
-                    }} />
-                  ) : (
-                    <div style={{
-                      marginTop: 5,
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: theme.accent,
-                      flexShrink: 0
-                    }} />
-                  )}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: theme.ink }}>
-                      {(step.title === 'Menganalisis Niat Permintaan' || step.title === 'Menganalisis Niat & Strategi Kognitif')
-                        ? 'Analyzing'
-                        : step.title}
-                    </span>
-                    {step.detail && (
-                      <span style={{ fontSize: 11, color: theme.inkFaint, lineHeight: 1.4 }}>
-                        {step.detail.replace(/^Address user inquiry:\s*/i, '').replace(/^Respond to user:\s*/i, '')}
-                      </span>
+      {isOpen && (() => {
+        // Deduplicate consecutive identical steps (same title & detail) for clean presentation
+        const displayedSteps = (steps || []).reduce<CognitiveStep[]>((acc, current) => {
+          const last = acc[acc.length - 1];
+          const isCurrentAnalysis = current.title === 'Thinking Process' || current.title === 'Analyzing' || current.title === 'Analyzed';
+          const isLastAnalysis = last && (last.title === 'Thinking Process' || last.title === 'Analyzing' || last.title === 'Analyzed');
+
+          // If both are cognitive analysis steps, update to the most recent info
+          if (last && isCurrentAnalysis && isLastAnalysis) {
+            last.title = current.title;
+            if (current.detail) last.detail = current.detail;
+            if (current.status) last.status = current.status;
+            return acc;
+          }
+
+          if (last && last.title === current.title && last.detail === current.detail) {
+            if (current.status === 'active') {
+              last.status = 'active';
+            }
+            return acc;
+          }
+          acc.push({ ...current });
+          return acc;
+        }, []);
+
+        return (
+          <div style={{
+            marginTop: 6,
+            padding: "10px 14px 12px",
+            borderRadius: 12,
+            background: theme.surface2,
+            border: `1px solid ${theme.border}`,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
+          }}>
+            {displayedSteps && displayedSteps.length > 0 ? (
+              displayedSteps.map((step, idx) => {
+                const isStepActive = isLive && (step.status === 'active' || (!step.status && idx === displayedSteps.length - 1));
+                const isAnalysis = step.title === 'Thinking Process' || step.title === 'Analyzing' || step.title === 'Analyzed';
+                const displayTitle = isAnalysis ? (isStepActive ? 'Analyzing' : 'Analyzed') : step.title;
+                const formattedDetail = isAnalysis ? extractExecutiveSummary(step.detail) : step.detail;
+
+                return (
+                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                    {isStepActive ? (
+                      <div style={{
+                        marginTop: 4,
+                        width: 9,
+                        height: 9,
+                        borderRadius: "50%",
+                        border: `2px solid ${theme.accent}35`,
+                        borderTopColor: theme.accent,
+                        animation: "cognitive-spin 0.85s linear infinite",
+                        flexShrink: 0
+                      }} />
+                    ) : (
+                      <div style={{
+                        marginTop: 5,
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: theme.accent,
+                        flexShrink: 0
+                      }} />
                     )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: theme.ink }}>
+                        {displayTitle}
+                      </span>
+                      {formattedDetail && (
+                        isAnalysis ? (
+                          <div style={{
+                            fontSize: 11.5,
+                            color: theme.inkSoft,
+                            lineHeight: 1.55,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            background: "rgba(0,0,0,0.025)",
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: `1px solid ${theme.border}`,
+                            marginTop: 4,
+                            fontFamily: "Inter, sans-serif"
+                          }}>
+                            {formattedDetail}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: theme.inkFaint, lineHeight: 1.4 }}>
+                            {formattedDetail.replace(/^Address user inquiry:\s*/i, '').replace(/^Respond to user:\s*/i, '')}
+                          </span>
+                        )
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: theme.accent,
-                flexShrink: 0
-              }} />
-              <span style={{ fontSize: 11.5, color: theme.inkSoft }}>
-                {isLive ? 'Analyzing context and preparing steps...' : 'Cognitive steps completed.'}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+                );
+              })
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: theme.accent,
+                  flexShrink: 0
+                }} />
+                <span style={{ fontSize: 11.5, color: theme.inkSoft }}>
+                  {isLive ? 'Analyzing context and preparing steps...' : 'Cognitive steps completed.'}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <style>{`
         @keyframes cognitive-spin {
