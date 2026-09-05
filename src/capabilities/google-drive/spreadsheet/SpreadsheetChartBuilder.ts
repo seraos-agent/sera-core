@@ -118,32 +118,52 @@ export class SpreadsheetChartBuilder {
     if (numericCols.length === 0) return undefined; // No numeric data to chart
 
     const titleLower = headers.join(' ').toLowerCase();
-    if (titleLower.includes('share') || titleLower.includes('distribusi') || titleLower.includes('persen') || isPercentageOrShare) {
+
+    // Priority column detection: volume, turnover, revenue, market cap, nominal, total, etc.
+    const priorityColIdx = headers.findIndex((h, idx) => {
+      if (idx === catCol) return false;
+      const lower = h.toLowerCase();
+      return lower.includes('volume') || lower.includes('omset') || lower.includes('pendapatan') ||
+             lower.includes('sales') || lower.includes('revenue') || lower.includes('market cap') ||
+             lower.includes('nominal') || lower.includes('total') || lower.includes('laba') ||
+             lower.includes('turnover');
+    });
+
+    // Guard against Pie Chart over-slicing:
+    // Slicing > 10 items into a Pie Chart causes Google Sheets legend truncation and is unreadable.
+    // For <= 10 items, if shares or percentages exist, PIE is visually appropriate.
+    if (rows.length <= 10 && (titleLower.includes('share') || titleLower.includes('distribusi') || titleLower.includes('persen') || isPercentageOrShare)) {
       const pctCol = inferences.findIndex((inf, idx) => idx !== catCol && inf.type === 'percentage');
-      const chosenCol = pctCol !== -1 ? pctCol : numericCols[0];
+      const chosenCol = pctCol !== -1 ? pctCol : (priorityColIdx !== -1 ? priorityColIdx : numericCols[0]);
       return {
         type: 'PIE',
-        title: 'Ringkasan & Distribusi Data',
+        title: `Distribution: ${headers[chosenCol] || 'Overview'}`,
         categoryColumn: catCol,
         valueColumns: [chosenCol]
       };
     }
 
     if (isTimeOrDate || titleLower.includes('bulan') || titleLower.includes('tahun') || titleLower.includes('tren') || titleLower.includes('trend')) {
+      const trendValCols = priorityColIdx !== -1 ? [priorityColIdx] : numericCols.slice(0, 2);
       return {
         type: 'LINE',
-        title: 'Tren Perkembangan Data',
+        title: 'Trend Analysis',
         categoryColumn: catCol,
-        valueColumns: numericCols.slice(0, 2)
+        valueColumns: trendValCols
       };
     }
 
     // Default to Column / Bar comparison
+    const chosenValCols = priorityColIdx !== -1 ? [priorityColIdx] : numericCols.slice(0, 2);
+    const chartTitle = priorityColIdx !== -1
+      ? `${headers[priorityColIdx]} Overview`
+      : 'Comparative Analysis';
+
     return {
       type: 'COLUMN',
-      title: 'Perbandingan & Analisis Visual',
+      title: chartTitle,
       categoryColumn: catCol,
-      valueColumns: numericCols.slice(0, 2)
+      valueColumns: chosenValCols
     };
   }
 
@@ -181,7 +201,7 @@ export class SpreadsheetChartBuilder {
     const defaultSideBySideAnchor = `${this.getColumnLetter(headers.length + 2)}1`; // e.g. Column J1 for 8 cols, Column F1 for 4 cols
     const defaultBelowTableAnchor = `A${rows.length + 3}`; // 2 blank rows gap below the table
 
-    let anchor = chartDef.position?.anchorCell;
+    let anchor = chartDef.anchorCell || chartDef.position?.anchorCell;
 
     // CRITICAL OVERLAP GUARD:
     // In native Google Sheets API, table data is written starting at A1 (Row 0, Col 0).
@@ -223,10 +243,12 @@ export class SpreadsheetChartBuilder {
     }
     
     // Proportional dimensions: neat side-by-side or wide below-table
-    const defaultWidth = isSideBySide ? 580 : 820;
+    const defaultWidth = isSideBySide 
+      ? (rows.length > 20 ? 700 : 580)
+      : (rows.length > 20 ? 900 : 820);
     const defaultHeight = isSideBySide 
-      ? Math.max(260, Math.min(340, (rows.length + 2) * 28 + 40))
-      : 300;
+      ? Math.max(280, Math.min(420, (rows.length + 2) * 26 + 40))
+      : (rows.length > 20 ? 360 : 300);
 
     const widthPixels = chartDef.position?.widthPixels || defaultWidth;
     const heightPixels = chartDef.position?.heightPixels || defaultHeight;
@@ -259,29 +281,39 @@ export class SpreadsheetChartBuilder {
     if (pureDataRowCount === 0) pureDataRowCount = numRows;
 
     // Native Google Sheets API: data is always written starting at A1 (row index 0).
-    // The chart overlay position is independent of data location — no row offset needed.
-    // (The previous offset of 15 was a remnant from ExcelJS binary layout where Top Hero
-    //  charts occupied rows 0-14 and pushed data to row 16. This does not apply to Sheets API.)
     const startRowIdx = 0;
 
     if (chartDef.type === 'PIE') {
       let pieValCol = valCols[0];
       if (!chartDef.valueColumns || chartDef.valueColumns.length === 0) {
         const inferences = SpreadsheetFormatter.inferColumnInferences(headers, rows);
-        const pctIdx = inferences.findIndex((inf, idx) => idx !== catCol && inf.type === 'percentage');
-        if (pctIdx !== -1) {
-          pieValCol = pctIdx;
+
+        // If title explicitly mentions Volume (not "Bobot", "Weight", "Share", "Ratio"), prefer the Volume column
+        let preferredCol = -1;
+        if (chartDef.title && /volume/i.test(chartDef.title) && !/bobot|weight|share|ratio|persen|pct/i.test(chartDef.title)) {
+          preferredCol = headers.findIndex((h, idx) => idx !== catCol && 
+            h.toLowerCase().includes('volume') && !h.toLowerCase().includes('bobot')
+          );
+        }
+
+        if (preferredCol !== -1) {
+          pieValCol = preferredCol;
         } else {
-          const volIdx = headers.findIndex((h, idx) => idx !== catCol && (
-            h.toLowerCase().includes('volume') ||
-            h.toLowerCase().includes('cap') ||
-            h.toLowerCase().includes('total') ||
-            h.toLowerCase().includes('nilai') ||
-            h.toLowerCase().includes('amount') ||
-            h.toLowerCase().includes('jumlah')
-          ));
-          if (volIdx !== -1 && (inferences[volIdx]?.type === 'number' || inferences[volIdx]?.type === 'currency')) {
-            pieValCol = volIdx;
+          const pctIdx = inferences.findIndex((inf, idx) => idx !== catCol && inf.type === 'percentage');
+          if (pctIdx !== -1) {
+            pieValCol = pctIdx;
+          } else {
+            const volIdx = headers.findIndex((h, idx) => idx !== catCol && (
+              h.toLowerCase().includes('volume') ||
+              h.toLowerCase().includes('cap') ||
+              h.toLowerCase().includes('total') ||
+              h.toLowerCase().includes('nilai') ||
+              h.toLowerCase().includes('amount') ||
+              h.toLowerCase().includes('jumlah')
+            ));
+            if (volIdx !== -1 && (inferences[volIdx]?.type === 'number' || inferences[volIdx]?.type === 'currency')) {
+              pieValCol = volIdx;
+            }
           }
         }
       }
@@ -289,14 +321,22 @@ export class SpreadsheetChartBuilder {
       // CRITICAL: PieChartSpec in Google Sheets API does NOT have a headerCount field.
       // Therefore, PieChartSpec sourceRange MUST start at the first data row (startRowIdx + 1),
       // and end at startRowIdx + 1 + pureDataRowCount (strictly excluding Total row).
+      // Top 10 Guard: If pureDataRowCount > 10, bound data range to Top 10 so the legend
+      // never truncates in Google Sheets, and annotate title.
       const pieStartRow = startRowIdx + 1;
-      const pieEndRow = startRowIdx + 1 + pureDataRowCount;
+      const pieDataCount = pureDataRowCount > 10 ? 10 : pureDataRowCount;
+      const pieEndRow = startRowIdx + 1 + pieDataCount;
+
+      let pieTitle = chartDef.title || 'Distribution Overview';
+      if (pureDataRowCount > 10 && !pieTitle.toLowerCase().includes('top')) {
+        pieTitle = `${pieTitle} (Top 10)`;
+      }
 
       return {
         addChart: {
           chart: {
             spec: {
-              title: chartDef.title || 'Distribution Overview',
+              title: pieTitle,
               pieChart: {
                 legendPosition: 'RIGHT_LEGEND',
                 domain: {
@@ -420,5 +460,48 @@ export class SpreadsheetChartBuilder {
         }
       }
     };
+  }
+
+  /**
+   * Generates multiple Google Sheets AddChartRequest payloads from an array of ChartDefinitions.
+   * Ensures intelligent positioning so charts do not overlap each other or the data table.
+   */
+  public static buildMultiGoogleSheetsChartRequests(
+    sheetId: number,
+    numRows: number,
+    headers: string[],
+    rows: any[][],
+    charts: ChartDefinition[]
+  ): any[] {
+    if (!charts || charts.length === 0) return [];
+
+    const isSideBySide = headers.length <= 8;
+    const sideColLetter = this.getColumnLetter(headers.length + 2);
+
+    const requests: any[] = [];
+
+    charts.forEach((chart, idx) => {
+      const chartDef: ChartDefinition = { ...chart };
+
+      const explicitAnchor = chartDef.anchorCell || chartDef.position?.anchorCell;
+      if (!explicitAnchor || explicitAnchor.toUpperCase() === 'A1' || explicitAnchor.toUpperCase() === 'A2') {
+        if (isSideBySide) {
+          // Stack charts side-by-side vertically (e.g. Row 1, Row 18, Row 35...)
+          const startRow = 1 + idx * 17;
+          chartDef.anchorCell = `${sideColLetter}${startRow}`;
+        } else {
+          // Below table: Row numRows + 3, Row numRows + 21...
+          const startRow = rows.length + 3 + idx * 18;
+          chartDef.anchorCell = `A${startRow}`;
+        }
+      }
+
+      const req = this.buildGoogleSheetsChartRequest(sheetId, numRows, headers, rows, chartDef);
+      if (req) {
+        requests.push(req);
+      }
+    });
+
+    return requests;
   }
 }

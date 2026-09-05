@@ -31,6 +31,7 @@ import {
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 import { SpreadsheetEngine } from '../capabilities/google-drive/SpreadsheetEngine';
+import { GoogleSheetsFormatter } from '../capabilities/google-drive/spreadsheet/GoogleSheetsFormatter';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -1406,16 +1407,12 @@ export class GoalBridge {
   private async handleGDriveRead(requestId: string, payload: any): Promise<void> {
     try {
       const filename = payload?.filename || payload?.fileName || payload?.name || payload?.title;
-      let targetId = payload?.fileId || payload?.id;
-      if (!targetId && filename) {
-        const files = await this.googleDriveCapability.listFiles(this.sessionId, { name: filename });
-        if (files.length === 0) throw new Error(`File "${filename}" not found in your SERA Vault.`);
-        targetId = files[0].id;
-      }
-      if (!targetId) throw new Error('Must provide either filename or fileId to read a file.');
+      const target = payload?.fileId || payload?.id || filename;
+      if (!target) throw new Error('Must provide either filename or fileId to read a file.');
       
-      const content = await this.googleDriveCapability.readFile(this.sessionId, targetId);
-      this.emitResult(requestId, true, { content, fileId: targetId });
+      const resolvedId = await this.googleDriveCapability.resolveFileId(this.sessionId, target);
+      const content = await this.googleDriveCapability.readFile(this.sessionId, resolvedId);
+      this.emitResult(requestId, true, { content, fileId: resolvedId });
     } catch (e: any) {
       this.emitResult(requestId, false, {}, e.message);
     }
@@ -1431,21 +1428,47 @@ export class GoalBridge {
         sheetName: sheetName || options?.sheetName
       };
 
+      // Early normalization of headers & rows to guarantee 2D arrays even if LLM sent stringified JSON or objects
+      const normalizedInput = GoogleSheetsFormatter.normalizeSpreadsheetInput(headers, rows);
+      let effectiveHeaders = normalizedInput.headers;
+      let effectiveRows = normalizedInput.rows;
+
+      let normalizedSheets = sheets;
+      if (Array.isArray(sheets) && sheets.length > 0) {
+        normalizedSheets = sheets.map((s: any) => {
+          const sNorm = GoogleSheetsFormatter.normalizeSpreadsheetInput(s.headers, s.rows);
+          return {
+            ...s,
+            headers: sNorm.headers,
+            rows: sNorm.rows
+          };
+        });
+        if (effectiveHeaders.length === 0 && normalizedSheets[0]?.headers) {
+          effectiveHeaders = normalizedSheets[0].headers;
+        }
+        if (effectiveRows.length === 0 && normalizedSheets[0]?.rows) {
+          effectiveRows = normalizedSheets[0].rows;
+        }
+      }
+
+      const hasAnyRows = effectiveRows.length > 0 || (normalizedSheets && normalizedSheets.some((s: any) => s.rows && s.rows.length > 0));
+      if (!hasAnyRows && !effectiveOptions?.allowEmpty) {
+        throw new Error(`Cannot create spreadsheet "${title}" with 0 data rows. All provided rows were empty or invalid. Please provide valid data rows in the "rows" parameter.`);
+      }
+
       const result = await this.googleDriveCapability.createSpreadsheet(
         this.sessionId,
         title,
-        headers,
-        rows,
+        effectiveHeaders,
+        effectiveRows,
         effectiveOptions,
-        sheets
+        normalizedSheets
       );
 
-      const effectiveHeaders = headers || (sheets && sheets[0]?.headers) || [];
-      const effectiveRows = rows || (sheets && sheets[0]?.rows) || [];
       const summaryMetrics = SpreadsheetEngine.calculateSummaryMetrics(effectiveHeaders, effectiveRows, effectiveOptions);
 
-      const sheetNames = sheets && sheets.length > 0 
-        ? sheets.map((s: any) => s.name) 
+      const sheetNames = normalizedSheets && normalizedSheets.length > 0 
+        ? normalizedSheets.map((s: any) => s.name) 
         : [effectiveOptions.sheetName || 'Sheet1'];
 
       this.emitResult(requestId, true, {

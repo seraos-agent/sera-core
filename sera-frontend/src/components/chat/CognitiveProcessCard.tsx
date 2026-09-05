@@ -19,6 +19,39 @@ export interface CognitiveProcessCardProps {
   hadTools?: boolean;
 }
 
+function isBoilerplateDetail(text?: string): boolean {
+  if (!text) return true;
+  const lower = text.trim().toLowerCase();
+  return (
+    lower.includes('evaluating request context') ||
+    lower.includes('analyzing request context') ||
+    lower.includes('analyzed request context') ||
+    lower.includes('preparing actions') ||
+    lower.includes('formulated plan') ||
+    lower.includes('cognitive steps completed') ||
+    lower === 'analyzing' ||
+    lower === 'analyzed' ||
+    lower === 'thinking' ||
+    lower === 'thinking...' ||
+    lower === 'working' ||
+    lower === 'working...'
+  );
+}
+
+function isThoughtStep(step: CognitiveStep): boolean {
+  const t = (step.title || '').trim().toLowerCase();
+  return (
+    t === 'thinking' ||
+    t === 'thinking process' ||
+    t === 'thought' ||
+    t === 'thought process' ||
+    t === 'reasoning' ||
+    t === 'reasoning process' ||
+    t === 'analyzing' ||
+    t === 'analyzed'
+  );
+}
+
 function getCleanSubText(subText?: string): string | null {
   if (!subText) return null;
   const trimmed = subText.trim();
@@ -29,7 +62,10 @@ function getCleanSubText(subText?: string): string | null {
     lower === 'thinking' ||
     lower === 'thinking...' ||
     lower === 'working' ||
-    lower === 'working...'
+    lower === 'working...' ||
+    lower === 'analyzing' ||
+    lower === 'analyzed' ||
+    isBoilerplateDetail(trimmed)
   ) {
     return null;
   }
@@ -233,29 +269,35 @@ export function CognitiveProcessCard({
 
       {/* Sub-process Flow Capsule (Only renders inside a container when toggled open) */}
       {isOpen && (() => {
-        // Deduplicate consecutive identical steps (same title & detail) for clean presentation
-        const displayedSteps = (steps || []).reduce<CognitiveStep[]>((acc, current) => {
-          const last = acc[acc.length - 1];
-          const isCurrentAnalysis = current.title === 'Thinking Process' || current.title === 'Analyzing' || current.title === 'Analyzed';
-          const isLastAnalysis = last && (last.title === 'Thinking Process' || last.title === 'Analyzing' || last.title === 'Analyzed');
+        // 1. Separate thought steps and action steps
+        const thoughtSteps = (steps || []).filter(isThoughtStep);
 
-          // If both are cognitive analysis steps, update to the most recent info
-          if (last && isCurrentAnalysis && isLastAnalysis) {
-            last.title = current.title;
-            if (current.detail) last.detail = current.detail;
-            if (current.status) last.status = current.status;
-            return acc;
+        // 2. Extract latest genuine thought (ignoring any boilerplate text)
+        let curatedThought = '';
+        for (let i = thoughtSteps.length - 1; i >= 0; i--) {
+          const summary = extractExecutiveSummary(thoughtSteps[i].detail);
+          if (summary && !isBoilerplateDetail(summary)) {
+            curatedThought = summary;
+            break;
           }
+        }
 
+        // 3. Extract real action steps (tool executions)
+        const actionSteps = (steps || []).filter(s => !isThoughtStep(s));
+
+        // 4. Deduplicate consecutive identical action steps
+        const deduplicatedActions = actionSteps.reduce<CognitiveStep[]>((acc, current) => {
+          const last = acc[acc.length - 1];
           if (last && last.title === current.title && last.detail === current.detail) {
-            if (current.status === 'active') {
-              last.status = 'active';
-            }
+            if (current.status === 'active') last.status = 'active';
             return acc;
           }
           acc.push({ ...current });
           return acc;
         }, []);
+
+        const hasActions = deduplicatedActions.length > 0;
+        const hasThought = !!curatedThought;
 
         return (
           <div style={{
@@ -269,68 +311,88 @@ export function CognitiveProcessCard({
             gap: 10,
             boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
           }}>
-            {displayedSteps && displayedSteps.length > 0 ? (
-              displayedSteps.map((step, idx) => {
-                const isStepActive = isLive && (step.status === 'active' || (!step.status && idx === displayedSteps.length - 1));
-                const isAnalysis = step.title === 'Thinking Process' || step.title === 'Analyzing' || step.title === 'Analyzed';
-                const displayTitle = isAnalysis ? (isStepActive ? 'Analyzing' : 'Analyzed') : step.title;
-                const formattedDetail = isAnalysis ? extractExecutiveSummary(step.detail) : step.detail;
+            {/* Section 1: Agent Genuine Thought / Reasoning (Direct, clean neutral card) */}
+            {hasThought && (
+              <div style={{
+                fontSize: 11.5,
+                color: theme.inkSoft,
+                lineHeight: 1.55,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                background: "rgba(0,0,0,0.025)",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                fontFamily: "Inter, sans-serif"
+              }}>
+                {curatedThought}
+              </div>
+            )}
 
-                return (
-                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                    {isStepActive ? (
-                      <div style={{
-                        marginTop: 4,
-                        width: 9,
-                        height: 9,
-                        borderRadius: "50%",
-                        border: `2px solid ${theme.accent}35`,
-                        borderTopColor: theme.accent,
-                        animation: "cognitive-spin 0.85s linear infinite",
-                        flexShrink: 0
-                      }} />
-                    ) : (
-                      <div style={{
-                        marginTop: 5,
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: theme.accent,
-                        flexShrink: 0
-                      }} />
-                    )}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: theme.ink }}>
-                        {displayTitle}
-                      </span>
-                      {formattedDetail && (
-                        isAnalysis ? (
-                          <div style={{
-                            fontSize: 11.5,
-                            color: theme.inkSoft,
-                            lineHeight: 1.55,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            background: "rgba(0,0,0,0.025)",
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: `1px solid ${theme.border}`,
-                            marginTop: 4,
-                            fontFamily: "Inter, sans-serif"
-                          }}>
-                            {formattedDetail}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 11, color: theme.inkFaint, lineHeight: 1.4 }}>
-                            {formattedDetail.replace(/^Address user inquiry:\s*/i, '').replace(/^Respond to user:\s*/i, '')}
-                          </span>
-                        )
+            {/* Section 2: Real Action Steps (e.g. Tools executed) */}
+            {hasActions && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {deduplicatedActions.map((step, idx) => {
+                  const isStepActive = isLive && (step.status === 'active' || (!step.status && idx === deduplicatedActions.length - 1));
+                  return (
+                    <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                      {isStepActive ? (
+                        <div style={{
+                          marginTop: 4,
+                          width: 9,
+                          height: 9,
+                          borderRadius: "50%",
+                          border: `2px solid ${theme.accent}35`,
+                          borderTopColor: theme.accent,
+                          animation: "cognitive-spin 0.85s linear infinite",
+                          flexShrink: 0
+                        }} />
+                      ) : (
+                        <div style={{
+                          marginTop: 5,
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: theme.accent,
+                          flexShrink: 0
+                        }} />
                       )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: theme.ink }}>
+                          {step.title}
+                        </span>
+                        {step.detail && (
+                          <span style={{ fontSize: 11, color: theme.inkFaint, lineHeight: 1.4 }}>
+                            {step.detail.replace(/^Address user inquiry:\s*/i, '').replace(/^Respond to user:\s*/i, '')}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-            ) : (
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Section 3: Live In-Progress State (when no actions or thought yet) */}
+            {!hasThought && !hasActions && isLive && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: "50%",
+                  border: `2px solid ${theme.accent}35`,
+                  borderTopColor: theme.accent,
+                  animation: "cognitive-spin 0.85s linear infinite",
+                  flexShrink: 0
+                }} />
+                <span style={{ fontSize: 11.5, color: theme.inkSoft }}>
+                  {isWorking ? 'Executing task...' : 'Reasoning through inquiry...'}
+                </span>
+              </div>
+            )}
+
+            {/* Section 4: Completed State fallback (if neither thought nor actions recorded) */}
+            {!hasThought && !hasActions && !isLive && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
                   width: 6,
@@ -340,7 +402,7 @@ export function CognitiveProcessCard({
                   flexShrink: 0
                 }} />
                 <span style={{ fontSize: 11.5, color: theme.inkSoft }}>
-                  {isLive ? 'Analyzing context and preparing steps...' : 'Cognitive steps completed.'}
+                  Direct response formulated.
                 </span>
               </div>
             )}

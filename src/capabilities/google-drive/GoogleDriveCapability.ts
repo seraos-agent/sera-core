@@ -157,7 +157,7 @@ export class GoogleDriveCapability {
     return currentParentId;
   }
 
-  public async listFiles(userId: string, query?: { name?: string; mimeType?: string; searchTerm?: string; folderId?: string }): Promise<any[]> {
+  public async listFiles(userId: string, query?: { name?: string; mimeType?: string; searchTerm?: string; folderId?: string; exact?: boolean }): Promise<any[]> {
     const token = await this.getAccessToken(userId);
     const vaultFolderId = await this.getVaultFolderId(userId);
 
@@ -177,8 +177,12 @@ export class GoogleDriveCapability {
       const baseName = rawName.replace(/\.(xlsx|csv|md|txt|json)$/i, '').trim();
       const escapedBase = baseName.replace(/'/g, "\\'");
 
-      // Fuzzy Extension Matching: Match exact, base + popular extensions, or contains
-      q += ` and (name = '${escapedRaw}' or name = '${escapedBase}.xlsx' or name = '${escapedBase}.csv' or name = '${escapedBase}.md' or name = '${escapedBase}.txt' or name contains '${escapedBase}')`;
+      // Extension Matching: If exact is requested, do not perform fuzzy contains
+      if (query.exact) {
+        q += ` and (name = '${escapedRaw}' or name = '${escapedBase}.xlsx' or name = '${escapedBase}.csv' or name = '${escapedBase}.md' or name = '${escapedBase}.txt')`;
+      } else {
+        q += ` and (name = '${escapedRaw}' or name = '${escapedBase}.xlsx' or name = '${escapedBase}.csv' or name = '${escapedBase}.md' or name = '${escapedBase}.txt' or name contains '${escapedBase}')`;
+      }
     }
     if (query?.searchTerm) {
       const cleanSearch = query.searchTerm.replace(/'/g, "\\'").trim();
@@ -218,6 +222,9 @@ export class GoogleDriveCapability {
         files = allVaultFiles.filter((f: any) => {
           const fn = (f.name || '').toLowerCase().trim();
           const fBase = fn.replace(/\.(xlsx|csv|md|txt|json)$/i, '');
+          if (query?.exact) {
+            return fn === targetClean || fBase === baseClean;
+          }
           return fn === targetClean || fBase === baseClean || fn.includes(baseClean) || baseClean.includes(fBase);
         });
       }
@@ -278,7 +285,47 @@ export class GoogleDriveCapability {
     return true;
   }
 
-  public async readBuffer(userId: string, fileId: string): Promise<Buffer> {
+  /**
+   * Resolves a file ID from either a direct Google Drive file ID or a file name/title.
+   * Google Drive API endpoints (files.get, export, etc.) require an actual file ID.
+   * If input is already a valid file ID, returns it. If it is a filename/title or if direct lookup fails,
+   * searches by name via listFiles.
+   */
+  public async resolveFileId(userId: string, fileIdOrName: string): Promise<string> {
+    if (!fileIdOrName || typeof fileIdOrName !== 'string') {
+      throw new Error('Invalid file ID or name provided.');
+    }
+    const clean = fileIdOrName.trim();
+
+    // Google Drive IDs are standard alphanumeric IDs with - and _ (typically 20-60 characters, no spaces)
+    const looksLikeDriveId = /^[a-zA-Z0-9_-]{15,}$/.test(clean);
+
+    if (looksLikeDriveId) {
+      try {
+        const token = await this.getAccessToken(userId);
+        const res = await this.fetchImpl(
+          `https://www.googleapis.com/drive/v3/files/${clean}?fields=id`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          return clean;
+        }
+      } catch {
+        // Direct ID lookup failed, fall through to title search
+      }
+    }
+
+    // Search by title/name
+    const files = await this.listFiles(userId, { name: clean });
+    if (files.length > 0) {
+      return files[0].id;
+    }
+
+    throw new Error(`File "${clean}" not found in your SERA Vault.`);
+  }
+
+  public async readBuffer(userId: string, fileIdOrName: string): Promise<Buffer> {
+    const fileId = await this.resolveFileId(userId, fileIdOrName);
     const token = await this.getAccessToken(userId);
 
     // 1. Fetch file metadata to detect Google Docs / Google Sheets native format
@@ -318,7 +365,8 @@ export class GoogleDriveCapability {
     return Buffer.from(text, 'utf-8');
   }
 
-  public async readFile(userId: string, fileId: string): Promise<string> {
+  public async readFile(userId: string, fileIdOrName: string): Promise<string> {
+    const fileId = await this.resolveFileId(userId, fileIdOrName);
     const buffer = await this.readBuffer(userId, fileId);
 
     // Check if file is an Excel spreadsheet (.xlsx format starts with ZIP magic bytes PK\x03\x04)
@@ -341,8 +389,10 @@ export class GoogleDriveCapability {
                 const title = spec.title || `Chart #${idx + 1}`;
                 const chartType = spec.basicChart?.chartType || (spec.pieChart ? 'PIE' : 'VISUAL_CHART');
                 const anchor = c.position?.overlayPosition?.anchorCell;
-                const isHeroTop = anchor?.rowIndex === 0 && anchor?.columnIndex === 0;
-                const positionDesc = isHeroTop ? 'Top Hero (A1)' : (anchor ? `Row ${anchor.rowIndex + 1}, Col ${anchor.columnIndex + 1}` : 'Side-by-Side');
+                const rIdx = typeof anchor?.rowIndex === 'number' ? anchor.rowIndex : 0;
+                const cIdx = typeof anchor?.columnIndex === 'number' ? anchor.columnIndex : 0;
+                const isHeroTop = rIdx === 0 && cIdx === 0;
+                const positionDesc = isHeroTop ? 'Top Hero (A1)' : (anchor ? `Row ${rIdx + 1}, Col ${cIdx + 1}` : 'Side-by-Side');
 
                 // Inspect real series binding status
                 let seriesInfo = '⚠️ No Data Series';
@@ -582,13 +632,41 @@ export class GoogleDriveCapability {
     const targetFolderName = options?.folder || 'Spreadsheets';
     const targetFolderId = await this.ensureFolderPath(userId, targetFolderName);
 
-    // 2. Pre-flight Chart Validation
-    const effectiveHeaders = headers || (sheets && sheets[0]?.headers) || [];
-    const effectiveRows = rows || (sheets && sheets[0]?.rows) || [];
+    // Normalize input headers and rows to handle array-of-objects or stringified payloads from LLMs
+    const normalizedInput = GoogleSheetsFormatter.normalizeSpreadsheetInput(headers, rows);
+    let effectiveHeaders = normalizedInput.headers;
+    let effectiveRows = normalizedInput.rows;
+
+    let normalizedSheets = sheets;
+    if (Array.isArray(sheets) && sheets.length > 0) {
+      normalizedSheets = sheets.map(s => {
+        const sNorm = GoogleSheetsFormatter.normalizeSpreadsheetInput(s.headers, s.rows);
+        return {
+          ...s,
+          headers: sNorm.headers,
+          rows: sNorm.rows
+        };
+      });
+      if (effectiveHeaders.length === 0 && normalizedSheets[0]?.headers) {
+        effectiveHeaders = normalizedSheets[0].headers;
+      }
+      if (effectiveRows.length === 0 && normalizedSheets[0]?.rows) {
+        effectiveRows = normalizedSheets[0].rows;
+      }
+    }
+
+    const hasAnyRows = effectiveRows.length > 0 || (normalizedSheets && normalizedSheets.some(s => s.rows && s.rows.length > 0));
+    if (!hasAnyRows && !options?.allowEmpty) {
+      throw new Error(`Cannot create spreadsheet "${cleanTitle}" with 0 data rows. All provided rows were empty or invalid. Please provide valid data rows in the "rows" parameter.`);
+    }
+
+    const hasExplicitCharts = (options?.charts && options.charts.length > 0) ||
+      (normalizedSheets && normalizedSheets.some(s => s.options?.charts && s.options.charts.length > 0));
+
     let effectiveChart =
       options?.chart ||
-      (sheets && sheets[0]?.options?.chart) ||
-      SpreadsheetEngine.inferAutomaticChart(effectiveHeaders, effectiveRows);
+      (normalizedSheets && normalizedSheets[0]?.options?.chart) ||
+      (!hasExplicitCharts ? SpreadsheetEngine.inferAutomaticChart(effectiveHeaders, effectiveRows) : undefined);
 
     if (effectiveChart) {
       const validation = SpreadsheetEngine.validateChartDefinition(
@@ -607,10 +685,25 @@ export class GoogleDriveCapability {
       }
     }
 
-    // 3. Search for existing spreadsheet in Vault to support true in-place update
-    const existing = await this.listFiles(userId, { name: cleanTitle });
-    const isUpdate = existing.length > 0;
-    const existingFile = isUpdate ? existing[0] : undefined;
+    if (options?.charts && options.charts.length > 0) {
+      for (const ch of options.charts) {
+        const val = SpreadsheetEngine.validateChartDefinition(effectiveHeaders, effectiveRows, ch);
+        if (!val.valid) {
+          console.warn(`[GoogleDriveCapability] Chart validation warning: ${val.reason}`);
+        }
+      }
+    }
+
+    // 3. Search for existing spreadsheet in Vault to support true in-place update (strict exact match)
+    const existing = await this.listFiles(userId, { name: cleanTitle, exact: true });
+    const targetClean = cleanTitle.toLowerCase();
+    const exactMatch = existing.find((f: any) => {
+      const fn = (f.name || '').toLowerCase().trim();
+      const fBase = fn.replace(/\.(xlsx|csv|md|txt|json)$/i, '').trim();
+      return fn === targetClean || fBase === targetClean;
+    });
+    const isUpdate = !!exactMatch;
+    const existingFile = exactMatch;
     const isNativeSheet = existingFile?.mimeType === 'application/vnd.google-apps.spreadsheet';
 
     let fileId: string;
@@ -618,7 +711,7 @@ export class GoogleDriveCapability {
     // --- CASE A: Append Mode to existing native Google Sheet ---
     if (options?.mode === 'append' && isUpdate && existingFile && isNativeSheet) {
       fileId = existingFile.id;
-      const targetSheetName = options?.targetSheet || (sheets && sheets[0]?.name) || options?.sheetName || 'Sheet1';
+      const targetSheetName = options?.targetSheet || (normalizedSheets && normalizedSheets[0]?.name) || options?.sheetName || 'Sheet1';
       const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(effectiveHeaders, effectiveRows);
       await this.sheetsService.appendValues(
         token,
@@ -639,33 +732,42 @@ export class GoogleDriveCapability {
       // 1. Clean up old charts to avoid overlapping duplicates
       await this.sheetsService.clearAndDeleteCharts(token, fileId);
 
-      if (sheets && sheets.length > 0) {
+      if (normalizedSheets && normalizedSheets.length > 0) {
         // Multi-tab in-place update
-        for (const sheetDef of sheets) {
+        for (let idx = 0; idx < normalizedSheets.length; idx++) {
+          const sheetDef = normalizedSheets[idx];
           const sheetId = await this.sheetsService.ensureSheetExists(token, fileId, sheetDef.name);
           // Clear previous data
           await this.sheetsService.clearValues(token, fileId, `'${sheetDef.name}'!A1:ZZ10000`);
-          // Write headers + normalized data
+          
+          const curOptions = sheetDef.options || options;
           const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(sheetDef.headers, sheetDef.rows);
-          const allRows = [sheetDef.headers, ...normalizedRows];
+          const autoSummaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(sheetDef.headers, normalizedRows, curOptions);
+          const allRows = autoSummaryRow ? [sheetDef.headers, ...normalizedRows, autoSummaryRow] : [sheetDef.headers, ...normalizedRows];
+          const rowsWithSummary = autoSummaryRow ? [...normalizedRows, autoSummaryRow] : normalizedRows;
+
           await this.sheetsService.writeValues(token, fileId, `'${sheetDef.name}'!A1`, allRows, 'USER_ENTERED');
-          // Format
+          
           const formatReqs = GoogleSheetsFormatter.buildFormattingRequests(
             sheetId,
             sheetDef.headers,
-            sheetDef.rows,
-            sheetDef.options || options
+            rowsWithSummary,
+            curOptions
           );
-          const tabChart = sheetDef.options?.chart;
-          if (tabChart) {
-            const chartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(
+          
+          const tabCharts: ChartDefinition[] = (curOptions?.charts && curOptions.charts.length > 0)
+            ? curOptions.charts
+            : (curOptions?.chart ? [curOptions.chart] : (idx === 0 && effectiveChart ? [effectiveChart] : []));
+
+          if (tabCharts.length > 0) {
+            const chartReqs = SpreadsheetEngine.buildMultiGoogleSheetsChartRequests(
               sheetId,
-              sheetDef.rows.length,
+              rowsWithSummary.length,
               sheetDef.headers,
-              sheetDef.rows,
-              tabChart
+              rowsWithSummary,
+              tabCharts
             );
-            if (chartReq) formatReqs.push(chartReq);
+            if (chartReqs && chartReqs.length > 0) formatReqs.push(...chartReqs);
           }
           await this.sheetsService.batchUpdate(token, fileId, formatReqs);
         }
@@ -674,24 +776,34 @@ export class GoogleDriveCapability {
         const sheetName = options?.sheetName || 'Sheet1';
         const sheetId = await this.sheetsService.ensureSheetExists(token, fileId, sheetName);
         await this.sheetsService.clearValues(token, fileId, `'${sheetName}'!A1:ZZ10000`);
+        
         const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(effectiveHeaders, effectiveRows);
-        const allRows = [effectiveHeaders, ...normalizedRows];
+        const autoSummaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(effectiveHeaders, normalizedRows, options);
+        const allRows = autoSummaryRow ? [effectiveHeaders, ...normalizedRows, autoSummaryRow] : [effectiveHeaders, ...normalizedRows];
+        const rowsWithSummary = autoSummaryRow ? [...normalizedRows, autoSummaryRow] : normalizedRows;
+
         await this.sheetsService.writeValues(token, fileId, `'${sheetName}'!A1`, allRows, 'USER_ENTERED');
+        
         const formatReqs = GoogleSheetsFormatter.buildFormattingRequests(
           sheetId,
           effectiveHeaders,
-          effectiveRows,
+          rowsWithSummary,
           options
         );
-        if (effectiveChart) {
-          const chartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(
+        
+        const targetCharts: ChartDefinition[] = (options?.charts && options.charts.length > 0)
+          ? options.charts
+          : (effectiveChart ? [effectiveChart] : []);
+
+        if (targetCharts.length > 0) {
+          const chartReqs = SpreadsheetEngine.buildMultiGoogleSheetsChartRequests(
             sheetId,
-            effectiveRows.length,
+            rowsWithSummary.length,
             effectiveHeaders,
-            effectiveRows,
-            effectiveChart
+            rowsWithSummary,
+            targetCharts
           );
-          if (chartReq) formatReqs.push(chartReq);
+          if (chartReqs && chartReqs.length > 0) formatReqs.push(...chartReqs);
         }
         await this.sheetsService.batchUpdate(token, fileId, formatReqs);
       }
@@ -709,10 +821,10 @@ export class GoogleDriveCapability {
       }
     }
 
-    if (sheets && sheets.length > 0) {
+    if (normalizedSheets && normalizedSheets.length > 0) {
       // Multi-sheet workbook creation
-      const firstTab = sheets[0].name || 'Sheet1';
-      const additionalTabs = sheets.slice(1).map(s => s.name);
+      const firstTab = normalizedSheets[0].name || 'Sheet1';
+      const additionalTabs = normalizedSheets.slice(1).map(s => s.name);
       const created = await this.sheetsService.createSpreadsheet(token, cleanTitle, {
         folderId: targetFolderId,
         sheetTitle: firstTab,
@@ -720,28 +832,39 @@ export class GoogleDriveCapability {
       });
       fileId = created.spreadsheetId;
 
-      for (const sheetDef of sheets) {
+      for (let idx = 0; idx < normalizedSheets.length; idx++) {
+        const sheetDef = normalizedSheets[idx];
         const found = created.sheets.find(s => s.title.toLowerCase() === sheetDef.name.toLowerCase());
         const sheetId = found ? found.sheetId : await this.sheetsService.ensureSheetExists(token, fileId, sheetDef.name);
+        
+        const curOptions = sheetDef.options || options;
         const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(sheetDef.headers, sheetDef.rows);
-        const allRows = [sheetDef.headers, ...normalizedRows];
+        const autoSummaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(sheetDef.headers, normalizedRows, curOptions);
+        const allRows = autoSummaryRow ? [sheetDef.headers, ...normalizedRows, autoSummaryRow] : [sheetDef.headers, ...normalizedRows];
+        const rowsWithSummary = autoSummaryRow ? [...normalizedRows, autoSummaryRow] : normalizedRows;
+
         await this.sheetsService.writeValues(token, fileId, `'${sheetDef.name}'!A1`, allRows, 'USER_ENTERED');
+        
         const formatReqs = GoogleSheetsFormatter.buildFormattingRequests(
           sheetId,
           sheetDef.headers,
-          sheetDef.rows,
-          sheetDef.options || options
+          rowsWithSummary,
+          curOptions
         );
-        const tabChart = sheetDef.options?.chart;
-        if (tabChart) {
-          const chartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(
+        
+        const tabCharts: ChartDefinition[] = (curOptions?.charts && curOptions.charts.length > 0)
+          ? curOptions.charts
+          : (curOptions?.chart ? [curOptions.chart] : (idx === 0 && effectiveChart ? [effectiveChart] : []));
+
+        if (tabCharts.length > 0) {
+          const chartReqs = SpreadsheetEngine.buildMultiGoogleSheetsChartRequests(
             sheetId,
-            sheetDef.rows.length,
+            rowsWithSummary.length,
             sheetDef.headers,
-            sheetDef.rows,
-            tabChart
+            rowsWithSummary,
+            tabCharts
           );
-          if (chartReq) formatReqs.push(chartReq);
+          if (chartReqs && chartReqs.length > 0) formatReqs.push(...chartReqs);
         }
         await this.sheetsService.batchUpdate(token, fileId, formatReqs);
       }
@@ -756,23 +879,32 @@ export class GoogleDriveCapability {
       const sheetId = created.sheets[0]?.sheetId ?? 0;
 
       const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(effectiveHeaders, effectiveRows);
-      const allRows = [effectiveHeaders, ...normalizedRows];
+      const autoSummaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(effectiveHeaders, normalizedRows, options);
+      const allRows = autoSummaryRow ? [effectiveHeaders, ...normalizedRows, autoSummaryRow] : [effectiveHeaders, ...normalizedRows];
+      const rowsWithSummary = autoSummaryRow ? [...normalizedRows, autoSummaryRow] : normalizedRows;
+
       await this.sheetsService.writeValues(token, fileId, `'${sheetName}'!A1`, allRows, 'USER_ENTERED');
+      
       const formatReqs = GoogleSheetsFormatter.buildFormattingRequests(
         sheetId,
         effectiveHeaders,
-        effectiveRows,
+        rowsWithSummary,
         options
       );
-      if (effectiveChart) {
-        const chartReq = SpreadsheetEngine.buildGoogleSheetsChartRequest(
+      
+      const targetCharts: ChartDefinition[] = (options?.charts && options.charts.length > 0)
+        ? options.charts
+        : (effectiveChart ? [effectiveChart] : []);
+
+      if (targetCharts.length > 0) {
+        const chartReqs = SpreadsheetEngine.buildMultiGoogleSheetsChartRequests(
           sheetId,
-          effectiveRows.length,
+          rowsWithSummary.length,
           effectiveHeaders,
-          effectiveRows,
-          effectiveChart
+          rowsWithSummary,
+          targetCharts
         );
-        if (chartReq) formatReqs.push(chartReq);
+        if (chartReqs && chartReqs.length > 0) formatReqs.push(...chartReqs);
       }
       await this.sheetsService.batchUpdate(token, fileId, formatReqs);
     }

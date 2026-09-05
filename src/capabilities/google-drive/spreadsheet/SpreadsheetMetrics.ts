@@ -19,6 +19,21 @@ export class SpreadsheetMetrics {
     const columnInferences = SpreadsheetFormatter.inferColumnInferences(headers, pureDataRows);
     const totals: Record<string, number | string> = {};
 
+    // Pre-resolve all row formula dependencies so multi-tier formulas (e.g. Laba = F2 - G2) resolve accurately
+    const evaluatedRows = pureDataRows.map((r, rIdx) => {
+      const rowCopy = [...r];
+      const targetRowNum = rIdx + 2;
+      rowCopy.forEach((cellVal, cIdx) => {
+        if (typeof cellVal === 'string' && cellVal.trim().startsWith('=')) {
+          const evalRes = SpreadsheetFormulaEngine.evaluateRowFormula(cellVal.trim(), rowCopy, targetRowNum);
+          if (evalRes !== undefined) {
+            rowCopy[cIdx] = evalRes;
+          }
+        }
+      });
+      return rowCopy;
+    });
+
     headers.forEach((h, colIndex) => {
       const colInf = columnInferences[colIndex];
       const lowerH = (h || '').toLowerCase().trim();
@@ -44,23 +59,72 @@ export class SpreadsheetMetrics {
         lowerH.includes('margin')
       ) && !lowerH.includes('bobot') && !lowerH.includes('alokasi') && !lowerH.includes('porsi') && !lowerH.includes('share');
 
-      const isUnitPriceOrRate = isPercentageOrRatio || lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+      // Explicit unit prices and rates should never be summed
+      const isExplicitUnitPrice =
+        lowerH.includes('unit price') || lowerH.includes('unit_price') ||
         lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
-        lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
-        lowerH.includes('fee_per') ||
-        (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH)) ||
+        lowerH.includes('modal unit') || lowerH.includes('modal satuan') ||
+        lowerH.includes('unit cost') || lowerH.includes('cost per unit') ||
+        lowerH.includes('price per unit') || lowerH.includes('price/unit') ||
+        lowerH.includes('harga/unit') || lowerH.includes('harga per unit') ||
+        lowerH.includes('harga unit') || lowerH.includes('fee_per') || lowerH.includes('fee per') ||
+        lowerH.includes('rate per') || lowerH.includes('kurs') ||
+        lowerH.includes('bid') || lowerH.includes('ask') || lowerH.includes('mid') ||
+        (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH));
+
+      // Contextual unit price (e.g. 'Harga Jual' / 'Selling Price' / 'Harga Beli' / 'Harga (USDC)') when a separate revenue/turnover/valuation column exists
+      const isSellingOrBuyPrice = lowerH.includes('harga jual') || lowerH.includes('harga beli') ||
+        lowerH.includes('selling price') || lowerH.includes('buy price') ||
+        lowerH === 'harga' || lowerH.startsWith('harga (') || lowerH.startsWith('harga /') ||
+        lowerH === 'price' || lowerH.startsWith('price (') || lowerH.startsWith('price /');
+      const hasSeparateRevenue = isSellingOrBuyPrice && (
+        headers.some(hdr => {
+          const l = (hdr || '').toLowerCase().trim();
+          return l !== lowerH && (
+            l.includes('pendapatan') || l.includes('omset') || l.includes('omzet') || l.includes('revenue') ||
+            l.includes('total penjualan') || l.includes('sales') || l.includes('volume') ||
+            l.includes('nilai') || l.includes('valuasi') || l.includes('valuation') ||
+            l.includes('inventory') || l.includes('persediaan') || l.includes('subtotal') ||
+            (l.includes('total') && !l.includes('unit') && !l.includes('sku'))
+          );
+        }) ||
+        (lowerH.includes('harga beli') && headers.some(h => (h || '').toLowerCase().includes('harga jual'))) ||
+        (lowerH.includes('harga jual') && headers.some(h => (h || '').toLowerCase().includes('harga beli'))) ||
+        headers.some(h => {
+          const lh = (h || '').toLowerCase();
+          return lh.includes('stok') || lh.includes('stock') || lh.includes('qty') || lh.includes('jumlah') || lh.includes('kuantitas');
+        })
+      );
+
+      const isUnitPriceOrRate = isPercentageOrRatio || isExplicitUnitPrice || hasSeparateRevenue ||
         colInf.type === 'date' || colInf.type === 'status' || colInf.type === 'boolean';
+
+      const isDiscountRate = lowerH.includes('diskon') || lowerH.includes('discount');
+      if (isDiscountRate) {
+        totals[h] = '-';
+        return;
+      }
+
+      if (isUnitPriceOrRate && !isPercentageOrRatio) {
+        totals[h] = '-';
+        return;
+      }
 
       const isSummable = !isUnitPriceOrRate && (
         options?.includeSummaryRow === true ||
+        colInf.type === 'currency' ||
+        lowerH.includes('interest') || lowerH.includes('liquidity') || lowerH.includes('turnover') ||
+        lowerH.includes('collateral') || lowerH.includes('tvl') || lowerH.includes('funding') ||
         lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
-        lowerH.includes('cost') || lowerH.includes('hpp') ||
+        lowerH.includes('cost') || lowerH.includes('hpp') || lowerH.includes('modal') ||
         lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
-        lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
-        lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
-        lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
-        lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
+        lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('pendapatan') ||
+        lowerH.includes('penjualan') || lowerH.includes('sales') ||
+        lowerH.includes('biaya') || lowerH.includes('expense') || lowerH.includes('amount') ||
+        lowerH.includes('saldo') || lowerH.includes('balance') || lowerH.includes('cap') ||
+        lowerH.includes('subtotal') || lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
         lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
+        lowerH.includes('terjual') || lowerH.includes('unit') ||
         lowerH.includes('stok') || lowerH.includes('stock') || lowerH.includes('inventory') ||
         lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
         lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') || lowerH.includes('anggaran') ||
@@ -71,7 +135,7 @@ export class SpreadsheetMetrics {
       if (isSummable && (colInf.type === 'currency' || colInf.type === 'number' || colInf.type === 'percentage' || colInf.type === 'formula')) {
         let sum = 0;
         let count = 0;
-        pureDataRows.forEach((r, rIdx) => {
+        evaluatedRows.forEach((r, rIdx) => {
           const raw = r[colIndex];
           if (raw !== null && raw !== undefined && raw !== '') {
             let num: number | undefined;
@@ -141,11 +205,11 @@ export class SpreadsheetMetrics {
         });
         const revenueKey = Object.keys(totals).find(k => {
           const lk = k.toLowerCase();
-          return (lk.includes('revenue') || lk.includes('omset') || lk.includes('penjualan') || lk.includes('sales') || lk.includes('total') || lk.includes('harga')) && k !== profitKey;
+          return (lk.includes('revenue') || lk.includes('pendapatan') || lk.includes('omset') || lk.includes('penjualan') || lk.includes('sales') || lk.includes('total') || lk.includes('harga')) && k !== profitKey;
         });
         const costKey = Object.keys(totals).find(k => {
           const lk = k.toLowerCase();
-          return lk.includes('cost') || lk.includes('hpp') || lk.includes('biaya') || lk.includes('expense');
+          return lk.includes('cost') || lk.includes('hpp') || lk.includes('biaya') || lk.includes('expense') || lk.includes('modal');
         });
 
         if (profitKey && revenueKey && typeof totals[profitKey] === 'number' && typeof totals[revenueKey] === 'number' && (totals[revenueKey] as number) > 0) {

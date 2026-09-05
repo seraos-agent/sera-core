@@ -48,8 +48,8 @@ export function ChatView({
   const checkIfNearBottom = useCallback(() => {
     if (!scrollRef.current) return true;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    // Within 140px of bottom is considered "near bottom"
-    return scrollHeight - scrollTop - clientHeight <= 140;
+    // Within 260px of bottom is considered "near bottom" (absorbs activity card collapse)
+    return scrollHeight - scrollTop - clientHeight <= 260;
   }, []);
 
   const handleScroll = useCallback(() => {

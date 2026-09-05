@@ -169,13 +169,17 @@ export function useSocket(
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
-      console.log("[useSocket] Socket connected to Core.");
+      console.log("[useSocket] Socket connected to Core. Requesting authentication...");
+      // Auto-reauthenticate on connect/reconnect so socket immediately joins the user room
+      // and retrieves missed history without waiting for user action.
+      newSocket.emit("auth:challenge");
     });
 
-    newSocket.on("disconnect", () => {
-      console.log("[useSocket] Socket disconnected from Core.");
+    newSocket.on("disconnect", (reason: string) => {
+      console.log("[useSocket] Socket disconnected from Core:", reason);
       setIsAuthenticated(false);
-      setCurrentActivity(null);
+      // Do NOT immediately discard currentActivity on transient transport disconnects.
+      // The upcoming reconnect handshake or chat:reply / chat:history will cleanly reconcile it.
     });
 
     newSocket.on("auth:success", () => {

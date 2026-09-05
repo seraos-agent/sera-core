@@ -119,10 +119,12 @@ export class SpreadsheetFormulaEngine {
   public static evaluateRowFormula(
     formula: string,
     rowValues: any[],
-    targetRowNum: number
+    targetRowNum: number,
+    depth = 0,
+    visiting: Set<number> = new Set()
   ): number | undefined {
     const trimmed = (formula || '').trim();
-    if (!trimmed) return undefined;
+    if (!trimmed || depth > 8) return undefined;
     const cleanFormula = trimmed.startsWith('=') ? trimmed.substring(1).trim() : trimmed;
 
     // Strip IFERROR wrapper if present: e.g. IFERROR(C2/B2, "-") -> C2/B2
@@ -157,8 +159,44 @@ export class SpreadsheetFormulaEngine {
         num = val;
       } else if (typeof val === 'object' && val !== null && 'result' in val && typeof val.result === 'number') {
         num = val.result;
+      } else if (
+        (typeof val === 'string' && val.trim().startsWith('=')) ||
+        (typeof val === 'object' && val !== null && 'formula' in val)
+      ) {
+        // Multi-step formula dependency! (e.g. Laba = F2 - G2 where F2 = C2*E2 and G2 = D2*E2)
+        if (visiting.has(colIdx)) {
+          // Circular reference detected!
+          resolvable = false;
+          return '0';
+        }
+        visiting.add(colIdx);
+        const subFormula = typeof val === 'string' ? val.trim() : `=${val.formula}`;
+        const subResult = SpreadsheetFormulaEngine.evaluateRowFormula(
+          subFormula,
+          rowValues,
+          targetRowNum,
+          depth + 1,
+          visiting
+        );
+        visiting.delete(colIdx);
+        if (subResult === undefined) {
+          resolvable = false;
+          return '0';
+        }
+        num = subResult;
+        // Cache evaluated result into rowValues[colIdx] for fast subsequent lookups
+        if (typeof val === 'object') {
+          val.result = subResult;
+        } else {
+          rowValues[colIdx] = subResult;
+        }
       } else {
         const clean = String(val).replace(/Rp\s?/gi, '').replace(/\$/g, '').trim();
+        // Never parse raw formula strings as numbers by stripping non-digits
+        if (clean.startsWith('=')) {
+          resolvable = false;
+          return '0';
+        }
         const isPct = clean.includes('%');
         let parsed = parseFloat(clean.replace(/[^0-9.,-]/g, ''));
         // If it has dot thousands: e.g. 150.000

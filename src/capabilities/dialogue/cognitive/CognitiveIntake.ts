@@ -83,7 +83,7 @@ export class CognitiveIntake {
 
     const userFacingThought = hasImages || hasDocs
       ? 'Analyzing attached media and documents...'
-      : 'Evaluating request context and preparing actions...';
+      : 'Reasoning through request...';
 
     return {
       intent: isSimpleGreeting ? 'GREETING' : (isDirectCapabilityInquiry ? 'CAPABILITY_QUERY' : (isConversationalConfirmation ? 'CONFIRMATION' : 'OPERATION')),

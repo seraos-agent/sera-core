@@ -16,16 +16,19 @@ export interface ChartDefinition {
   position?: ChartPosition;
   anchorRow?: number;       // Direct 0-indexed row convenience property
   anchorCol?: number;       // Direct 0-indexed column convenience property
+  anchorCell?: string;      // Direct cell address convenience property (e.g. "K1", "A45")
 }
 
 export interface SpreadsheetOptions {
   sheetName?: string;
   themeColor?: string; // Header background hex without # (default: '0F172A')
-  includeSummaryRow?: boolean; // If true, adds a SUM total row for numeric columns
-  chart?: ChartDefinition;     // Optional native chart configuration
+  includeSummaryRow?: boolean; // If true (or undefined with numeric data), adds automated TOTAL row
+  chart?: ChartDefinition;     // Optional single native chart configuration
+  charts?: ChartDefinition[];   // Optional multiple native chart configurations (Dashboard layout)
   mode?: 'overwrite' | 'append'; // Append to existing table or full overwrite (default: 'overwrite')
   targetSheet?: string;        // Target a specific worksheet tab for append/update
   folder?: string;             // Target subfolder inside SERA Vault (e.g. 'Sales & Marketplace')
+  allowEmpty?: boolean;        // If true, allows creating a spreadsheet with 0 data rows (empty template)
 }
 
 export interface SheetDefinition {

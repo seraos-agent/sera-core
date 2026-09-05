@@ -340,14 +340,12 @@ export class DialogueEngine {
 
       console.log(`[DialogueEngine] Cognitive Intake: domains=[${intakeResult.domains.join(', ')}] strategy=${intakeResult.executionStrategy} thought="${intakeResult.userFacingThought}"`);
 
-      // Turn start: Thinking phase with active Analyzing sub-step
+      // Turn start: Thinking phase
       this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
         content: 'Thinking',
         phase: 'THINKING',
         subText: 'Reasoning through request...',
-        cognitiveSteps: [
-          { title: 'Analyzing', detail: 'Evaluating request context and actions...', status: 'active' }
-        ],
+        cognitiveSteps: [],
         startTime: turnStartTime
       });
 

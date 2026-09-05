@@ -116,6 +116,16 @@ export class SpreadsheetEngine {
     return SpreadsheetChartBuilder.buildGoogleSheetsChartRequest(sheetId, numRows, headers, rows, chartDef);
   }
 
+  public static buildMultiGoogleSheetsChartRequests(
+    sheetId: number,
+    numRows: number,
+    headers: string[],
+    rows: any[][],
+    charts: ChartDefinition[]
+  ): any[] {
+    return SpreadsheetChartBuilder.buildMultiGoogleSheetsChartRequests(sheetId, numRows, headers, rows, charts);
+  }
+
   public static parseCellAddress(address: string = 'G2'): { rowIndex: number; columnIndex: number } {
     return SpreadsheetChartBuilder.parseCellAddress(address);
   }

@@ -403,10 +403,26 @@ export class SeraAgentInstance {
                     title: { type: 'string' },
                     categoryColumn: { type: 'number', description: '0-indexed column for categories/labels (0 = Column A, 1 = Column B, etc.)' },
                     valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column(s) for series values (e.g. [1, 2] for Columns B and C)' },
+                    anchorCell: { type: 'string', description: 'Cell address to anchor chart (e.g. "K1" for side-by-side, "A45" for below-table)' },
                     anchorRow: { type: 'number', description: '0-indexed starting row to place chart (e.g. 0 to place beside table)' },
                     anchorCol: { type: 'number', description: '0-indexed starting column to place chart (e.g. 5 for Column F)' }
                   },
                   required: ['type']
+                },
+                charts: {
+                  type: 'array',
+                  description: 'Optional array of multiple chart configurations for dashboard layouts on a single sheet',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
+                      title: { type: 'string' },
+                      categoryColumn: { type: 'number' },
+                      valueColumns: { type: 'array', items: { type: 'number' } },
+                      anchorCell: { type: 'string', description: 'Cell address to anchor chart (e.g. "K1", "K18", "A45")' }
+                    },
+                    required: ['type']
+                  }
                 }
               }
             }

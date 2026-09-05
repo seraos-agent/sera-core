@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GoogleSheetsService } from '../src/capabilities/google-drive/GoogleSheetsService';
 import { GoogleSheetsFormatter } from '../src/capabilities/google-drive/spreadsheet/GoogleSheetsFormatter';
+import { SpreadsheetChartBuilder } from '../src/capabilities/google-drive/spreadsheet/SpreadsheetChartBuilder';
+import { SpreadsheetEngine } from '../src/capabilities/google-drive/SpreadsheetEngine';
+import { ChartDefinition } from '../src/capabilities/google-drive/spreadsheet/spreadsheet.types';
 import { GoogleDriveCapability } from '../src/capabilities/google-drive/GoogleDriveCapability';
 
 describe('GoogleSheetsFormatter', () => {
@@ -21,16 +24,16 @@ describe('GoogleSheetsFormatter', () => {
 
   it('resolves proper number and currency formats for IDR, USD, %, and numbers', () => {
     const idrFmt = GoogleSheetsFormatter.resolveNumberFormat({ type: 'currency', currency: 'IDR' });
-    expect(idrFmt).toEqual({ type: 'CURRENCY', pattern: '"Rp"#,##0' });
+    expect(idrFmt).toEqual({ type: 'CURRENCY', pattern: '"Rp"#,##0;("Rp"#,##0);"-"' });
 
     const usdFmt = GoogleSheetsFormatter.resolveNumberFormat({ type: 'currency', currency: 'USD' });
-    expect(usdFmt).toEqual({ type: 'CURRENCY', pattern: '$#,##0.00' });
+    expect(usdFmt).toEqual({ type: 'CURRENCY', pattern: '$#,##0.00;($#,##0.00);"-"' });
 
     const pctFmt = GoogleSheetsFormatter.resolveNumberFormat({ type: 'percentage' });
-    expect(pctFmt).toEqual({ type: 'PERCENT', pattern: '0.0%' });
+    expect(pctFmt).toEqual({ type: 'PERCENT', pattern: '0.0%;-0.0%;"-"' });
 
     const numFmt = GoogleSheetsFormatter.resolveNumberFormat({ type: 'number' });
-    expect(numFmt).toEqual({ type: 'NUMBER', pattern: '#,##0.00' });
+    expect(numFmt).toEqual({ type: 'NUMBER', pattern: '#,##0.00;(#,##0.00);"-"' });
   });
 
   it('builds comprehensive Google Sheets API formatting requests', () => {
@@ -324,3 +327,127 @@ describe('GoogleDriveCapability Native Sheets Integration', () => {
     expect(updatedPayload.values).toEqual([[500000]]);
   });
 });
+
+describe('Google Sheets Native Summary & Multi-Chart Engine', () => {
+  const cryptoHeaders = [
+    'Rank',
+    'Token',
+    'Harga (USDC)',
+    'Perubahan 24h (%)',
+    'Spread (%)',
+    'Best Bid (USDC)',
+    'Best Ask (USDC)',
+    'Volume 24h (USDC)',
+    'Open Interest (USDC)'
+  ];
+
+  const mockTokens = [
+    'BTC', 'ETH', 'HYPE', 'ZEC', 'PONS', 'PURR', 'SOL', 'MON', 'SUI', 'AVAX',
+    'LINK', 'DOGE', 'XRP', 'ADA', 'BNB', 'NEAR', 'APT', 'FET', 'TAO', 'RENDER',
+    'PEPE', 'WIF', 'BONK', 'FLOKI', 'SHIB', 'ARB', 'OP', 'MATIC', 'INJ', 'TIA',
+    'SEI', 'KAS', 'AAVE', 'MKR', 'CRV', 'UNI', 'LDO', 'PENDLE', 'ENA', 'PYTH'
+  ];
+
+  const cryptoRows: any[][] = mockTokens.map((tok, i) => [
+    i + 1,
+    tok,
+    1000 + i * 50,
+    0.025,
+    0.001,
+    999.5 + i * 50,
+    1000.5 + i * 50,
+    50000000 / (i + 1),
+    10000000 / (i + 1)
+  ]);
+
+  it('generates GAAP compliant native summary row for 40-token crypto dataset', () => {
+    const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(cryptoHeaders, cryptoRows);
+    const summaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(cryptoHeaders, normalizedRows);
+
+    expect(summaryRow).not.toBeNull();
+    expect(summaryRow![0]).toBe('Total');
+    expect(summaryRow![1]).toBe('-');
+    expect(summaryRow![2]).toBe('-'); // Unit price should not be summed
+    expect(summaryRow![3]).toContain('AVERAGE');
+    expect(summaryRow![4]).toContain('AVERAGE');
+    expect(summaryRow![5]).toBe('-'); // Bid should not be summed
+    expect(summaryRow![6]).toBe('-'); // Ask should not be summed
+    expect(summaryRow![7]).toBe('=SUM(H2:H41)'); // Volume 24h summed
+    expect(summaryRow![8]).toBe('=SUM(I2:I41)'); // Open Interest summed
+
+    const rowsWithSummary = [...normalizedRows, summaryRow!];
+    const formatReqs = GoogleSheetsFormatter.buildFormattingRequests(0, cryptoHeaders, rowsWithSummary);
+
+    // Verify Slate-100 bg format request on row 41
+    const summaryBgReq = formatReqs.find((r: any) =>
+      r.repeatCell?.range?.startRowIndex === 41 &&
+      r.repeatCell?.range?.endRowIndex === 42 &&
+      r.repeatCell?.cell?.userEnteredFormat?.backgroundColor?.red > 0.9
+    );
+    expect(summaryBgReq).toBeDefined();
+
+    // Verify accounting double bottom border
+    const summaryBorderReq = formatReqs.find((r: any) =>
+      r.updateBorders?.range?.startRowIndex === 41 &&
+      r.updateBorders?.bottom?.style === 'DOUBLE'
+    );
+    expect(summaryBorderReq).toBeDefined();
+  });
+
+  it('infers COLUMN chart for large datasets (>10 rows) instead of truncating PIE chart', () => {
+    const autoChart = SpreadsheetChartBuilder.inferAutomaticChart(cryptoHeaders, cryptoRows);
+    expect(autoChart).toBeDefined();
+    expect(autoChart!.type).toBe('COLUMN');
+    expect(autoChart!.valueColumns).toContain(7); // Volume column
+  });
+
+  it('bounds explicit PIE chart to Top 10 rows when dataset exceeds 10 rows', () => {
+    const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(cryptoHeaders, cryptoRows);
+    const summaryRow = GoogleSheetsFormatter.generateNativeSummaryRow(cryptoHeaders, normalizedRows);
+    const rowsWithSummary = [...normalizedRows, summaryRow!];
+
+    const pieDef: ChartDefinition = {
+      type: 'PIE',
+      title: 'Market Share',
+      categoryColumn: 1,
+      valueColumns: [7]
+    };
+
+    const req = SpreadsheetChartBuilder.buildGoogleSheetsChartRequest(0, rowsWithSummary.length, cryptoHeaders, rowsWithSummary, pieDef);
+    const domainSource = req.addChart.chart.spec.pieChart.domain.sourceRange.sources[0];
+    expect(domainSource.endRowIndex).toBe(11); // Top 10 data items (rows 2..11)
+    expect(req.addChart.chart.spec.title).toContain('(Top 10)');
+  });
+
+  it('respects explicit anchorCell positioning', () => {
+    const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(cryptoHeaders, cryptoRows);
+    const chartDef: ChartDefinition = {
+      type: 'COLUMN',
+      title: 'Volume Analysis',
+      categoryColumn: 1,
+      valueColumns: [7],
+      anchorCell: 'K5'
+    };
+
+    const req = SpreadsheetChartBuilder.buildGoogleSheetsChartRequest(0, normalizedRows.length, cryptoHeaders, normalizedRows, chartDef);
+    const anchor = req.addChart.chart.position.overlayPosition.anchorCell;
+    expect(anchor.rowIndex).toBe(4); // row 5 is 0-indexed 4
+    expect(anchor.columnIndex).toBe(10); // col K is 0-indexed 10
+  });
+
+  it('generates multi-chart non-overlapping dashboard layouts', () => {
+    const normalizedRows = GoogleSheetsFormatter.normalizeRowsForNativeSheetsApi(cryptoHeaders, cryptoRows);
+    const charts: ChartDefinition[] = [
+      { type: 'COLUMN', title: 'Volume', categoryColumn: 1, valueColumns: [7] },
+      { type: 'LINE', title: 'Open Interest', categoryColumn: 1, valueColumns: [8] }
+    ];
+
+    const reqs = SpreadsheetEngine.buildMultiGoogleSheetsChartRequests(0, normalizedRows.length, cryptoHeaders, normalizedRows, charts);
+    expect(reqs.length).toBe(2);
+
+    const chart0Row = reqs[0].addChart.chart.position.overlayPosition.anchorCell.rowIndex;
+    const chart1Row = reqs[1].addChart.chart.position.overlayPosition.anchorCell.rowIndex;
+    expect(chart1Row).toBeGreaterThan(chart0Row);
+  });
+});
+

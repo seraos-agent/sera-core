@@ -121,19 +121,33 @@ export class SpreadsheetLayoutBuilder {
     const columnInferences = SpreadsheetFormatter.inferColumnInferences(headers, pureDataRows);
     const rowOffset = isHero ? 15 : 0;
 
-    // Pre-identify Revenue/Omset and Cost/HPP columns for Margin computation
+    // Pre-identify Profit, Revenue/Omset and Cost/HPP columns for Margin computation (prioritize aggregate totals over unit prices)
     const profitColIdx = headers.findIndex(h => {
       const lh = h.toLowerCase();
       return lh.includes('profit') || lh.includes('laba') || lh.includes('net');
     });
-    const revColIdx = headers.findIndex(h => {
+
+    let revColIdx = headers.findIndex(h => {
       const lh = h.toLowerCase();
-      return (lh.includes('revenue') || lh.includes('omset') || lh.includes('penjualan') || lh.includes('sales') || lh.includes('harga') || lh.includes('price')) && h !== headers[profitColIdx];
+      return (lh.includes('revenue') || lh.includes('pendapatan') || lh.includes('omset') || lh.includes('penjualan') || lh.includes('sales') || (lh.includes('total') && !lh.includes('unit') && !lh.includes('qty'))) && h !== headers[profitColIdx];
     });
-    const costColIdx = headers.findIndex(h => {
+    if (revColIdx === -1) {
+      revColIdx = headers.findIndex(h => {
+        const lh = h.toLowerCase();
+        return (lh.includes('harga') || lh.includes('price')) && h !== headers[profitColIdx];
+      });
+    }
+
+    let costColIdx = headers.findIndex(h => {
       const lh = h.toLowerCase();
-      return lh.includes('cost') || lh.includes('hpp') || lh.includes('biaya') || lh.includes('expense');
+      return (lh.includes('hpp') || (lh.includes('cost') && !lh.includes('unit')) || lh.includes('biaya') || lh.includes('expense') || (lh.includes('modal') && !lh.includes('unit') && !lh.includes('satuan')));
     });
+    if (costColIdx === -1) {
+      costColIdx = headers.findIndex(h => {
+        const lh = h.toLowerCase();
+        return lh.includes('cost') || lh.includes('modal');
+      });
+    }
 
     // 2. Add Pure Data Rows (Strictly excludes Total row)
     pureDataRows.forEach((rowValues, rowIndex) => {
@@ -378,24 +392,62 @@ export class SpreadsheetLayoutBuilder {
           };
         };
 
-        const isUnitPriceOrRate = lowerH.includes('unit price') || lowerH.includes('unit_price') ||
+        // Explicit unit prices and rates should never be summed
+        const isExplicitUnitPrice =
+          lowerH.includes('unit price') || lowerH.includes('unit_price') ||
           lowerH.includes('harga satuan') || lowerH.includes('harga_satuan') ||
-          lowerH.includes('kurs') || (lowerH.includes('rate') && !lowerH.includes('revenue') && !lowerH.includes('amount') && !lowerH.includes('total') && !lowerH.includes('price')) ||
-          lowerH.includes('fee_per') ||
-          (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH)) ||
-          colInf.type === 'boolean';
+          lowerH.includes('modal unit') || lowerH.includes('modal satuan') ||
+          lowerH.includes('unit cost') || lowerH.includes('cost per unit') ||
+          lowerH.includes('price per unit') || lowerH.includes('price/unit') ||
+          lowerH.includes('harga/unit') || lowerH.includes('harga per unit') ||
+          lowerH.includes('harga unit') || lowerH.includes('fee_per') || lowerH.includes('fee per') ||
+          lowerH.includes('rate per') || lowerH.includes('kurs') ||
+          lowerH.includes('bid') || lowerH.includes('ask') || lowerH.includes('mid') ||
+          (/\b(id|no|rank|kode|ticker)\b/i.test(lowerH));
+
+        // Contextual unit price (e.g. 'Harga Jual' / 'Selling Price' / 'Harga Beli' / 'Harga (USDC)') when a separate revenue/turnover/valuation column exists
+        const isSellingOrBuyPrice = lowerH.includes('harga jual') || lowerH.includes('harga beli') ||
+          lowerH.includes('selling price') || lowerH.includes('buy price') ||
+          lowerH === 'harga' || lowerH.startsWith('harga (') || lowerH.startsWith('harga /') ||
+          lowerH === 'price' || lowerH.startsWith('price (') || lowerH.startsWith('price /');
+        const hasSeparateRevenue = isSellingOrBuyPrice && (
+          headers.some(hdr => {
+            const l = (hdr || '').toLowerCase().trim();
+            return l !== lowerH && (
+              l.includes('pendapatan') || l.includes('omset') || l.includes('omzet') || l.includes('revenue') ||
+              l.includes('total penjualan') || l.includes('sales') || l.includes('volume') ||
+              l.includes('nilai') || l.includes('valuasi') || l.includes('valuation') ||
+              l.includes('inventory') || l.includes('persediaan') || l.includes('subtotal') ||
+              (l.includes('total') && !l.includes('unit') && !l.includes('sku'))
+            );
+          }) ||
+          (lowerH.includes('harga beli') && headers.some(h => (h || '').toLowerCase().includes('harga jual'))) ||
+          (lowerH.includes('harga jual') && headers.some(h => (h || '').toLowerCase().includes('harga beli'))) ||
+          headers.some(h => {
+            const lh = (h || '').toLowerCase();
+            return lh.includes('stok') || lh.includes('stock') || lh.includes('qty') || lh.includes('jumlah') || lh.includes('kuantitas');
+          })
+        );
+
+        const isUnitPriceOrRate = isExplicitUnitPrice || hasSeparateRevenue || colInf.type === 'boolean';
 
         const isSummable = !isUnitPriceOrRate && (
           options?.includeSummaryRow === true ||
           existingSummaryRow !== null ||
+          colInf.type === 'currency' ||
+          lowerH.includes('interest') || lowerH.includes('liquidity') || lowerH.includes('turnover') ||
+          lowerH.includes('collateral') || lowerH.includes('tvl') || lowerH.includes('funding') ||
           lowerH.includes('price') || lowerH.includes('harga') || lowerH.includes('fee') ||
-          lowerH.includes('cost') || lowerH.includes('hpp') ||
+          lowerH.includes('cost') || lowerH.includes('hpp') || lowerH.includes('modal') ||
           lowerH.includes('volume') || lowerH.includes('nominal') || lowerH.includes('total') ||
-          lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('biaya') ||
-          lowerH.includes('expense') || lowerH.includes('amount') || lowerH.includes('saldo') ||
-          lowerH.includes('balance') || lowerH.includes('cap') || lowerH.includes('subtotal') ||
-          lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
+          lowerH.includes('omset') || lowerH.includes('revenue') || lowerH.includes('pendapatan') ||
+          lowerH.includes('penjualan') || lowerH.includes('sales') ||
+          lowerH.includes('biaya') || lowerH.includes('expense') || lowerH.includes('amount') ||
+          lowerH.includes('saldo') || lowerH.includes('balance') || lowerH.includes('cap') ||
+          lowerH.includes('subtotal') || lowerH.includes('laba') || lowerH.includes('profit') || lowerH.includes('loss') ||
           lowerH.includes('qty') || lowerH.includes('quantity') || lowerH.includes('jumlah') ||
+          lowerH.includes('terjual') || lowerH.includes('unit') ||
+          lowerH.includes('stok') || lowerH.includes('stock') || lowerH.includes('inventory') ||
           lowerH.includes('count') || lowerH.includes('porsi') || lowerH.includes('share') ||
           lowerH.includes('bobot') || lowerH.includes('alokasi') || lowerH.includes('budget') || lowerH.includes('anggaran') ||
           lowerH.includes('spend') || lowerH.includes('actual') || lowerH.includes('aktual') || lowerH.includes('target') ||
@@ -405,8 +457,8 @@ export class SpreadsheetLayoutBuilder {
         if (colIndex === 0) {
           cell.value = existingSummaryRow?.[0] || 'Total';
           cell.alignment = { vertical: 'middle', horizontal: 'left' };
-        } else if (colInf.isMixedCurrency) {
-          // Multi-currency column: DO NOT blindly aggregate mixed currencies!
+        } else if (colInf.isMixedCurrency || (isUnitPriceOrRate && !isPercentageOrRatio)) {
+          // Multi-currency or Unit Price/Rate: DO NOT aggregate unit prices or mixed currencies!
           cell.value = '-';
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
         } else if (colInf.type === 'text' || colInf.type === 'status' || colInf.type === 'date' || colInf.type === 'boolean') {

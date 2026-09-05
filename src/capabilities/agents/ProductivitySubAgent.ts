@@ -31,9 +31,25 @@ export class ProductivitySubAgent implements ISubAgent {
                     type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'], description: 'Chart visualization type' },
                     title: { type: 'string', description: 'Title displayed above the chart' },
                     categoryColumn: { type: 'number', description: '0-indexed column number containing category labels (e.g. 0 for Coin name)' },
-                    valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column number(s) containing numeric data series (e.g. [2] for Market Cap)' }
+                    valueColumns: { type: 'array', items: { type: 'number' }, description: '0-indexed column number(s) containing numeric data series (e.g. [2] for Market Cap)' },
+                    anchorCell: { type: 'string', description: 'Cell address to anchor chart (e.g. "K1" for side-by-side, "A45" for below-table)' }
                   },
                   required: ['type']
+                },
+                charts: {
+                  type: 'array',
+                  description: 'Optional array of multiple charts for dashboard layouts on a single sheet',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string', enum: ['COLUMN', 'BAR', 'LINE', 'PIE', 'AREA'] },
+                      title: { type: 'string' },
+                      categoryColumn: { type: 'number' },
+                      valueColumns: { type: 'array', items: { type: 'number' } },
+                      anchorCell: { type: 'string' }
+                    },
+                    required: ['type']
+                  }
                 }
               }
             }
@@ -71,9 +87,9 @@ export class ProductivitySubAgent implements ISubAgent {
         parameters: {
           type: 'object',
           properties: {
-            fileId: { type: 'string', description: 'Google Drive file ID (or filename)' }
-          },
-          required: ['fileId']
+            fileId: { type: 'string', description: 'Google Drive file ID or file title/name' },
+            filename: { type: 'string', description: 'Alternative file title or name' }
+          }
         }
       },
       {

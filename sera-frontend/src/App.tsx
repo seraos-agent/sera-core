@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { THEME, FONT_LINK_ID } from "./theme";
 import { useWallet, INITIAL_WALLET } from "./hooks/useWallet";
 import { useSocket } from "./hooks/useSocket";
@@ -142,6 +142,9 @@ function InnerApp() {
 
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
+  const signMessageAsyncRef = useRef(signMessageAsync);
+  signMessageAsyncRef.current = signMessageAsync;
+  const lastAccountKeyRef = useRef<string | null>(null);
   const { open } = useAppKit();
   const [isBypassed, setIsBypassed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -181,16 +184,20 @@ function InnerApp() {
   }, [isBypassed, socket]);
 
   useEffect(() => {
-    // Kapan pun address/isBypassed berubah, langsung bersihkan state UI secara lokal (Optimistic Clear)
-    // agar pengguna tidak melihat sisa chat dari akun sebelumnya.
-    setMessages([]);
-    setWalletState({
+    const currentAccountKey = isBypassed ? 'dev-bypassed' : (address?.toLowerCase() || 'disconnected');
+    // Only clear messages when switching to a DIFFERENT account, never on reconnect/re-render
+    if (lastAccountKeyRef.current !== null && lastAccountKeyRef.current !== currentAccountKey) {
+      setMessages([]);
+      setCurrentView("chat");
+    }
+    lastAccountKeyRef.current = currentAccountKey;
+
+    setWalletState(prev => ({
       ...INITIAL_WALLET,
       address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
       fullAddress: address || INITIAL_WALLET.fullAddress,
-      syncing: true,
-    });
-    setCurrentView("chat"); // Selalu kembalikan pengguna ke halaman chat default
+      syncing: isConnected && !prev.address.includes('...'),
+    }));
 
     if (socket) {
       const requestChallenge = async (data: { message: string }) => {
@@ -206,7 +213,7 @@ function InnerApp() {
         }
 
         try {
-          const signature = await signMessageAsync({ account: address, message: data.message });
+          const signature = await signMessageAsyncRef.current({ account: address, message: data.message });
           socket.emit("auth:login", { address, message: data.message, signature });
         } catch {
           // The server keeps this socket unauthenticated until the user signs.
@@ -266,7 +273,7 @@ function InnerApp() {
         socket.off('connector:status_changed', setActiveConnectors);
       };
     }
-  }, [socket, isConnected, address, isBypassed, setMessages, signMessageAsync, setWalletState]);
+  }, [socket, isConnected, address, isBypassed, setMessages, setWalletState]);
 
   if (!isMounted) return null;
 

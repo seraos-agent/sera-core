@@ -249,6 +249,29 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Reads values from a given range with optional valueRenderOption ('FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA').
+   */
+  public async getValues(
+    token: string,
+    spreadsheetId: string,
+    range: string,
+    valueRenderOption: 'FORMATTED_VALUE' | 'UNFORMATTED_VALUE' | 'FORMULA' = 'FORMATTED_VALUE'
+  ): Promise<any[][]> {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+      range
+    )}?valueRenderOption=${valueRenderOption}`;
+    const res = await this.fetchWithRetry(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Google Sheets API getValues failed for range "${range}": ${errText}`);
+    }
+    const data = (await res.json()) as any;
+    return data.values || [];
+  }
+
+  /**
    * Appends values to the end of a given range / table.
    */
   public async appendValues(

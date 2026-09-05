@@ -159,7 +159,7 @@ export class SpreadsheetFormatter {
         if (type === 'percent' || type === 'percentage') {
           cell.numFmt = rawVal.decimals ? `0.${'0'.repeat(rawVal.decimals)}%` : (colInf.numFmt || '0.0%');
         } else if (type === 'currency') {
-          cell.numFmt = rawVal.numFmt || colInf.numFmt || 'Rp #,##0';
+          cell.numFmt = rawVal.numFmt || colInf.numFmt || '#,##0.00';
         } else if (type === 'number') {
           cell.numFmt = rawVal.decimals ? `#,##0.${'0'.repeat(rawVal.decimals)}` : (colInf.numFmt || '#,##0');
         } else {
@@ -186,7 +186,7 @@ export class SpreadsheetFormatter {
         }
         cell.value = cellObj;
         if (colInf.type === 'currency') {
-          cell.numFmt = colInf.numFmt || 'Rp #,##0';
+          cell.numFmt = colInf.numFmt || '#,##0.00';
         } else if (colInf.type === 'percentage') {
           cell.numFmt = colInf.numFmt || '0.0%';
         } else if (colInf.type === 'number') {
@@ -310,8 +310,92 @@ export class SpreadsheetFormatter {
     return colInf.numFmt || '#,##0.00';
   }
 
+  /**
+   * Phase 0: Scans entire table headers + data to determine dominant currency context.
+   * Resolves stablecoins (USDC, USDT) to USD base to avoid artificial conflict.
+   * Returns the ISO currency code (e.g. 'USD', 'IDR', 'EUR') or null if ambiguous/unsupported.
+   */
+  public static detectTableCurrencyContext(
+    headers: string[], 
+    rows: any[][]
+  ): string | null {
+    const signals = new Map<string, number>();
+
+    const recordSignal = (code: string, weight: number) => {
+      // Normalize stablecoins to USD context for table-level dominance
+      const normalizedCode = (code === 'USDC' || code === 'USDT' || code === 'DAI') ? 'USD' : code;
+      signals.set(normalizedCode, (signals.get(normalizedCode) || 0) + weight);
+    };
+
+    // Signal 1: Scan ALL headers for explicit parenthetical hints or currency indicators
+    for (const h of headers) {
+      const meta = CurrencyRegistry.detectFromText(h);
+      if (meta) {
+        recordSignal(meta.code, 10);
+      }
+    }
+
+    // Signal 2: Scan data values (sample first 10 rows) for currency symbols
+    const sampleRows = Array.isArray(rows) ? rows.slice(0, 10) : [];
+    for (const row of sampleRows) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row) {
+        if (cell == null || cell === '') continue;
+        const str = String(cell).trim();
+        if (str.startsWith('=')) continue;
+        if (typeof cell === 'object' && 'formula' in cell) continue;
+        const meta = CurrencyRegistry.detectFromText(str);
+        if (meta) {
+          recordSignal(meta.code, 3);
+        }
+      }
+    }
+
+    // Signal 3: Crypto/Trading context in data (asset column values)
+    const CRYPTO_TICKERS = new Set([
+      'BTC', 'ETH', 'SOL', 'HYPE', 'SUI', 'DOGE', 'XRP', 'ADA', 'AVAX',
+      'MATIC', 'DOT', 'LINK', 'UNI', 'AAVE', 'ARB', 'OP', 'APT', 'SEI',
+      'TIA', 'JUP', 'WIF', 'PEPE', 'BONK', 'ONDO', 'NEAR', 'RENDER', 'INJ'
+    ]);
+    let hasCrypto = false;
+    for (const row of sampleRows) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row) {
+        if (typeof cell === 'string' && CRYPTO_TICKERS.has(cell.trim().toUpperCase())) {
+          hasCrypto = true;
+          break;
+        }
+      }
+      if (hasCrypto) break;
+    }
+    if (hasCrypto) {
+      recordSignal('USD', 8);
+    }
+
+    // Signal 4: Indonesian business context (keywords in headers without foreign currency)
+    const allHeaders = headers.join(' ').toLowerCase();
+    const indonesianKeywords = [
+      'omset', 'penjualan', 'biaya', 'laba', 'rugi', 'saldo',
+      'gaji', 'upah', 'tagihan', 'piutang', 'hutang', 'kas'
+    ];
+    const hasIndonesian = indonesianKeywords.some(k => allHeaders.includes(k));
+    if (hasIndonesian && !signals.has('USD') && !signals.has('EUR') && !signals.has('GBP') && !signals.has('JPY')) {
+      recordSignal('IDR', 5);
+    }
+
+    if (signals.size === 0) return null;
+
+    // Winner: highest score, but only if unambiguous
+    const sorted = [...signals.entries()].sort((a, b) => b[1] - a[1]);
+    if (sorted.length === 1) return sorted[0][0];
+    if (sorted[0][1] >= sorted[1][1] * 1.5) return sorted[0][0];
+    return null;
+  }
+
   public static inferColumnInferences(headers: string[], rows: any[][]): ColumnInference[] {
-    // 0. Cross-Column Currency Context Discovery:
+    // Phase 0: Detect table-level dominant currency context
+    const tableCurrency = this.detectTableCurrencyContext(headers, rows);
+
     // Identify if the dataset has a dedicated Currency/Valas column with mixed currencies
     let currencyColIdx = -1;
     const tableCurrencies = new Set<string>();
@@ -409,8 +493,8 @@ export class SpreadsheetFormatter {
         lowerHeader.includes('alokasi') ||
         lowerHeader.includes('allocation') ||
         lowerHeader.includes('bobot') ||
-        lowerHeader.includes('rasio') ||
-        lowerHeader.includes('ratio') ||
+        /\brasio\b/i.test(lowerHeader) ||
+        /\bratio\b/i.test(lowerHeader) ||
         lowerHeader.includes('perubahan') ||
         lowerHeader.includes('change') ||
         lowerHeader.includes('growth') ||
@@ -429,13 +513,13 @@ export class SpreadsheetFormatter {
         lowerHeader.includes('interest rate') ||
         lowerHeader.includes('tax rate')
       ) {
-        // High-precision 3-decimal formatting for Spread % or slippage/bps
+        // High-precision 4-decimal formatting for Spread % or slippage/bps
         if (
           lowerHeader.includes('spread') ||
           lowerHeader.includes('slippage') ||
           lowerHeader.includes('bps')
         ) {
-          return { type: 'percentage', numFmt: '0.000%' };
+          return { type: 'percentage', numFmt: '0.0000%' };
         }
         // Professional 2-decimal formatting for portfolio / volume ratios
         if (
@@ -443,8 +527,8 @@ export class SpreadsheetFormatter {
           lowerHeader.includes('porsi') ||
           lowerHeader.includes('share') ||
           lowerHeader.includes('proporsi') ||
-          lowerHeader.includes('rasio') ||
-          lowerHeader.includes('ratio') ||
+          /\brasio\b/i.test(lowerHeader) ||
+          /\bratio\b/i.test(lowerHeader) ||
           lowerHeader.includes('weight') ||
           lowerHeader.includes('allocation') ||
           lowerHeader.includes('alokasi')
@@ -468,7 +552,7 @@ export class SpreadsheetFormatter {
         return { type: 'number', numFmt: '#,##0.0000' };
       }
 
-      // 3. Detect explicit currency directly from header (e.g. "Total (USD)", "Harga (Rp)", "Nominal (SAR)")
+      // 3. Detect explicit currency directly from header (e.g. "Total (USD)", "Harga (Rp)", "Nominal (SAR)", "Bid (USDC)")
       const headerMeta = CurrencyRegistry.detectFromText(header);
       if (headerMeta && (
         lowerHeader.includes('harga') || lowerHeader.includes('price') ||
@@ -480,7 +564,15 @@ export class SpreadsheetFormatter {
         lowerHeader.includes('biaya') || lowerHeader.includes('laba') ||
         lowerHeader.includes('profit') || lowerHeader.includes('anggaran') ||
         lowerHeader.includes('budget') || lowerHeader.includes('aktual') ||
-        lowerHeader.includes('selisih') || lowerHeader.includes('valas')
+        lowerHeader.includes('selisih') || lowerHeader.includes('valas') ||
+        lowerHeader.includes('bid') || lowerHeader.includes('ask') ||
+        lowerHeader.includes('mid') || lowerHeader.includes('offer') ||
+        lowerHeader.includes('vwap') || lowerHeader.includes('twap') ||
+        lowerHeader.includes('mark') || lowerHeader.includes('open') ||
+        lowerHeader.includes('high') || lowerHeader.includes('low') ||
+        lowerHeader.includes('close') || lowerHeader.includes('vol') ||
+        lowerHeader.includes('volume') || lowerHeader.includes('spot') ||
+        lowerHeader.includes('cap')
       )) {
         return {
           type: 'currency',
@@ -531,10 +623,22 @@ export class SpreadsheetFormatter {
         }
       }
 
-      // 5. Generic currency / financial amount keywords
+      // 5. Generic currency / financial amount keywords — USE TABLE CONTEXT instead of hardcoded IDR
       if (
         lowerHeader.includes('price') ||
         lowerHeader.includes('cost') ||
+        lowerHeader.includes('bid') ||
+        lowerHeader.includes('ask') ||
+        lowerHeader.includes('mid') ||
+        lowerHeader.includes('offer') ||
+        lowerHeader.includes('vwap') ||
+        lowerHeader.includes('twap') ||
+        lowerHeader.includes('mark') ||
+        lowerHeader.includes('open') ||
+        lowerHeader.includes('high') ||
+        lowerHeader.includes('low') ||
+        lowerHeader.includes('close') ||
+        lowerHeader.includes('spot') ||
         lowerHeader.includes('diskon') ||
         lowerHeader.includes('discount') ||
         lowerHeader.includes('amount') ||
@@ -557,7 +661,15 @@ export class SpreadsheetFormatter {
         lowerHeader.includes('profit') ||
         lowerHeader.includes('saldo')
       ) {
-        return { type: 'currency', currency: 'IDR', numFmt: 'Rp #,##0' };
+        if (tableCurrency) {
+          const meta = CurrencyRegistry.lookup(tableCurrency);
+          return {
+            type: 'currency',
+            currency: meta?.code || tableCurrency,
+            numFmt: meta?.numFmt || '#,##0.00'
+          };
+        }
+        return { type: 'number', numFmt: '#,##0.00' };
       }
 
       if (lowerHeader.includes('date') || lowerHeader.includes('time')) {

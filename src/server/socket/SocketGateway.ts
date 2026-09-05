@@ -157,8 +157,8 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         return;
       }
 
-      msgIdCounter = Math.max(Date.now(), msgIdCounter + 1);
-      const msgId = msgIdCounter;
+      const msgId = payload.id || Math.max(Date.now(), msgIdCounter + 1);
+      msgIdCounter = Math.max(msgIdCounter, msgId);
       const currentObs = [...socketObservationBuffer];
       socketObservationBuffer = [];
       sessionCognitiveSteps = [];
@@ -179,16 +179,19 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         hadTools,
       };
 
+      // Guaranteed direct delivery to active connection
+      socket.emit('chat:reply', replyData);
+      socket.emit('chat:activity', null);
+
+      // Multi-tab/device broadcast to other sockets in the user room
       if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
-        io.to(`user:${socket.data.sessionId}`).emit('chat:reply', replyData);
-        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
-      } else {
-        socket.emit('chat:reply', replyData);
-        socket.emit('chat:activity', null);
+        socket.broadcast.to(`user:${socket.data.sessionId}`).emit('chat:reply', replyData);
+        socket.broadcast.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
       }
 
       const existingMsgs = instance.chatHistoryStore.getUiMessages();
-      if (!existingMsgs.some((m: any) => m.id === msgId)) {
+      const alreadySaved = existingMsgs.some((m: any) => m.id === msgId || (m.role === 'agent' && m.content === payload.text && Math.abs((m.id || 0) - msgId) < 5000));
+      if (!alreadySaved) {
         instance.chatHistoryStore.appendUiMessage({
           id: msgId,
           role: 'agent',
@@ -225,10 +228,10 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         startTime: payload.startTime,
       };
 
+      // Guaranteed direct delivery to active connection
+      socket.emit('chat:activity', activityData);
       if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
-        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', activityData);
-      } else {
-        socket.emit('chat:activity', activityData);
+        socket.broadcast.to(`user:${socket.data.sessionId}`).emit('chat:activity', activityData);
       }
     };
 
@@ -789,10 +792,9 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     socket.on('chat:cancel', () => {
       if (!requireAuthenticatedSession(socket, 'chat:cancel', instance?.eventBus)) return;
       console.log(`[Server] Received chat:cancel → dispatching DIALOGUE_USER_CANCELLED for ${socket.data.sessionId}`);
+      socket.emit('chat:activity', null);
       if (socket.data.sessionId && socket.data.sessionId !== 'dev') {
-        io.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
-      } else {
-        socket.emit('chat:activity', null);
+        socket.broadcast.to(`user:${socket.data.sessionId}`).emit('chat:activity', null);
       }
       const event: StandardEvent = {
         id: `evt-${Date.now()}`,

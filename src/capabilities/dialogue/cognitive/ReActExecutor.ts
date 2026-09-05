@@ -108,9 +108,7 @@ export class ReActExecutor {
     let stepCount = 0;
     let finalAnswer = '';
     const executedSignatures: string[] = [];
-    const cognitiveSteps: Array<{ title: string; detail?: string; status: 'completed' | 'active' }> = [
-      { title: 'Analyzing', detail: 'Evaluating request context and preparing actions...', status: 'active' }
-    ];
+    const cognitiveSteps: Array<{ title: string; detail?: string; status: 'completed' | 'active' }> = [];
     const successfulToolResults: Array<{ name: string; output: any }> = [];
     const actionLinks: Array<{ label: string; url: string; type: string }> = [];
     let proposalEncountered = false;
@@ -199,23 +197,33 @@ export class ReActExecutor {
 
       if (activeAbortSignal?.aborted) break;
 
-      // Capture genuine reasoning content (Chain-of-Thought) and LOCK "Analyzing" into "Analyzed" (completed)
+      // Capture genuine reasoning content (Chain-of-Thought)
       const rawReasoning = response.reasoningText || (response as any).rawMessage?.reasoning_content;
       const curatedSummary = rawReasoning ? extractExecutiveSummary(rawReasoning) : null;
-      const thoughtSummary = curatedSummary || 'Analyzed request context and formulated plan.';
 
-      const analyzingIdx = cognitiveSteps.findIndex(s => s.title === 'Analyzing');
-      if (analyzingIdx !== -1) {
-        cognitiveSteps[analyzingIdx] = {
-          title: 'Analyzed',
-          detail: thoughtSummary,
-          status: 'completed'
-        };
-      } else if (!cognitiveSteps.some(s => s.title === 'Analyzed')) {
-        cognitiveSteps.unshift({
-          title: 'Analyzed',
-          detail: thoughtSummary,
-          status: 'completed'
+      if (curatedSummary) {
+        const thoughtIdx = cognitiveSteps.findIndex(s => s.title === 'Thought' || s.title === 'Reasoning' || s.title === 'Analyzing');
+        if (thoughtIdx !== -1) {
+          cognitiveSteps[thoughtIdx] = {
+            title: 'Thought',
+            detail: curatedSummary,
+            status: 'completed'
+          };
+        } else {
+          cognitiveSteps.unshift({
+            title: 'Thought',
+            detail: curatedSummary,
+            status: 'completed'
+          });
+        }
+
+        // IMMEDIATELY publish the agent's genuine thought to the UI so it renders without waiting for tool execution
+        emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+          content: 'Thinking',
+          phase: 'THINKING',
+          subText: 'Thought captured',
+          cognitiveSteps: [...cognitiveSteps],
+          startTime: turnStartTime
         });
       }
 

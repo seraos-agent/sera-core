@@ -276,13 +276,13 @@ describe('Comprehensive Google Sheets Professional Capability Suite', () => {
 
     // Verify IDR Currency Formatting on Column 2
     const idrColReq = executedBatchRequests.find(
-      (r) => r.repeatCell?.range?.startColumnIndex === 2 && r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.pattern === '"Rp"#,##0'
+      (r) => r.repeatCell?.range?.startColumnIndex === 2 && r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.pattern === '"Rp"#,##0;("Rp"#,##0);"-"'
     );
     expect(idrColReq).toBeDefined();
 
     // Verify Percentage Formatting on Column 3
     const pctColReq = executedBatchRequests.find(
-      (r) => r.repeatCell?.range?.startColumnIndex === 3 && r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.pattern === '0.0%'
+      (r) => r.repeatCell?.range?.startColumnIndex === 3 && r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.pattern === '0.0%;-0.0%;"-"'
     );
     expect(pctColReq).toBeDefined();
 
@@ -469,5 +469,22 @@ describe('Comprehensive Google Sheets Professional Capability Suite', () => {
     const addChartReq = executedBatchRequests.find((r) => r.addChart?.chart?.spec?.title === 'Monthly Comparison (Updated Q3)');
     expect(addChartReq).toBeDefined();
     expect(addChartReq.addChart.chart.spec.basicChart.chartType).toBe('COLUMN');
+  });
+
+  it('6. Resolves file by title name or direct file ID seamlessly without 404 (resolveFileId)', async () => {
+    const mockFetch = setupSimulatedGoogleApis();
+    const capability = new GoogleDriveCapability(mockRepo, 'cid', 'csec', mockFetch);
+
+    // Create a sheet so it exists in simulated storage
+    await capability.createSpreadsheet('user-exec', 'Monthly Revenue Analytics', ['A', 'B'], [[1, 2]]);
+
+    // Look up file by exact title name
+    const resolvedFromTitle = await capability.resolveFileId('user-exec', 'Monthly Revenue Analytics');
+    expect(resolvedFromTitle).toBeDefined();
+    expect(resolvedFromTitle.startsWith('sheet_sim_')).toBe(true);
+
+    // Look up file by direct ID
+    const resolvedFromId = await capability.resolveFileId('user-exec', resolvedFromTitle);
+    expect(resolvedFromId).toBe(resolvedFromTitle);
   });
 });
