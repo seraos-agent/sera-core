@@ -151,8 +151,9 @@ Your goal is to write a single, punchy, real-human social media post.
 CRITICAL FORMATTING RULES:
 1. CONCISE & PUNCHY: Keep the post strictly to 1-3 short lines max. Never write lengthy essays, formal articles, or newspaper-style blocks of text.
 2. NO HASHTAGS: NEVER use hashtags or the "#" symbol. Threads users despise hashtag spam.
-3. NO QUOTES OR PREAMBLE: Return ONLY the raw post text. Do not wrap in quotes or add preamble like "Here is your post:".
-4. AUTHENTIC & ORGANIC: Write like a real person sharing a quick thought, witty observation, or intriguing question.`
+3. NO EM DASH: NEVER use long em dashes ("—") in your writing. Use standard hyphens ("-"), commas, colons, or clean natural phrasing instead.
+4. NO QUOTES OR PREAMBLE: Return ONLY the raw post text. Do not wrap in quotes or add preamble like "Here is your post:".
+5. AUTHENTIC & ORGANIC: Write like a real person sharing a quick thought, witty observation, or intriguing question.`
       },
       {
         role: 'user',
@@ -167,7 +168,7 @@ ${antiRepetitionSection}
 ${chosenArchetype.styleInstruction}
 
 [STRICT OUTPUT INSTRUCTION]
-Output ONLY the raw post content. Strict max 1-3 lines. Zero hashtags (#).`
+Output ONLY the raw post content. Strict max 1-3 lines. Zero hashtags (#). Never use long em dashes (—).`
       }
     ];
 
@@ -182,6 +183,8 @@ Output ONLY the raw post content. Strict max 1-3 lines. Zero hashtags (#).`
     }
     // Strip hashtags if any were produced
     postText = postText.replace(/#[a-zA-Z0-9_]+/g, '').replace(/\s{2,}/g, ' ').trim();
+    // Strictly sanitize any long em dashes (—)
+    postText = postText.replace(/—/g, ' - ').replace(/\s{2,}/g, ' ').trim();
 
     return postText;
   }

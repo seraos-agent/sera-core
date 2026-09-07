@@ -21,7 +21,7 @@ import { HyperliquidSpotCapability } from '../capabilities/hyperliquid/Hyperliqu
 import { GasAbstractionService } from '../capabilities/wallet/GasAbstractionService';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
-import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
+import { ThreadsAPI, ThreadsCarouselItem, sanitizeThreadsText } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsPostHistoryStore } from '../capabilities/threads/ThreadsPostHistoryStore';
 import {
   SupabaseTransferAuditRepository,
@@ -353,6 +353,12 @@ export class GoalBridge {
         case 'THREADS_REPLY':
           await this.handleThreadsPublish(requestId, actionPayload);
           break;
+        case 'THREADS_GET_POSTS':
+          await this.handleThreadsGetPosts(requestId, actionPayload);
+          break;
+        case 'THREADS_GET_INSIGHTS':
+          await this.handleThreadsGetInsights(requestId, actionPayload);
+          break;
 
         case 'GDRIVE_WRITE':
         case 'gdrive:write_file':
@@ -442,38 +448,140 @@ export class GoalBridge {
   }
 
   private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const { text, replyToId, imageUrl, videoUrl, driveFileName } = parameters;
+    let { text, replyToId, imageUrl, videoUrl, driveFileName, imageUrls, driveFileNames, threadChain } = parameters;
     if (!text) throw new Error('Threads publish requires text parameter.');
-    
-    let finalImageUrl = imageUrl;
-    let finalVideoUrl = videoUrl;
-    let bridgeFileKey: string | undefined;
 
-    if (driveFileName) {
-      const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, driveFileName);
-      if (bridge.isVideo) {
-        finalVideoUrl = bridge.publicUrl;
-      } else {
-        finalImageUrl = bridge.publicUrl;
+    // Sanitize text and threadChain: strictly remove em dashes (—) and en dashes (–)
+    text = sanitizeThreadsText(text);
+    if (Array.isArray(threadChain)) {
+      threadChain = threadChain.map((t: any) => typeof t === 'string' ? sanitizeThreadsText(t) : t);
+    }
+
+    const bridgeCleanupKeys: string[] = [];
+
+    try {
+      // 1. Check for Carousel Publication (Multi-Image)
+      const carouselItems: ThreadsCarouselItem[] = [];
+
+      if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+        for (const url of imageUrls) {
+          if (typeof url === 'string' && url.trim()) {
+            carouselItems.push({ url: url.trim(), isVideo: false });
+          }
+        }
       }
-      bridgeFileKey = bridge.fileKey;
-    }
-    
-    const publishedId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl, finalVideoUrl);
-    this.threadsPostHistoryStore.recordPost(this.sessionId, text, publishedId);
 
-    // Ephemeral CDN cleanup: delete the temporary bridge file after Meta finishes downloading
-    if (bridgeFileKey) {
-      this.googleDriveCapability.cleanupCdnBridge(bridgeFileKey).catch((e: any) => {
-        console.warn('[GoalBridge] Bridge cleanup warning:', e.message);
+      if (Array.isArray(driveFileNames) && driveFileNames.length > 0 && this.googleDriveCapability) {
+        for (const filename of driveFileNames) {
+          if (typeof filename === 'string' && filename.trim()) {
+            const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, filename.trim());
+            carouselItems.push({ url: bridge.publicUrl, isVideo: bridge.isVideo });
+            bridgeCleanupKeys.push(bridge.fileKey);
+          }
+        }
+      }
+
+      let rootPostId: string;
+
+      if (carouselItems.length >= 2) {
+        rootPostId = await this.threadsApi.publishCarousel(this.sessionId, text, carouselItems, replyToId);
+      } else {
+        let finalImageUrl = imageUrl;
+        let finalVideoUrl = videoUrl;
+
+        if (driveFileName && this.googleDriveCapability) {
+          const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, driveFileName);
+          if (bridge.isVideo) {
+            finalVideoUrl = bridge.publicUrl;
+          } else {
+            finalImageUrl = bridge.publicUrl;
+          }
+          bridgeCleanupKeys.push(bridge.fileKey);
+        }
+
+        rootPostId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl, finalVideoUrl);
+      }
+
+      this.threadsPostHistoryStore.recordPost(this.sessionId, text, rootPostId);
+
+      // 2. Check for Atomic Chained Threads (Utas)
+      const chainedIds: string[] = [rootPostId];
+      if (Array.isArray(threadChain) && threadChain.length > 0) {
+        let parentId = rootPostId;
+        for (const followUpText of threadChain) {
+          if (typeof followUpText === 'string' && followUpText.trim()) {
+            const followUpId = await this.threadsApi.publishPost(this.sessionId, followUpText.trim(), parentId);
+            this.threadsPostHistoryStore.recordPost(this.sessionId, followUpText.trim(), followUpId);
+            chainedIds.push(followUpId);
+            parentId = followUpId;
+          }
+        }
+      }
+
+      // Cleanup ephemeral bridge media
+      if (bridgeCleanupKeys.length > 0 && this.googleDriveCapability) {
+        for (const key of bridgeCleanupKeys) {
+          this.googleDriveCapability.cleanupCdnBridge(key).catch((e: any) => {
+            console.warn('[GoalBridge] Bridge cleanup warning:', e.message);
+          });
+        }
+      }
+
+      const summary = chainedIds.length > 1
+        ? `Successfully published chained thread with ${chainedIds.length} parts to Threads (Root ID: ${rootPostId})`
+        : (carouselItems.length >= 2
+            ? `Successfully published carousel (${carouselItems.length} slides) to Threads (ID: ${rootPostId})`
+            : `Successfully published to Threads (ID: ${rootPostId})`);
+
+      this.emitResult(requestId, true, {
+        provider: 'Meta Threads',
+        id: rootPostId,
+        chainedIds: chainedIds.length > 1 ? chainedIds : undefined,
+        summary
       });
+    } catch (err: any) {
+      this.emitResult(requestId, false, {}, err.message || 'Failed to publish to Threads');
     }
+  }
 
-    this.emitResult(requestId, true, {
-      provider: 'Meta Threads',
-      id: publishedId,
-      summary: `Successfully published to Threads (ID: ${publishedId})`
-    });
+  private async handleThreadsGetPosts(requestId: string, parameters: Record<string, any>): Promise<void> {
+    try {
+      const limit = Math.min(20, Math.max(1, Number(parameters?.limit) || 5));
+      const posts = await this.threadsApi.getUserThreads(this.sessionId, limit);
+      this.emitResult(requestId, true, {
+        provider: 'Meta Threads',
+        count: posts.length,
+        posts,
+        summary: `Retrieved ${posts.length} recent posts from Threads.`
+      });
+    } catch (err: any) {
+      this.emitResult(requestId, false, {}, err.message || 'Failed to retrieve recent Threads posts');
+    }
+  }
+
+  private async handleThreadsGetInsights(requestId: string, parameters: Record<string, any>): Promise<void> {
+    try {
+      if (parameters?.postId) {
+        const insights = await this.threadsApi.getPostInsights(this.sessionId, parameters.postId);
+        this.emitResult(requestId, true, {
+          provider: 'Meta Threads',
+          type: 'post',
+          insights,
+          summary: `Fetched insights for post ${parameters.postId}: ${insights.views} views, ${insights.likes} likes, ${insights.replies} replies.`
+        });
+        return;
+      }
+
+      const userInsights = await this.threadsApi.getUserInsights(this.sessionId);
+      this.emitResult(requestId, true, {
+        provider: 'Meta Threads',
+        type: 'account',
+        insights: userInsights,
+        summary: `Account Insights: ${userInsights.views} views, ${userInsights.likes} likes, ${userInsights.replies} replies, ${userInsights.reposts} reposts.`
+      });
+    } catch (err: any) {
+      this.emitResult(requestId, false, {}, err.message || 'Failed to fetch Threads insights');
+    }
   }
 
 

@@ -20,6 +20,47 @@ export interface ThreadsMention {
   };
 }
 
+export interface ThreadsCarouselItem {
+  url: string;
+  isVideo?: boolean;
+}
+
+export interface ThreadsPostInsights {
+  postId: string;
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  quotes: number;
+}
+
+export interface ThreadsUserInsights {
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  quotes: number;
+  followersCount?: number;
+}
+
+export interface ThreadsUserPost {
+  id: string;
+  text: string;
+  timestamp: string;
+  permalink?: string;
+  mediaType?: string;
+}
+
+/**
+ * Sanitizes text for Meta Threads publishing.
+ * Strictly eliminates long em dashes (—), replacing them with standard hyphens (-).
+ * En dashes (–) for number/date ranges are permitted.
+ */
+export function sanitizeThreadsText(text: string): string {
+  if (!text) return text;
+  return text.replace(/—/g, ' - ').replace(/\s{2,}/g, ' ').trim();
+}
+
 export class ThreadsAPI {
   private readonly baseUrl = 'https://graph.threads.net/v1.0';
 
@@ -36,6 +77,7 @@ export class ThreadsAPI {
     if (!token) throw new Error('Threads API requires an active access token. Please connect Threads first.');
 
     const url = new URL(`${this.baseUrl}/me/threads`);
+    const cleanText = sanitizeThreadsText(text);
     
     if (videoUrl) {
       url.searchParams.append('media_type', 'VIDEO');
@@ -47,10 +89,8 @@ export class ThreadsAPI {
       url.searchParams.append('media_type', 'TEXT');
     }
     
-    if (!replyToId) {
-      url.searchParams.append('text', text);
-    } else {
-      url.searchParams.append('text', text);
+    url.searchParams.append('text', cleanText);
+    if (replyToId) {
       url.searchParams.append('reply_to_id', replyToId);
     }
     url.searchParams.append('access_token', token);
@@ -155,6 +195,202 @@ export class ThreadsAPI {
   }
 
   /**
+   * Creates an individual media container as part of a carousel post.
+   */
+  async createCarouselItemContainer(sessionId: string, mediaUrl: string, isVideo: boolean = false): Promise<ThreadsContainerResponse> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    const url = new URL(`${this.baseUrl}/me/threads`);
+    url.searchParams.append('media_type', isVideo ? 'VIDEO' : 'IMAGE');
+    if (isVideo) {
+      url.searchParams.append('video_url', mediaUrl);
+    } else {
+      url.searchParams.append('image_url', mediaUrl);
+    }
+    url.searchParams.append('is_carousel_item', 'true');
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), { method: 'POST' });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to create carousel item container: ${errorText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Creates a parent container for a carousel post combining multiple child media items.
+   */
+  async createCarouselContainer(sessionId: string, text: string, childrenIds: string[], replyToId?: string): Promise<ThreadsContainerResponse> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    const url = new URL(`${this.baseUrl}/me/threads`);
+    url.searchParams.append('media_type', 'CAROUSEL');
+    url.searchParams.append('children', childrenIds.join(','));
+    if (text) {
+      url.searchParams.append('text', sanitizeThreadsText(text));
+    }
+    if (replyToId) {
+      url.searchParams.append('reply_to_id', replyToId);
+    }
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), { method: 'POST' });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to create parent carousel container: ${errorText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Publishes a carousel post consisting of 2 to 20 images or videos.
+   */
+  async publishCarousel(sessionId: string, text: string, mediaItems: ThreadsCarouselItem[], replyToId?: string): Promise<string> {
+    if (!mediaItems || mediaItems.length < 2) {
+      throw new Error('A carousel post requires at least 2 media items (up to 20).');
+    }
+    if (mediaItems.length > 20) {
+      throw new Error('Meta Threads API allows a maximum of 20 media items per carousel.');
+    }
+
+    const childrenIds: string[] = [];
+    for (const item of mediaItems) {
+      const child = await this.createCarouselItemContainer(sessionId, item.url, item.isVideo);
+      if (item.isVideo) {
+        await this.waitForContainerReady(sessionId, child.id);
+      }
+      childrenIds.push(child.id);
+    }
+
+    const parent = await this.createCarouselContainer(sessionId, text, childrenIds, replyToId);
+    const published = await this.publishContainer(sessionId, parent.id, false);
+    return published.id;
+  }
+
+  /**
+   * Publishes an atomic chain of posts (utas) in sequential order.
+   * Post 0 is published first, and subsequent posts reply to each other in sequence.
+   */
+  async publishThreadChain(
+    sessionId: string,
+    posts: Array<{ text: string; imageUrl?: string; videoUrl?: string }>,
+    initialReplyToId?: string
+  ): Promise<string[]> {
+    if (!posts || posts.length === 0) {
+      throw new Error('Thread chain requires at least 1 post.');
+    }
+
+    const publishedIds: string[] = [];
+    let currentParentId = initialReplyToId;
+
+    for (const post of posts) {
+      const postId = await this.publishPost(
+        sessionId,
+        post.text,
+        currentParentId,
+        post.imageUrl,
+        post.videoUrl
+      );
+      publishedIds.push(postId);
+      currentParentId = postId;
+    }
+
+    return publishedIds;
+  }
+
+  /**
+   * Fetches performance metrics (views, likes, replies, reposts, quotes) for a specific Threads post.
+   */
+  async getPostInsights(sessionId: string, postId: string): Promise<ThreadsPostInsights> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    const url = new URL(`${this.baseUrl}/${postId}/insights`);
+    url.searchParams.append('metric', 'views,likes,replies,reposts,quotes');
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), { method: 'GET' });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch post insights for ${postId}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const metricsMap: Record<string, number> = {};
+    if (Array.isArray(data.data)) {
+      for (const item of data.data) {
+        if (item.name) {
+          let val = 0;
+          if (item.total_value && item.total_value.value !== undefined) {
+            val = Number(item.total_value.value) || 0;
+          } else if (Array.isArray(item.values) && item.values.length > 0) {
+            val = Number(item.values[0]?.value) || 0;
+          } else if (item.value !== undefined) {
+            val = Number(item.value) || 0;
+          }
+          metricsMap[item.name] = val;
+        }
+      }
+    }
+
+    return {
+      postId,
+      views: metricsMap['views'] || 0,
+      likes: metricsMap['likes'] || 0,
+      replies: metricsMap['replies'] || 0,
+      reposts: metricsMap['reposts'] || 0,
+      quotes: metricsMap['quotes'] || 0
+    };
+  }
+
+  /**
+   * Fetches account-level performance insights (views, likes, replies, reposts, quotes) for the user.
+   */
+  async getUserInsights(sessionId: string): Promise<ThreadsUserInsights> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token.');
+
+    const url = new URL(`${this.baseUrl}/me/threads_insights`);
+    url.searchParams.append('metric', 'views,likes,replies,reposts,quotes');
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), { method: 'GET' });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch account insights: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const metricsMap: Record<string, number> = {};
+    if (Array.isArray(data.data)) {
+      for (const item of data.data) {
+        if (item.name) {
+          let val = 0;
+          if (item.total_value && item.total_value.value !== undefined) {
+            val = Number(item.total_value.value) || 0;
+          } else if (Array.isArray(item.values) && item.values.length > 0) {
+            val = Number(item.values[0]?.value) || 0;
+          } else if (item.value !== undefined) {
+            val = Number(item.value) || 0;
+          }
+          metricsMap[item.name] = val;
+        }
+      }
+    }
+
+    return {
+      views: metricsMap['views'] || 0,
+      likes: metricsMap['likes'] || 0,
+      replies: metricsMap['replies'] || 0,
+      reposts: metricsMap['reposts'] || 0,
+      quotes: metricsMap['quotes'] || 0
+    };
+  }
+
+  /**
    * Fetches the latest mentions for the authenticated user.
    */
   async getMentions(sessionId: string, limit: number = 20): Promise<ThreadsMention[]> {
@@ -206,12 +442,12 @@ export class ThreadsAPI {
   /**
    * Fetches the latest threads/posts created by the authenticated user.
    */
-  async getUserThreads(sessionId: string, limit: number = 5): Promise<{ id: string; text: string; timestamp: string }[]> {
+  async getUserThreads(sessionId: string, limit: number = 5): Promise<ThreadsUserPost[]> {
     const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
     const url = new URL(`${this.baseUrl}/me/threads`);
-    url.searchParams.append('fields', 'id,text,timestamp');
+    url.searchParams.append('fields', 'id,text,timestamp,permalink,media_type');
     url.searchParams.append('limit', limit.toString());
     url.searchParams.append('access_token', token);
 
@@ -225,7 +461,13 @@ export class ThreadsAPI {
     }
 
     const data = await response.json();
-    return data.data || [];
+    return (data.data || []).map((t: any) => ({
+      id: t.id,
+      text: t.text || '',
+      timestamp: t.timestamp,
+      permalink: t.permalink,
+      mediaType: t.media_type
+    }));
   }
 
   /**

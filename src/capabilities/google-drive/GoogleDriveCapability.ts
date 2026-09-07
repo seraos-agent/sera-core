@@ -297,8 +297,8 @@ export class GoogleDriveCapability {
     }
     const clean = fileIdOrName.trim();
 
-    // Google Drive IDs are standard alphanumeric IDs with - and _ (typically 20-60 characters, no spaces)
-    const looksLikeDriveId = /^[a-zA-Z0-9_-]{15,}$/.test(clean);
+    // Google Drive IDs are standard alphanumeric IDs with - and _ (typically 8-60 characters, no spaces)
+    const looksLikeDriveId = /^[a-zA-Z0-9_-]{8,}$/.test(clean);
 
     if (looksLikeDriveId) {
       try {
