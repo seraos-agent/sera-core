@@ -32,6 +32,7 @@ import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveC
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 import { SpreadsheetEngine } from '../capabilities/google-drive/SpreadsheetEngine';
 import { GoogleSheetsFormatter } from '../capabilities/google-drive/spreadsheet/GoogleSheetsFormatter';
+import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -278,7 +279,7 @@ export class GoalBridge {
   private async handleDispatchedAction(event: StandardEvent): Promise<void> {
     const payload = event?.payload || event || {};
     const actionType = payload.actionType || payload.intent;
-    const actionPayload = payload.actionPayload || payload.parameters || {};
+    const actionPayload = payload.actionPayload || payload.parameters || payload || {};
     const context = payload.context || {};
     const requestId = context?.triggerId || payload.requestId || event.correlationId || `req-${Date.now()}`;
 
@@ -438,6 +439,13 @@ export class GoalBridge {
           this.emitResult(requestId, true, { summary: 'Conversational turn completed successfully.' });
           break;
 
+        case 'WEB_SEARCH':
+        case 'web_search':
+        case 'search':
+        case 'brave_web_search':
+          await this.handleWebSearch(requestId, actionPayload);
+          break;
+
         default:
           this.emitResult(requestId, false, {}, `Unknown action: ${actionType}`);
       }
@@ -445,6 +453,13 @@ export class GoalBridge {
       console.error(`[GoalBridge] Error handling action ${actionType}:`, error.message);
       this.emitResult(requestId, false, {}, error.message);
     }
+  }
+
+  private async handleWebSearch(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const searchCap = new BraveSearchCapability();
+    const query = String(parameters?.query || parameters?.q || parameters?.searchQuery || parameters?.searchTerm || '').trim();
+    const result = await searchCap.executeTool('WEB_SEARCH', { ...parameters, query });
+    this.emitResult(requestId, true, result);
   }
 
   private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {

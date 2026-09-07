@@ -135,12 +135,13 @@ export class CognitiveCompressor {
   private triggerReflection(reason: string): void {
     const now = Date.now();
     if (now - this.lastLlmReflectionTime < this.LLM_COOLDOWN_MS) {
-      console.log(`[CognitiveCompressor] 🚫 LLM Budget Exceeded. Skipping reflection for: ${reason}`);
+      const remainingSec = Math.round((this.LLM_COOLDOWN_MS - (now - this.lastLlmReflectionTime)) / 1000);
+      console.log(`[CognitiveCompressor] ⏱️ Reflection cooldown active (${remainingSec}s remaining). Skipping reflection for: ${reason}`);
       return;
     }
 
     this.lastLlmReflectionTime = now;
-    console.log(`[CognitiveCompressor] 🧠 LLM Budget Spent. Triggering Semantic Reflection for: ${reason}`);
+    console.log(`[CognitiveCompressor] 🧠 Triggering Semantic Reflection for: ${reason}`);
     
     // In a real system, this emits to DialogueEngine or SemanticReflector
     // this.eventBus.emit(EventTypes.TRIGGER_SEMANTIC_REFLECTION, { reason, buffer: [...this.eventBuffer] });

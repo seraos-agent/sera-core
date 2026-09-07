@@ -175,6 +175,10 @@ export class CapabilityCatalog {
         return connector;
       }
     }
+    // Alias resilience for web search
+    if (toolName === 'WEB_SEARCH' || toolName === 'search' || toolName === 'brave_web_search') {
+      return this.connectors.get('web_search');
+    }
     return undefined;
   }
 }

@@ -11,7 +11,7 @@ export class BraveSearchCapability {
   getTools(): SeraTool[] {
     return [
       {
-        name: 'search',
+        name: 'WEB_SEARCH',
         description: 'Search the live web for real-time information, news, articles, current events, definitions, people, places, facts, or technical documentation. ALWAYS invoke this tool when asked about current information, specific terms, or external topics.',
         parameters: {
           type: 'object',
@@ -31,7 +31,7 @@ export class BraveSearchCapability {
   }
 
   async executeTool(name: string, args: Record<string, any>): Promise<any> {
-    if (name === 'search' || name === 'brave_web_search') {
+    if (name === 'WEB_SEARCH' || name === 'search' || name === 'brave_web_search') {
       const query = String(args.query || args.q || '').trim();
       if (!query) {
         throw new Error('Search query cannot be empty.');

@@ -79,6 +79,8 @@ export class ToolExecutionHandler {
       'HL_SPOT_PORTFOLIO': 'Checking portfolio',
       'HL_SPOT_OPEN_ORDERS': 'Checking open orders',
       'RESOLVE_BASE_TOKEN': 'Resolving token on-chain',
+      'WEB_SEARCH': 'Searching web',
+      'search': 'Searching web',
       'web_search': 'Searching web',
       'brave_web_search': 'Searching web',
       'media_generation': 'Generating media',
@@ -163,11 +165,21 @@ export class ToolExecutionHandler {
         key: `workspace.fact.${Date.now()}`,
         value: fact,
         source: MemorySource.USER_DIRECT_INSTRUCTION,
-        evidence: { type: EvidenceType.USER_MESSAGE, referenceId: event.id, timestamp: event.timestamp },
+        evidence: {
+          type: EvidenceType.USER_MESSAGE,
+          referenceId: event?.id || `msg_${Date.now()}`,
+          timestamp: event?.timestamp || Date.now()
+        },
         confidence: 1.0,
         category: 'SEMANTIC'
       };
-      this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, proposal);
+      this.eventBus.emit(EventTypes.MEMORY_PROPOSAL_REQUESTED, {
+        id: `evt-remember-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: EventTypes.MEMORY_PROPOSAL_REQUESTED,
+        source: 'dialogue.tool_execution',
+        timestamp: Date.now(),
+        payload: proposal
+      } as StandardEvent<MemoryProposal>);
       return {
         isProposal: false,
         output: { success: true, fact, message: `Fact "${fact}" saved to long-term memory.` }
@@ -200,7 +212,10 @@ export class ToolExecutionHandler {
 
     if (isSafe) {
       let result: any;
-      const connector = capabilityCatalog?.getConnectorForTool?.(toolIntent);
+      let connector = capabilityCatalog?.getConnectorForTool?.(toolIntent);
+      if (!connector && (toolIntent === 'WEB_SEARCH' || toolIntent === 'search' || toolIntent === 'brave_web_search')) {
+        connector = capabilityCatalog?.getConnector?.('web_search');
+      }
       if (connector && typeof connector.executeTool === 'function') {
         try {
           const data = await connector.executeTool(toolIntent, toolParams, { sessionId });
