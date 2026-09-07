@@ -191,7 +191,7 @@ export class ToolExecutionHandler {
     const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'TRANSFER_FUNDS'];
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {
-      const isAuthorizedByAgreement = autonomyAgreementStore?.hasFullAccessFor(toolIntent, sessionId) === true;
+      const isAuthorizedByAgreement = typeof autonomyAgreementStore?.hasFullAccessFor === 'function' && autonomyAgreementStore.hasFullAccessFor(toolIntent, sessionId) === true;
       isSafe = isAuthorizedByAgreement;
     } else if (capabilityCatalog) {
       let toolMeta: any = null;
@@ -201,7 +201,7 @@ export class ToolExecutionHandler {
         toolMeta = capabilityCatalog.find((t: any) => t.name === toolIntent);
       }
       if (toolMeta) {
-        const isAuthorizedByAgreement = autonomyAgreementStore?.hasFullAccessFor(toolIntent, sessionId) === true;
+        const isAuthorizedByAgreement = typeof autonomyAgreementStore?.hasFullAccessFor === 'function' && autonomyAgreementStore.hasFullAccessFor(toolIntent, sessionId) === true;
         isSafe = !toolMeta.requiresApproval || isAuthorizedByAgreement;
       } else {
         isSafe = true;

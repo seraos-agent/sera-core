@@ -47,7 +47,7 @@ export class ThreadsCapability {
           },
           required: ['text']
         },
-        requiresApproval: true,
+        requiresApproval: false,
         irreversible: true,
         unsafe: true,
       },

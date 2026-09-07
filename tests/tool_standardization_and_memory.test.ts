@@ -8,6 +8,8 @@ import { MemoryIngress } from '../src/core/memory/MemoryIngress';
 import { WorkingMemory } from '../src/memory/WorkingMemory';
 import { EventTypes, StandardEvent } from '../src/core/events/types';
 import { MemoryProposal } from '../src/core/memory/MemoryProposal';
+import { ThreadsCapability } from '../src/capabilities/threads/ThreadsCapability';
+import { SocialMediaAgent } from '../src/capabilities/agents/SocialMediaAgent';
 
 describe('Tool Standardization and Memory Proposal Integrity', () => {
   const originalApiKey = process.env.BRAVE_API_KEY;
@@ -176,5 +178,94 @@ describe('Tool Standardization and Memory Proposal Integrity', () => {
     const result = await resultPromise;
     expect(result.success).toBe(true);
     expect(result.data.results).toBeDefined();
+  });
+
+  it('THREADS_PUBLISH executes directly without proposal card, while SCHEDULE_GOAL requires proposal card', async () => {
+    const threadsCap = new ThreadsCapability({} as any);
+    const publishTool = threadsCap.getTools().find((t: any) => t.name === 'THREADS_PUBLISH');
+    expect(publishTool?.requiresApproval).toBe(false);
+
+    const socialAgent = new SocialMediaAgent();
+    const agentPublishTool = socialAgent.getTools().find((t: any) => t.name === 'THREADS_PUBLISH');
+    expect(agentPublishTool?.requiresApproval).toBe(false);
+
+    const eventBus = new EventEmitter();
+    let proposedGoalEvent: any = null;
+    eventBus.on(EventTypes.SYSTEM_PROPOSE_GOAL, (evt) => {
+      proposedGoalEvent = evt;
+    });
+
+    const catalog = new CapabilityCatalog();
+    catalog.registerConnector({
+      id: 'threads',
+      name: 'Threads',
+      category: 'communication',
+      description: 'Threads connector',
+      riskSummary: 'Publishing',
+      alwaysActive: true,
+      tools: threadsCap.getTools(),
+      executeTool: vi.fn().mockResolvedValue({ success: true, postId: '12345' })
+    });
+
+    const handler = new ToolExecutionHandler(
+      eventBus,
+      { generate: vi.fn().mockResolvedValue({ text: 'Card prepared' }) } as any,
+      { evaluate: vi.fn().mockReturnValue({ feasible: true }) } as any,
+      {} as any,
+      {} as any
+    );
+
+    const mockEvent: StandardEvent<any> = {
+      id: 'test-evt-threads',
+      type: EventTypes.DIALOGUE_USER_OBSERVED,
+      source: 'test',
+      timestamp: Date.now(),
+      payload: { message: 'Post this to Threads now' }
+    };
+
+    // 1. Direct post: isProposal must be FALSE (no proposal card)
+    const directResult = await handler.executeSingleTool({
+      toolCall: { id: 'call_threads', name: 'THREADS_PUBLISH', arguments: { text: 'Direct post text' } },
+      toolCallId: 'call_threads',
+      event: mockEvent,
+      userMessage: 'Post this to Threads now',
+      sessionId: 'test-session',
+      capabilityCatalog: catalog,
+      autonomyAgreementStore: {} as any,
+      buildWorkingMemory: vi.fn().mockResolvedValue([]),
+      spawnGoalAndAwaitResult: vi.fn().mockResolvedValue({ success: true, data: { postId: '12345' } }),
+      emitEvent: vi.fn()
+    });
+
+    expect(directResult.isProposal).toBe(false);
+    expect(proposedGoalEvent).toBeNull(); // No proposal card emitted
+
+    // 2. Scheduled/recurring task: isProposal must be TRUE (generates proposal card)
+    const scheduleResult = await handler.executeSingleTool({
+      toolCall: {
+        id: 'call_sched',
+        name: 'SCHEDULE_GOAL',
+        arguments: {
+          scheduleType: 'cron',
+          cronExpression: '0 9 * * *',
+          humanIntent: 'Post every day at 9 AM',
+          actionIntent: 'DYNAMIC_SCHEDULED_ACTION',
+          actionParameters: { taskPrompt: 'Daily AI news' }
+        }
+      },
+      toolCallId: 'call_sched',
+      event: mockEvent,
+      userMessage: 'Schedule daily post at 9 AM',
+      sessionId: 'test-session',
+      capabilityCatalog: catalog,
+      autonomyAgreementStore: {} as any,
+      buildWorkingMemory: vi.fn().mockResolvedValue([]),
+      spawnGoalAndAwaitResult: vi.fn(),
+      emitEvent: (type: string, payload: any) => eventBus.emit(type, payload)
+    });
+
+    expect(scheduleResult.isProposal).toBe(true);
+    expect(proposedGoalEvent).not.toBeNull();
+    expect(proposedGoalEvent.intent).toBe('SCHEDULE_GOAL');
   });
 });

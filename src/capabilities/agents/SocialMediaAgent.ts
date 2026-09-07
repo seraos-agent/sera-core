@@ -37,7 +37,7 @@ export class SocialMediaAgent implements ISubAgent {
           },
           required: ['text']
         },
-        requiresApproval: true
+        requiresApproval: false
       },
       {
         name: 'THREADS_GET_POSTS',
