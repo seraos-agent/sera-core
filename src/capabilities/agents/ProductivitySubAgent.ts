@@ -98,7 +98,7 @@ export class ProductivitySubAgent implements ISubAgent {
         parameters: {
           type: 'object',
           properties: {
-            filename: { type: 'string', description: 'Name or title of the file to delete (e.g. "Contoh Data SPK")' },
+            filename: { type: 'string', description: 'Name or title of the file to delete (e.g. "Q1 Expense Report")' },
             fileId: { type: 'string', description: 'Optional direct Google Drive file ID' }
           }
         }
@@ -122,7 +122,7 @@ export class ProductivitySubAgent implements ISubAgent {
         parameters: {
           type: 'object',
           properties: {
-            folderName: { type: 'string', description: 'Name of the folder to create (e.g. "Katalog Promo 2026")' },
+            folderName: { type: 'string', description: 'Name of the folder to create (e.g. "Marketing Assets 2026")' },
             parentFolder: { type: 'string', description: 'Optional parent folder path or name. Defaults to SERA Vault root.' }
           },
           required: ['folderName']
@@ -147,7 +147,7 @@ export class ProductivitySubAgent implements ISubAgent {
           type: 'object',
           properties: {
             filename: { type: 'string', description: 'Filename or file ID to move' },
-            targetFolder: { type: 'string', description: 'Destination folder name or path (e.g. "🎨 Media & Creative", "Katalog Promo", or "root")' }
+            targetFolder: { type: 'string', description: 'Destination folder name or path (e.g. "🎨 Media & Creative", "Marketing Assets", or "root")' }
           },
           required: ['filename', 'targetFolder']
         }
@@ -183,13 +183,13 @@ CRITICAL RULES:
 - When the user asks to save data, create a spreadsheet, or export an analysis:
   YOU MUST IMMEDIATELY INVOKE GDRIVE_CREATE_SPREADSHEET with clean headers, numeric rows, and appropriate chart options.
 - When the user asks to edit or update an existing spreadsheet, call GDRIVE_CREATE_SPREADSHEET with the same title to update it in-place preserving its rich format and formulas.
-- When the user asks to change or update a single cell value or formula (e.g. "ubah sel B5 jadi 250000" or "set cell C2 =ROW()-1"), invoke GDRIVE_UPDATE_CELL.
-- When the user sends a photo or video in chat and asks to save it to Google Drive (or "simpan foto/video"), invoke GDRIVE_SAVE_MEDIA with a clean, descriptive filename.
-- When the user asks to create a folder (e.g. "buat folder baru", "bikin folder"), invoke GDRIVE_CREATE_FOLDER.
-- When the user asks to rename a file or folder (e.g. "ganti nama folder", "rename file"), invoke GDRIVE_RENAME.
-- When the user asks to move a file into a folder (e.g. "pindahkan file ini ke folder itu"), invoke GDRIVE_MOVE.
-- When the user asks to delete a folder (e.g. "hapus folder"), invoke GDRIVE_DELETE_FOLDER.
-- When the user asks to tidy up, organize, or clean their Google Drive (e.g. "rapikan google drive", "rapikan file", "tidy vault"), invoke GDRIVE_TIDY_VAULT.
+- When the user asks to change or update a single cell value or formula (e.g. "change cell B5 to 250000" or "set cell C2 =ROW()-1"), invoke GDRIVE_UPDATE_CELL.
+- When the user sends a photo or video in chat and asks to save it to Google Drive (e.g. "save this photo/video"), invoke GDRIVE_SAVE_MEDIA with a clean, descriptive filename.
+- When the user asks to create a folder (e.g. "create new folder", "new folder"), invoke GDRIVE_CREATE_FOLDER.
+- When the user asks to rename a file or folder (e.g. "rename folder", "rename file"), invoke GDRIVE_RENAME.
+- When the user asks to move a file into a folder (e.g. "move this file to that folder"), invoke GDRIVE_MOVE.
+- When the user asks to delete a folder (e.g. "delete folder", "remove directory"), invoke GDRIVE_DELETE_FOLDER.
+- When the user asks to tidy up, organize, or clean their Google Drive (e.g. "organize files", "clean up drive", "tidy vault"), invoke GDRIVE_TIDY_VAULT.
 - When the user asks to delete or remove an unwanted/duplicate file or spreadsheet, invoke GDRIVE_DELETE with the file name or file ID.
 - If the user asks for visual distribution (e.g. "pie chart market cap" or "bar chart revenue"):
   Pass options.chart: { type: 'PIE' | 'COLUMN' | 'BAR' | 'LINE', title: '...', categoryColumn: 0, valueColumns: [1] }.

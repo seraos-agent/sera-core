@@ -115,6 +115,28 @@ function extractExecutiveSummary(rawReasoning?: string): string {
   return candidate.trim();
 }
 
+/**
+ * Formats duration in seconds to human-friendly units:
+ * - < 60s -> "20s"
+ * - >= 60s -> "1m 15s" or "2m"
+ * - >= 3600s -> "1h 5m" or "2h"
+ */
+export function formatDuration(totalSeconds: number): string {
+  const secs = Math.max(0, Math.round(totalSeconds));
+  if (secs < 60) {
+    return `${secs}s`;
+  }
+  const hours = Math.floor(secs / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  const remainingSecs = secs % 60;
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+
+  return remainingSecs > 0 ? `${minutes}m ${remainingSecs}s` : `${minutes}m`;
+}
+
 export function CognitiveProcessCard({
   theme,
   phase = 'COMPLETED',
@@ -151,9 +173,9 @@ export function CognitiveProcessCard({
   if (isLive) {
     mainTitle = isWorking ? 'Working' : 'Thinking';
   } else {
-    // Completed state: clean single-line title (e.g. "Worked 20s" or "Thought 2s")
+    // Completed state: clean single-line title (e.g. "Worked 20s", "Worked 1m 15s", or "Thought 2s")
     const actionVerb = hadTools || (steps && steps.length > 1) ? 'Worked' : 'Thought';
-    mainTitle = `${actionVerb} ${effectiveDuration}s`;
+    mainTitle = `${actionVerb} ${formatDuration(effectiveDuration)}`;
   }
 
   const cleanSub = isLive ? getCleanSubText(subText) : null;
@@ -248,7 +270,7 @@ export function CognitiveProcessCard({
               fontFamily: "monospace",
               marginRight: 2
             }}>
-              {elapsed}s
+              {formatDuration(elapsed)}
             </span>
           )}
           <div style={{

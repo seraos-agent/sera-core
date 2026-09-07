@@ -20,6 +20,14 @@ export const serverConfig = {
   demoIntentCommand: process.env.SERA_DEMO_INTENT_COMMAND?.trim().toLowerCase(),
   memoryPersistenceMode,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+  whatsapp: {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
+    businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+    apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
+    isEnabled: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN),
+  },
 };
 
 export function isAllowedOrigin(origin: string | undefined): boolean {
