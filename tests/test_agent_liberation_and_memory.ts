@@ -49,10 +49,11 @@ Mau sekalian kita rancang strategi posting berikutnya?`;
   });
 
   assert.strictEqual(compressed.messages.length, 8, 'All 8 turns must be retained');
-  const tableMsg = compressed.messages.find(m => m.content && m.content.includes('Teks ngalahin gambar'));
-  assert.ok(tableMsg, 'Long table message must be present in compressed context');
-  assert.ok(!tableMsg.content.endsWith('…'), 'Long table message must NOT be sliced or truncated with ellipsis');
-  assert.ok(tableMsg.content.includes('View ada, engagement nol'), 'Message must retain full text including ending paragraphs');
+  const tableMsg = compressed.messages.find(m => typeof m.content === 'string' && m.content.includes('Teks ngalahin gambar'));
+  assert.ok(tableMsg && typeof tableMsg.content === 'string', 'Long table message must be present in compressed context');
+  const tableText = tableMsg.content as string;
+  assert.ok(!tableText.endsWith('…'), 'Long table message must NOT be sliced or truncated with ellipsis');
+  assert.ok(tableText.includes('View ada, engagement nol'), 'Message must retain full text including ending paragraphs');
   console.log('  ✅ Test 1 Passed: 8 full messages retained with zero truncation.');
 
   // Test 2: DynamicPromptAssembler always binds all tools even on "DIRECT_ANSWER" / "Boleh"

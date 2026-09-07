@@ -9,8 +9,8 @@ import { EventTypes, GoalResultPayload, StandardEvent } from '../../../core/even
 export interface ReActExecutionParams {
   messages: QwenMessage[];
   rawTools: SeraTool[];
-  stepBudget: number;
-  dynamicGoal: string;
+  stepBudget?: number;
+  dynamicGoal?: string;
   turnStartTime: number;
   hasImages: boolean;
   event: StandardEvent<any>;
@@ -113,7 +113,9 @@ export class ReActExecutor {
     const actionLinks: Array<{ label: string; url: string; type: string }> = [];
     let proposalEncountered = false;
 
-    while (stepCount < stepBudget) {
+    const maxSafetySteps = params.stepBudget || 20;
+
+    while (stepCount < maxSafetySteps) {
       stepCount++;
       if (activeAbortSignal?.aborted) break;
 
@@ -261,13 +263,13 @@ export class ReActExecutor {
           // Circuit Breaker: prevent duplicate tool loop
           const duplicateCount = executedSignatures.filter((sig, idx) => idx >= executedSignatures.length - 2 && sig === signature).length;
           if (duplicateCount >= 2) {
-            console.warn(`[ReActExecutor][CircuitBreaker] Infinite loop prevented for ${toolCall.name}.`);
+            console.warn(`[ReActExecutor][CircuitBreaker] Duplicate obstacle detected for ${toolCall.name}.`);
             messages.push({
               role: 'tool',
               tool_call_id: toolCallId,
               name: toolCall.name,
               content: JSON.stringify({
-                warning: `[CIRCUIT BREAKER] You have already executed ${toolCall.name} with identical arguments. Do not call it again with the same parameters. Use the data you have already received to formulate your final answer.`
+                warning: `[OBSTACLE DETECTED] Operation failed or repeated with identical parameters for ${toolCall.name}. Cease further tool calls now. Formulate a final response explaining what was accomplished, what blocker occurred, and what the user can do next.`
               })
             });
             continue;
@@ -314,7 +316,7 @@ export class ReActExecutor {
               output: {
                 success: false,
                 error: toolErr.message || 'Tool execution encountered an unexpected error',
-                instruction: 'Self-correct your arguments, verify parameters, or try an alternative tool.'
+                instruction: 'Analyze the error. If resolvable with different parameters, adjust and retry; otherwise, gracefully conclude and report the blocker to the user.'
               }
             };
           }

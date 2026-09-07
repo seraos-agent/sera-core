@@ -3,8 +3,8 @@ import { SubAgentDomain } from '../../agents/types';
 import { SeraTool } from '../../../core/cognitive/Tool';
 
 export interface PromptAssemblyOptions {
-  domains: SubAgentDomain[];
-  executionStrategy: 'DIRECT_ANSWER' | 'REQUIRE_TOOL_EXECUTION' | 'MULTI_STEP_ANALYSIS';
+  domains?: SubAgentDomain[];
+  executionStrategy?: 'DIRECT_ANSWER' | 'REQUIRE_TOOL_EXECUTION' | 'MULTI_STEP_ANALYSIS';
   subAgentCoordinator: SubAgentCoordinator;
   capabilityCatalog?: any;
   hasImages?: boolean;
@@ -50,7 +50,11 @@ CRITICAL - IDENTITY & COMMUNICATION:
 CRITICAL - EFFECTIVE & DECISIVE OPERATIONAL PRINCIPLES:
 - Purposeful Action: When the user's intent implies action (approval, confirmation like "Boleh"/"Oke", or direct request), invoke the appropriate native tools immediately. Never emit pseudo-tool text blocks.
 - Comprehensive Insight: Deliver thorough, high-signal responses. Present data, tables, and comparative analysis fully without abrupt truncation. When simple, keep it crisp; when deep, provide full depth.
-- Context Continuity: Seamlessly maintain context from preceding turns. If you previously proposed an action and the user confirms, proceed with that action decisively.`;
+- Context Continuity: Seamlessly maintain context from preceding turns. If you previously proposed an action and the user confirms, proceed with that action decisively.
+- Autonomous Bottleneck & Blocker Management: If an external action or tool encounters an error, rate limit, missing permission, or blocker, DO NOT enter a blind retry loop. Autonomously assess the obstacle, gracefully cease further failed attempts, and formulate a clear status report to the user detailing:
+  1. What was completed successfully.
+  2. The specific blocker or obstacle encountered.
+  3. Actionable next steps or recommendations for the user.`;
 
   private static readonly DOMAIN_PROMPTS: Record<string, string> = {
     productivity: `

@@ -18,7 +18,6 @@ import { ProposalResponseHandler } from './ProposalResponseHandler';
 import { ToolExecutionHandler } from './ToolExecutionHandler';
 import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementStore';
 import { SubAgentCoordinator } from '../agents/SubAgentCoordinator';
-import { CognitiveIntake } from './cognitive/CognitiveIntake';
 import { DynamicPromptAssembler } from './cognitive/DynamicPromptAssembler';
 import { ReActExecutor } from './cognitive/ReActExecutor';
 import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
@@ -67,9 +66,6 @@ export class DialogueEngine {
   private cognitiveContextBuilder: CognitiveContextBuilder;
   private proposalResponseHandler: ProposalResponseHandler;
   private toolExecutionHandler: ToolExecutionHandler;
-
-  // Modern Cognitive Layer (Phase A)
-  private cognitiveIntake: CognitiveIntake;
   private reactExecutor: ReActExecutor;
 
   constructor(
@@ -118,8 +114,6 @@ export class DialogueEngine {
       this.dialogueResultNarrator
     );
 
-    // Modular Cognitive Pipeline components
-    this.cognitiveIntake = new CognitiveIntake(this.orchestrator);
     this.reactExecutor = new ReActExecutor(this.orchestrator, this.toolExecutionHandler);
 
     this.loadConsentedUsers();
@@ -330,16 +324,6 @@ export class DialogueEngine {
     });
 
     try {
-      // ── Phase 1: Cognitive Intake & Dynamic Perception ──────────────────────
-      const intakeResult = await this.cognitiveIntake.evaluate({
-        userMessage: effectiveUserMessage,
-        hasImages: attachedImages.length > 0,
-        hasDocs: attachedDocs.length > 0,
-        abortSignal: this.activeAbortController?.signal
-      });
-
-      console.log(`[DialogueEngine] Cognitive Intake: domains=[${intakeResult.domains.join(', ')}] strategy=${intakeResult.executionStrategy} thought="${intakeResult.userFacingThought}"`);
-
       // Turn start: Thinking phase
       this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
         content: 'Thinking',
@@ -351,7 +335,8 @@ export class DialogueEngine {
 
       // Special action: FORGET_ME
       let forgetMeExecuted = false;
-      if (intakeResult.intent === 'FORGET_ME') {
+      const lower = effectiveUserMessage.toLowerCase();
+      if (/^(forget me|hapus data saya|clear my data|lupakan saya)/i.test(lower)) {
         console.log('[DialogueEngine] Executing FORGET_ME for user/session.');
         this.platformConversationHistory.clear();
         this.chatHistoryStore.clear();
@@ -365,8 +350,6 @@ export class DialogueEngine {
       // ── Phase 2: Dynamic Capability & Prompt Assembly ───────────────────────
       const userTimezone = (this.worldStateService.getTemporalState() as any)?.timezone;
       const { systemPrompt, tools } = DynamicPromptAssembler.assemble({
-        domains: intakeResult.domains,
-        executionStrategy: intakeResult.executionStrategy,
         subAgentCoordinator: this.subAgentCoordinator,
         capabilityCatalog: this.capabilityCatalog,
         hasImages: attachedImages.length > 0,
@@ -388,14 +371,6 @@ export class DialogueEngine {
         messages.push({
           role: 'user',
           content: "[SYSTEM NOTIFICATION] You have just successfully deleted all of the user's chat history and data from the system per their request. Acknowledge this action concisely in the language the user is speaking."
-        });
-      }
-
-      // Inject cognitive anchor as guidance
-      if (intakeResult.cognitiveAnchor) {
-        messages.push({
-          role: 'user',
-          content: `[COGNITIVE GOAL] ${intakeResult.cognitiveAnchor}`
         });
       }
 
@@ -431,8 +406,6 @@ export class DialogueEngine {
       const execResult = await this.reactExecutor.execute({
         messages,
         rawTools: tools,
-        stepBudget: intakeResult.stepBudget,
-        dynamicGoal: intakeResult.userFacingThought,
         turnStartTime,
         hasImages: attachedImages.length > 0,
         event,
