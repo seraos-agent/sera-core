@@ -223,11 +223,26 @@ export class ThreadsDaemon {
 
         this.timelineContext = threads.map(t => `[${t.timestamp}] ${t.text}`).join('\n');
 
-        // 2. Filter threads to only poll those created in the last 7 days
-        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const recentThreads = threads.filter(t => new Date(t.timestamp).getTime() > sevenDaysAgo);
+        // 2. Filter threads to only poll those created in the last 24 hours (max 2 newest active threads)
+        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+        const recentThreads = threads
+          .filter(t => new Date(t.timestamp).getTime() > twentyFourHoursAgo)
+          .slice(0, 2);
 
-        // 3. For each recent thread, poll replies
+        // Auto-prune stale watermark records: purge any tracked thread ID not in active 24h window
+        const activeThreadIds = new Set(recentThreads.map(t => t.id));
+        let watermarkPruned = false;
+        for (const trackedThreadId of this.lastProcessedReplyIds.keys()) {
+          if (!activeThreadIds.has(trackedThreadId)) {
+            this.lastProcessedReplyIds.delete(trackedThreadId);
+            watermarkPruned = true;
+          }
+        }
+        if (watermarkPruned) {
+          this.saveWatermark();
+        }
+
+        // 3. For each active recent thread, poll replies
         for (const thread of recentThreads) {
           const replies = await this.api.getThreadReplies(sessionId, thread.id, 20);
           if (!replies || replies.length === 0) continue;
@@ -270,9 +285,23 @@ export class ThreadsDaemon {
   private userActivityMap = new Map<string, { count: number; windowStart: number }>();
 
   /**
+   * Prunes stale rate-limit records older than 30 minutes from memory.
+   */
+  private pruneUserActivityMap() {
+    const now = Date.now();
+    const expiryMs = 30 * 60 * 1000;
+    for (const [username, record] of this.userActivityMap.entries()) {
+      if ((now - record.windowStart) > expiryMs) {
+        this.userActivityMap.delete(username);
+      }
+    }
+  }
+
+  /**
    * Enforces a rate limit per Threads user to prevent abuse and spam (max 3 responses per 15 mins).
    */
   private checkRateLimit(username: string): boolean {
+    this.pruneUserActivityMap();
     const now = Date.now();
     const windowMs = 15 * 60 * 1000;
     const maxRequests = 3;

@@ -7,6 +7,8 @@ export class AuditLogger {
   private logPath: string;
   private readonly RETENTION_DAYS = 30;
   private readonly persistLocally: boolean;
+  private writeCount = 0;
+  private readonly MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
   constructor(private eventBus: EventEmitter, options: { persistLocally?: boolean } = {}) {
     this.persistLocally = options.persistLocally ?? true;
@@ -54,6 +56,7 @@ export class AuditLogger {
     }
   }
 
+
   private stripPII(payload: any): any {
     let serialized = JSON.stringify(payload);
     // Best-effort PII stripping (Emails, Phone numbers, Ethereum Addresses)
@@ -85,19 +88,42 @@ export class AuditLogger {
         console.error(`[AuditLogger] Failed to write log: ${err.message}`);
       }
     });
+    this.writeCount++;
+    if (this.writeCount % 50 === 0) {
+      this.checkRotation();
+    }
+  }
+
+  private checkRotation() {
+    if (!this.persistLocally) return;
+    try {
+      if (fs.existsSync(this.logPath)) {
+        const stats = fs.statSync(this.logPath);
+        if (stats.size > this.MAX_FILE_SIZE) {
+          const oldPath = `${this.logPath}.old`;
+          if (fs.existsSync(oldPath)) {
+            try { fs.unlinkSync(oldPath); } catch {}
+          }
+          fs.renameSync(this.logPath, oldPath);
+          console.log('[AuditLogger] Log rotated: audit.log exceeded 2MB, archived to audit.log.old');
+        }
+      }
+
+      const oldPath = `${this.logPath}.old`;
+      if (fs.existsSync(oldPath)) {
+        const stats = fs.statSync(oldPath);
+        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        if (stats.mtimeMs < sevenDaysAgo) {
+          fs.unlinkSync(oldPath);
+          console.log('[AuditLogger] Removed audit.log.old (> 7 days).');
+        }
+      }
+    } catch (err: any) {
+      console.warn('[AuditLogger] Log rotation check warning:', err.message);
+    }
   }
 
   private cleanupOldLogs() {
-    // A simple file-based retention mechanism: rotate/delete if file is older than 30 days
-    fs.stat(this.logPath, (err, stats) => {
-      if (err) return;
-      const now = new Date().getTime();
-      const endTime = stats.mtime.getTime() + (this.RETENTION_DAYS * 24 * 60 * 60 * 1000);
-      if (now > endTime) {
-        fs.unlink(this.logPath, (err) => {
-          if (!err) console.log('[AuditLogger] Old audit log removed due to 30-day retention policy.');
-        });
-      }
-    });
+    this.checkRotation();
   }
 }

@@ -89,7 +89,7 @@ export class Runtime {
         activeSession,
         this.secretManager
       );
-      Runtime.globalThreadsDaemon.start(3 * 60 * 1000);
+      Runtime.globalThreadsDaemon.start(5 * 60 * 1000);
     }
 
     // ── Register Connectors ───────────────────────────────────────────────

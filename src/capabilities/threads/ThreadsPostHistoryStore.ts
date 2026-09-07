@@ -81,8 +81,9 @@ export class ThreadsPostHistoryStore {
     };
 
     const current = this.getRecentPosts(sessionId, 50);
-    // Prepend newest post first and keep up to 20 items
-    const updated = [entry, ...current.filter(p => p.text !== trimmedText)].slice(0, 20);
+    const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    // Prepend newest post first, filter out duplicates and posts older than 14 days, max 20 items
+    const updated = [entry, ...current.filter(p => p.text !== trimmedText && p.timestamp > fourteenDaysAgo)].slice(0, 20);
     this.inMemoryCache.set(sessionId, updated);
 
     if (this.persistLocally) {
