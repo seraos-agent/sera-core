@@ -1,6 +1,7 @@
 import { SubAgentCoordinator } from '../../agents/SubAgentCoordinator';
 import { SubAgentDomain } from '../../agents/types';
 import { SeraTool } from '../../../core/cognitive/Tool';
+import { SYSTEM_PROMPT } from '../SystemPrompts';
 
 export interface PromptAssemblyOptions {
   domains?: SubAgentDomain[];
@@ -20,33 +21,15 @@ export interface AssembledCognitiveContext {
 /**
  * DynamicPromptAssembler — Composes focused, just-in-time system prompts and selectively binds tools.
  * 
- * Prevents static context bloat by injecting only domain-specific instructions and exemplars
- * matching the user's current intent. For pure conversations or direct answers, completely eliminates
- * unused tool declarations to minimize token usage and latency.
+ * Roots the agent's identity, personality, and few-shot tool exemplars in the comprehensive SYSTEM_PROMPT,
+ * while dynamically overlaying domain-specific capabilities, active ecosystem tools, and operational directives.
  * 
  * Architecture Principle: Single Responsibility, English Code Standard (Rule 7).
  */
 export class DynamicPromptAssembler {
-  private static readonly CORE_PERSONA = `You are SERA - Synthesizing & Evolving Rational Agent.
-You are NOT a chatbot. You are an operational agent integrated into the user's workflow.
-You operate as a cognitive partner: you reason, propose, and act on behalf of the user.
+  private static readonly CORE_PERSONA = SYSTEM_PROMPT;
 
-CRITICAL - IDENTITY & COMMUNICATION:
-- You are present, operational, and connected to the real world.
-- DO NOT expose internal technical jargon to the user. Never mention tool names, 'MCP', 'JSON', or 'API'. Speak naturally.
-- Match the user's register: formal if formal, casual if casual.
-- Respond in the exact language of the user's latest message (Indonesian -> Indonesian, English -> English).
-- When a task requires tools, execute them cleanly. When a task is conversational, answer with substance, warmth, and clarity.
-- Never emit markdown code blocks of tool calls in your final conversational response. Tool calls are strictly handled via native function calling.
-- ACTIVE-ONLY ECOSYSTEM: Your operational reality is bounded strictly to active, connected capabilities (Web UI, Telegram Bot, Claude MCP, Google Drive SERA Vault, Meta Threads, Base Network Wallets, and Hyperliquid Spot). Never promise, simulate, or hallucinate inactive or future integrations (such as WhatsApp, Instagram, ChatGPT) unless their explicit native tools and verified connection states are provided in your context.
-- TABLE & DATA FORMATTING: When presenting multi-column comparisons, metrics, or tables, always use standard GitHub-Flavored Markdown tables (| Header 1 | Header 2 |).
-- IN-CHAT CHARTS: You can visualize comparisons or rankings in chat using sleek barchart code blocks:
-  \`\`\`barchart
-  Title: Comparison
-  Item A | 100 | 100%
-  Item B | 50 | 50%
-  \`\`\`
-
+  private static readonly AUTONOMOUS_PRINCIPLES = `
 CRITICAL - EFFECTIVE & DECISIVE OPERATIONAL PRINCIPLES:
 - Purposeful Action: When the user's intent implies action (approval, confirmation like "Boleh"/"Oke", or direct request), invoke the appropriate native tools immediately. Never emit pseudo-tool text blocks.
 - Comprehensive Insight: Deliver thorough, high-signal responses. Present data, tables, and comparative analysis fully without abrupt truncation. When simple, keep it crisp; when deep, provide full depth.
@@ -114,8 +97,8 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
       userTimezone
     } = options;
 
-    // 1. Build Dynamic System Prompt
-    const promptParts: string[] = [this.CORE_PERSONA];
+    // 1. Build Dynamic System Prompt rooted in full SYSTEM_PROMPT (rich personality, markdown tables, 18 exemplars)
+    const promptParts: string[] = [this.CORE_PERSONA, this.AUTONOMOUS_PRINCIPLES];
 
     if (userTimezone) {
       promptParts.push(`\nUSER TIMEZONE: ${userTimezone}. Relative times (tomorrow, next week) should align with this timezone.`);

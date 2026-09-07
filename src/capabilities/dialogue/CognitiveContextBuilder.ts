@@ -32,15 +32,7 @@ export class CognitiveContextBuilder {
     const messages: QwenMessage[] = [{ role: 'system', content: overrideSystemPrompt || SYSTEM_PROMPT }];
     const walletState = this.worldStateService.getWalletState();
 
-    const isShortGreeting = Boolean(
-      userMessage &&
-        userMessage.trim().split(/\s+/).length <= 3 &&
-        !/\b(transfer|balance|network|schedule|send|post|search|image|draw)\b/i.test(userMessage)
-    );
-
-    const memoryAttention = isShortGreeting
-      ? { items: [], estimatedTokens: 0, tokenBudget: 500, truncated: false }
-      : await this.memoryQueryService.query(userMessage, { tokenBudget: 500 });
+    const memoryAttention = await this.memoryQueryService.query(userMessage, { tokenBudget: 2000 });
 
     const activeCaps = this.capabilityCatalog
       ? this.capabilityCatalog.allConnectorSummaries().filter((c: any) => c.isActive).map((c: any) => c.name).join(', ')
