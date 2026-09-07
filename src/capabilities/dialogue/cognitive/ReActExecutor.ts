@@ -396,7 +396,7 @@ export class ReActExecutor {
 
       messages.push({
         role: 'user',
-        content: '[SYSTEM INSTRUCTION] All operational actions and tools have completed execution. Provide a concise, professional, clear, and well-structured final summary report (under 150 words) to the user now.'
+        content: '[SYSTEM INSTRUCTION] All operational actions and tools have completed execution. Provide a complete, professional, clear, and well-structured final report to the user now. Present all key data, metrics, comparisons, and insights thoroughly without abrupt truncation.'
       });
 
       try {
@@ -498,6 +498,36 @@ export class ReActExecutor {
   }
 
   private interceptPseudoToolCall(text: string): { toolCall: { id: string; name: string; arguments: any }; cleanedText: string } | null {
+    const toolCallTagMatch = text.match(/<tool_call>\s*([A-Za-z0-9_:]+)\s*(\{[\s\S]*?\})\s*<\/tool_call>/i);
+    if (toolCallTagMatch) {
+      try {
+        const rawToolName = toolCallTagMatch[1].trim();
+        const jsonStr = toolCallTagMatch[2].trim();
+        const parsed = JSON.parse(jsonStr);
+        const cleanedText = text.replace(/<tool_call>\s*[A-Za-z0-9_:]+\s*\{[\s\S]*?\}\s*<\/tool_call>/i, '').trim();
+
+        let toolName = rawToolName;
+        if (rawToolName === 'fetch_thread_metrics' || rawToolName === 'get_thread_insights') {
+          toolName = 'THREADS_GET_INSIGHTS';
+        } else if (rawToolName === 'fetch_threads' || rawToolName === 'get_threads') {
+          toolName = 'THREADS_GET_POSTS';
+        } else if (rawToolName === 'create_spreadsheet') {
+          toolName = 'GDRIVE_CREATE_SPREADSHEET';
+        }
+
+        return {
+          toolCall: {
+            id: `call_intercepted_tag_${Date.now()}`,
+            name: toolName,
+            arguments: parsed
+          },
+          cleanedText
+        };
+      } catch (e) {
+        console.warn('[ReActExecutor] Failed to parse intercepted <tool_call> JSON:', e);
+      }
+    }
+
     const sheetMatch = text.match(/\[sheet\]\s*(\{[\s\S]*\})/i);
     if (sheetMatch) {
       try {

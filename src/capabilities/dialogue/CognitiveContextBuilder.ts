@@ -75,8 +75,8 @@ export class CognitiveContextBuilder {
         }));
 
       const context = this.conversationContextCompressor.compress(recentUi, {
-        tokenBudget: 1500,
-        maxRecentTurns: 6
+        tokenBudget: 24000,
+        maxRecentTurns: 8
       });
 
       messages.push(...context.messages);
@@ -97,7 +97,7 @@ export class CognitiveContextBuilder {
 
       if (history.length > 0) {
         const context = this.conversationContextCompressor.compress(history, {
-          tokenBudget: 3000,
+          tokenBudget: 24000,
           maxRecentTurns: maxPlatformHistoryTurns
         });
         messages.push({

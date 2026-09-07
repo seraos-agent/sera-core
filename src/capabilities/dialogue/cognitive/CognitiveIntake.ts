@@ -72,10 +72,10 @@ export class CognitiveIntake {
 
     if (isSimpleGreeting) {
       executionStrategy = 'DIRECT_ANSWER';
-      stepBudget = 1;
-    } else if (isConversationalConfirmation || isDirectCapabilityInquiry) {
-      executionStrategy = 'DIRECT_ANSWER';
       stepBudget = 2;
+    } else if (isDirectCapabilityInquiry) {
+      executionStrategy = 'DIRECT_ANSWER';
+      stepBudget = 3;
     } else {
       executionStrategy = 'REQUIRE_TOOL_EXECUTION';
       stepBudget = 5;

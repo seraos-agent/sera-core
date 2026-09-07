@@ -244,8 +244,9 @@ export class ThreadsCapability {
 
       case 'THREADS_GET_INSIGHTS': {
         try {
-          if (args.postId) {
-            const postInsights = await this.api.getPostInsights(sessionId, args.postId);
+          const targetId = args.postId || args.mediaId;
+          if (targetId) {
+            const postInsights = await this.api.getPostInsights(sessionId, targetId);
             return {
               success: true,
               type: 'post',

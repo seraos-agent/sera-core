@@ -71,7 +71,7 @@ export class ConversationContextCompressor {
         break;
       }
 
-      const maxContentTokens = Math.min(remaining - prefixTokens, condensed ? 56 : 220);
+      const maxContentTokens = Math.min(remaining - prefixTokens, condensed ? 1000 : 4000);
       const { content, truncated: clipped } = this.truncate(turn.content, maxContentTokens);
       if (!content) {
         truncated = true;

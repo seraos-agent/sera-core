@@ -561,13 +561,14 @@ export class GoalBridge {
 
   private async handleThreadsGetInsights(requestId: string, parameters: Record<string, any>): Promise<void> {
     try {
-      if (parameters?.postId) {
-        const insights = await this.threadsApi.getPostInsights(this.sessionId, parameters.postId);
+      const targetId = parameters?.postId || parameters?.mediaId;
+      if (targetId) {
+        const insights = await this.threadsApi.getPostInsights(this.sessionId, targetId);
         this.emitResult(requestId, true, {
           provider: 'Meta Threads',
           type: 'post',
           insights,
-          summary: `Fetched insights for post ${parameters.postId}: ${insights.views} views, ${insights.likes} likes, ${insights.replies} replies.`
+          summary: `Fetched insights for post ${targetId}: ${insights.views} views, ${insights.likes} likes, ${insights.replies} replies.`
         });
         return;
       }

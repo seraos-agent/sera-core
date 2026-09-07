@@ -302,12 +302,48 @@ export class ThreadsAPI {
   }
 
   /**
+   * Resolves a Threads shortcode (e.g. "Dc7LZs1H4O_" or a permalink URL) to a Meta numeric post ID.
+   */
+  async resolveNumericPostId(sessionId: string, postIdOrShortcode: string): Promise<string> {
+    const trimmed = (postIdOrShortcode || '').trim();
+    if (!trimmed) return trimmed;
+
+    // Extract shortcode if full URL was provided (e.g. https://www.threads.net/@user/post/Dc7LZs1H4O_)
+    const urlMatch = trimmed.match(/\/post\/([A-Za-z0-9_-]+)/i);
+    const candidate = urlMatch ? urlMatch[1] : trimmed;
+
+    // If purely numeric digits, it's already a Meta numeric post ID
+    if (/^\d+$/.test(candidate)) {
+      return candidate;
+    }
+
+    // Attempt lookup from recent posts to match permalink or shortcode
+    try {
+      const recentPosts = await this.getUserThreads(sessionId, 25);
+      const match = recentPosts.find(p =>
+        p.id === candidate ||
+        (p.permalink && p.permalink.includes(candidate)) ||
+        (p.text && p.text.includes(candidate))
+      );
+      if (match && match.id) {
+        console.log(`[ThreadsAPI] Successfully resolved shortcode "${candidate}" to numeric post ID: ${match.id}`);
+        return match.id;
+      }
+    } catch (e: any) {
+      console.warn(`[ThreadsAPI] Could not resolve shortcode via recent threads: ${e.message}`);
+    }
+
+    return candidate;
+  }
+
+  /**
    * Fetches performance metrics (views, likes, replies, reposts, quotes) for a specific Threads post.
    */
-  async getPostInsights(sessionId: string, postId: string): Promise<ThreadsPostInsights> {
+  async getPostInsights(sessionId: string, rawPostId: string): Promise<ThreadsPostInsights> {
     const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
+    const postId = await this.resolveNumericPostId(sessionId, rawPostId);
     const url = new URL(`${this.baseUrl}/${postId}/insights`);
     url.searchParams.append('metric', 'views,likes,replies,reposts,quotes');
     url.searchParams.append('access_token', token);
@@ -419,10 +455,11 @@ export class ThreadsAPI {
   /**
    * Fetches a specific post by its ID.
    */
-  async getPost(sessionId: string, postId: string): Promise<ThreadsMention> {
+  async getPost(sessionId: string, rawPostId: string): Promise<ThreadsMention> {
     const token = await this.getAccessToken(sessionId);
     if (!token) throw new Error('Threads API requires an active access token.');
 
+    const postId = await this.resolveNumericPostId(sessionId, rawPostId);
     const url = new URL(`${this.baseUrl}/${postId}`);
     url.searchParams.append('fields', 'id,text,timestamp,username,is_reply,replied_to');
     url.searchParams.append('access_token', token);

@@ -45,7 +45,12 @@ CRITICAL - IDENTITY & COMMUNICATION:
   Title: Comparison
   Item A | 100 | 100%
   Item B | 50 | 50%
-  \`\`\``;
+  \`\`\`
+
+CRITICAL - EFFECTIVE & DECISIVE OPERATIONAL PRINCIPLES:
+- Purposeful Action: When the user's intent implies action (approval, confirmation like "Boleh"/"Oke", or direct request), invoke the appropriate native tools immediately. Never emit pseudo-tool text blocks.
+- Comprehensive Insight: Deliver thorough, high-signal responses. Present data, tables, and comparative analysis fully without abrupt truncation. When simple, keep it crisp; when deep, provide full depth.
+- Context Continuity: Seamlessly maintain context from preceding turns. If you previously proposed an action and the user confirms, proceed with that action decisively.`;
 
   private static readonly DOMAIN_PROMPTS: Record<string, string> = {
     productivity: `
@@ -112,36 +117,21 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
       promptParts.push(`\nUSER TIMEZONE: ${userTimezone}. Relative times (tomorrow, next week) should align with this timezone.`);
     }
 
-    const isGeneralOperational = !(executionStrategy === 'DIRECT_ANSWER' && domains.length === 1 && domains[0] === 'general') && domains.includes('general');
-
-    // Inject domain instructions
-    const targetDomains = isGeneralOperational ? Object.keys(this.DOMAIN_PROMPTS) : domains;
-    for (const domain of targetDomains) {
+    // Inject domain instructions across all active capabilities
+    for (const domain of Object.keys(this.DOMAIN_PROMPTS)) {
       if (this.DOMAIN_PROMPTS[domain]) {
         promptParts.push(this.DOMAIN_PROMPTS[domain]);
       }
     }
 
-    if (!(executionStrategy === 'DIRECT_ANSWER' && domains.length === 1 && domains[0] === 'general')) {
-      const domainOverlay = isGeneralOperational
-        ? subAgentCoordinator.getCompositeSystemPrompt()
-        : subAgentCoordinator.getSystemPromptForDomains(domains);
-      if (domainOverlay) {
-        promptParts.push(`\n${domainOverlay}`);
-      }
+    const domainOverlay = subAgentCoordinator.getCompositeSystemPrompt();
+    if (domainOverlay) {
+      promptParts.push(`\n${domainOverlay}`);
     }
 
     const systemPrompt = promptParts.join('\n');
 
-    // 2. Dynamic Tool Spectrum
-    let tools: SeraTool[] = [];
-
-    // If pure greeting / single general direct answer, return 0 tools
-    if (executionStrategy === 'DIRECT_ANSWER' && domains.length === 1 && domains[0] === 'general') {
-      return { systemPrompt, tools: [] };
-    }
-
-    // For any operational turn, provide all authorized sub-agent tools so Qwen has full domain capabilities
+    // 2. Unchained Ecosystem Tool Spectrum: Always provide authorized tools so Qwen can invoke native functions freely
     const allDomainTools = subAgentCoordinator.getAllTools();
     const toolMap = new Map<string, SeraTool>();
 
@@ -161,7 +151,7 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
       }
     }
 
-    tools = Array.from(toolMap.values());
+    const tools = Array.from(toolMap.values());
 
     return {
       systemPrompt,
