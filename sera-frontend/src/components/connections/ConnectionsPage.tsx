@@ -17,7 +17,8 @@ import {
   Check,
   Key,
   RefreshCw,
-  Unplug
+  Unplug,
+  X
 } from "lucide-react";
 import type { ThemeType } from "../../theme";
 import { QuestDashboard } from "../quests/QuestDashboard";
@@ -37,6 +38,10 @@ interface WorkspacePageProps {
   telegram?: any;
   telegramLinkCode?: string | null;
   onGenerateTelegramLink?: () => void;
+  whatsapp?: { status: string; phoneNumber?: string } | null;
+  whatsappLinkData?: { code: string; deepLink: string } | null;
+  onGenerateWhatsAppLink?: () => void;
+  onDisconnectWhatsApp?: () => void;
   googleDrive?: { status: string; url?: string } | null;
   onConnectGoogleDrive?: () => void;
   onDisconnectGoogleDrive?: () => void;
@@ -79,7 +84,7 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   storage: HardDrive,
 };
 
-export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMobileView, socket, threads, onConnectThreads, onDisconnectThreads, telegram, telegramLinkCode, onGenerateTelegramLink, googleDrive, onConnectGoogleDrive, onDisconnectGoogleDrive }: WorkspacePageProps) {
+export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMobileView, socket, threads, onConnectThreads, onDisconnectThreads, telegram, telegramLinkCode, onGenerateTelegramLink, whatsapp, whatsappLinkData, onGenerateWhatsAppLink, onDisconnectWhatsApp, googleDrive, onConnectGoogleDrive, onDisconnectGoogleDrive }: WorkspacePageProps) {
   const sidePad = isMobileView ? 16 : 32;
   const titleSize = isMobileView ? 22 : 36;
 
@@ -97,6 +102,13 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
   const [linkCodeTimer, setLinkCodeTimer] = useState<string>('');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [connectedPlatforms, setConnectedPlatforms] = useState<Array<{ client_id: string; client_name: string; created_at: number }>>([]);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+
+  useEffect(() => {
+    if (whatsapp?.status === 'CONNECTED') {
+      setShowWhatsAppModal(false);
+    }
+  }, [whatsapp?.status]);
 
   const mcpSseUrl = "https://mcp.seraos.xyz";
 
@@ -213,6 +225,12 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
       else if (socket) socket.emit('telegram:generate_link');
       return;
     }
+    if (connectorId === 'whatsapp') {
+      if (onGenerateWhatsAppLink) onGenerateWhatsAppLink();
+      else if (socket) socket.emit('whatsapp:generate_link');
+      setShowWhatsAppModal(true);
+      return;
+    }
     if (!socket) return;
     socket.emit('connector:activate', { connectorId });
   };
@@ -224,7 +242,12 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
       return;
     }
     if (connectorId === 'telegram') {
-      // For now, no disconnect from UI, or maybe we just don't allow it.
+      // Telegram does not currently have unlinking from UI
+      return;
+    }
+    if (connectorId === 'whatsapp') {
+      if (onDisconnectWhatsApp) onDisconnectWhatsApp();
+      else if (socket) socket.emit('whatsapp:disconnect');
       return;
     }
     if (!socket) return;
@@ -240,7 +263,7 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
 
   const getCategoryCount = (catId: string): number => {
     if (catId === 'quests') return STATIC_CAPABILITIES.quests?.length || 0;
-    if (catId === 'connectors') return 1 + (connectorsByCategory['connectors']?.length || 0);
+    if (catId === 'connectors') return 2; // Claude & ChatGPT MCP
     if (catId === 'storage') return 1; // Google Drive
     return connectorsByCategory[catId]?.length || 0;
   };
@@ -295,9 +318,11 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
     const Icon = CATEGORY_ICON_MAP[connector.category] || Activity;
     const isThreads = connector.id === 'threads';
     const isTelegram = connector.id === 'telegram';
+    const isWhatsApp = connector.id === 'whatsapp';
     let isConnectorActive = connector.isActive;
     if (isThreads) isConnectorActive = (threads?.status === 'CONNECTED');
     if (isTelegram) isConnectorActive = (telegram?.status === 'CONNECTED');
+    if (isWhatsApp) isConnectorActive = (whatsapp?.status === 'CONNECTED' || connector.isActive);
 
     return (
       <div
@@ -323,6 +348,14 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
               <svg viewBox="0 0 24 24" width={22} height={22} fill={theme.ink} stroke="none">
                 <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.892-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
               </svg>
+            ) : connector.id === 'whatsapp' ? (
+              <svg viewBox="0 0 24 24" width={22} height={22} fill="#25D366">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.65 3.742-.983zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+              </svg>
+            ) : connector.id === 'google_drive' ? (
+              <img src="/google-drive.svg" style={{ width: 22, height: 22, objectFit: "contain" }} />
+            ) : connector.id === 'claude_mcp' ? (
+              <img src="/claude.svg" style={{ width: 22, height: 22, objectFit: "contain" }} />
             ) : (
               <Icon size={20} color={theme.ink} strokeWidth={1.5} />
             )}
@@ -384,15 +417,7 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
               fontWeight: 500,
               marginTop: 8
             }}>
-              {threads.profilePictureUrl ? (
-                <img
-                  src={threads.profilePictureUrl}
-                  alt={threads.username || 'Threads User'}
-                  style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
-                />
-              ) : (
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981" }} />
-              )}
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", flexShrink: 0 }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 1, overflow: "hidden" }}>
                 <span style={{ fontWeight: 600, color: theme.ink, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
                   {threads.username ? `@${threads.username}` : `ID: ${threads.threadsUserId}`}
@@ -404,6 +429,27 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
             </div>
           )}
 
+          {isWhatsApp && isConnectorActive && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 12px",
+              background: "rgba(37, 211, 102, 0.08)",
+              border: "1px solid rgba(37, 211, 102, 0.25)",
+              borderRadius: 10,
+              fontSize: 12,
+              color: theme.ink,
+              fontWeight: 500,
+              marginTop: 8
+            }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#25D366" }} />
+              <span style={{ fontWeight: 600, color: theme.ink }}>
+                {whatsapp?.phoneNumber ? `+${whatsapp.phoneNumber}` : 'Connected'}
+              </span>
+            </div>
+          )}
+
 
         </div>
 
@@ -412,23 +458,23 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
           <div style={{ marginTop: 4 }}>
             {isConnectorActive ? (
               <button
-                onClick={() => { 
+                onClick={() => {
                   if (!isTelegram) {
                     handleDeactivate(connector.id);
-                  } 
+                  }
                 }}
                 style={{
                   width: "100%", padding: "8px 0", borderRadius: 10,
                   border: `1px solid ${theme.border}`, background: "transparent",
-                  color: isTelegram ? "#10b981" : "#ef4444", 
+                  color: isTelegram ? "#10b981" : "#ef4444",
                   fontSize: 13, fontWeight: 600, cursor: isTelegram ? "default" : "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                   transition: "background 200ms"
                 }}
-                onMouseEnter={e => { 
+                onMouseEnter={e => {
                   if (!isTelegram) e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
                 }}
-                onMouseLeave={e => { 
+                onMouseLeave={e => {
                   if (!isTelegram) e.currentTarget.style.background = "transparent";
                 }}
               >
@@ -671,7 +717,7 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
             <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: isMobileView ? "18px 14px" : "22px 18px", borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface2, position: "relative", overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <img src="/google-drive.png" alt="Google Drive" style={{ width: 22, height: 22, objectFit: "contain" }} />
+                  <img src="/google-drive.svg" alt="Google Drive" style={{ width: 22, height: 22, objectFit: "contain" }} />
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.border}`, background: googleDrive?.status === 'CONNECTED' ? theme.statusSoft : theme.surface, color: googleDrive?.status === 'CONNECTED' ? theme.status : theme.inkSoft }}>
                   {googleDrive?.status === 'CONNECTED' ? 'CONNECTED' : googleDrive?.status === 'NOT_CONNECTED' ? 'READY' : 'SETUP REQUIRED'}
@@ -778,6 +824,99 @@ export function ConnectionsPage({ theme, walletState: _walletState, onBack, isMo
           onActivate={handleActivate}
           onClose={() => setActivationTarget(null)}
         />
+      )}
+
+      {/* WhatsApp QR & Deep Link Pairing Modal */}
+      {showWhatsAppModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
+        }}>
+          <div style={{
+            width: "100%", maxWidth: 400, background: theme.surface,
+            borderRadius: 24, border: `1px solid ${theme.border}`,
+            padding: 24, display: "flex", flexDirection: "column", gap: 18,
+            boxShadow: "0 24px 48px rgba(0,0,0,0.25)", position: "relative"
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(37, 211, 102, 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg viewBox="0 0 24 24" width={20} height={20} fill="#25D366">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.65 3.742-.983zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 600, color: theme.ink, margin: 0 }}>Connect WhatsApp</h3>
+                  <p style={{ fontSize: 12, color: theme.inkSoft, margin: 0 }}>Scan QR or click to pair instantly</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppModal(false)}
+                style={{ background: "transparent", border: "none", color: theme.inkSoft, cursor: "pointer", padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* QR Code Container */}
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              padding: 16, background: "#ffffff", borderRadius: 16, border: `1px solid ${theme.border}`
+            }}>
+              {whatsappLinkData?.deepLink ? (
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(whatsappLinkData.deepLink)}&margin=6`}
+                  alt="WhatsApp QR Code"
+                  style={{ width: 180, height: 180, display: "block" }}
+                />
+              ) : (
+                <div style={{ width: 180, height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}>
+                  <RefreshCw size={24} className="animate-spin" />
+                </div>
+              )}
+            </div>
+
+            {/* 1-Click Launch Button */}
+            {whatsappLinkData?.deepLink && (
+              <a
+                href={whatsappLinkData.deepLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: "100%", padding: "12px 0", borderRadius: 12,
+                  background: "#25D366", color: "#ffffff", fontSize: 13, fontWeight: 600,
+                  textDecoration: "none", cursor: "pointer", transition: "opacity 0.2s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+              >
+                Open in WhatsApp
+              </a>
+            )}
+
+            {/* Instruction Tip */}
+            <div style={{
+              background: theme.surface2, border: `1px solid ${theme.border}`,
+              borderRadius: 12, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4,
+              textAlign: "center"
+            }}>
+              <p style={{ fontSize: 12, color: theme.ink, margin: 0, lineHeight: 1.4 }}>
+                Scan the QR code or tap <strong>Open in WhatsApp</strong>.
+              </p>
+              <p style={{ fontSize: 11, color: theme.inkSoft, margin: 0, lineHeight: 1.4 }}>
+                The pairing message is filled automatically just tap <strong>Send</strong> in WhatsApp.
+              </p>
+            </div>
+
+            {/* TTL Expiry Note */}
+            <p style={{ fontSize: 11, color: theme.inkFaint, textAlign: "center", margin: 0 }}>
+              Pairing link expires in 5 minutes.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

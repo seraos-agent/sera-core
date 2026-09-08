@@ -70,9 +70,17 @@ export interface CommunicationState {
   }
 }
 
+export interface UserProfileState {
+  preferredName?: string;
+  updatedAt: number;
+  notes?: string;
+}
+
 export interface WorldStateSnapshot {
   lastUpdatedAt: number;
   wallet: WalletState | null;
   temporal: TemporalState | null;
   communication: CommunicationState | null;
+  profile: UserProfileState | null;
 }
+

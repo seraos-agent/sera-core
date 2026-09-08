@@ -15,7 +15,10 @@
     "dev:docs": "npm --prefix sera-docs run start -- --port 3003",
     "build": "tsc",
     "deploy:core": "gcloud builds submit --config cloudbuild.core.yaml . && gcloud run deploy sera-core --image asia-southeast1-docker.pkg.dev/sera-core/sera-core-images/sera-core-api:latest --region asia-southeast1 --quiet",
-    "deploy:frontend": "npm --prefix sera-frontend run build && vercel --prod --cwd sera-frontend"
+    "deploy:frontend": "npm --prefix sera-frontend run build && vercel --prod --cwd sera-frontend",
+    "start:admin": "npm --prefix sera-admin run dev",
+    "build:admin": "npm --prefix sera-admin run build",
+    "deploy:admin": "npm --prefix sera-admin run build && vercel --prod --cwd sera-admin"
   },
   "author": "",
   "license": "ISC",

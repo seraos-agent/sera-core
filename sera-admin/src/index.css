@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Clean, Sophisticated Slate Dark Palette (Linear/Vercel Aesthetic) */
+  --bg-app: #0A0A0C;
+  --bg-panel: #111114;
+  --bg-card: #141418;
+  --bg-card-hover: #191920;
+  --bg-input: #0E0E12;
+  --bg-elevated: #1F1F26;
+
+  --border-subtle: #202026;
+  --border-muted: #18181D;
+  --border-hover: #2E2E38;
+
+  --text-primary: #F4F4F6;
+  --text-secondary: #9E9EA8;
+  --text-muted: #656570;
+
+  --accent-blue: #3B82F6;
+  --accent-blue-hover: #2563EB;
+
+  --status-active: #10B981;
+  --status-dormant: #71717A;
+  --status-danger: #EF4444;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #272730;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #383844;
+}
+
+/* Refined Panels (Clean borders, no neon) */
+.glass-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+}
+
+/* Crisp, Non-Flashing Status Indicators */
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-active {
+  background-color: var(--status-active);
+}
+.status-dormant {
+  background-color: var(--status-dormant);
+}
+
+/* Monospace font utility */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Clean Input Style */
+input, select, textarea {
+  font-family: var(--font-sans);
+}

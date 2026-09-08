@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
-import { Observation, WorldStateSnapshot, WalletState, TemporalState } from './types';
+import { Observation, WorldStateSnapshot, WalletState, TemporalState, UserProfileState } from './types';
 
 export class WorldStateService {
   private state: WorldStateSnapshot;
@@ -31,7 +31,8 @@ export class WorldStateService {
       lastUpdatedAt: Date.now(),
       wallet: null,
       temporal: null,
-      communication: null
+      communication: null,
+      profile: null
     };
   }
 
@@ -76,6 +77,20 @@ export class WorldStateService {
       
       this.state.lastUpdatedAt = Date.now();
       this.savePersistedData();
+    });
+
+    this.eventBus.on('USER_PROFILE_UPDATED', (event: any) => {
+      const p = event.payload || event;
+      if (p.preferredName) {
+        this.state.profile = {
+          preferredName: p.preferredName,
+          updatedAt: Date.now(),
+          notes: p.notes
+        };
+        this.state.lastUpdatedAt = Date.now();
+        this.savePersistedData();
+        console.log(`[WorldStateService] UserProfile updated: preferredName="${p.preferredName}"`);
+      }
     });
 
     // In the future, listen to DOMAIN_TEMPORAL_STATE, DOMAIN_LOCATION_STATE, etc.
@@ -134,6 +149,19 @@ export class WorldStateService {
 
   public getTemporalState(): TemporalState | null {
     return this.state.temporal;
+  }
+
+  public getUserProfile(): UserProfileState | null {
+    return this.state.profile;
+  }
+
+  public setUserPreferredName(name: string): void {
+    this.state.profile = {
+      preferredName: name,
+      updatedAt: Date.now()
+    };
+    this.state.lastUpdatedAt = Date.now();
+    this.savePersistedData();
   }
 
   /**

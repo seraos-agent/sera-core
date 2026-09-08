@@ -19,12 +19,14 @@ import { SeraUserContext } from '../../core/identity/types';
 import { BaseAdapter } from '../../capabilities/wallet/chains/BaseAdapter';
 import { generateSessionToken, verifySessionToken, WalletLinkChallenge } from './socketAuth';
 import { DocumentParserService, ParsedDocumentResult } from '../../core/ingestion/DocumentParserService';
+import { WhatsAppManager } from '../../capabilities/communication/adapters/WhatsAppManager';
 
 export interface SocketGatewayDependencies {
   agentManager: AgentManager;
   googleDriveOAuthService: GoogleDriveOAuthService | null;
   threadsOAuthService: ThreadsOAuthService;
   telegramBotManager: TelegramBotManager;
+  whatsAppManager: WhatsAppManager;
   mcpApiKeyStore: McpApiKeyStore;
   globalOAuthStore: OAuthStore;
   globalSecretManager: any;
@@ -40,6 +42,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
     googleDriveOAuthService,
     threadsOAuthService,
     telegramBotManager,
+    whatsAppManager,
     mcpApiKeyStore,
     globalOAuthStore,
     globalSecretManager,
@@ -138,9 +141,23 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
             }
           })
           .catch(() => socket.emit('telegram:status', { provider: 'TELEGRAM', status: 'UNAVAILABLE' }));
+
+        void whatsAppManager.getStatus(socket.data.sessionId)
+          .then((status) => {
+            socket.emit('whatsapp:status', status);
+            if (status.status === 'CONNECTED') {
+              const inst = agentManager.getOrCreateInstance(socket.data.sessionId!);
+              if (inst?.runtime?.capabilityCatalog && !inst.runtime.capabilityCatalog.isConnectorActive('whatsapp')) {
+                inst.runtime.capabilityCatalog.activateConnector('whatsapp');
+                socket.emit('connector:catalog', inst.runtime.capabilityCatalog.allConnectorSummaries());
+              }
+            }
+          })
+          .catch(() => socket.emit('whatsapp:status', { provider: 'WHATSAPP', status: 'UNAVAILABLE' }));
       } else {
         socket.emit('threads:status', { provider: 'THREADS', status: 'UNAVAILABLE' });
         socket.emit('telegram:status', { provider: 'TELEGRAM', status: 'UNAVAILABLE' });
+        socket.emit('whatsapp:status', { provider: 'WHATSAPP', status: 'UNAVAILABLE' });
       }
     };
 
@@ -527,6 +544,53 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       }
       const code = await telegramBotManager.generateLinkCode(socket.data.sessionId);
       socket.emit('telegram:link_generated', { code });
+    });
+
+    socket.on('whatsapp:generate_link', async () => {
+      if (!requireAuthenticatedSession(socket, 'whatsapp:generate_link', instance?.eventBus)) return;
+      if (!whatsAppManager.isEnabled()) {
+        socket.emit('whatsapp:error', { message: 'WhatsApp integration is not configured on this server.' });
+        return;
+      }
+      try {
+        const { code, deepLink } = await whatsAppManager.generateLinkCode(socket.data.sessionId!);
+        socket.emit('whatsapp:link_generated', { code, deepLink });
+      } catch (err: any) {
+        socket.emit('whatsapp:error', { message: err.message || 'Failed to generate WhatsApp pairing link.' });
+      }
+    });
+
+    socket.on('whatsapp:get_status', async () => {
+      const sessionId = socket.data.sessionId || 'dev';
+      try {
+        const status = await whatsAppManager.getStatus(sessionId);
+        socket.emit('whatsapp:status', status);
+        if (status.status === 'CONNECTED' && socket.data.sessionId) {
+          const inst = agentManager.getOrCreateInstance(socket.data.sessionId);
+          if (inst?.runtime?.capabilityCatalog && !inst.runtime.capabilityCatalog.isConnectorActive('whatsapp')) {
+            inst.runtime.capabilityCatalog.activateConnector('whatsapp');
+            socket.emit('connector:catalog', inst.runtime.capabilityCatalog.allConnectorSummaries());
+          }
+        }
+      } catch (err: any) {
+        socket.emit('whatsapp:error', { message: err.message || 'Failed to get WhatsApp status.' });
+      }
+    });
+
+    socket.on('whatsapp:disconnect', async () => {
+      if (!requireAuthenticatedSession(socket, 'whatsapp:disconnect', instance?.eventBus)) return;
+      try {
+        await whatsAppManager.disconnect(socket.data.sessionId!);
+        socket.emit('whatsapp:status', { provider: 'WHATSAPP', status: 'NOT_CONNECTED' });
+        const inst = agentManager.getInstance(socket.data.sessionId!);
+        if (inst?.runtime?.capabilityCatalog) {
+          inst.runtime.capabilityCatalog.deactivateConnector('whatsapp');
+          socket.emit('connector:catalog', inst.runtime.capabilityCatalog.allConnectorSummaries());
+          socket.emit('connector:status_changed', inst.runtime.capabilityCatalog.allConnectorSummaries());
+        }
+      } catch (err: any) {
+        socket.emit('whatsapp:error', { message: err.message || 'Failed to disconnect WhatsApp.' });
+      }
     });
 
     socket.on('threads:connect', () => {

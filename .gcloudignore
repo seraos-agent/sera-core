@@ -4,8 +4,10 @@
 node_modules/
 dist/
 sera-frontend/
+sera-admin/
 sera-landing/
 sera-docs/
+sera-reception/
 .env
 .env.*
 *.log

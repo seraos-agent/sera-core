@@ -108,7 +108,7 @@ export class MemoryQueryService {
     if (query && query.trim()) {
       try {
         const queryVector = await this.embeddingProvider.embed(query);
-        const matches = this.vectorStore.search(queryVector, 12, 0.25);
+        const matches = this.vectorStore.search(queryVector, 8, 0.65);
         for (const match of matches) {
           if (seenIds.has(match.record.id)) continue;
           const metadata = match.record.metadata || {};

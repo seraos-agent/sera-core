@@ -7,3 +7,6 @@ node_modules
 coverage
 dist
 sera-frontend
+sera-admin
+sera-docs
+sera-reception

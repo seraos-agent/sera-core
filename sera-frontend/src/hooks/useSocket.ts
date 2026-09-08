@@ -26,6 +26,12 @@ export interface TelegramConnectionState {
   status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
 }
 
+export interface WhatsAppConnectionState {
+  provider: 'WHATSAPP';
+  status: 'CONNECTED' | 'NOT_CONNECTED' | 'UNAVAILABLE';
+  phoneNumber?: string;
+}
+
 export function useSocket(
   setWalletState: React.Dispatch<React.SetStateAction<WalletState>>,
   setMode: (mode: "light" | "dark") => void,
@@ -40,6 +46,8 @@ export function useSocket(
   const [threads, setThreads] = useState<ThreadsConnectionState>({ provider: 'THREADS', status: 'UNAVAILABLE' });
   const [telegram, setTelegram] = useState<TelegramConnectionState>({ provider: 'TELEGRAM', status: 'UNAVAILABLE' });
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null);
+  const [whatsapp, setWhatsapp] = useState<WhatsAppConnectionState>({ provider: 'WHATSAPP', status: 'UNAVAILABLE' });
+  const [whatsappLinkData, setWhatsappLinkData] = useState<{ code: string; deepLink: string } | null>(null);
   const [governanceRecommendations, setGovernanceRecommendations] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const outboxQueue = useRef<Array<{ id: number; clientMessageId?: string; text: string; images?: string[]; documents?: any[] }>>([]);
@@ -186,6 +194,7 @@ export function useSocket(
       console.log("[useSocket] Socket authenticated successfully.");
       setIsAuthenticated(true);
       isCancelledRef.current = false;
+      newSocket.emit("whatsapp:get_status");
 
       // Drain and flush pending outbox messages
       if (outboxQueue.current.length > 0) {
@@ -452,6 +461,14 @@ export function useSocket(
       setTelegramLinkCode(data.code);
     });
 
+    newSocket.on('whatsapp:status', (data: WhatsAppConnectionState) => {
+      setWhatsapp(data);
+    });
+
+    newSocket.on('whatsapp:link_generated', (data: { code: string; deepLink: string }) => {
+      setWhatsappLinkData(data);
+    });
+
     newSocket.on('governance:recommendation_list', (list: any[]) => {
       setGovernanceRecommendations(list);
     });
@@ -473,6 +490,8 @@ export function useSocket(
       newSocket.off('threads:error');
       newSocket.off('telegram:status');
       newSocket.off('telegram:link_generated');
+      newSocket.off('whatsapp:status');
+      newSocket.off('whatsapp:link_generated');
       newSocket.off('governance:recommendation_list');
       newSocket.off('governance:recommendation_pending');
       newSocket.close();
@@ -542,6 +561,17 @@ export function useSocket(
     telegramLinkCode,
     generateTelegramLink: useCallback(() => {
       socket?.emit("telegram:generate_link");
+    }, [socket]),
+    whatsapp,
+    whatsappLinkData,
+    generateWhatsAppLink: useCallback(() => {
+      socket?.emit("whatsapp:generate_link");
+    }, [socket]),
+    disconnectWhatsApp: useCallback(() => {
+      socket?.emit("whatsapp:disconnect");
+    }, [socket]),
+    getWhatsAppStatus: useCallback(() => {
+      socket?.emit("whatsapp:get_status");
     }, [socket]),
     governanceRecommendations,
     respondToGovernanceRecommendation,

@@ -300,6 +300,16 @@ export class DialogueEngine {
       : 'Analyze this attached document.');
     this._activeUserMessage = effectiveUserMessage;
 
+    // Natural Introduction: Detect if user is introducing their name
+    const nameIntroMatch = effectiveUserMessage.match(/^(?:halo|hai|hi|hei|yo|oy)?\s*(?:namaku|nama saya|panggil (?:aja|saja)?\s*(?:aku|saya)?|my name is|call me)\s+([a-zA-Z\s]{2,25})/i);
+    if (nameIntroMatch && nameIntroMatch[1]) {
+      const extractedName = nameIntroMatch[1].trim().replace(/[.,!?:;]$/, '');
+      if (extractedName.length >= 2 && (this.worldStateService as any).setUserPreferredName) {
+        (this.worldStateService as any).setUserPreferredName(extractedName);
+        console.log(`[DialogueEngine] User introduced themselves as: "${extractedName}". Saved to WorldState.`);
+      }
+    }
+
     // Check conversational proposal approval/rejection
     if (this.pendingProposalId && this.proposalResponseHandler.isApproval(effectiveUserMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
@@ -376,6 +386,9 @@ export class DialogueEngine {
 
       // Multimodal vision attachments
       if (attachedImages.length > 0) {
+        if (this._activeResponseContext && messages.length > 0 && messages[messages.length - 1].role === 'user') {
+          messages.pop();
+        }
         const multimodalContent: any[] = [{ type: 'text', text: effectiveUserMessage }];
         for (const url of attachedImages) {
           if (url && typeof url === 'string' && !url.startsWith('blob:')) {

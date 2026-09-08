@@ -40,6 +40,14 @@ export class AgentManager {
 
   public onInstanceCreated(callback: (instance: SeraAgentInstance) => void): void {
     this.instanceCreatedCallbacks.push(callback);
+    // Retroactively trigger callback for any instances that were already created (e.g. dev session)
+    for (const instance of this.instances.values()) {
+      try {
+        callback(instance);
+      } catch (e) {
+        console.error(`[AgentManager] Error in retroactive instanceCreated callback:`, e);
+      }
+    }
   }
 
   public getOrCreateInstance(context: SeraUserContext | string): SeraAgentInstance {

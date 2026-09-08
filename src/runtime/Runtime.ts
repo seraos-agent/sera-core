@@ -218,6 +218,37 @@ export class Runtime {
       tools: [],
     });
 
+    this.capabilityCatalog.registerConnector({
+      id: 'whatsapp',
+      name: 'WhatsApp',
+      category: 'communication',
+      description: 'Chat with Sera anytime via WhatsApp',
+      riskSummary: 'Connect personal WhatsApp account.',
+      network: 'Web2',
+      alwaysActive: false,
+      tools: [],
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'google_drive',
+      name: 'Google Drive',
+      category: 'connectors',
+      description: 'Access and manage files in your personal Google Drive (SERA Vault)',
+      riskSummary: 'Access user Google Drive vault to create and manage spreadsheets and files.',
+      alwaysActive: true,
+      tools: [],
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'claude_mcp',
+      name: 'Claude MCP Server',
+      category: 'connectors',
+      description: 'Model Context Protocol integration for Claude Desktop and Claude Web',
+      riskSummary: 'Allows Claude Desktop to interact with SERA tools via SSE / Streamable HTTP.',
+      alwaysActive: true,
+      tools: [],
+    });
+
     if (!options?.disableMcp) {
       const mcpMemoryClient = new McpClientAdapter(
         'memory-server',

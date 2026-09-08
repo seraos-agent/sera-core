@@ -112,7 +112,7 @@ function InnerApp() {
 
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address, isReconnecting, isConnecting } = useAccount();
-  const { socket, messages, setMessages, sendMessage, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
+  const { socket, messages, setMessages, sendMessage, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, whatsapp, whatsappLinkData, generateWhatsAppLink, disconnectWhatsApp, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
     address?.toLowerCase() ?? 'anonymous',
@@ -496,6 +496,10 @@ function InnerApp() {
             telegram={telegram}
             telegramLinkCode={telegramLinkCode}
             onGenerateTelegramLink={generateTelegramLink}
+            whatsapp={whatsapp}
+            whatsappLinkData={whatsappLinkData}
+            onGenerateWhatsAppLink={generateWhatsAppLink}
+            onDisconnectWhatsApp={disconnectWhatsApp}
             googleDrive={googleDrive}
             onConnectGoogleDrive={connectGoogleDrive}
             onDisconnectGoogleDrive={disconnectGoogleDrive}

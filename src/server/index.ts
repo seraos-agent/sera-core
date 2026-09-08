@@ -18,6 +18,8 @@ import { OAuthStore } from './auth/oauth/OAuthStore';
 import { createOAuthRouter } from './auth/oauth/oauthRouter';
 import { TelegramBotManager } from '../capabilities/communication/adapters/TelegramBotManager';
 import { TelegramAdapter } from '../capabilities/communication/adapters/TelegramAdapter';
+import { WhatsAppAdapter } from '../capabilities/communication/adapters/WhatsAppAdapter';
+import { WhatsAppManager } from '../capabilities/communication/adapters/WhatsAppManager';
 import { createThreadsAuthRouter, ThreadsOAuthService } from './auth/threadsAuth';
 import { SupabaseRestClient } from '../core/persistence/SupabaseRestClient';
 import { EventTypes } from '../core/events/types';
@@ -27,6 +29,8 @@ import { createTemporalRouter } from './routes/temporalRoutes';
 import { createGoogleDriveRouter } from './routes/googleDriveRoutes';
 import { createMediaRouter } from './routes/mediaRoutes';
 import { createMcpRouter } from './routes/mcpRoutes';
+import { createAdminRouter } from './routes/adminRoutes';
+import { createWhatsAppRouter } from './routes/whatsappRoutes';
 import { registerSocketGateway } from './socket/SocketGateway';
 
 
@@ -41,6 +45,7 @@ agentManager.setSecretManager(globalSecretManager);
 export const globalOAuthStore = new OAuthStore(globalSecretManager);
 export const mcpApiKeyStore = new McpApiKeyStore(globalOAuthStore);
 export const telegramBotManager = new TelegramBotManager(agentManager, globalSecretManager, process.env.TELEGRAM_BOT_TOKEN);
+export const whatsAppManager = new WhatsAppManager(globalSecretManager);
 const threadsOAuthService = new ThreadsOAuthService(globalSecretManager);
 
 console.log(`[Server] Services Init - Supabase: ${process.env.SUPABASE_URL ? 'OK' : 'MISSING'}, Reown: ${reownWalletIdentityService ? 'ACTIVE' : 'LOCAL'}, GDrive: ${!!googleDriveOAuthService}, Threads: ${threadsOAuthService.appId ? 'OK' : 'MISSING'}`);
@@ -53,6 +58,17 @@ agentManager.onInstanceCreated((instance) => {
     'telegram',
     new TelegramAdapter(instance.sessionId, telegramBotManager, instance.eventBus)
   );
+
+  if (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) {
+    instance.communicationBridge.registerAdapter(
+      'whatsapp',
+      new WhatsAppAdapter(instance.sessionId, {
+        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+        accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+        apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0'
+      }, instance.eventBus)
+    );
+  }
 });
 
 // ── Express App & HTTP Server ───────────────────────────────────────────────
@@ -67,7 +83,7 @@ app.use((req, res, next) => {
   } else {
     res.header('Access-Control-Allow-Origin', '*');
   }
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-cron-key, Mcp-Session-Id');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-cron-key, Mcp-Session-Id, x-admin-key');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -139,12 +155,20 @@ app.use('/api/auth/threads', createThreadsAuthRouter(threadsOAuthService, global
 // 7. MCP Streamable HTTP & SSE Transports
 app.use(createMcpRouter({ mcpApiKeyStore, seraMcpServer, agentManager }));
 
+// 8. Dedicated Admin Control Tower API
+app.use('/api/admin', createAdminRouter({ agentManager, supabaseClient, secretManager: globalSecretManager, oauthStore: globalOAuthStore, mcpApiKeyStore }));
+
+// 9. Meta WhatsApp Cloud API Webhook
+app.use('/api/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretManager: globalSecretManager, whatsAppManager, io }));
+app.use('/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretManager: globalSecretManager, whatsAppManager, io }));
+
 // ── Socket.IO Gateway ───────────────────────────────────────────────────────
 registerSocketGateway(io, {
   agentManager,
   googleDriveOAuthService,
   threadsOAuthService,
   telegramBotManager,
+  whatsAppManager,
   mcpApiKeyStore,
   globalOAuthStore,
   globalSecretManager,
