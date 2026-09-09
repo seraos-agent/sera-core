@@ -306,7 +306,10 @@ export class ToolExecutionHandler {
       console.log(`[ToolExecutionHandler] Tool Call ${toolIntent} requires user approval (Proposal).`);
       emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
         intent: toolIntent,
-        parameters: toolParams,
+        parameters: {
+          ...toolParams,
+          ...(event?.payload?.responseContext ? { _responseContext: event.payload.responseContext } : {})
+        },
         userMessage
       });
 

@@ -410,20 +410,20 @@ Mau langsung aku buatkan draft broadcast WhatsApp untuk promosinya?`;
     expect(threeBubbles[1]).toContain('Hampers Premium Gold');
     expect(threeBubbles[2]).toContain('draft broadcast WhatsApp');
 
-    // Case 4: Long response with 5 paragraphs -> strictly capped at 3 bubbles
+    // Case 4: Long response with 5 paragraphs (>500 chars) -> strictly capped at 3 bubbles
     const fiveBlocks = `*Bagian 1: Ringkasan Eksekutif*
-Laporan performa mingguan telah selesai dianalisis.
+Laporan performa mingguan telah selesai dianalisis secara mendalam oleh sistem operasional. Seluruh pencatatan arus kas dan transaksi harian telah diperiksa dengan cermat.
 
 *Bagian 2: Metrik Utama*
-Total volume transaksi meningkat 25%.
+Total volume transaksi meningkat 25% dibandingkan periode minggu sebelumnya. Seluruh order marketplace dan outlet retail tercatat tanpa adanya kendala rekonsiliasi.
 
 *Bagian 3: Analisis Risiko*
-Tingkat volatilitas terpantau stabil pada rentang normal.
+Tingkat volatilitas terpantau stabil pada rentang normal. Cadangan kas operasional berada pada tingkat yang sangat sehat untuk mendukung ekspansi persediaan baru.
 
 *Bagian 4: Catatan Khusus*
-Terdapat 2 anomali kecil yang telah dimitigasi.
+Terdapat 2 anomali kecil pada pencatatan stok lama yang telah dimitigasi dan disinkronkan kembali ke database sistem tanpa kerugian finansial.
 
-Kira-kira ada bagian yang ingin diperdalam lebih lanjut?`;
+Kira-kira ada bagian metrik atau strategi yang ingin diperdalam lebih lanjut oleh tim manajemen?`;
     const cappedBubbles = WhatsAppAdapter.splitIntoBubbles(fiveBlocks);
     expect(cappedBubbles).toHaveLength(3);
     expect(cappedBubbles[0]).toContain('Bagian 1');

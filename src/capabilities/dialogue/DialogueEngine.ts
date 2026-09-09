@@ -42,6 +42,7 @@ export class DialogueEngine {
   private orchestrator: ModelOrchestrator;
   private eventBus: EventEmitter;
   private pendingGoals = new Map<string, (result: GoalResultPayload) => void>();
+  private goalContexts = new Map<string, Record<string, any>>();
   private worldStateService: WorldStateService;
   private capabilityCatalog: any;
   private memoryStore: IWorkingMemory;
@@ -171,16 +172,17 @@ export class DialogueEngine {
   }
 
   private emitEvent(type: string, payload: Record<string, any>): void {
+    const activeCtx = payload.responseContext || this._activeResponseContext;
     const enrichedPayload =
-      type === EventTypes.DIALOGUE_AGENT_SPEAK && this._activeResponseContext
-        ? { ...payload, responseContext: this._activeResponseContext }
+      (type === EventTypes.DIALOGUE_AGENT_SPEAK || type === EventTypes.DIALOGUE_ACTIVITY) && activeCtx
+        ? { ...payload, responseContext: activeCtx }
         : payload;
 
     if (type === EventTypes.DIALOGUE_AGENT_SPEAK) {
       const ctx = enrichedPayload.responseContext;
       if (ctx) {
         console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITH responseContext → platform=${ctx.platform} channel=${ctx.channelId} thread=${ctx.threadRef}`);
-        if (this._activeUserMessage && payload.text) {
+        if (this._activeUserMessage && payload.text && !payload.isInterim) {
           this.persistPlatformTurn(ctx.platform, ctx.channelId, this._activeUserMessage, payload.text);
           this._activeUserMessage = undefined;
         }
@@ -216,17 +218,37 @@ export class DialogueEngine {
   private spawnGoalAndAwaitResult(intent: string, parameters: Record<string, any>): Promise<GoalResultPayload> {
     const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+    if (this._activeResponseContext) {
+      this.goalContexts.set(requestId, { ...this._activeResponseContext });
+    }
+
+    const isHeavyOperation =
+      intent.startsWith('GDRIVE_') ||
+      intent.includes('SPREADSHEET') ||
+      intent === 'media_generation' ||
+      intent === 'generate_image';
+    const timeoutMs = isHeavyOperation ? 90000 : 45000;
+
     return new Promise((resolve) => {
       this.pendingGoals.set(requestId, resolve);
-      const spawnPayload: SpawnGoalPayload = { requestId, intent, parameters };
+      const spawnPayload: SpawnGoalPayload = {
+        requestId,
+        intent,
+        parameters: {
+          ...parameters,
+          ...(this._activeResponseContext ? { _responseContext: { ...this._activeResponseContext } } : {})
+        }
+      };
       this.emitEvent(EventTypes.DOMAIN_GOAL_SPAWNED, spawnPayload);
 
       setTimeout(() => {
         if (this.pendingGoals.has(requestId)) {
           this.pendingGoals.delete(requestId);
+          // Retain goalContexts temporarily for potential late resolution
+          setTimeout(() => this.goalContexts.delete(requestId), 300000);
           resolve({ requestId, success: false, data: {}, errorMessage: 'Goal execution timed out.' });
         }
-      }, 30000);
+      }, timeoutMs);
     });
   }
 
@@ -237,12 +259,26 @@ export class DialogueEngine {
   private async onGoalResult(event: StandardEvent<GoalResultPayload>): Promise<void> {
     const result = event.payload;
     const resolver = this.pendingGoals.get(result.requestId);
+    const originContext = this.goalContexts.get(result.requestId) || result.data?._responseContext;
+
     if (resolver) {
       this.pendingGoals.delete(result.requestId);
+      this.goalContexts.delete(result.requestId);
       resolver(result);
     } else {
       const userMessage = result.data?._userMessage || 'The action was executed successfully after user approval.';
-      await this.dialogueResultNarrator.narrate(userMessage, result, this.buildWorkingMemory.bind(this), this.activeAbortController?.signal, this.emitEvent.bind(this));
+      const contextualEmit = (type: string, payload: Record<string, any>) => {
+        const enriched = originContext ? { ...payload, responseContext: originContext } : payload;
+        this.emitEvent(type, enriched);
+      };
+      await this.dialogueResultNarrator.narrate(
+        userMessage,
+        result,
+        this.buildWorkingMemory.bind(this),
+        this.activeAbortController?.signal,
+        contextualEmit
+      );
+      this.goalContexts.delete(result.requestId);
     }
   }
 
@@ -320,6 +356,24 @@ export class DialogueEngine {
     if (this.pendingProposalId && this.proposalResponseHandler.isRejection(effectiveUserMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_REJECTED, { proposalId: this.pendingProposalId });
       return;
+    }
+
+    // Context-Aware Passive Acknowledgment Suppression (e.g. "ok", "cool", "siap", "noted")
+    const isPassiveAck = /^(?:ok|okay|k|got it|noted|roger|cool|great|all good|thx|thanks|thank you|sip|siap|mantap|yoi|oke|okee|👍|👌|🙏)$/i.test(effectiveUserMessage.trim());
+    if (isPassiveAck && !this.pendingProposalId) {
+      const isTaskInProgress = Boolean(this.activeAbortController);
+      const ctxKey = this._activeResponseContext ? `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}` : '';
+      const recentHistory = ctxKey ? this.platformConversationHistory.get(ctxKey) : null;
+      const lastSpeakerWasAssistant = recentHistory && recentHistory.length > 0 && recentHistory[recentHistory.length - 1].role === 'assistant';
+
+      // Suppress outbound reply only when acknowledging an active background task or a recent assistant message
+      if (isTaskInProgress || lastSpeakerWasAssistant) {
+        console.log(`[DialogueEngine] Passive acknowledgment ("${effectiveUserMessage}") absorbed in context. Suppressing redundant bot reply.`);
+        if (this._activeResponseContext) {
+          this.persistPlatformTurn(this._activeResponseContext.platform, this._activeResponseContext.channelId, effectiveUserMessage, '');
+        }
+        return;
+      }
     }
 
     const turnStartTime = Date.now();

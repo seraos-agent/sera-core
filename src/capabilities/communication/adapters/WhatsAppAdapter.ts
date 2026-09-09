@@ -79,8 +79,8 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
 
     const trimmed = text.trim();
 
-    // 1. Short or single-paragraph casual answers (< 160 chars) remain 1 single bubble
-    if (trimmed.length < 160 && !trimmed.includes('\n\n')) {
+    // 1. Single-paragraph answers under safe length limit remain 1 single bubble
+    if (!trimmed.includes('\n\n') && trimmed.length <= 3800) {
       return [trimmed];
     }
 

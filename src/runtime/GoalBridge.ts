@@ -262,9 +262,16 @@ export class GoalBridge {
   }
 
   private recentlyHandledRequests: Map<string, number> = new Map();
+  private requestContextMap: Map<string, { _responseContext?: any; _userMessage?: any }> = new Map();
 
   private emitResult(requestId: string, success: boolean, data: Record<string, any>, errorMessage?: string): void {
-    const resultPayload: GoalResultPayload = { requestId, success, data, errorMessage };
+    let effectiveData = data || {};
+    const meta = this.requestContextMap.get(requestId);
+    if (meta) {
+      effectiveData = { ...meta, ...effectiveData };
+      this.requestContextMap.delete(requestId);
+    }
+    const resultPayload: GoalResultPayload = { requestId, success, data: effectiveData, errorMessage };
     const event: StandardEvent = {
       id: `evt-result-${Date.now()}`,
       type: EventTypes.DOMAIN_GOAL_RESULT,
@@ -283,6 +290,13 @@ export class GoalBridge {
     const context = payload.context || {};
     const requestId = context?.triggerId || payload.requestId || event.correlationId || `req-${Date.now()}`;
 
+    if (actionPayload._responseContext || actionPayload._userMessage) {
+      this.requestContextMap.set(requestId, {
+        _responseContext: actionPayload._responseContext,
+        _userMessage: actionPayload._userMessage
+      });
+    }
+
     // Deduplicate duplicate dispatches with identical requestId within 10 seconds
     const now = Date.now();
     if (this.recentlyHandledRequests.has(requestId)) {
@@ -297,6 +311,9 @@ export class GoalBridge {
       for (const [k, ts] of this.recentlyHandledRequests.entries()) {
         if (now - ts > 30000) this.recentlyHandledRequests.delete(k);
       }
+    }
+    if (this.requestContextMap.size > 200) {
+      this.requestContextMap.clear();
     }
 
     console.log(`\n[GoalBridge] Handling action: ${actionType} (requestId: ${requestId})`);

@@ -255,6 +255,65 @@ export class ReActExecutor {
         };
         messages.push(assistantMsg);
 
+        // Proactive Interim Progress Notification on External Chat Channels (e.g. WhatsApp / Telegram)
+        const responseContext = event?.payload?._responseContext || event?.payload?.responseContext;
+        const isExternalChat = responseContext?.platform === 'whatsapp' || responseContext?.platform === 'telegram';
+        const HEAVY_OPERATIONAL_TOOLS = ['GDRIVE_CREATE_SPREADSHEET', 'GDRIVE_SAVE_MEDIA', 'GDRIVE_CREATE_FOLDER', 'generate_image', 'media_generation', 'THREADS_PUBLISH'];
+        const hasHeavyTool = response.toolCalls.some((tc: any) => HEAVY_OPERATIONAL_TOOLS.includes(tc.name));
+
+        if (stepCount === 1 && isExternalChat && hasHeavyTool) {
+          try {
+            const targetLanguage = ReActExecutor.inferConversationalLanguage(userMessage, messages);
+
+            // Check if model already provided usable text in the target language
+            let candidateText = (response.text || '').trim();
+            const isEnglishCandidate = /^[A-Za-z0-9\s.,!?'"#-]+$/.test(candidateText);
+            const isCandidateUsable = candidateText.length >= 10 &&
+              !candidateText.includes('```') &&
+              (targetLanguage === 'English' || !isEnglishCandidate);
+
+            if (isCandidateUsable) {
+              emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: candidateText, isInterim: true });
+            } else {
+              const interimProfile = ExecutionProfileBuilder.forTier('Execution')
+                .withEstimatedInputTokens(80)
+                .build();
+
+              const languageGuideline = targetLanguage === 'Indonesian'
+                ? 'Example in Indonesian: "Siap, lagi aku siapkan di background ya, tunggu sebentar..." or "Noted, langsung aku proses sekarang ya, sebentar lagi beres!"'
+                : targetLanguage === 'Spanish'
+                ? 'Example in Spanish: "¡Listo! Lo preparo ahora en segundo plano y te aviso en un momento."'
+                : 'Example in English: "Got it, preparing this in the background now and will update you shortly!"';
+
+              const interimPromptMessages: QwenMessage[] = [
+                {
+                  role: 'system',
+                  content: `You are an intelligent, empathetic personal AI assistant on mobile messaging.\n` +
+                    `The user is conversing with you in ${targetLanguage}.\n` +
+                    `Generate ONE single, warm, natural, and concise sentence in ${targetLanguage} acknowledging their request and letting them know you are preparing it now in the background and will update them shortly.\n\n` +
+                    `CRITICAL RULES:\n` +
+                    `- The sentence MUST be written completely in natural ${targetLanguage}.\n` +
+                    `- Even if the user mentions English words or other languages (e.g. "english", "publish", "sheet", "post"), your reply MUST remain strictly in ${targetLanguage}.\n` +
+                    `- Do NOT use English unless ${targetLanguage} is English.\n` +
+                    `- ${languageGuideline}\n` +
+                    `- Vary your phrasing naturally. Do NOT use quotes, markdown headers, or bullet points. Keep it under 15 words.`
+                },
+                {
+                  role: 'user',
+                  content: userMessage
+                }
+              ];
+              const interimResp = await this.orchestrator.generate(interimProfile, interimPromptMessages, undefined, activeAbortSignal);
+              const interimText = (interimResp.text || '').trim();
+              if (interimText && !interimText.startsWith('{')) {
+                emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: interimText, isInterim: true });
+              }
+            }
+          } catch (interimErr: any) {
+            console.warn('[ReActExecutor] Non-fatal: interim progress notification skipped:', interimErr.message);
+          }
+        }
+
         for (let i = 0; i < response.toolCalls.length; i++) {
           const toolCall = response.toolCalls[i];
           const toolCallId = toolCall.id || assistantMsg.tool_calls?.[i]?.id || `call_${Date.now()}_${i}`;
@@ -575,4 +634,38 @@ export class ReActExecutor {
 
     return null;
   }
+
+  /**
+   * Infers the user's conversational language from their current message and recent chat turns.
+   * Ensures interim progress updates match the user's spoken language (e.g. Indonesian, English, Spanish).
+   */
+  public static inferConversationalLanguage(userMessage: string, history?: QwenMessage[]): string {
+    const textToScan = [
+      userMessage,
+      ...(history ? history.slice(-4).map(m => typeof m.content === 'string' ? m.content : '') : [])
+    ].join(' ');
+
+    const INDONESIAN_REGEX = /\b(aku|kamu|saya|dia|kita|kami|mereka|mau|ingin|bisa|tolong|mohon|buatkan|bikin|ubah|ganti|tambah|hapus|tetap|karena|untuk|dengan|dari|ke|di|pada|oleh|bagi|lagi|udah|sudah|belum|akan|sedang|pernah|sempat|yang|ini|itu|sini|situ|sana|mana|siapa|apa|kenapa|bagaimana|ya|yah|nih|dong|kok|deh|kan|loh|lah|tuh|siap|mantap|oke|okee|yoi|sip|noted|nggak|ngga|gak|ga|tidak|bukan|jangan|banget|aja|saja|juga|masih|hanya|cuma|akun|bahasa|posting|postingan|tayang|kelar|beres|jadwal|kirim)\b/i;
+    if (INDONESIAN_REGEX.test(textToScan)) {
+      return 'Indonesian';
+    }
+
+    const SPANISH_REGEX = /\b(hola|por favor|gracias|bueno|hacer|crear|actualizar|cuenta|para|con|este|esta)\b/i;
+    if (SPANISH_REGEX.test(textToScan)) {
+      return 'Spanish';
+    }
+
+    const JAPANESE_CHINESE_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
+    if (JAPANESE_CHINESE_REGEX.test(textToScan)) {
+      return 'Japanese';
+    }
+
+    const ARABIC_REGEX = /[\u0600-\u06FF]/;
+    if (ARABIC_REGEX.test(textToScan)) {
+      return 'Arabic';
+    }
+
+    return 'English';
+  }
 }
+
