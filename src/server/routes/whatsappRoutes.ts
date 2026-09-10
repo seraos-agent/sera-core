@@ -253,6 +253,34 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
 
       const instance = agentManager.getOrCreateInstance(sessionId);
 
+      // Direct Interactive Proposal Button Resolution (Strict Button Approval)
+      if (incomingMsg.type === 'interactive' && incomingMsg.interactive?.type === 'button_reply') {
+        const buttonId = incomingMsg.interactive?.button_reply?.id || '';
+        if (buttonId.startsWith('approve_prop_')) {
+          const proposalId = buttonId.replace('approve_prop_', '');
+          console.log(`[WhatsApp Webhook] Proposal approval button tapped: ${proposalId} from +${from}`);
+          instance.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_APPROVED, {
+            id: `evt-appr-${Date.now()}`,
+            type: EventTypes.DIALOGUE_PROPOSAL_APPROVED,
+            source: 'WhatsAppAdapter',
+            payload: { proposalId }
+          });
+          return;
+        }
+
+        if (buttonId.startsWith('reject_prop_')) {
+          const proposalId = buttonId.replace('reject_prop_', '');
+          console.log(`[WhatsApp Webhook] Proposal rejection button tapped: ${proposalId} from +${from}`);
+          instance.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_REJECTED, {
+            id: `evt-rej-${Date.now()}`,
+            type: EventTypes.DIALOGUE_PROPOSAL_REJECTED,
+            source: 'WhatsAppAdapter',
+            payload: { proposalId }
+          });
+          return;
+        }
+      }
+
       const responseContext: ResponseContext = {
         platform: 'whatsapp',
         channelId: from,

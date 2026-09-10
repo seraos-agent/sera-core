@@ -5,6 +5,7 @@ import { ToolExecutionHandler } from '../ToolExecutionHandler';
 import { QwenMessage } from '../../llm/QwenAdapter';
 import { SeraTool, SeraToolCall } from '../../../core/cognitive/Tool';
 import { EventTypes, GoalResultPayload, StandardEvent } from '../../../core/events/types';
+import { LanguageInference } from '../LanguageInference';
 
 export interface ReActExecutionParams {
   messages: QwenMessage[];
@@ -263,7 +264,7 @@ export class ReActExecutor {
 
         if (stepCount === 1 && isExternalChat && hasHeavyTool) {
           try {
-            const targetLanguage = ReActExecutor.inferConversationalLanguage(userMessage, messages);
+            const targetLanguage = LanguageInference.infer(userMessage, messages);
 
             // Check if model already provided usable text in the target language
             let candidateText = (response.text || '').trim();
@@ -479,11 +480,15 @@ export class ReActExecutor {
       .replace(/<UI_COMMAND:\s*SET_THEME_LIGHT\s*>/gi, '')
       .trim();
 
-    // Fallback if LLM completed tools but yielded completely empty string
-    if (!cleanText && successfulToolResults.length > 0) {
+    // Fallback if LLM completed tools but yielded completely empty string (never fire on proposals)
+    if (!cleanText && successfulToolResults.length > 0 && !proposalEncountered) {
+      const targetLanguage = LanguageInference.infer(userMessage, messages);
+      const isId = targetLanguage === 'Indonesian';
       const lastTool = executedSignatures[executedSignatures.length - 1];
       const toolName = lastTool ? lastTool.split(':')[0] : 'Operation';
-      cleanText = `✅ **${toolName} completed.** All requested actions have been executed successfully.`;
+      cleanText = isId
+        ? `✅ **${toolName} selesai.** Semua tindakan yang diminta telah berhasil dijalankan.`
+        : `✅ **${toolName} completed.** All requested actions have been executed successfully.`;
     }
 
     if (cognitiveSteps.length === 0) {
@@ -637,35 +642,10 @@ export class ReActExecutor {
 
   /**
    * Infers the user's conversational language from their current message and recent chat turns.
-   * Ensures interim progress updates match the user's spoken language (e.g. Indonesian, English, Spanish).
+   * Delegates to standalone LanguageInference utility module.
    */
   public static inferConversationalLanguage(userMessage: string, history?: QwenMessage[]): string {
-    const textToScan = [
-      userMessage,
-      ...(history ? history.slice(-4).map(m => typeof m.content === 'string' ? m.content : '') : [])
-    ].join(' ');
-
-    const INDONESIAN_REGEX = /\b(aku|kamu|saya|dia|kita|kami|mereka|mau|ingin|bisa|tolong|mohon|buatkan|bikin|ubah|ganti|tambah|hapus|tetap|karena|untuk|dengan|dari|ke|di|pada|oleh|bagi|lagi|udah|sudah|belum|akan|sedang|pernah|sempat|yang|ini|itu|sini|situ|sana|mana|siapa|apa|kenapa|bagaimana|ya|yah|nih|dong|kok|deh|kan|loh|lah|tuh|siap|mantap|oke|okee|yoi|sip|noted|nggak|ngga|gak|ga|tidak|bukan|jangan|banget|aja|saja|juga|masih|hanya|cuma|akun|bahasa|posting|postingan|tayang|kelar|beres|jadwal|kirim)\b/i;
-    if (INDONESIAN_REGEX.test(textToScan)) {
-      return 'Indonesian';
-    }
-
-    const SPANISH_REGEX = /\b(hola|por favor|gracias|bueno|hacer|crear|actualizar|cuenta|para|con|este|esta)\b/i;
-    if (SPANISH_REGEX.test(textToScan)) {
-      return 'Spanish';
-    }
-
-    const JAPANESE_CHINESE_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
-    if (JAPANESE_CHINESE_REGEX.test(textToScan)) {
-      return 'Japanese';
-    }
-
-    const ARABIC_REGEX = /[\u0600-\u06FF]/;
-    if (ARABIC_REGEX.test(textToScan)) {
-      return 'Arabic';
-    }
-
-    return 'English';
+    return LanguageInference.infer(userMessage, history);
   }
 }
 

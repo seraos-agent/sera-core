@@ -371,6 +371,9 @@ export class GoalBridge {
         case 'THREADS_REPLY':
           await this.handleThreadsPublish(requestId, actionPayload);
           break;
+        case 'THREADS_DELETE':
+          await this.handleThreadsDelete(requestId, actionPayload);
+          break;
         case 'THREADS_GET_POSTS':
           await this.handleThreadsGetPosts(requestId, actionPayload);
           break;
@@ -614,6 +617,29 @@ export class GoalBridge {
       });
     } catch (err: any) {
       this.emitResult(requestId, false, {}, err.message || 'Failed to fetch Threads insights');
+    }
+  }
+
+  private async handleThreadsDelete(requestId: string, parameters: Record<string, any>): Promise<void> {
+    const rawPostId = parameters.postId || parameters.id;
+    const responseContext = parameters._responseContext || parameters.responseContext;
+    if (!rawPostId) {
+      this.emitResult(requestId, false, { _responseContext: responseContext }, 'Missing postId parameter for THREADS_DELETE.');
+      return;
+    }
+    try {
+      const resolvedId = await this.threadsApi.resolveNumericPostId(this.sessionId, String(rawPostId));
+      const success = await this.threadsApi.deletePost(this.sessionId, resolvedId);
+      this.emitResult(requestId, success, {
+        postId: resolvedId,
+        message: `Post ${resolvedId} was deleted successfully from Threads.`,
+        _responseContext: responseContext,
+        _userMessage: 'Udah beres, postingan barusan udah berhasil aku hapus dari Threads ya! 👍'
+      });
+    } catch (err: any) {
+      this.emitResult(requestId, false, {
+        _responseContext: responseContext
+      }, err.message || 'Failed to delete Threads post');
     }
   }
 

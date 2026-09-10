@@ -31,6 +31,7 @@ export const EventTypes = {
   DIALOGUE_PROPOSAL_GENERATED: 'dialogue.proposal.generated',
   DIALOGUE_PROPOSAL_APPROVED: 'dialogue.proposal.approved',
   DIALOGUE_PROPOSAL_REJECTED: 'dialogue.proposal.rejected',
+  DIALOGUE_PROPOSAL_EXPIRED: 'dialogue.proposal.expired',
 
   // Domain / Execution Layer
   DOMAIN_GOAL_SPAWNED: 'domain.goal.spawned',
@@ -111,6 +112,7 @@ export interface SpawnGoalPayload {
 }
 
 export interface ProposeGoalPayload {
+  proposalId?: string;
   intent: string;
   parameters: Record<string, any>;
   userMessage?: string; // Optional narration or context

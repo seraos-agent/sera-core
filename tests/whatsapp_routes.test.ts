@@ -380,6 +380,22 @@ Please check the [SERA Dashboard](https://app.seraos.xyz) for live details.
     expect(lastMsg.content).toBe('sera lagi apa');
   });
 
+  it('formats text to WhatsApp standards and sanitizes blockquotes and em dashes', () => {
+    const raw = '> Istirahat dulu gih — jangan begadang ya!\n# Tips Malam\n**Tidur cukup** biar besok fit.';
+    const formatted = WhatsAppAdapter.formatToWhatsApp(raw);
+
+    // Blockquote (>) removed
+    expect(formatted).not.toContain('>');
+    expect(formatted).toContain('Istirahat dulu gih');
+    // Em dash (—) converted to spaced en dash (–)
+    expect(formatted).not.toContain('—');
+    expect(formatted).toContain(' – ');
+    // Header (# Tips Malam) converted to bold (*Tips Malam*)
+    expect(formatted).toContain('*Tips Malam*');
+    // Markdown bold (**Tidur cukup**) converted to WhatsApp bold (*Tidur cukup*)
+    expect(formatted).toContain('*Tidur cukup*');
+  });
+
   it('splits responses dynamically into 1 to 3 chat bubbles (splitIntoBubbles)', () => {
     // Case 1: Short casual reply (< 160 chars) -> 1 bubble
     const casual = 'Lagi standby nih, siap bantu pantau tugas kamu.';
@@ -410,7 +426,7 @@ Mau langsung aku buatkan draft broadcast WhatsApp untuk promosinya?`;
     expect(threeBubbles[1]).toContain('Hampers Premium Gold');
     expect(threeBubbles[2]).toContain('draft broadcast WhatsApp');
 
-    // Case 4: Long response with 5 paragraphs (>500 chars) -> strictly capped at 3 bubbles
+    // Case 4: Long response with 5 paragraphs (>500 chars) -> Option 2 (2 bubbles: Core substance + Follow-up)
     const fiveBlocks = `*Bagian 1: Ringkasan Eksekutif*
 Laporan performa mingguan telah selesai dianalisis secara mendalam oleh sistem operasional. Seluruh pencatatan arus kas dan transaksi harian telah diperiksa dengan cermat.
 
@@ -425,12 +441,12 @@ Terdapat 2 anomali kecil pada pencatatan stok lama yang telah dimitigasi dan dis
 
 Kira-kira ada bagian metrik atau strategi yang ingin diperdalam lebih lanjut oleh tim manajemen?`;
     const cappedBubbles = WhatsAppAdapter.splitIntoBubbles(fiveBlocks);
-    expect(cappedBubbles).toHaveLength(3);
+    expect(cappedBubbles).toHaveLength(2);
     expect(cappedBubbles[0]).toContain('Bagian 1');
-    expect(cappedBubbles[1]).toContain('Bagian 2');
-    expect(cappedBubbles[1]).toContain('Bagian 3');
-    expect(cappedBubbles[1]).toContain('Bagian 4');
-    expect(cappedBubbles[2]).toContain('Kira-kira ada bagian');
+    expect(cappedBubbles[0]).toContain('Bagian 2');
+    expect(cappedBubbles[0]).toContain('Bagian 3');
+    expect(cappedBubbles[0]).toContain('Bagian 4');
+    expect(cappedBubbles[1]).toContain('Kira-kira ada bagian');
 
     // Case 5: Oversized text (> 3800 chars) -> safe chunking under 3800 chars
     const hugeParagraph = 'Kalimat panjang penjelas informasi sistem operasional. '.repeat(100); // ~5500 chars
@@ -439,6 +455,26 @@ Kira-kira ada bagian metrik atau strategi yang ingin diperdalam lebih lanjut ole
     for (const bubble of chunkedBubbles) {
       expect(bubble.length).toBeLessThanOrEqual(3800);
     }
+
+    // Case 6: Dangling intro ending with colon (:) + points + closing -> merges intro into Bubble 1, delivers Option 2 (2 bubbles)
+    const summaryWithIntro = `Dunia AI agent belakangan ini lagi bergerak cepat banget. Ini beberapa poin utamanya:
+
+*1. Agentic Commerce* – Transaksi mandiri antar-agent melonjak tajam.
+
+*2. Keamanan Falcon* – Deteksi agent siluman makin diperketat.
+
+*3. Iklan Otomatis* – Optimasi campaign mandiri mulai berjalan.
+
+Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang paling menarik buat kita gali?`;
+    const summaryBubbles = WhatsAppAdapter.splitIntoBubbles(summaryWithIntro);
+    expect(summaryBubbles).toHaveLength(2);
+    // Bubble 1 contains intro AND points
+    expect(summaryBubbles[0]).toContain('Dunia AI agent belakangan ini');
+    expect(summaryBubbles[0]).toContain('*1. Agentic Commerce*');
+    expect(summaryBubbles[0]).toContain('*3. Iklan Otomatis*');
+    // Bubble 2 contains closing question
+    expect(summaryBubbles[1]).toContain('Intinya arahnya makin jelas');
+    expect(summaryBubbles[1]).toContain('Menurutmu bagian mana');
   });
 
   it('dispatches multi-bubble messages sequentially via sendMessage', async () => {

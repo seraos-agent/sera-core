@@ -170,20 +170,35 @@ export class ThreadsDaemon {
         const mentions = await this.api.getMentions(sessionId, 20);
         if (!mentions || mentions.length === 0) continue;
 
+        // Filter mentions to only poll those created in the last 24 hours
+        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+        const recentMentions = mentions.filter(m => new Date(m.timestamp).getTime() > twentyFourHoursAgo);
+        if (recentMentions.length === 0) {
+          // If watermark points to a stale expired mention, prune it
+          if (this.lastProcessedMentionId) {
+            const isWatermarkActive = mentions.some(m => m.id === this.lastProcessedMentionId && new Date(m.timestamp).getTime() > twentyFourHoursAgo);
+            if (!isWatermarkActive) {
+              this.lastProcessedMentionId = undefined;
+              this.saveWatermark();
+            }
+          }
+          continue;
+        }
+
         // Ensure mentions are sorted newest-first
-        mentions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        recentMentions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
         // FIRST RUN GUARD: If watermark is empty, record latest ID and skip backlog
         if (!this.lastProcessedMentionId) {
-          this.saveWatermark(mentions[0].id);
-          mentions.forEach(m => this.markProcessed(m.id));
-          console.log(`[ThreadsDaemon] Initialized mention watermark to ID: ${mentions[0].id} for ${sessionId}`);
+          this.saveWatermark(recentMentions[0].id);
+          recentMentions.forEach(m => this.markProcessed(m.id));
+          console.log(`[ThreadsDaemon] Initialized mention watermark to ID: ${recentMentions[0].id} for ${sessionId}`);
           continue;
         }
 
         // Find new mentions
         const newMentions: ThreadsMention[] = [];
-        for (const mention of mentions) {
+        for (const mention of recentMentions) {
           if (mention.id === this.lastProcessedMentionId || this.processedIds.has(mention.id)) break;
           newMentions.push(mention);
         }

@@ -27,9 +27,20 @@ export class SupabaseMemoryPersistence implements IMemoryPersistence {
 
   public async save(snapshot: MemorySnapshot): Promise<void> {
     try {
+      let mergedSnapshot: any = snapshot;
+      try {
+        const rows = await this.client.select<any>(
+          'sera_memory_snapshots',
+          `session_id=eq.${encodeURIComponent(this.sessionId)}`
+        );
+        if (rows && rows.length > 0 && rows[0].snapshot) {
+          mergedSnapshot = { ...rows[0].snapshot, ...snapshot };
+        }
+      } catch {}
+
       await this.client.upsert('sera_memory_snapshots', {
         session_id: this.sessionId,
-        snapshot,
+        snapshot: mergedSnapshot,
         updated_at: new Date().toISOString(),
       }, 'session_id');
       console.log(`[SupabaseMemoryPersistence] Checkpoint saved to Supabase.`);
@@ -45,12 +56,16 @@ export class SupabaseMemoryPersistence implements IMemoryPersistence {
         'sera_memory_snapshots',
         `session_id=eq.${encodeURIComponent(this.sessionId)}`
       );
-      if (!rows || rows.length === 0) {
+      if (!rows || rows.length === 0 || !rows[0].snapshot) {
         console.log('[SupabaseMemoryPersistence] No existing snapshot found. Starting fresh.');
         return null;
       }
       console.log(`[SupabaseMemoryPersistence] Snapshot loaded from Supabase (updated: ${rows[0].updated_at}).`);
-      return rows[0].snapshot;
+      const snap = rows[0].snapshot as any;
+      return {
+        events: Array.isArray(snap.events) ? snap.events : [],
+        beliefs: Array.isArray(snap.beliefs) ? snap.beliefs : []
+      };
     } catch (error) {
       console.error('[SupabaseMemoryPersistence] Failed to load snapshot:', error instanceof Error ? error.message : error);
       return null;

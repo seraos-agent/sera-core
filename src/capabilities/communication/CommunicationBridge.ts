@@ -105,14 +105,10 @@ export class CommunicationBridge {
   private async handleAgentSpeak(event: any): Promise<void> {
     const payload = event.payload || event;
 
-    // [DIAGNOSTIC] Always log incoming DIALOGUE_AGENT_SPEAK to verify payload arrives
-    console.log(`[CommunicationBridge][DIAG] DIALOGUE_AGENT_SPEAK received. responseContext=${JSON.stringify(payload?.responseContext ?? null)}`);
-
     // We expect DialogueEngine to pass through the responseContext
-    // If it's missing, this message might be intended for the UI/Socket layer
+    // If it's missing, this message is intended for the UI/Socket layer
     if (!payload || !payload.responseContext || !payload.responseContext.platform) {
-      console.log(`[CommunicationBridge][DIAG] No platform responseContext — treating as UI-only reply. Skipping external platform routing.`);
-      return; // Not a communication platform message
+      return;
     }
 
     const context = payload.responseContext;
@@ -123,13 +119,14 @@ export class CommunicationBridge {
       return;
     }
 
-    console.log(`[CommunicationBridge][DIAG] Routing reply to platform=${context.platform} channel=${context.channelId}`);
+    console.log(`[CommunicationBridge] Routing reply to platform=${context.platform} channel=${context.channelId}`);
 
     const action: CommunicationAction = {
       platform: context.platform,
       channelId: context.channelId,
       text: payload.text,
-      threadRef: context.threadRef
+      threadRef: context.threadRef,
+      richContent: payload.richContent
     };
 
     try {

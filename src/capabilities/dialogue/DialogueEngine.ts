@@ -21,6 +21,7 @@ import { SubAgentCoordinator } from '../agents/SubAgentCoordinator';
 import { DynamicPromptAssembler } from './cognitive/DynamicPromptAssembler';
 import { ReActExecutor } from './cognitive/ReActExecutor';
 import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
+import { LanguageInference } from './LanguageInference';
 
 interface SpawnGoalPayload {
   requestId: string;
@@ -118,6 +119,7 @@ export class DialogueEngine {
     this.reactExecutor = new ReActExecutor(this.orchestrator, this.toolExecutionHandler);
 
     this.loadConsentedUsers();
+    this.syncPlatformHistoryFromStore();
 
     this.eventBus.on(EventTypes.DIALOGUE_USER_OBSERVED, this.onUserObservation.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_USER_CANCELLED, this.onUserCancelled.bind(this));
@@ -125,6 +127,7 @@ export class DialogueEngine {
     this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_GENERATED, this.onProposalGenerated.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_APPROVED, this.onProposalResolved.bind(this));
     this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_REJECTED, this.onProposalResolved.bind(this));
+    this.eventBus.on(EventTypes.DIALOGUE_PROPOSAL_EXPIRED, this.onProposalResolved.bind(this));
 
     console.log('[DialogueEngine] Initialized with Modular Cognitive Pipeline (Option A).');
   }
@@ -161,7 +164,26 @@ export class DialogueEngine {
     }
   }
 
+  private syncPlatformHistoryFromStore(): void {
+    const allPlatforms = this.chatHistoryStore.getAllPlatformMessages();
+    for (const [ctxKey, turns] of Object.entries(allPlatforms)) {
+      if (!this.platformConversationHistory.has(ctxKey)) {
+        this.platformConversationHistory.set(ctxKey, []);
+      }
+      const existing = this.platformConversationHistory.get(ctxKey)!;
+      if (existing.length === 0 && turns && turns.length > 0) {
+        existing.push(...turns.map(t => ({ role: t.role, content: t.content })));
+        while (existing.length > this.PLATFORM_HISTORY_MAX_TURNS * 2) {
+          existing.shift();
+        }
+      }
+    }
+  }
+
   private async buildWorkingMemory(uiCommandExecuted?: boolean, userMessage?: string): Promise<QwenMessage[]> {
+    await this.chatHistoryStore.ensureLoaded();
+    this.syncPlatformHistoryFromStore();
+
     return this.cognitiveContextBuilder.build(
       uiCommandExecuted,
       userMessage,
@@ -179,15 +201,17 @@ export class DialogueEngine {
         : payload;
 
     if (type === EventTypes.DIALOGUE_AGENT_SPEAK) {
+      if (enrichedPayload.text && typeof enrichedPayload.text === 'string') {
+        // Sanitize any artificial AI long em dashes (—) to clean en dashes (–)
+        enrichedPayload.text = enrichedPayload.text.replace(/\s*—\s*/g, ' – ').replace(/—/g, ' – ');
+      }
       const ctx = enrichedPayload.responseContext;
       if (ctx) {
-        console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITH responseContext → platform=${ctx.platform} channel=${ctx.channelId} thread=${ctx.threadRef}`);
+        console.log(`[DialogueEngine] Outbound speak routed to ${ctx.platform}:${ctx.channelId}`);
         if (this._activeUserMessage && payload.text && !payload.isInterim) {
           this.persistPlatformTurn(ctx.platform, ctx.channelId, this._activeUserMessage, payload.text);
           this._activeUserMessage = undefined;
         }
-      } else {
-        console.log(`[DialogueEngine][DIAG] DIALOGUE_AGENT_SPEAK emitted WITHOUT responseContext (UI/Socket reply only)`);
       }
     }
 
@@ -213,6 +237,10 @@ export class DialogueEngine {
     while (history.length > this.PLATFORM_HISTORY_MAX_TURNS * 2) {
       history.shift();
     }
+
+    // Persist to durable store (local disk + Supabase cloud snapshot)
+    this.chatHistoryStore.appendPlatformTurn(platform, channelId, 'user', userMessage);
+    this.chatHistoryStore.appendPlatformTurn(platform, channelId, 'assistant', assistantText);
   }
 
   private spawnGoalAndAwaitResult(intent: string, parameters: Record<string, any>): Promise<GoalResultPayload> {
@@ -349,7 +377,7 @@ export class DialogueEngine {
     // Check conversational proposal approval/rejection
     if (this.pendingProposalId && this.proposalResponseHandler.isApproval(effectiveUserMessage)) {
       this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
-      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Applying your approval...' });
+      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Applying your confirmation...' });
       return;
     }
 
@@ -486,15 +514,17 @@ export class DialogueEngine {
         buildWorkingMemory: this.buildWorkingMemory.bind(this)
       });
 
-      // Emit final conversational response to user
-      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-        id: Date.now(),
-        text: execResult.finalAnswer,
-        actionLinks: execResult.actionLinks.length > 0 ? execResult.actionLinks : undefined,
-        cognitiveSteps: execResult.cognitiveSteps.length > 0 ? execResult.cognitiveSteps : undefined,
-        durationSeconds: execResult.durationSeconds,
-        hadTools: execResult.hadTools
-      });
+      // Emit final conversational response to user (skipped if proposal was generated to prevent duplicate speech)
+      if (!execResult.proposalEncountered && execResult.finalAnswer) {
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          id: Date.now(),
+          text: execResult.finalAnswer,
+          actionLinks: execResult.actionLinks.length > 0 ? execResult.actionLinks : undefined,
+          cognitiveSteps: execResult.cognitiveSteps.length > 0 ? execResult.cognitiveSteps : undefined,
+          durationSeconds: execResult.durationSeconds,
+          hadTools: execResult.hadTools
+        });
+      }
 
     } catch (error: any) {
       if (error.name === 'AbortError') {

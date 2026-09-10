@@ -317,9 +317,19 @@ export class ThreadsAPI {
       return candidate;
     }
 
-    // Attempt lookup from recent posts to match permalink or shortcode
+    const lowerCandidate = candidate.toLowerCase();
+    const isRelativeLatest = ['latest', 'last', 'terakhir', 'recent', 'postingan terakhir'].some(
+      term => lowerCandidate === term || lowerCandidate.includes(term)
+    );
+
+    // Attempt lookup from recent posts to match permalink, shortcode, or relative latest term
     try {
       const recentPosts = await this.getUserThreads(sessionId, 25);
+      if (isRelativeLatest && recentPosts.length > 0 && recentPosts[0].id) {
+        console.log(`[ThreadsAPI] Resolved relative term "${candidate}" to latest post ID: ${recentPosts[0].id}`);
+        return recentPosts[0].id;
+      }
+
       const match = recentPosts.find(p =>
         p.id === candidate ||
         (p.permalink && p.permalink.includes(candidate)) ||
@@ -535,6 +545,30 @@ export class ThreadsAPI {
 
     const data = await response.json();
     return data.data || [];
+  }
+
+  /**
+   * Deletes a published post or media container created by the authenticated user.
+   */
+  async deletePost(sessionId: string, rawPostId: string): Promise<boolean> {
+    const token = await this.getAccessToken(sessionId);
+    if (!token) throw new Error('Threads API requires an active access token. Please connect Threads first.');
+
+    const postId = await this.resolveNumericPostId(sessionId, rawPostId);
+    const url = new URL(`${this.baseUrl}/${postId}`);
+    url.searchParams.append('access_token', token);
+
+    const response = await this.fetchImpl(url.toString(), {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to delete Threads post ${postId}: ${errorText}`);
+    }
+
+    const data = await response.json() as any;
+    return Boolean(data?.success);
   }
 
   public async getAccessToken(sessionId: string): Promise<string | null> {

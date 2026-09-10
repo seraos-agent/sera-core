@@ -92,6 +92,21 @@ export class ThreadsCapability {
         requiresApproval: false,
         irreversible: false,
         unsafe: false,
+      },
+      {
+        name: 'THREADS_DELETE',
+        description: 'Deletes a published post from the connected Threads account using its post ID, permalink URL, or shortcode.',
+        parameters: {
+          type: 'object',
+          properties: {
+            postId: { type: 'string', description: 'The ID, permalink URL, or shortcode of the Threads post to delete' },
+            reason: { type: 'string', description: 'Optional reason for deleting the post' }
+          },
+          required: ['postId']
+        },
+        requiresApproval: false,
+        irreversible: true,
+        unsafe: false,
       }
     ];
   }
@@ -265,6 +280,24 @@ export class ThreadsCapability {
           return {
             success: false,
             error: `Threads Insights: ${err.message}. (Ensure account has active insights permissions or verify post ID).`
+          };
+        }
+      }
+
+      case 'THREADS_DELETE': {
+        const rawPostId = args.postId || args.id || 'latest';
+        try {
+          const resolvedId = await this.api.resolveNumericPostId(sessionId, String(rawPostId));
+          const success = await this.api.deletePost(sessionId, resolvedId);
+          return {
+            success,
+            postId: resolvedId,
+            message: `Post ${resolvedId} was deleted successfully from Threads.`
+          };
+        } catch (err: any) {
+          return {
+            success: false,
+            error: `Failed to delete Threads post: ${err.message}`
           };
         }
       }

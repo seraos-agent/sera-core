@@ -10,6 +10,7 @@ import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
 import { FeasibilityEvaluator } from './FeasibilityEvaluator';
 import { ProposalResponseHandler } from './ProposalResponseHandler';
 import { DialogueResultNarrator } from './DialogueResultNarrator';
+import { LanguageInference } from './LanguageInference';
 
 export interface SingleToolExecutionParams {
   toolCall: SeraToolCall;
@@ -86,6 +87,7 @@ export class ToolExecutionHandler {
       'media_generation': 'Generating media',
       'generate_image': 'Generating image',
       'THREADS_PUBLISH': 'Publishing to Threads',
+      'THREADS_DELETE': 'Deleting Threads post',
       'TRANSFER_FUNDS': 'Preparing transfer',
       'SCHEDULE_GOAL': 'Configuring automation',
       'ACTIVATE_AUTONOMY_AGREEMENT': 'Configuring agreement',
@@ -186,9 +188,9 @@ export class ToolExecutionHandler {
       };
     }
 
-    // 2. Safety and Proposal Check for Financial/Mutative actions
+    // 2. Safety and Proposal Check for Financial actions (On-chain Asset Transfers)
     let isSafe = false;
-    const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'TRANSFER_FUNDS'];
+    const PROPOSAL_REQUIRED_TOOLS = ['TRANSFER_FUNDS'];
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {
       const isAuthorizedByAgreement = typeof autonomyAgreementStore?.hasFullAccessFor === 'function' && autonomyAgreementStore.hasFullAccessFor(toolIntent, sessionId) === true;
@@ -304,35 +306,70 @@ export class ToolExecutionHandler {
       }
 
       console.log(`[ToolExecutionHandler] Tool Call ${toolIntent} requires user approval (Proposal).`);
+      const proposalId = `prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const responseContext = event?.payload?.responseContext || event?.payload?._responseContext;
+      const isWhatsApp = responseContext?.platform === 'whatsapp';
+      const targetLanguage = LanguageInference.infer(userMessage);
+      const isId = targetLanguage === 'Indonesian';
+
       emitEvent(EventTypes.SYSTEM_PROPOSE_GOAL, {
+        proposalId,
         intent: toolIntent,
         parameters: {
           ...toolParams,
-          ...(event?.payload?.responseContext ? { _responseContext: event.payload.responseContext } : {})
+          ...(responseContext ? { _responseContext: responseContext } : {})
         },
         userMessage
       });
 
-      const systemProposalMsg = `You have just prepared an action proposal via Tool Calling.
+      let summaryText = '';
+      let richContent: Record<string, any> | undefined;
+
+      if (isWhatsApp) {
+        if (toolIntent === 'THREADS_DELETE') {
+          summaryText = isId
+            ? 'Postingan barusan mau langsung aku hapus dari Threads ya? Mau dilanjut?'
+            : 'Want me to go ahead and delete that recent Threads post now?';
+        } else if (toolIntent === 'TRANSFER_FUNDS') {
+          const amount = toolParams.amount || '';
+          const asset = (toolParams.asset || 'USDC').toUpperCase();
+          summaryText = isId
+            ? `Transfer dana sebesar *${amount} ${asset}* mau langsung diproses sekarang?`
+            : `Shall I go ahead and process the transfer of *${amount} ${asset}* now?`;
+        } else {
+          summaryText = isId
+            ? 'Tindakan ini mau langsung aku jalankan?'
+            : 'Shall I go ahead and proceed with this action?';
+        }
+
+        richContent = {
+          proposal: {
+            proposalId,
+            intent: toolIntent,
+            isIndonesian: isId
+          }
+        };
+      } else {
+        const systemProposalMsg = `You have just prepared an action proposal via Tool Calling.
 Intent: ${toolIntent}
 Parameters: ${JSON.stringify(toolParams)}
 
 CRITICAL INSTRUCTION:
-Write ONE short, natural sentence in the exact language the user is speaking. Acknowledge that the proposal card has been prepared and ask them to review and click Approve on their screen. Do NOT say that the action has been executed yet. Keep it under 15 words.`;
+Write ONE short, natural sentence in ${targetLanguage}. Acknowledge that the proposal card has been prepared on their screen and ask them to review and click Approve. Do NOT say that the action has been executed yet. Keep it under 15 words.`;
 
-      const proposalMessages = await buildWorkingMemory();
-      proposalMessages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemProposalMsg}` });
+        const proposalMessages = await buildWorkingMemory();
+        proposalMessages.push({ role: 'user', content: `[SYSTEM NOTIFICATION] ${systemProposalMsg}` });
 
-      let summaryText = '';
-      try {
-        const profile = ExecutionProfileBuilder.forTier('Execution')
-          .withEstimatedInputTokens(Math.ceil(JSON.stringify(proposalMessages).length / 4))
-          .build();
+        try {
+          const profile = ExecutionProfileBuilder.forTier('Execution')
+            .withEstimatedInputTokens(Math.ceil(JSON.stringify(proposalMessages).length / 4))
+            .build();
 
-        const proposalResponse = await this.orchestrator.generate(profile, proposalMessages, undefined, activeAbortControllerSignal);
-        summaryText = proposalResponse.text.trim();
-      } catch (err) {
-        summaryText = this.proposalResponseHandler.generateInstantProposalSummary(toolIntent, toolParams);
+          const proposalResponse = await this.orchestrator.generate(profile, proposalMessages, undefined, activeAbortControllerSignal);
+          summaryText = proposalResponse.text.trim();
+        } catch (err) {
+          summaryText = this.proposalResponseHandler.generateInstantProposalSummary(toolIntent, toolParams);
+        }
       }
 
       this.eventBus.emit('SYSTEM_TELEMETRY' as any, {
@@ -342,7 +379,10 @@ Write ONE short, natural sentence in the exact language the user is speaking. Ac
         durationMs: Date.now() - startTime
       });
 
-      emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: summaryText });
+      emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: summaryText,
+        ...(richContent ? { richContent } : {})
+      });
       return { isProposal: true, output: { proposed: true, intent: toolIntent, parameters: toolParams } };
     }
   }

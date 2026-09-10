@@ -4,6 +4,8 @@ import { EventTypes, ProposeGoalPayload } from '../events/types';
 export class ProposalManager {
   private eventBus: EventEmitter;
   private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage?: string }>();
+  private proposalTimers = new Map<string, NodeJS.Timeout>();
+  public static readonly PROPOSAL_TTL_MS = 60 * 1000; // 60 seconds
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -40,6 +42,12 @@ export class ProposalManager {
       userMessage: payload.userMessage
     });
 
+    // Setup 60-second auto-expiration TTL
+    const timer = setTimeout(() => {
+      this.expireProposal(proposalId);
+    }, ProposalManager.PROPOSAL_TTL_MS);
+    this.proposalTimers.set(proposalId, timer);
+
     // Notify UI
     this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_GENERATED, {
       id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -53,7 +61,7 @@ export class ProposalManager {
       }
     });
     
-    console.log(`[ProposalManager] Generated proposal ${proposalId} for ${payload.intent}`);
+    console.log(`[ProposalManager] Generated proposal ${proposalId} for ${payload.intent} (TTL: 60s)`);
     return proposalId;
   }
 
@@ -78,6 +86,13 @@ export class ProposalManager {
     if (!proposal) {
       console.warn(`[ProposalManager] Unknown or already processed proposal approved: ${proposalId}`);
       return false;
+    }
+
+    // Clear TTL timer
+    const timer = this.proposalTimers.get(proposalId);
+    if (timer) {
+      clearTimeout(timer);
+      this.proposalTimers.delete(proposalId);
     }
 
     // Spawn the goal for execution
@@ -105,7 +120,17 @@ export class ProposalManager {
     if (!proposal) {
       return false;
     }
+
+    // Clear TTL timer
+    const timer = this.proposalTimers.get(proposalId);
+    if (timer) {
+      clearTimeout(timer);
+      this.proposalTimers.delete(proposalId);
+    }
+
     this.pendingProposals.delete(proposalId);
+
+    const responseContext = proposal.parameters?._responseContext;
     
     this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
       id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -113,11 +138,55 @@ export class ProposalManager {
       source: 'ProposalManager',
       timestamp: Date.now(),
       payload: {
-        text: 'Proposal cancelled.'
+        text: '❌ Tindakan dibatalkan sesuai permintaan.',
+        ...(responseContext ? { responseContext } : {})
       }
     });
     
     console.log(`[ProposalManager] Proposal ${proposalId} rejected`);
+    return true;
+  }
+
+  public expireProposal(proposalId: string): boolean {
+    const proposal = this.pendingProposals.get(proposalId);
+    if (!proposal) {
+      return false;
+    }
+
+    const timer = this.proposalTimers.get(proposalId);
+    if (timer) {
+      clearTimeout(timer);
+      this.proposalTimers.delete(proposalId);
+    }
+
+    this.pendingProposals.delete(proposalId);
+
+    const responseContext = proposal.parameters?._responseContext;
+
+    this.eventBus.emit(EventTypes.DIALOGUE_PROPOSAL_EXPIRED, {
+      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      type: EventTypes.DIALOGUE_PROPOSAL_EXPIRED,
+      source: 'ProposalManager',
+      timestamp: Date.now(),
+      payload: {
+        proposalId,
+        intent: proposal.intent,
+        parameters: proposal.parameters
+      }
+    });
+
+    this.eventBus.emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      type: EventTypes.DIALOGUE_AGENT_SPEAK,
+      source: 'ProposalManager',
+      timestamp: Date.now(),
+      payload: {
+        text: '⏱️ Waktu konfirmasi (60 detik) telah habis. Tindakan dibatalkan secara aman.',
+        ...(responseContext ? { responseContext } : {})
+      }
+    });
+
+    console.log(`[ProposalManager] Proposal ${proposalId} expired after 60s TTL`);
     return true;
   }
 

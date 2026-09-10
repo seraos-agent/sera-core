@@ -18,8 +18,15 @@ export interface UiMessage {
   hadTools?: boolean;
 }
 
+export interface PlatformTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: number;
+}
+
 export interface ChatHistoryState {
   uiMessages: UiMessage[];
+  platformMessages?: Record<string, PlatformTurn[]>;
 }
 
 export interface ChatHistoryStoreOptions {
@@ -59,13 +66,16 @@ export class ChatHistoryStore {
         if (parsed.uiMessages) {
           parsed.uiMessages = parsed.uiMessages.filter(msg => msg.type !== 'activity');
         }
+        if (!parsed.platformMessages) {
+          parsed.platformMessages = {};
+        }
         
         return parsed;
       }
     } catch (e) {
       console.error('[ChatHistoryStore] Failed to load local chat history:', e);
     }
-    return { uiMessages: [] };
+    return { uiMessages: [], platformMessages: {} };
   }
 
   public async ensureLoaded(): Promise<void> {
@@ -82,15 +92,33 @@ export class ChatHistoryStore {
         `session_id=eq.${encodeURIComponent(this.sessionId)}`
       );
 
-      if (rows && rows.length > 0 && rows[0].snapshot?.uiMessages) {
-        const cloudMessages = rows[0].snapshot.uiMessages.filter((msg: any) => msg.type !== 'activity');
-        if (cloudMessages.length > 0) {
-          // If local was empty or cloud has more recent messages, sync from cloud
-          if (this.state.uiMessages.length === 0 || cloudMessages.length >= this.state.uiMessages.length) {
-            this.state.uiMessages = cloudMessages;
-            this.saveLocal();
-            console.log(`[ChatHistoryStore] Loaded ${cloudMessages.length} chat messages from Supabase for ${this.sessionId}`);
+      if (rows && rows.length > 0 && rows[0].snapshot) {
+        const snapshot = rows[0].snapshot;
+        let modified = false;
+
+        if (snapshot.uiMessages) {
+          const cloudMessages = snapshot.uiMessages.filter((msg: any) => msg.type !== 'activity');
+          if (cloudMessages.length > 0) {
+            // If local was empty or cloud has more recent messages, sync from cloud
+            if (this.state.uiMessages.length === 0 || cloudMessages.length >= this.state.uiMessages.length) {
+              this.state.uiMessages = cloudMessages;
+              modified = true;
+              console.log(`[ChatHistoryStore] Loaded ${cloudMessages.length} chat messages from Supabase for ${this.sessionId}`);
+            }
           }
+        }
+
+        if (snapshot.platformMessages && typeof snapshot.platformMessages === 'object') {
+          this.state.platformMessages = {
+            ...snapshot.platformMessages,
+            ...(this.state.platformMessages || {})
+          };
+          modified = true;
+          console.log(`[ChatHistoryStore] Loaded platform conversation history from Supabase for ${this.sessionId}`);
+        }
+
+        if (modified) {
+          this.saveLocal();
         }
       }
     } catch (e) {
@@ -126,6 +154,7 @@ export class ChatHistoryStore {
       } catch {}
 
       existingSnapshot.uiMessages = this.state.uiMessages;
+      existingSnapshot.platformMessages = this.state.platformMessages || {};
 
       await this.supabaseClient.upsert('sera_memory_snapshots', {
         session_id: this.sessionId,
@@ -140,6 +169,42 @@ export class ChatHistoryStore {
   private save(): void {
     this.saveLocal();
     void this.saveCloud();
+  }
+
+  public getPlatformTurns(ctxKey: string): PlatformTurn[] {
+    return this.state.platformMessages?.[ctxKey] || [];
+  }
+
+  public getAllPlatformMessages(): Record<string, PlatformTurn[]> {
+    return this.state.platformMessages || {};
+  }
+
+  public appendPlatformTurn(
+    platform: string,
+    channelId: string,
+    role: 'user' | 'assistant',
+    content: string
+  ): void {
+    if (!content || !content.trim()) return;
+    const ctxKey = `${platform}:${channelId}`;
+    if (!this.state.platformMessages) {
+      this.state.platformMessages = {};
+    }
+    if (!this.state.platformMessages[ctxKey]) {
+      this.state.platformMessages[ctxKey] = [];
+    }
+    const turns = this.state.platformMessages[ctxKey];
+    turns.push({
+      role,
+      content,
+      timestamp: Date.now()
+    });
+    // Retain max 20 turns per channel (10 user + 10 assistant) to prevent unbounded growth
+    const MAX_PLATFORM_TURNS = 20;
+    while (turns.length > MAX_PLATFORM_TURNS) {
+      turns.shift();
+    }
+    this.save();
   }
 
   public getUiMessages(): UiMessage[] {
@@ -183,7 +248,7 @@ export class ChatHistoryStore {
   }
 
   public clear(): void {
-    this.state = { uiMessages: [] };
+    this.state = { uiMessages: [], platformMessages: {} };
     this.save();
   }
 }

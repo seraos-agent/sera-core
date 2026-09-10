@@ -262,7 +262,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
 
     const onProposalGenerated = (event: any) => {
       const payload = event.payload || event;
-      const ctx = payload.responseContext;
+      const ctx = payload.responseContext || payload.parameters?._responseContext || payload.parameters?.responseContext;
       if (ctx && ctx.platform && ctx.platform !== 'ui' && ctx.platform !== 'socket') {
         return;
       }

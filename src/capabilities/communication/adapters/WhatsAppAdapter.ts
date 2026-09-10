@@ -63,23 +63,34 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     // 4. Convert Markdown horizontal rules (--- or ***) into clean separator
     formatted = formatted.replace(/^(\s*[-*_]\s*){3,}$/gm, '──────────');
 
-    // 5. Normalize excessive blank lines
+    // 5. Sanitize long em dashes (—) to clean en dashes (–) with spacing to avoid artificial AI tone
+    formatted = formatted.replace(/\s*—\s*/g, ' – ');
+    formatted = formatted.replace(/—/g, ' – ');
+
+    // 6. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
+    formatted = formatted.replace(/^>\s*/gm, '');
+
+    // 7. Normalize excessive blank lines
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     return formatted.trim();
   }
 
   /**
-   * Splits a formatted response into 1 to 3 natural conversational chat bubbles (Option B).
-   * Enforces a hard cap of 3 bubbles to prevent notification spam, while respecting
-   * paragraph breaks and Meta API's 4,096-character limit per message.
+   * Splits a formatted response into natural conversational chat bubbles on WhatsApp.
+   * - 1 bubble for casual chats, direct answers, or single cohesive topics.
+   * - Option 2 (2 bubbles) for structured summaries, reports, or digests:
+   *   Bubble 1 = The Substance (Opening Lead-in + All Points/Content).
+   *   Bubble 2 = The Takeaway & Discussion starter.
+   * - Merges orphan/dangling intro paragraphs (e.g. short intro ending with :) so they never become isolated bubbles.
+   * - Strictly respects Meta API's 4,096-character limit per message (clamps at 3,800 chars).
    */
   public static splitIntoBubbles(text: string): string[] {
     if (!text || !text.trim()) return [];
 
     const trimmed = text.trim();
 
-    // 1. Single-paragraph answers under safe length limit remain 1 single bubble
+    // 1. Single paragraph answers under safe length limit remain 1 single bubble
     if (!trimmed.includes('\n\n') && trimmed.length <= 3800) {
       return [trimmed];
     }
@@ -93,24 +104,58 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     let bubbles: string[] = [];
 
     if (rawParagraphs.length <= 1) {
-      // Single paragraph
       bubbles = [trimmed];
-    } else if (rawParagraphs.length === 2) {
-      // 2 thought blocks: Bubble 1 (Deliverable/Result) + Bubble 2 (Follow-up)
-      bubbles = [rawParagraphs[0], rawParagraphs[1]];
-    } else if (rawParagraphs.length === 3) {
-      // 3 thought blocks: Bubble 1 (Deliverable) + Bubble 2 (Insight) + Bubble 3 (Closing/Next step)
-      bubbles = [rawParagraphs[0], rawParagraphs[1], rawParagraphs[2]];
     } else {
-      // More than 3 paragraphs: strictly enforce hard limit of 3 bubbles
-      // Bubble 1: First paragraph (Opening/Lead)
-      // Bubble 2: Middle paragraphs combined
-      // Bubble 3: Last paragraph (Closing/Follow-up)
-      bubbles = [
-        rawParagraphs[0],
-        rawParagraphs.slice(1, rawParagraphs.length - 1).join('\n\n'),
-        rawParagraphs[rawParagraphs.length - 1]
-      ];
+      // 3. Merge orphan/dangling intro paragraphs so they never become a lonely, awkward 1-line bubble
+      // An intro is considered dangling if:
+      // a) It does NOT contain a URL (URLs are deliverables / external resources), AND
+      // b) Either:
+      //    - It ends with a colon (:) or ellipsis (...), indicating it points to the following text, OR
+      //    - It is short (< 160 chars) and the next paragraph starts with a list marker (*1, 1., -, •)
+      const normalizedParagraphs: string[] = [];
+      for (let i = 0; i < rawParagraphs.length; i++) {
+        const p = rawParagraphs[i];
+        if (
+          i === 0 &&
+          rawParagraphs.length > 1 &&
+          !/https?:\/\//i.test(p) &&
+          (
+            /[:：…]\s*$/.test(p) ||
+            (p.length < 160 && /^(\*?\d+[\.\)]|\*?[-•])/.test(rawParagraphs[1]))
+          )
+        ) {
+          rawParagraphs[1] = p + '\n\n' + rawParagraphs[1];
+          continue;
+        }
+        normalizedParagraphs.push(p);
+      }
+
+      if (normalizedParagraphs.length <= 1) {
+        bubbles = [normalizedParagraphs[0]];
+      } else if (normalizedParagraphs.length === 2) {
+        // 2 clean blocks: Bubble 1 (Deliverable/Result/Substance) + Bubble 2 (Follow-up/Takeaway)
+        bubbles = [normalizedParagraphs[0], normalizedParagraphs[1]];
+      } else if (normalizedParagraphs.length === 3) {
+        // Check if this is an operational deliverable with link (Bubble 1: Link preview, Bubble 2: Insight, Bubble 3: Action)
+        const hasUrl = /https?:\/\/[^\s\)]+/.test(normalizedParagraphs[0]);
+        if (hasUrl) {
+          bubbles = [normalizedParagraphs[0], normalizedParagraphs[1], normalizedParagraphs[2]];
+        } else {
+          // Standard multi-point summary: Option 2 (Bubble 1: Points combined, Bubble 2: Takeaway/Closing)
+          bubbles = [
+            normalizedParagraphs.slice(0, 2).join('\n\n'),
+            normalizedParagraphs[2]
+          ];
+        }
+      } else {
+        // 4 or more paragraphs: Option 2 (2 bubbles)
+        // Bubble 1: All substantive body points combined with comfortable spacing
+        // Bubble 2: Closing takeaway / follow-up question
+        bubbles = [
+          normalizedParagraphs.slice(0, normalizedParagraphs.length - 1).join('\n\n'),
+          normalizedParagraphs[normalizedParagraphs.length - 1]
+        ];
+      }
     }
 
     // 3. Safety Clamp: Meta API allows up to 4,096 characters per text message.
@@ -163,6 +208,72 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
 
     const cleanRecipient = recipient.replace(/[^0-9]/g, '');
     const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
+
+    // 1. Native WhatsApp Interactive Proposal Buttons (Conversational Quick Reply)
+    if (action.richContent?.proposal) {
+      const { proposalId, intent, isIndonesian } = action.richContent.proposal;
+      const isId = isIndonesian !== false;
+      const cancelTitle = isId ? 'Batal' : 'Cancel';
+      const approveTitle = intent === 'THREADS_DELETE'
+        ? (isId ? 'Hapus' : 'Delete')
+        : intent === 'TRANSFER_FUNDS'
+        ? (isId ? 'Kirim' : 'Send')
+        : (isId ? 'Lanjut' : 'Proceed');
+
+      const rawBody = action.text || (isId ? 'Mau dilanjut sekarang?' : 'Should we proceed?');
+      const bodyText = WhatsAppAdapter.formatToWhatsApp(rawBody);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: cleanRecipient,
+            type: 'interactive',
+            interactive: {
+              type: 'button',
+              body: {
+                text: bodyText.slice(0, 1024)
+              },
+              action: {
+                buttons: [
+                  {
+                    type: 'reply',
+                    reply: {
+                      id: `reject_prop_${proposalId}`,
+                      title: cancelTitle
+                    }
+                  },
+                  {
+                    type: 'reply',
+                    reply: {
+                      id: `approve_prop_${proposalId}`,
+                      title: approveTitle
+                    }
+                  }
+                ]
+              }
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive proposal button rejected (${response.status}): ${errText}. Falling back to conversational text bubbles.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Interactive proposal exception, falling back to text:', err.message);
+      }
+    }
+
     const formattedBody = WhatsAppAdapter.formatToWhatsApp(action.text || '');
     const bubbles = WhatsAppAdapter.splitIntoBubbles(formattedBody);
 

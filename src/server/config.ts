@@ -1,9 +1,15 @@
 const environment = process.env.NODE_ENV ?? 'development';
-type MemoryPersistenceMode = 'local_development' | 'runtime_only' | 'user_cloud';
+type MemoryPersistenceMode = 'local_development' | 'runtime_only' | 'user_cloud' | 'supabase';
 const configuredMemoryMode = process.env.SERA_MEMORY_PERSISTENCE?.trim().toLowerCase();
-const memoryPersistenceMode: MemoryPersistenceMode = configuredMemoryMode === 'local_development' || configuredMemoryMode === 'user_cloud' || configuredMemoryMode === 'runtime_only'
-  ? configuredMemoryMode
-  : (environment === 'production' ? 'runtime_only' : 'local_development');
+const memoryPersistenceMode: MemoryPersistenceMode =
+  configuredMemoryMode === 'local_development' ||
+  configuredMemoryMode === 'user_cloud' ||
+  configuredMemoryMode === 'runtime_only' ||
+  configuredMemoryMode === 'supabase'
+    ? (configuredMemoryMode as MemoryPersistenceMode)
+    : (environment === 'production'
+        ? (process.env.SUPABASE_URL ? 'supabase' : 'runtime_only')
+        : 'local_development');
 
 export const serverConfig = {
   environment,
