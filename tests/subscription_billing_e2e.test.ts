@@ -1,13 +1,30 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AgentManager, SubscriptionRequiredError } from '../src/server/AgentManager';
 import { SubscriptionService } from '../src/server/billing/SubscriptionService';
 import { SubscriptionLedger } from '../src/server/billing/SubscriptionLedger';
 
+const TEST_LEDGER_PATH = path.join(process.cwd(), '.data', 'test_subscriptions_e2e.json');
+
 describe('Prepaid Subscription Credit (ADR-0007)', () => {
   let manager: AgentManager;
 
+  const cleanTestFile = () => {
+    try {
+      if (fs.existsSync(TEST_LEDGER_PATH)) {
+        fs.unlinkSync(TEST_LEDGER_PATH);
+      }
+    } catch {}
+  };
+
+  beforeEach(() => {
+    cleanTestFile();
+  });
+
   afterEach(() => {
     manager?.shutdownAll();
+    cleanTestFile();
   });
 
   it("'dev' session is always entitled with no top-up", () => {
@@ -21,7 +38,7 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
   });
 
   it('grants entitlement after a sufficient top-up, spawns an instance, and manages credits', () => {
-    const service = new SubscriptionService(new SubscriptionLedger());
+    const service = new SubscriptionService(new SubscriptionLedger(TEST_LEDGER_PATH));
     // 45 USDC (>= 20 tier) => 45 * 200,000 * 1.5 = 13,500,000 Agent Credits
     const credits = service.recordTopUp('0xUser1', 45);
     expect(credits).toBe(13_500_000);
@@ -38,12 +55,12 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
   });
 
   it('rejects a top-up smaller than minimum 1 USDC', () => {
-    const service = new SubscriptionService(new SubscriptionLedger());
+    const service = new SubscriptionService(new SubscriptionLedger(TEST_LEDGER_PATH));
     expect(() => service.recordTopUp('0xUser2', 0.5)).toThrow(/less than the minimum/);
   });
 
   it('never bills or evicts the dev instance during a billing tick', () => {
-    const service = new SubscriptionService(new SubscriptionLedger());
+    const service = new SubscriptionService(new SubscriptionLedger(TEST_LEDGER_PATH));
     manager = new AgentManager(service, 1000);
 
     manager.getOrCreateInstance('dev');
@@ -54,7 +71,7 @@ describe('Prepaid Subscription Credit (ADR-0007)', () => {
   });
 
   it('additional top-ups accumulate rather than overwrite existing credit', () => {
-    const ledger = new SubscriptionLedger();
+    const ledger = new SubscriptionLedger(TEST_LEDGER_PATH);
     const service = new SubscriptionService(ledger);
 
     service.recordTopUp('0xUser3', 20); // 6,000,000 credits

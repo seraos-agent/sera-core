@@ -188,9 +188,9 @@ export class ToolExecutionHandler {
       };
     }
 
-    // 2. Safety and Proposal Check for Financial actions (On-chain Asset Transfers)
+    // 2. Safety and Proposal Check for Financial/Automation actions
     let isSafe = false;
-    const PROPOSAL_REQUIRED_TOOLS = ['TRANSFER_FUNDS'];
+    const PROPOSAL_REQUIRED_TOOLS = ['SCHEDULE_GOAL', 'TRANSFER_FUNDS'];
 
     if (PROPOSAL_REQUIRED_TOOLS.includes(toolIntent)) {
       const isAuthorizedByAgreement = typeof autonomyAgreementStore?.hasFullAccessFor === 'function' && autonomyAgreementStore.hasFullAccessFor(toolIntent, sessionId) === true;
@@ -227,6 +227,9 @@ export class ToolExecutionHandler {
         }
       } else {
         result = await spawnGoalAndAwaitResult(toolIntent, toolParams);
+      }
+      if (!result) {
+        result = { success: false, errorMessage: 'No result returned from execution' };
       }
       const duration = Date.now() - startTime;
 

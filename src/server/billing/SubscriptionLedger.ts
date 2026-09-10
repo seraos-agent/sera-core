@@ -17,10 +17,14 @@ export interface SubscriptionEntry {
 export class SubscriptionLedger {
   private entries: Map<string, SubscriptionEntry> = new Map();
   private filePath: string;
+  private isCustomPath: boolean;
 
   constructor(customPath?: string) {
+    this.isCustomPath = Boolean(customPath);
     this.filePath = customPath || path.join(process.cwd(), '.data', 'subscriptions.json');
-    this.loadFromFile();
+    if (!process.env.VITEST || this.isCustomPath) {
+      this.loadFromFile();
+    }
   }
 
   private loadFromFile(): void {
@@ -40,6 +44,9 @@ export class SubscriptionLedger {
   }
 
   private saveToFile(): void {
+    if (process.env.VITEST && !this.isCustomPath) {
+      return;
+    }
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
