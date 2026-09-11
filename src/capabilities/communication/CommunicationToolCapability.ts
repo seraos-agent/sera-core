@@ -40,7 +40,7 @@ export class CommunicationToolCapability {
           },
           required: ['text']
         },
-        requiresApproval: true
+        requiresApproval: false
       },
       {
         name: 'READ_CHANNEL_CONTEXT',

@@ -459,7 +459,6 @@ export class ThreadsAPI {
     }
 
     const data = await response.json();
-    console.log('[ThreadsAPI] /me/mentions raw response:', JSON.stringify(data, null, 2));
     return data.data || [];
   }
   /**

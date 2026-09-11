@@ -139,7 +139,7 @@ export class ProposalManager {
       timestamp: Date.now(),
       payload: {
         text: '❌ Tindakan dibatalkan sesuai permintaan.',
-        ...(responseContext ? { responseContext } : {})
+        ...(responseContext ? { responseContext: { ...responseContext, isVoiceMessage: false } } : {})
       }
     });
     
@@ -182,7 +182,7 @@ export class ProposalManager {
       timestamp: Date.now(),
       payload: {
         text: '⏱️ Waktu konfirmasi (60 detik) telah habis. Tindakan dibatalkan secara aman.',
-        ...(responseContext ? { responseContext } : {})
+        ...(responseContext ? { responseContext: { ...responseContext, isVoiceMessage: false } } : {})
       }
     });
 

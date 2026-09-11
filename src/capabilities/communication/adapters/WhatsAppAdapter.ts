@@ -226,12 +226,14 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     const cleanRecipient = recipient.replace(/[^0-9]/g, '');
     const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
 
+    let voiceNoteDispatched = false;
+
     // 1. Native Outbound Audio (Voice Note via xAI TTS)
     if (action.isVoiceMessage && action.text) {
       try {
         const audioResult = await XAITextToSpeechService.synthesize(action.text);
         if (audioResult) {
-          const mediaId = await this.uploadMedia(audioResult.buffer, audioResult.mimeType, 'voice_note.mp3');
+          const mediaId = await this.uploadMedia(audioResult.buffer, audioResult.mimeType, 'voice_note.ogg');
           if (mediaId) {
             const sendRes = await fetch(url, {
               method: 'POST',
@@ -249,6 +251,7 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
             });
             if (sendRes.ok) {
               console.log(`[WhatsAppAdapter] Dispatched native voice note to +${cleanRecipient}`);
+              voiceNoteDispatched = true;
             } else {
               const errTxt = await sendRes.text();
               console.error(`[WhatsAppAdapter] Failed to dispatch audio message (${sendRes.status}): ${errTxt}`);
@@ -372,6 +375,13 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       } catch (imgErr: any) {
         console.error('[WhatsAppAdapter] Failed to dispatch native image:', imgErr.message);
       }
+    }
+
+    // 3c. If native voice note was dispatched and no links/proposals/images exist,
+    // skip duplicate text bubbles so user receives a clean, natural voice note!
+    const hasExternalUrl = /https?:\/\/[^\s\)]+/.test(rawText);
+    if (voiceNoteDispatched && !hasExternalUrl && !action.richContent?.proposal && imagesToSend.length === 0) {
+      return { success: true };
     }
 
     const formattedBody = WhatsAppAdapter.formatToWhatsApp(rawText);

@@ -117,8 +117,8 @@ Silakan cek!`;
       const originalFetch = global.fetch;
 
       XAITextToSpeechService.synthesize = vi.fn().mockResolvedValue({
-        buffer: Buffer.from('fake mp3 audio'),
-        mimeType: 'audio/mpeg'
+        buffer: Buffer.from('fake opus audio'),
+        mimeType: 'audio/ogg; codecs=opus'
       });
 
       WhatsAppAdapter.prototype.uploadMedia = vi.fn().mockResolvedValue('media-voice-12345');

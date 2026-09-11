@@ -62,7 +62,7 @@ export class XAITextToSpeechService {
       text: spokenText,
       voice_id: voiceId,
       output_format: {
-        codec: 'mp3',
+        codec: 'opus',
         sample_rate: sampleRate,
         bit_rate: bitRate
       },
@@ -101,7 +101,7 @@ export class XAITextToSpeechService {
 
       return {
         buffer,
-        mimeType: 'audio/mpeg'
+        mimeType: 'audio/ogg; codecs=opus'
       };
     } catch (err: any) {
       clearTimeout(timeoutId);

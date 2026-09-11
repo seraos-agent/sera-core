@@ -122,12 +122,14 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       let isVoiceMessage = false;
       if (incomingMsg.type === 'text') {
         textContent = incomingMsg.text?.body || '';
-        // Detect if the user is asking Sera to reply with a voice note
-        if (
+        // Check if user explicitly asks for text reply
+        const isNegativeVoice = /\b(jangan|ga\s*usah|tidak\s*usah|gak\s*usah)\s+(pake|pakai|kirim|balas)?\s*(vn|suara|voice)/i.test(textContent) ||
+                                /\b(balas|jawab|kirim|tulis)\s+(pake\s+|pakai\s+|dengan\s+|lewat\s+)?(teks|tulisan|chat|ketik)\b/i.test(textContent);
+        if (!isNegativeVoice && (
           /\b(vn|voice\s*note|voice\s*msg|voice\s*message|pesan\s*suara|rekaman\s*suara)\b/i.test(textContent) ||
           /(balas|jawab|ngomong|bicara|kirim|pake|pakai|dengan|lewat|coba)\s+(pake\s+|pakai\s+|dengan\s+|lewat\s+)?(suara|vn|audio)/i.test(textContent) ||
           /\b(bisa\s+pake\s+voice\s*not|balas\s+pake\s+vn)\b/i.test(textContent)
-        ) {
+        )) {
           isVoiceMessage = true;
         }
       } else if (incomingMsg.type === 'interactive') {
@@ -380,6 +382,13 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
               if (transcribed) {
                 textContent = transcribed;
                 console.log(`[WhatsApp Webhook] Voice note from +${from} transcribed: "${transcribed.slice(0, 80)}..."`);
+                // If user speaks in a VN but explicitly asks to reply in text
+                if (
+                  /\b(balas|jawab|kirim|tulis)\b.*?\b(teks|tulisan|chat|ketik)\b/i.test(transcribed) ||
+                  /\b(jangan\s+vn|jangan\s+suara|jangan\s+pake\s+vn|jangan\s+kirim\s+vn)\b/i.test(transcribed)
+                ) {
+                  isVoiceMessage = false;
+                }
               } else {
                 textContent = '[Voice Note tidak dapat ditranskrip dengan jelas. Mohon ulangi kembali atau ketik pesan Anda.]';
               }
