@@ -64,6 +64,11 @@ export class SubscriptionService {
     this.ledger.credit(userAddress, creditsAmount, 0); // 0 USDC added
   }
 
+  hasEntry(address: string): boolean {
+    if (address.toLowerCase() === DEV_SESSION_ID) return true;
+    return Boolean(this.ledger.get(address));
+  }
+
   getAgentCredits(address: string): number {
     if (address.toLowerCase() === DEV_SESSION_ID) return Infinity;
     return this.ledger.get(address)?.agentCredits ?? 0;

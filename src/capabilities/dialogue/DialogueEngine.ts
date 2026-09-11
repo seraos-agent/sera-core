@@ -343,7 +343,26 @@ export class DialogueEngine {
       if (typeof this.subscriptionService.ensureLoaded === 'function') {
         await this.subscriptionService.ensureLoaded();
       }
-      const credits = this.subscriptionService.getAgentCredits(this.sessionId);
+      let credits = this.subscriptionService.getAgentCredits(this.sessionId);
+      if (credits <= 0) {
+        // Fallback 1: check operational wallet address
+        const walletAddress = (this.worldStateService as any)?.getWalletState?.()?.address;
+        if (walletAddress) {
+          const walletCredits = this.subscriptionService.getAgentCredits(walletAddress);
+          if (walletCredits > 0) {
+            credits = walletCredits;
+          }
+        }
+      }
+
+      // Fallback 2: If the user has never had an entry initialized in the ledger,
+      // auto-grant 1,000,000 welcome computation tokens (matching Web UI login grant in SocketGateway.ts).
+      if (credits <= 0 && typeof this.subscriptionService.hasEntry === 'function' && !this.subscriptionService.hasEntry(this.sessionId)) {
+        console.log(`[DialogueEngine] Initializing 1,000,000 welcome computation tokens for session: ${this.sessionId}`);
+        this.subscriptionService.addCreditsDirectly(this.sessionId, 1000000);
+        credits = this.subscriptionService.getAgentCredits(this.sessionId);
+      }
+
       if (credits <= 0) {
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
           text: '🔋 **Agent Energy Core depleted.**\n\nPlease top up your tokens in the battery menu to continue processing tasks.'
