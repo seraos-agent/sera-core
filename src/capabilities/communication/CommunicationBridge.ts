@@ -153,8 +153,11 @@ export class CommunicationBridge {
       channelId: context.channelId,
       text: payload.text,
       threadRef: context.threadRef,
+      images: payload.images || payload.richContent?.images,
+      isVoiceMessage: context.isVoiceMessage || payload.isVoiceMessage,
       richContent: payload.richContent
     };
+
 
     try {
       await adapter.sendMessage(action);

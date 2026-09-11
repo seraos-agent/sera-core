@@ -18,3 +18,5 @@ LOCAL_DEPLOY_NOTES.md
 # Scratchpad
 scratch/*
 !scratch/.gitkeep
+*.mp3
+*.ogg

@@ -1,6 +1,7 @@
 import { ICommunicationAdapter, CommunicationAction } from '../types';
 import { EventTypes } from '../../../core/events/types';
 import { EventEmitter } from 'events';
+import { XAITextToSpeechService } from '../../audio/XAITextToSpeechService';
 
 export interface WhatsAppAdapterConfig {
   phoneNumberId: string;
@@ -214,7 +215,36 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     const cleanRecipient = recipient.replace(/[^0-9]/g, '');
     const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
 
-    // 1. Native WhatsApp Interactive Proposal Buttons (Conversational Quick Reply)
+    // 1. Native Outbound Audio (Voice Note via xAI TTS)
+    if (action.isVoiceMessage && action.text) {
+      try {
+        const audioResult = await XAITextToSpeechService.synthesize(action.text);
+        if (audioResult) {
+          const mediaId = await this.uploadMedia(audioResult.buffer, audioResult.mimeType, 'voice_note.mp3');
+          if (mediaId) {
+            await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: cleanRecipient,
+                type: 'audio',
+                audio: { id: mediaId }
+              })
+            });
+            console.log(`[WhatsAppAdapter] Dispatched native voice note to +${cleanRecipient}`);
+          }
+        }
+      } catch (err: any) {
+        console.error('[WhatsAppAdapter] Failed to send voice note:', err.message);
+      }
+    }
+
+    // 2. Native WhatsApp Interactive Proposal Buttons (Conversational Quick Reply)
     if (action.richContent?.proposal) {
       const { proposalId, intent, isIndonesian } = action.richContent.proposal;
       const isId = isIndonesian !== false;
@@ -279,7 +309,56 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       }
     }
 
-    const formattedBody = WhatsAppAdapter.formatToWhatsApp(action.text || '');
+    // 3. Native Outbound Image Delivery (e.g. Generated Charts, Diagrams, Visuals)
+    let rawText = action.text || '';
+    const imagesToSend: Array<{ url: string; caption?: string }> = [];
+
+    // 3a. Explicit image attachments from action
+    if (action.images && Array.isArray(action.images)) {
+      for (const img of action.images) {
+        if (typeof img === 'string' && img.startsWith('http')) {
+          imagesToSend.push({ url: img });
+        }
+      }
+    }
+
+    // 3b. Extract markdown images: ![caption](url)
+    const markdownImgRegex = /!\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = markdownImgRegex.exec(rawText)) !== null) {
+      imagesToSend.push({ caption: match[1], url: match[2] });
+    }
+
+    // Strip markdown image syntax from text body so raw URLs aren't duplicated in text bubbles
+    rawText = rawText.replace(markdownImgRegex, '').trim();
+
+    // Dispatch native WhatsApp images
+    for (const imgItem of imagesToSend) {
+      try {
+        await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: cleanRecipient,
+            type: 'image',
+            image: {
+              link: imgItem.url,
+              caption: imgItem.caption ? WhatsAppAdapter.formatToWhatsApp(imgItem.caption).slice(0, 1024) : undefined
+            }
+          })
+        });
+        console.log(`[WhatsAppAdapter] Dispatched native image to +${cleanRecipient}: ${imgItem.url}`);
+      } catch (imgErr: any) {
+        console.error('[WhatsAppAdapter] Failed to dispatch native image:', imgErr.message);
+      }
+    }
+
+    const formattedBody = WhatsAppAdapter.formatToWhatsApp(rawText);
     const bubbles = WhatsAppAdapter.splitIntoBubbles(formattedBody);
 
     if (bubbles.length === 0) {
@@ -333,4 +412,46 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       return { success: false };
     }
   }
+
+  /**
+   * Uploads outbound media binary to Meta Graph API and returns mediaId.
+   */
+  public async uploadMedia(
+    buffer: Buffer,
+    mimeType: string,
+    filename: string = 'media'
+  ): Promise<string | null> {
+    if (!this.phoneNumberId || !this.accessToken || !buffer || buffer.length === 0) return null;
+
+    const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/media`;
+
+    try {
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+      formData.append('file', blob, filename);
+      formData.append('type', mimeType);
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[WhatsAppAdapter] Media upload error (${response.status}): ${errText}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      return data?.id || null;
+    } catch (err: any) {
+      console.error('[WhatsAppAdapter] Media upload exception:', err.message);
+      return null;
+    }
+  }
 }
+

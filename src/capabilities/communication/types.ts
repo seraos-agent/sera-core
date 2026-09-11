@@ -101,6 +101,10 @@ export interface CommunicationAction {
   threadRef?: string;
   /** The message text to send */
   text: string;
+  /** Optional image deliverables (URLs or Base64 data) */
+  images?: string[];
+  /** Whether this action should generate voice note */
+  isVoiceMessage?: boolean;
   /** Optional structured content (blocks, embeds, cards — adapter translates) */
   richContent?: Record<string, any>;
 }
@@ -118,7 +122,10 @@ export interface ResponseContext {
   threadRef?: string;
   /** Original sender (for governance: who triggered this action) */
   senderId?: string;
+  /** Whether the original observation was an audio voice note */
+  isVoiceMessage?: boolean;
 }
+
 
 // ── Adapter Interface ────────────────────────────────────────────────────────
 

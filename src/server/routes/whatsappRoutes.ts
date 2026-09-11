@@ -6,6 +6,7 @@ import { ResponseContext } from '../../capabilities/communication/types';
 
 import { WhatsAppManager } from '../../capabilities/communication/adapters/WhatsAppManager';
 import { DocumentParserService, ParsedDocumentResult } from '../../core/ingestion/DocumentParserService';
+import { QwenAudioTranscriber } from '../../capabilities/audio/QwenAudioTranscriber';
 
 export interface WhatsAppRouterOptions {
   agentManager: AgentManager;
@@ -118,6 +119,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       }
 
       let textContent = '';
+      let isVoiceMessage = false;
       if (incomingMsg.type === 'text') {
         textContent = incomingMsg.text?.body || '';
       } else if (incomingMsg.type === 'interactive') {
@@ -126,11 +128,13 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         textContent = incomingMsg.image?.caption || '';
       } else if (incomingMsg.type === 'document') {
         textContent = incomingMsg.document?.caption || '';
+      } else if (incomingMsg.type === 'audio') {
+        isVoiceMessage = true;
       } else {
         textContent = `[Media received: ${incomingMsg.type}]`;
       }
 
-      if (!textContent.trim() && incomingMsg.type !== 'image' && incomingMsg.type !== 'document') return;
+      if (!textContent.trim() && incomingMsg.type !== 'image' && incomingMsg.type !== 'document' && incomingMsg.type !== 'audio') return;
 
 
       // ── Pairing Flow: Intercept /connect <CODE> or /start <CODE> ─────────────
@@ -350,6 +354,35 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
             }
           }
         }
+      } else if (incomingMsg.type === 'audio') {
+        const audioObj = incomingMsg.audio;
+        const mediaId = audioObj?.id;
+        const mimeType = audioObj?.mime_type || 'audio/ogg';
+        if (mediaId && whatsAppManager) {
+          try {
+            const downloaded = await whatsAppManager.downloadMedia(mediaId, {
+              maxSizeBytes: 25 * 1024 * 1024, // 25MB limit for audio
+              timeoutMs: 30_000
+            });
+            if (downloaded) {
+              const transcribed = await QwenAudioTranscriber.transcribe(
+                downloaded.buffer,
+                downloaded.mimeType || mimeType
+              );
+              if (transcribed) {
+                textContent = transcribed;
+                console.log(`[WhatsApp Webhook] Voice note from +${from} transcribed: "${transcribed.slice(0, 80)}..."`);
+              } else {
+                textContent = '[Voice Note tidak dapat ditranskrip dengan jelas. Mohon ulangi kembali atau ketik pesan Anda.]';
+              }
+            } else {
+              textContent = '[File audio tidak dapat diunduh dari WhatsApp]';
+            }
+          } catch (err: any) {
+            console.error('[WhatsApp Webhook] Failed to transcribe audio:', err.message);
+            textContent = '[Gagal memproses voice note dari WhatsApp]';
+          }
+        }
       }
 
       if (!textContent.trim() && !imagesList?.length && !documentsList?.length) return;
@@ -357,7 +390,8 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       const responseContext: ResponseContext = {
         platform: 'whatsapp',
         channelId: from,
-        senderId: from
+        senderId: from,
+        isVoiceMessage
       };
 
       const event = {
@@ -368,6 +402,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
           message: textContent,
           images: imagesList,
           documents: documentsList,
+          isVoiceMessage,
           _responseContext: responseContext,
           responseContext,
           senderName: contactName,
@@ -381,6 +416,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       console.error('[WhatsApp Webhook] Error processing incoming webhook:', err);
     }
   };
+
 
   router.post('/', handleIncoming);
   router.post('/webhook', handleIncoming);

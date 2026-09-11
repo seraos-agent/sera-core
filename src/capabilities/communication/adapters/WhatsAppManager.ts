@@ -224,5 +224,48 @@ export class WhatsAppManager {
       clearTimeout(timer);
     }
   }
+
+  /**
+   * Uploads outbound media (audio, image, document) to Meta Graph API.
+   * Returns the Meta media ID, or null on failure.
+   */
+  public async uploadMedia(
+    buffer: Buffer,
+    mimeType: string,
+    filename: string = 'media'
+  ): Promise<string | null> {
+    if (!this.isEnabled() || !buffer || buffer.length === 0) return null;
+
+    const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/media`;
+
+    try {
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+      formData.append('file', blob, filename);
+      formData.append('type', mimeType);
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[WhatsAppManager] Failed to upload media (${response.status}): ${errText}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      return data?.id || null;
+    } catch (err: any) {
+      console.error('[WhatsAppManager] Exception uploading media:', err.message);
+      return null;
+    }
+  }
 }
+
 
