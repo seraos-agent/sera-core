@@ -208,6 +208,16 @@ export class DialogueEngine {
       if (enrichedPayload.text && typeof enrichedPayload.text === 'string') {
         // Sanitize any artificial AI long em dashes (—) to clean en dashes (–)
         enrichedPayload.text = enrichedPayload.text.replace(/\s*—\s*/g, ' – ').replace(/—/g, ' – ');
+        // Sanitize leaked CJK tokens from model generation when conversing in non-Chinese languages
+        const cjkMatches = enrichedPayload.text.match(/[\u4e00-\u9fa5]/g);
+        const totalChars = enrichedPayload.text.trim().length;
+        if (cjkMatches && totalChars > 0 && (cjkMatches.length / totalChars) < 0.25) {
+          enrichedPayload.text = enrichedPayload.text
+            .replace(/语音\s*call/gi, 'voice call')
+            .replace(/语音\s*note/gi, 'voice note')
+            .replace(/语音/g, 'suara')
+            .replace(/[\u4e00-\u9fa5]+/g, '');
+        }
       }
       const ctx = enrichedPayload.responseContext;
       if (ctx) {

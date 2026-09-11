@@ -163,5 +163,24 @@ Silakan cek!`;
     });
   });
 
+  describe('WhatsAppAdapter.formatToWhatsApp CJK Sanitization', () => {
+    it('sanitizes leaked Chinese tokens like 语音 and 语音 call', () => {
+      const dirty = 'Nggak usah gitu dong, nanti kayak teman yang diajak语音 call ngilang wkwk';
+      const clean = WhatsAppAdapter.formatToWhatsApp(dirty);
+      expect(clean).not.toContain('语音');
+      expect(clean).toContain('voice call');
+    });
 
+    it('removes stray Chinese characters from Indonesian and English sentences', () => {
+      const dirty = 'Halo ini adalah pesan测试 yang sangat penting.';
+      const clean = WhatsAppAdapter.formatToWhatsApp(dirty);
+      expect(clean).toBe('Halo ini adalah pesan yang sangat penting.');
+    });
+
+    it('preserves intentional Chinese messages', () => {
+      const chineseMsg = '你好！我是SERA，很高兴认识你。';
+      const clean = WhatsAppAdapter.formatToWhatsApp(chineseMsg);
+      expect(clean).toBe('你好！我是SERA，很高兴认识你。');
+    });
+  });
 });

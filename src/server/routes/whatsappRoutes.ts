@@ -122,6 +122,14 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       let isVoiceMessage = false;
       if (incomingMsg.type === 'text') {
         textContent = incomingMsg.text?.body || '';
+        // Detect if the user is asking Sera to reply with a voice note
+        if (
+          /\b(vn|voice\s*note|voice\s*msg|voice\s*message|pesan\s*suara|rekaman\s*suara)\b/i.test(textContent) ||
+          /(balas|jawab|ngomong|bicara|kirim|pake|pakai|dengan|lewat|coba)\s+(pake\s+|pakai\s+|dengan\s+|lewat\s+)?(suara|vn|audio)/i.test(textContent) ||
+          /\b(bisa\s+pake\s+voice\s*not|balas\s+pake\s+vn)\b/i.test(textContent)
+        ) {
+          isVoiceMessage = true;
+        }
       } else if (incomingMsg.type === 'interactive') {
         textContent = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
       } else if (incomingMsg.type === 'image') {

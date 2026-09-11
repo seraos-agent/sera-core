@@ -76,7 +76,18 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     formatted = formatted.replace(/&nbsp;/gi, ' ');
     formatted = formatted.replace(/<\/?[a-z][a-z0-9]*[^<>]*>/gi, '');
 
-    // 8. Normalize excessive blank lines
+    // 8. Sanitize leaked CJK tokens from model generation when conversing in non-Chinese languages
+    const cjkMatches = formatted.match(/[\u4e00-\u9fa5]/g);
+    const totalChars = formatted.trim().length;
+    if (cjkMatches && totalChars > 0 && (cjkMatches.length / totalChars) < 0.25) {
+      formatted = formatted
+        .replace(/语音\s*call/gi, 'voice call')
+        .replace(/语音\s*note/gi, 'voice note')
+        .replace(/语音/g, 'suara')
+        .replace(/[\u4e00-\u9fa5]+/g, '');
+    }
+
+    // 9. Normalize excessive blank lines
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     return formatted.trim();
@@ -222,7 +233,7 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
         if (audioResult) {
           const mediaId = await this.uploadMedia(audioResult.buffer, audioResult.mimeType, 'voice_note.mp3');
           if (mediaId) {
-            await fetch(url, {
+            const sendRes = await fetch(url, {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${this.accessToken}`,
@@ -236,7 +247,12 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
                 audio: { id: mediaId }
               })
             });
-            console.log(`[WhatsAppAdapter] Dispatched native voice note to +${cleanRecipient}`);
+            if (sendRes.ok) {
+              console.log(`[WhatsAppAdapter] Dispatched native voice note to +${cleanRecipient}`);
+            } else {
+              const errTxt = await sendRes.text();
+              console.error(`[WhatsAppAdapter] Failed to dispatch audio message (${sendRes.status}): ${errTxt}`);
+            }
           }
         }
       } catch (err: any) {

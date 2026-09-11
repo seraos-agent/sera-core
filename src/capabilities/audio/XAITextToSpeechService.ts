@@ -49,7 +49,7 @@ export class XAITextToSpeechService {
     }
 
     const voiceId = options.voiceId || process.env.SERA_TTS_VOICE || 'ara';
-    const language = options.language || 'id';
+    const language = options.language || 'auto';
     const sampleRate = options.sampleRate || 44100;
     const bitRate = options.bitRate || 128000;
     const timeoutMs = options.timeoutMs || 20_000;
