@@ -49,18 +49,34 @@ export class CommunicationBridge {
   }
 
   private async handleDispatchedAction(event: StandardEvent): Promise<void> {
-    const { actionType, actionPayload, context } = event.payload;
-    const requestId = context?.triggerId || `req-${Date.now()}`;
+    const payload = event?.payload || event || {};
+    const actionType = payload.actionType || payload.intent;
+    const actionPayload = payload.actionPayload || payload.parameters || payload || {};
+    const context = payload.context || {};
+    const requestId = context?.triggerId || payload.requestId || event.correlationId || `req-${Date.now()}`;
+
+    const normalizedAction = String(actionType || '').toUpperCase();
 
     // Only handle communication-specific actions
-    if (actionType !== 'SEND_MESSAGE' && actionType !== 'READ_CHANNEL_CONTEXT') {
+    if (
+      normalizedAction !== 'SEND_MESSAGE' &&
+      normalizedAction !== 'SEND_NOTIFICATION' &&
+      normalizedAction !== 'NOTIFY_USER' &&
+      normalizedAction !== 'REMIND_USER' &&
+      normalizedAction !== 'READ_CHANNEL_CONTEXT'
+    ) {
       return;
     }
 
     console.log(`\n[CommunicationBridge] Handling action: ${actionType} (requestId: ${requestId})`);
 
     try {
-      if (actionType === 'SEND_MESSAGE') {
+      if (
+        normalizedAction === 'SEND_MESSAGE' ||
+        normalizedAction === 'SEND_NOTIFICATION' ||
+        normalizedAction === 'NOTIFY_USER' ||
+        normalizedAction === 'REMIND_USER'
+      ) {
         await this.handleSendMessage(requestId, actionPayload);
       }
       // Future: handle READ_CHANNEL_CONTEXT
@@ -71,15 +87,26 @@ export class CommunicationBridge {
   }
 
   private async handleSendMessage(requestId: string, payload: Record<string, any>): Promise<void> {
-    const { platform, channelId, text, threadRef } = payload;
+    const platform = payload.platform || payload._responseContext?.platform || payload.responseContext?.platform;
+    const channelId = payload.channelId || payload._responseContext?.channelId || payload.responseContext?.channelId;
+    const text = payload.text || payload.message || payload.content || payload.reminder || payload.taskPrompt || payload.body || '';
+    const threadRef = payload.threadRef;
 
     if (!platform) {
+      console.warn(`[CommunicationBridge] Missing target platform for SEND_MESSAGE. Payload:`, payload);
       this.emitResult(requestId, false, {}, 'Missing target platform for SEND_MESSAGE.');
+      return;
+    }
+
+    if (!text || !String(text).trim()) {
+      console.warn(`[CommunicationBridge] Missing message text for SEND_MESSAGE. Payload:`, payload);
+      this.emitResult(requestId, false, {}, 'Missing message text for SEND_MESSAGE.');
       return;
     }
 
     const adapter = this.adapters.get(platform);
     if (!adapter) {
+      console.warn(`[CommunicationBridge] No adapter registered for platform: ${platform}`);
       this.emitResult(requestId, false, {}, `No adapter registered for platform: ${platform}`);
       return;
     }
@@ -87,7 +114,7 @@ export class CommunicationBridge {
     const action: CommunicationAction = {
       platform,
       channelId,
-      text,
+      text: String(text).trim(),
       threadRef
     };
 

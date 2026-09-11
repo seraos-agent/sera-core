@@ -70,7 +70,12 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     // 6. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
     formatted = formatted.replace(/^>\s*/gm, '');
 
-    // 7. Normalize excessive blank lines
+    // 7. Sanitize HTML line breaks (<br>, <br/>) and rogue HTML tags (<p>, <span>, etc.)
+    formatted = formatted.replace(/<\/?br\s*\/?>/gi, '\n');
+    formatted = formatted.replace(/&nbsp;/gi, ' ');
+    formatted = formatted.replace(/<\/?[a-z][a-z0-9]*[^<>]*>/gi, '');
+
+    // 8. Normalize excessive blank lines
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     return formatted.trim();

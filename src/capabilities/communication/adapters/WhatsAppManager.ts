@@ -125,4 +125,104 @@ export class WhatsAppManager {
       return false;
     }
   }
+
+  /**
+   * Downloads inbound media binary buffer and mimeType from Meta Graph API.
+   * Enforces 30-second timeout, SSRF domain validation, and file size guard.
+   */
+  public async downloadMedia(
+    mediaId: string,
+    options: { maxSizeBytes?: number; timeoutMs?: number } = {}
+  ): Promise<{ buffer: Buffer; mimeType: string } | null> {
+    if (!this.isEnabled() || !mediaId) return null;
+
+    const maxSizeBytes = options.maxSizeBytes || 20 * 1024 * 1024; // 20 MB default limit
+    const timeoutMs = options.timeoutMs || 30_000; // 30-second timeout
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      // Step 1: Query media metadata from Meta Graph API
+      const metaUrl = `https://graph.facebook.com/${this.apiVersion}/${encodeURIComponent(mediaId)}`;
+      const metaRes = await fetch(metaUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        signal: controller.signal
+      });
+
+      if (!metaRes.ok) {
+        console.error(`[WhatsAppManager] Failed to fetch media metadata for ${mediaId}: ${metaRes.status} ${metaRes.statusText}`);
+        return null;
+      }
+
+      const metaData: any = await metaRes.json();
+      const downloadUrl: string = metaData.url;
+      const mimeType: string = metaData.mime_type || 'application/octet-stream';
+      const fileSize: number = Number(metaData.file_size || 0);
+
+      if (!downloadUrl) {
+        console.error(`[WhatsAppManager] No download URL returned for media ${mediaId}`);
+        return null;
+      }
+
+      // Guard: Pre-check file size if reported by Meta
+      if (fileSize > 0 && fileSize > maxSizeBytes) {
+        console.warn(`[WhatsAppManager] Media ${mediaId} exceeds max allowed size: ${fileSize} > ${maxSizeBytes}`);
+        return null;
+      }
+
+      // Guard: SSRF protection - validate download URL domain
+      try {
+        const parsedUrl = new URL(downloadUrl);
+        const host = parsedUrl.hostname.toLowerCase();
+        const isAllowedHost = host.endsWith('.facebook.com') ||
+                              host.endsWith('.fbcdn.net') ||
+                              host.endsWith('.fbsbx.com');
+        if (!isAllowedHost) {
+          console.error(`[WhatsAppManager] SSRF blocked: Untrusted media download hostname "${host}" for ${mediaId}`);
+          return null;
+        }
+      } catch (err: any) {
+        console.error(`[WhatsAppManager] Invalid media download URL for ${mediaId}:`, err.message);
+        return null;
+      }
+
+      // Step 2: Download raw binary stream from Meta CDN
+      const fileRes = await fetch(downloadUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'User-Agent': 'SERA-Agent/1.0'
+        },
+        signal: controller.signal
+      });
+
+      if (!fileRes.ok) {
+        console.error(`[WhatsAppManager] Failed to download binary file for media ${mediaId}: ${fileRes.status} ${fileRes.statusText}`);
+        return null;
+      }
+
+      const arrayBuf = await fileRes.arrayBuffer();
+      if (arrayBuf.byteLength > maxSizeBytes) {
+        console.warn(`[WhatsAppManager] Downloaded buffer for media ${mediaId} exceeds max allowed size: ${arrayBuf.byteLength} > ${maxSizeBytes}`);
+        return null;
+      }
+
+      return {
+        buffer: Buffer.from(arrayBuf),
+        mimeType
+      };
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.error(`[WhatsAppManager] Download timed out after ${timeoutMs}ms for media ${mediaId}`);
+      } else {
+        console.error(`[WhatsAppManager] Exception downloading media ${mediaId}:`, err.message);
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
+

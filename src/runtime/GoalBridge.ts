@@ -459,6 +459,14 @@ export class GoalBridge {
           this.emitResult(requestId, true, { summary: 'Conversational turn completed successfully.' });
           break;
 
+        case 'SEND_MESSAGE':
+        case 'SEND_NOTIFICATION':
+        case 'NOTIFY_USER':
+        case 'REMIND_USER':
+        case 'READ_CHANNEL_CONTEXT':
+          // Communication actions are handled asynchronously by CommunicationBridge; do not reject
+          return;
+
         case 'WEB_SEARCH':
         case 'web_search':
         case 'search':
@@ -860,6 +868,11 @@ export class GoalBridge {
       computedExecuteAfterUtc = new Date(Date.now() + 60000).toISOString();
     }
 
+    // Preserve origin response context (e.g. WhatsApp, Telegram, or Web UI) so scheduled reminders know their destination channel
+    const originContext = parameters._responseContext ||
+                          parameters.responseContext ||
+                          this.requestContextMap.get(requestId)?._responseContext;
+
     const triggerId = `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newTrigger = {
       id: triggerId,
@@ -876,7 +889,14 @@ export class GoalBridge {
       },
       action: {
         type: actionIntent,
-        payload: actionParameters || {}
+        payload: {
+          ...(actionParameters || {}),
+          ...(originContext ? {
+            _responseContext: originContext,
+            platform: (actionParameters && actionParameters.platform) || originContext.platform,
+            channelId: (actionParameters && actionParameters.channelId) || originContext.channelId,
+          } : {})
+        }
       },
       createdAt: Date.now()
     };

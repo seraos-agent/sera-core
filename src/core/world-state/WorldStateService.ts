@@ -3,6 +3,12 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
 import { Observation, WorldStateSnapshot, WalletState, TemporalState, UserProfileState } from './types';
+import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
+
+export interface WorldStateServiceOptions {
+  persistLocally?: boolean;
+  supabaseClient?: SupabaseRestClient | null;
+}
 
 export class WorldStateService {
   private state: WorldStateSnapshot;
@@ -11,10 +17,22 @@ export class WorldStateService {
   private persistPath: string;
   private eventBus: EventEmitter;
   private readonly persistLocally: boolean;
+  private readonly supabaseClient?: SupabaseRestClient | null;
+  private readonly sessionId: string;
+  private loadPromise: Promise<void> | null = null;
+  private cloudSaveTimer: NodeJS.Timeout | null = null;
 
-  constructor(eventBus: EventEmitter, sessionId: string = 'dev', options: { persistLocally?: boolean } = {}) {
+  constructor(
+    eventBus: EventEmitter,
+    sessionId: string = 'dev',
+    options: WorldStateServiceOptions = {}
+  ) {
     this.eventBus = eventBus;
+    this.sessionId = sessionId;
     this.persistLocally = options.persistLocally ?? true;
+    this.supabaseClient = options.supabaseClient !== undefined
+      ? options.supabaseClient
+      : SupabaseRestClient.fromEnvironment();
     this.state = this.getDefaultState();
     
     this.basePath = path.join(process.cwd(), '.data');
@@ -23,7 +41,81 @@ export class WorldStateService {
     this.processedObservationIds = new Set<string>();
     
     this.loadPersistedData();
+    this.loadPromise = this.loadFromCloud();
     this.subscribeToReality();
+  }
+
+  public async ensureLoaded(): Promise<void> {
+    if (this.loadPromise) {
+      await this.loadPromise;
+    }
+  }
+
+  private async loadFromCloud(): Promise<void> {
+    if (!this.supabaseClient) return;
+    try {
+      const rows = await this.supabaseClient.select<{ session_id: string; snapshot: any }>(
+        'sera_memory_snapshots',
+        `session_id=eq.${encodeURIComponent(this.sessionId)}`
+      );
+
+      if (rows && rows.length > 0 && rows[0].snapshot) {
+        const snap = rows[0].snapshot;
+        let modified = false;
+
+        if (snap.profile && snap.profile.preferredName) {
+          if (!this.state.profile || !this.state.profile.preferredName || (snap.profile.updatedAt && snap.profile.updatedAt >= (this.state.profile.updatedAt || 0))) {
+            this.state.profile = {
+              ...this.state.profile,
+              ...snap.profile
+            };
+            modified = true;
+            console.log(`[WorldStateService] Restored userProfile from Supabase for ${this.sessionId}: preferredName="${snap.profile.preferredName}"`);
+          }
+        }
+
+        if (modified) {
+          this.savePersistedDataLocalOnly();
+        }
+      }
+    } catch (e) {
+      console.warn('[WorldStateService] Note: Could not fetch profile from Supabase snapshot:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  private scheduleCloudSave(): void {
+    if (!this.supabaseClient) return;
+    if (this.cloudSaveTimer) clearTimeout(this.cloudSaveTimer);
+    this.cloudSaveTimer = setTimeout(() => {
+      void this.saveToCloud();
+    }, 1000);
+  }
+
+  private async saveToCloud(): Promise<void> {
+    if (!this.supabaseClient) return;
+    try {
+      let existingSnapshot: any = {};
+      try {
+        const rows = await this.supabaseClient.select<{ snapshot: any }>(
+          'sera_memory_snapshots',
+          `session_id=eq.${encodeURIComponent(this.sessionId)}`
+        );
+        if (rows && rows.length > 0 && rows[0].snapshot) {
+          existingSnapshot = rows[0].snapshot;
+        }
+      } catch {}
+
+      existingSnapshot.profile = this.state.profile;
+
+      await this.supabaseClient.upsert('sera_memory_snapshots', {
+        session_id: this.sessionId,
+        snapshot: existingSnapshot,
+        updated_at: new Date().toISOString(),
+      }, 'session_id');
+      console.log(`[WorldStateService] Synced userProfile to Supabase for ${this.sessionId}.`);
+    } catch (e) {
+      console.warn('[WorldStateService] Failed to persist profile to Supabase:', e instanceof Error ? e.message : e);
+    }
   }
 
   private getDefaultState(): WorldStateSnapshot {
@@ -118,7 +210,7 @@ export class WorldStateService {
     }
   }
 
-  private savePersistedData() {
+  private savePersistedDataLocalOnly() {
     if (!this.persistLocally) return;
     try {
       const dir = path.dirname(this.persistPath);
@@ -138,6 +230,13 @@ export class WorldStateService {
       
     } catch (e) {
       console.error('[WorldStateService] Failed to save persisted data:', e);
+    }
+  }
+
+  private savePersistedData() {
+    this.savePersistedDataLocalOnly();
+    if (this.state.profile) {
+      this.scheduleCloudSave();
     }
   }
 

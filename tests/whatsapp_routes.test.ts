@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import { createWhatsAppRouter } from '../src/server/routes/whatsappRoutes';
+import { EventEmitter } from 'events';
 import { WhatsAppAdapter } from '../src/capabilities/communication/adapters/WhatsAppAdapter';
+import { WhatsAppManager } from '../src/capabilities/communication/adapters/WhatsAppManager';
+import { CommunicationBridge } from '../src/capabilities/communication/CommunicationBridge';
+import { GoalBridge } from '../src/runtime/GoalBridge';
 import { CognitiveContextBuilder } from '../src/capabilities/dialogue/CognitiveContextBuilder';
 import { EventTypes } from '../src/core/events/types';
 
@@ -380,8 +384,8 @@ Please check the [SERA Dashboard](https://app.seraos.xyz) for live details.
     expect(lastMsg.content).toBe('sera lagi apa');
   });
 
-  it('formats text to WhatsApp standards and sanitizes blockquotes and em dashes', () => {
-    const raw = '> Istirahat dulu gih — jangan begadang ya!\n# Tips Malam\n**Tidur cukup** biar besok fit.';
+  it('formats text to WhatsApp standards and sanitizes blockquotes, em dashes, and HTML tags', () => {
+    const raw = '> Istirahat dulu gih — jangan begadang ya!\n# Tips Malam\n**Tidur cukup** biar besok fit.<br><br>• Poin 1<br/>• Poin 2<span>info</span>';
     const formatted = WhatsAppAdapter.formatToWhatsApp(raw);
 
     // Blockquote (>) removed
@@ -394,6 +398,13 @@ Please check the [SERA Dashboard](https://app.seraos.xyz) for live details.
     expect(formatted).toContain('*Tips Malam*');
     // Markdown bold (**Tidur cukup**) converted to WhatsApp bold (*Tidur cukup*)
     expect(formatted).toContain('*Tidur cukup*');
+    // HTML tags (<br>, <br/>, <span>) sanitized
+    expect(formatted).not.toContain('<br>');
+    expect(formatted).not.toContain('<br/>');
+    expect(formatted).not.toContain('<span>');
+    expect(formatted).not.toContain('</span>');
+    expect(formatted).toContain('• Poin 1');
+    expect(formatted).toContain('• Poin 2');
   });
 
   it('splits responses dynamically into 1 to 3 chat bubbles (splitIntoBubbles)', () => {
@@ -558,5 +569,559 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
     expect(cogStateMsg?.content).toContain('- User Name: Budi');
     expect(cogStateMsg?.content).toContain('- Agent Operational Wallet: 0x1234 (USDC on Base)');
   });
+
+  it('downloads and processes incoming WhatsApp image attachments with multimodal payload', async () => {
+    const emittedEvents: any[] = [];
+    const mockEventBus = {
+      emit: vi.fn((type: string, payload: any) => {
+        emittedEvents.push({ type, payload });
+      })
+    };
+
+    const mockAgentManager: any = {
+      getOrCreateInstance: vi.fn(() => ({
+        eventBus: mockEventBus
+      }))
+    };
+
+    const mockSecretManager: any = {
+      getSecret: vi.fn(async (key: string) => (key === 'WA_USER_628123456789' ? 'user-123' : null))
+    };
+
+    const fakeImageBytes = Buffer.from('fake-image-bytes-jpeg');
+    const mockWhatsAppManager: any = {
+      downloadMedia: vi.fn(async () => ({
+        buffer: fakeImageBytes,
+        mimeType: 'image/jpeg'
+      }))
+    };
+
+    const app = express();
+    app.use(express.json());
+    app.use('/webhook/whatsapp', createWhatsAppRouter({
+      agentManager: mockAgentManager,
+      secretManager: mockSecretManager,
+      whatsAppManager: mockWhatsAppManager,
+      verifyToken: 'my_test_verify_token'
+    }));
+
+    const server = app.listen(0);
+    const port = (server.address() as any).port;
+
+    try {
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: '123456789',
+          changes: [{
+            value: {
+              messaging_product: 'whatsapp',
+              contacts: [{ profile: { name: 'Alice' }, wa_id: '628123456789' }],
+              messages: [{
+                from: '628123456789',
+                id: 'wamid.IMG123',
+                timestamp: '1725780000',
+                type: 'image',
+                image: {
+                  id: 'meta-img-id-999',
+                  caption: 'Tolong analisa nota kasir ini',
+                  mime_type: 'image/jpeg'
+                }
+              }]
+            },
+            field: 'messages'
+          }]
+        }]
+      };
+
+      const res = await fetch(`http://127.0.0.1:${port}/webhook/whatsapp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('EVENT_RECEIVED');
+
+      expect(mockWhatsAppManager.downloadMedia).toHaveBeenCalledWith(
+        'meta-img-id-999',
+        expect.objectContaining({ maxSizeBytes: 15 * 1024 * 1024, timeoutMs: 30_000 })
+      );
+
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        EventTypes.DIALOGUE_USER_OBSERVED,
+        expect.objectContaining({
+          type: EventTypes.DIALOGUE_USER_OBSERVED,
+          payload: expect.objectContaining({
+            message: 'Tolong analisa nota kasir ini',
+            images: [`data:image/jpeg;base64,${fakeImageBytes.toString('base64')}`],
+            platform: 'whatsapp'
+          })
+        })
+      );
+    } finally {
+      server.close();
+    }
+  });
+
+  it('downloads and parses incoming WhatsApp document attachments (CSV/Excel)', async () => {
+    const emittedEvents: any[] = [];
+    const mockEventBus = {
+      emit: vi.fn((type: string, payload: any) => {
+        emittedEvents.push({ type, payload });
+      })
+    };
+
+    const mockAgentManager: any = {
+      getOrCreateInstance: vi.fn(() => ({
+        eventBus: mockEventBus
+      }))
+    };
+
+    const mockSecretManager: any = {
+      getSecret: vi.fn(async (key: string) => (key === 'WA_USER_628123456789' ? 'user-123' : null))
+    };
+
+    const csvContent = 'sku,product,qty,price\nSKU-001,Beras Premium,5,75000\nSKU-002,Minyak Goreng,10,35000\n';
+    const mockWhatsAppManager: any = {
+      downloadMedia: vi.fn(async () => ({
+        buffer: Buffer.from(csvContent),
+        mimeType: 'text/csv'
+      }))
+    };
+
+    const app = express();
+    app.use(express.json());
+    app.use('/webhook/whatsapp', createWhatsAppRouter({
+      agentManager: mockAgentManager,
+      secretManager: mockSecretManager,
+      whatsAppManager: mockWhatsAppManager,
+      verifyToken: 'my_test_verify_token'
+    }));
+
+    const server = app.listen(0);
+    const port = (server.address() as any).port;
+
+    try {
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: '123456789',
+          changes: [{
+            value: {
+              messaging_product: 'whatsapp',
+              contacts: [{ profile: { name: 'Bob' }, wa_id: '628123456789' }],
+              messages: [{
+                from: '628123456789',
+                id: 'wamid.DOC456',
+                timestamp: '1725780000',
+                type: 'document',
+                document: {
+                  id: 'meta-doc-id-888',
+                  filename: 'laporan_stok.csv',
+                  caption: 'Tolong hitung total omzet',
+                  mime_type: 'text/csv'
+                }
+              }]
+            },
+            field: 'messages'
+          }]
+        }]
+      };
+
+      const res = await fetch(`http://127.0.0.1:${port}/webhook/whatsapp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('EVENT_RECEIVED');
+
+      expect(mockWhatsAppManager.downloadMedia).toHaveBeenCalledWith(
+        'meta-doc-id-888',
+        expect.objectContaining({ maxSizeBytes: 20 * 1024 * 1024, timeoutMs: 30_000 })
+      );
+
+      const observedCall = mockEventBus.emit.mock.calls.find(c => c[0] === EventTypes.DIALOGUE_USER_OBSERVED);
+      expect(observedCall).toBeDefined();
+      const payloadObj = observedCall![1].payload;
+
+      expect(payloadObj.message).toBe('Tolong hitung total omzet');
+      expect(payloadObj.documents).toHaveLength(1);
+      expect(payloadObj.documents[0].filename).toBe('laporan_stok.csv');
+      expect(payloadObj.documents[0].totalRows).toBe(2);
+      expect(payloadObj.documents[0].headers).toEqual(['sku', 'product', 'qty', 'price']);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('handles image without caption and applies default visual analysis prompt', async () => {
+    const emittedEvents: any[] = [];
+    const mockEventBus = {
+      emit: vi.fn((type: string, payload: any) => {
+        emittedEvents.push({ type, payload });
+      })
+    };
+
+    const mockAgentManager: any = {
+      getOrCreateInstance: vi.fn(() => ({
+        eventBus: mockEventBus
+      }))
+    };
+
+    const mockSecretManager: any = {
+      getSecret: vi.fn(async (key: string) => (key === 'WA_USER_628123456789' ? 'user-123' : null))
+    };
+
+    const fakeImageBytes = Buffer.from('fake-bytes');
+    const mockWhatsAppManager: any = {
+      downloadMedia: vi.fn(async () => ({
+        buffer: fakeImageBytes,
+        mimeType: 'image/png'
+      }))
+    };
+
+    const app = express();
+    app.use(express.json());
+    app.use('/webhook/whatsapp', createWhatsAppRouter({
+      agentManager: mockAgentManager,
+      secretManager: mockSecretManager,
+      whatsAppManager: mockWhatsAppManager,
+      verifyToken: 'my_test_verify_token'
+    }));
+
+    const server = app.listen(0);
+    const port = (server.address() as any).port;
+
+    try {
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: '123456789',
+          changes: [{
+            value: {
+              messaging_product: 'whatsapp',
+              contacts: [{ profile: { name: 'Charlie' }, wa_id: '628123456789' }],
+              messages: [{
+                from: '628123456789',
+                id: 'wamid.IMG789',
+                timestamp: '1725780000',
+                type: 'image',
+                image: {
+                  id: 'meta-img-id-777',
+                  mime_type: 'image/png'
+                }
+              }]
+            },
+            field: 'messages'
+          }]
+        }]
+      };
+
+      const res = await fetch(`http://127.0.0.1:${port}/webhook/whatsapp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      expect(res.status).toBe(200);
+
+      const observedCall = mockEventBus.emit.mock.calls.find(c => c[0] === EventTypes.DIALOGUE_USER_OBSERVED);
+      expect(observedCall).toBeDefined();
+      expect(observedCall![1].payload.message).toBe('Tolong analisa foto/gambar ini secara detail.');
+      expect(observedCall![1].payload.images).toEqual([`data:image/png;base64,${fakeImageBytes.toString('base64')}`]);
+    } finally {
+      server.close();
+    }
+  });
+
+  describe('WhatsAppManager.downloadMedia', () => {
+    it('successfully fetches metadata and downloads binary buffer from Meta CDN', async () => {
+      const originalFetch = global.fetch;
+      const fakeBuffer = Buffer.from('meta-cdn-binary-content');
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('graph.facebook.com')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              url: 'https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=123',
+              mime_type: 'image/jpeg',
+              file_size: fakeBuffer.byteLength
+            })
+          } as any;
+        }
+        if (urlStr.includes('lookaside.fbsbx.com')) {
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async () => fakeBuffer.buffer.slice(fakeBuffer.byteOffset, fakeBuffer.byteOffset + fakeBuffer.byteLength)
+          } as any;
+        }
+        return { ok: false, status: 404 } as any;
+      });
+
+      try {
+        const manager = new WhatsAppManager({} as any, {
+          phoneNumberId: 'phone-123',
+          accessToken: 'test-token'
+        });
+
+        const result = await manager.downloadMedia('media-123');
+        expect(result).not.toBeNull();
+        expect(result?.mimeType).toBe('image/jpeg');
+        expect(result?.buffer.toString()).toBe('meta-cdn-binary-content');
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('blocks SSRF download URLs from untrusted hostnames', async () => {
+      const originalFetch = global.fetch;
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('graph.facebook.com')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              url: 'http://malicious-external-site.com/payload.exe',
+              mime_type: 'application/octet-stream',
+              file_size: 1024
+            })
+          } as any;
+        }
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(1024) } as any;
+      });
+
+      try {
+        const manager = new WhatsAppManager({} as any, {
+          phoneNumberId: 'phone-123',
+          accessToken: 'test-token'
+        });
+
+        const result = await manager.downloadMedia('media-ssrf-attack');
+        expect(result).toBeNull();
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('rejects media exceeding maximum file size', async () => {
+      const originalFetch = global.fetch;
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('graph.facebook.com')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              url: 'https://lookaside.fbsbx.com/attachments/huge.zip',
+              mime_type: 'application/zip',
+              file_size: 50 * 1024 * 1024 // 50 MB
+            })
+          } as any;
+        }
+        return { ok: true } as any;
+      });
+
+      try {
+        const manager = new WhatsAppManager({} as any, {
+          phoneNumberId: 'phone-123',
+          accessToken: 'test-token'
+        });
+
+        // 20 MB limit
+        const result = await manager.downloadMedia('huge-file', { maxSizeBytes: 20 * 1024 * 1024 });
+        expect(result).toBeNull();
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe('Scheduled Goal & Communication Delivery Integrity', () => {
+    it('CommunicationBridge resolves flexible parameters (message, reminder) and origin _responseContext to send WhatsApp message', async () => {
+      const eventBus = new EventEmitter();
+      const commBridge = new CommunicationBridge(eventBus);
+
+      const mockAdapter: any = {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        sendMessage: vi.fn(async () => ({ success: true, platformMessageId: 'wamid.test_reminder' }))
+      };
+
+      commBridge.registerAdapter('whatsapp', mockAdapter);
+
+      // Simulate TriggerEngine / ExecutionDispatcher firing SEND_MESSAGE with origin response context and "message" key
+      eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+        id: 'evt-dispatch-1',
+        type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          actionType: 'SEND_MESSAGE',
+          actionPayload: {
+            message: 'hey 5mnt sudah tiba',
+            _responseContext: {
+              platform: 'whatsapp',
+              channelId: '628123456789'
+            }
+          },
+          context: { triggerId: 'trg-123' }
+        },
+        timestamp: Date.now()
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(mockAdapter.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'whatsapp',
+          channelId: '628123456789',
+          text: 'hey 5mnt sudah tiba'
+        })
+      );
+    });
+
+    it('CommunicationBridge supports NOTIFY_USER and REMIND_USER action types', async () => {
+      const eventBus = new EventEmitter();
+      const commBridge = new CommunicationBridge(eventBus);
+
+      const mockAdapter: any = {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        sendMessage: vi.fn(async () => ({ success: true, platformMessageId: 'wamid.test_notif' }))
+      };
+
+      commBridge.registerAdapter('whatsapp', mockAdapter);
+
+      eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+        id: 'evt-dispatch-2',
+        type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          actionType: 'REMIND_USER',
+          actionPayload: {
+            reminder: 'Waktunya minum obat',
+            platform: 'whatsapp',
+            channelId: '628999000111'
+          },
+          context: { triggerId: 'trg-456' }
+        },
+        timestamp: Date.now()
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(mockAdapter.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'whatsapp',
+          channelId: '628999000111',
+          text: 'Waktunya minum obat'
+        })
+      );
+    });
+
+    it('GoalBridge.handleScheduleGoal inherits _responseContext into trigger action payload', async () => {
+      const eventBus = new EventEmitter();
+      const registeredTriggers: any[] = [];
+      const mockTriggerEngine: any = {
+        register: vi.fn((trg: any) => {
+          registeredTriggers.push(trg);
+        })
+      };
+
+      const mockWalletAdapter: any = {};
+      const goalBridge = new GoalBridge(
+        eventBus,
+        'test-session',
+        mockWalletAdapter,
+        undefined,
+        undefined,
+        mockTriggerEngine
+      );
+
+      // Simulate SCHEDULE_GOAL action dispatched from WhatsApp conversation turn
+      eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+        id: 'evt-dispatch-sched',
+        type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          actionType: 'SCHEDULE_GOAL',
+          actionPayload: {
+            scheduleType: 'exact',
+            delaySeconds: 300,
+            humanIntent: 'Reminder in 5 minutes',
+            actionIntent: 'SEND_MESSAGE',
+            actionParameters: {
+              message: 'hey 5mnt sudah tiba'
+            },
+            _responseContext: {
+              platform: 'whatsapp',
+              channelId: '628123456789'
+            }
+          },
+          context: { triggerId: 'req-sched-1' }
+        },
+        timestamp: Date.now()
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(mockTriggerEngine.register).toHaveBeenCalledTimes(1);
+      const trigger = registeredTriggers[0];
+      expect(trigger).toBeDefined();
+      expect(trigger.action.type).toBe('SEND_MESSAGE');
+      expect(trigger.action.payload).toMatchObject({
+        message: 'hey 5mnt sudah tiba',
+        platform: 'whatsapp',
+        channelId: '628123456789'
+      });
+      expect(trigger.action.payload._responseContext).toBeDefined();
+      expect(trigger.action.payload._responseContext.channelId).toBe('628123456789');
+    });
+
+    it('GoalBridge silently delegates SEND_MESSAGE without emitting an Unknown action error', async () => {
+      const eventBus = new EventEmitter();
+      const emittedResults: any[] = [];
+      eventBus.on(EventTypes.DOMAIN_GOAL_RESULT, (evt: any) => {
+        emittedResults.push(evt);
+      });
+
+      const mockWalletAdapter: any = {};
+      const goalBridge = new GoalBridge(
+        eventBus,
+        'test-session',
+        mockWalletAdapter
+      );
+
+      eventBus.emit(EventTypes.DOMAIN_ACTION_DISPATCHED, {
+        id: 'evt-dispatch-msg',
+        type: EventTypes.DOMAIN_ACTION_DISPATCHED,
+        source: 'ExecutionDispatcher',
+        payload: {
+          actionType: 'SEND_MESSAGE',
+          actionPayload: {
+            text: 'test'
+          }
+        },
+        timestamp: Date.now()
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Must NOT have emitted an unknown action error!
+      const unknownError = emittedResults.find(r => r.payload?.errorMessage?.includes('Unknown action'));
+      expect(unknownError).toBeUndefined();
+    });
+  });
 });
+
+
 

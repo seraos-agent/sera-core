@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { EventEmitter } from 'events';
 import { ChatHistoryStore } from '../src/capabilities/dialogue/ChatHistoryStore';
 import { SupabaseMemoryPersistence } from '../src/memory/persistence/SupabaseMemoryPersistence';
+import { SubscriptionLedger } from '../src/server/billing/SubscriptionLedger';
+import { WorldStateService } from '../src/core/world-state/WorldStateService';
 
 describe('Platform Conversation History & Memory Persistence Across Deployments', () => {
   const testSessionId = 'test_wa_session_456';
@@ -145,6 +148,105 @@ describe('Platform Conversation History & Memory Persistence Across Deployments'
       expect(loaded).toBeDefined();
       expect(loaded?.beliefs.length).toBe(1);
       expect(loaded?.events.length).toBe(1);
+    });
+  });
+
+  describe('SubscriptionLedger Cloud Rehydration Across Container Restarts', () => {
+    it('persists and restores user computation credits from Supabase snapshot', async () => {
+      let cloudStorage: Record<string, any> = {};
+
+      const mockSupabaseClient: any = {
+        select: vi.fn().mockImplementation(async (table: string, query: string) => {
+          if (table === 'sera_memory_snapshots') {
+            return cloudStorage['global:subscriptions'] ? [cloudStorage['global:subscriptions']] : [];
+          }
+          return [];
+        }),
+        upsert: vi.fn().mockImplementation(async (table: string, payload: any) => {
+          if (table === 'sera_memory_snapshots') {
+            cloudStorage[payload.session_id] = payload;
+          }
+          return { data: payload, error: null };
+        })
+      };
+
+      const customPath1 = path.join(dataDir, `sub_test_1_${Date.now()}.json`);
+      const customPath2 = path.join(dataDir, `sub_test_2_${Date.now()}.json`);
+
+      const ledger = new SubscriptionLedger(customPath1, {
+        supabaseClient: mockSupabaseClient
+      });
+
+      // Credit user with 500,000 computation tokens
+      const userAddr = '0x1234567890abcdef1234567890abcdef12345678';
+      ledger.credit(userAddr, 500000, 2.5);
+
+      // Wait for debounce saveToCloud (1s timer, or invoke private/wait)
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      expect(cloudStorage['global:subscriptions']).toBeDefined();
+      expect(cloudStorage['global:subscriptions'].snapshot.entries[userAddr].agentCredits).toBe(500000);
+
+      // Simulate a fresh container boot on Cloud Run where local subscriptions.json does not exist
+      const freshLedger = new SubscriptionLedger(customPath2, {
+        supabaseClient: mockSupabaseClient
+      });
+      await freshLedger.ensureLoaded();
+
+      // Verify that credits were completely restored from Supabase and user has credit!
+      expect(freshLedger.hasCredit(userAddr)).toBe(true);
+      expect(freshLedger.get(userAddr)?.agentCredits).toBe(500000);
+
+      // Cleanup
+      if (fs.existsSync(customPath1)) fs.unlinkSync(customPath1);
+      if (fs.existsSync(customPath2)) fs.unlinkSync(customPath2);
+    });
+  });
+
+  describe('WorldStateService UserProfile Persistence Across Container Restarts', () => {
+    it('persists and restores preferredName from Supabase snapshot when container restarts', async () => {
+      let cloudStorage: Record<string, any> = {};
+
+      const mockSupabaseClient: any = {
+        select: vi.fn().mockImplementation(async (table: string, query: string) => {
+          if (table === 'sera_memory_snapshots') {
+            return cloudStorage[testSessionId] ? [cloudStorage[testSessionId]] : [];
+          }
+          return [];
+        }),
+        upsert: vi.fn().mockImplementation(async (table: string, payload: any) => {
+          if (table === 'sera_memory_snapshots') {
+            cloudStorage[payload.session_id] = payload;
+          }
+          return { data: payload, error: null };
+        })
+      };
+
+      const eventBus = new EventEmitter();
+      const service = new WorldStateService(eventBus, testSessionId, {
+        persistLocally: false,
+        supabaseClient: mockSupabaseClient
+      });
+
+      // User introduces themselves
+      service.setUserPreferredName('Budi Santoso');
+
+      // Wait for cloud save debounce
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      expect(cloudStorage[testSessionId]).toBeDefined();
+      expect(cloudStorage[testSessionId].snapshot.profile.preferredName).toBe('Budi Santoso');
+
+      // Simulate container restart (fresh WorldStateService with no local file)
+      const freshService = new WorldStateService(eventBus, testSessionId, {
+        persistLocally: false,
+        supabaseClient: mockSupabaseClient
+      });
+      await freshService.ensureLoaded();
+
+      const restoredProfile = freshService.getUserProfile();
+      expect(restoredProfile).toBeDefined();
+      expect(restoredProfile?.preferredName).toBe('Budi Santoso');
     });
   });
 });

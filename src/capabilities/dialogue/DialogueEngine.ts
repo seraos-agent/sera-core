@@ -167,15 +167,19 @@ export class DialogueEngine {
   private syncPlatformHistoryFromStore(): void {
     const allPlatforms = this.chatHistoryStore.getAllPlatformMessages();
     for (const [ctxKey, turns] of Object.entries(allPlatforms)) {
+      if (!turns || turns.length === 0) continue;
       if (!this.platformConversationHistory.has(ctxKey)) {
         this.platformConversationHistory.set(ctxKey, []);
       }
       const existing = this.platformConversationHistory.get(ctxKey)!;
-      if (existing.length === 0 && turns && turns.length > 0) {
+      if (existing.length === 0) {
         existing.push(...turns.map(t => ({ role: t.role, content: t.content })));
-        while (existing.length > this.PLATFORM_HISTORY_MAX_TURNS * 2) {
-          existing.shift();
-        }
+      } else if (turns.length > existing.length) {
+        this.platformConversationHistory.set(ctxKey, turns.map(t => ({ role: t.role, content: t.content })));
+      }
+      const updated = this.platformConversationHistory.get(ctxKey)!;
+      while (updated.length > this.PLATFORM_HISTORY_MAX_TURNS * 2) {
+        updated.shift();
       }
     }
   }
@@ -334,8 +338,11 @@ export class DialogueEngine {
     this._activeResponseContext = rawPayload.responseContext || undefined;
     const userMessage: string = (rawPayload.message || rawPayload.userMessage || '').trim();
 
-    // Check battery / credit limits
+    // Check battery / credit limits (ensuring cloud rehydration has resolved)
     if (this.subscriptionService) {
+      if (typeof this.subscriptionService.ensureLoaded === 'function') {
+        await this.subscriptionService.ensureLoaded();
+      }
       const credits = this.subscriptionService.getAgentCredits(this.sessionId);
       if (credits <= 0) {
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
@@ -368,9 +375,27 @@ export class DialogueEngine {
     const nameIntroMatch = effectiveUserMessage.match(/^(?:halo|hai|hi|hei|yo|oy)?\s*(?:namaku|nama saya|panggil (?:aja|saja)?\s*(?:aku|saya)?|my name is|call me)\s+([a-zA-Z\s]{2,25})/i);
     if (nameIntroMatch && nameIntroMatch[1]) {
       const extractedName = nameIntroMatch[1].trim().replace(/[.,!?:;]$/, '');
-      if (extractedName.length >= 2 && (this.worldStateService as any).setUserPreferredName) {
-        (this.worldStateService as any).setUserPreferredName(extractedName);
-        console.log(`[DialogueEngine] User introduced themselves as: "${extractedName}". Saved to WorldState.`);
+      if (extractedName.length >= 2) {
+        if ((this.worldStateService as any).setUserPreferredName) {
+          (this.worldStateService as any).setUserPreferredName(extractedName);
+        }
+        if (this.memoryStore && typeof (this.memoryStore as any).storeBelief === 'function') {
+          (this.memoryStore as any).storeBelief({
+            id: `mem-user-name-${this.sessionId}`,
+            category: 'SEMANTIC',
+            key: 'user_preferred_name',
+            content: `The user's preferred name is "${extractedName}".`,
+            status: 'ACTIVE',
+            source: 'DIRECT',
+            verificationLevel: 'CONFIRMED',
+            confidence: 1.0,
+            evidenceIds: [],
+            contradictionIds: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          });
+        }
+        console.log(`[DialogueEngine] User introduced themselves as: "${extractedName}". Saved to WorldState & WorkingMemory.`);
       }
     }
 
@@ -448,6 +473,13 @@ export class DialogueEngine {
         hasDocs: attachedDocs.length > 0,
         userTimezone
       });
+
+      // Ensure chat history and platform turns are loaded and synchronized from Supabase
+      await this.chatHistoryStore.ensureLoaded();
+      if (typeof (this.worldStateService as any).ensureLoaded === 'function') {
+        await (this.worldStateService as any).ensureLoaded();
+      }
+      this.syncPlatformHistoryFromStore();
 
       // Build working memory with dynamic system prompt
       let messages = await this.cognitiveContextBuilder.build(

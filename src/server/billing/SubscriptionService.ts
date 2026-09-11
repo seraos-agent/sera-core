@@ -9,6 +9,10 @@ const MINIMUM_TOPUP_USDC = 1;
 export class SubscriptionService {
   constructor(private ledger: SubscriptionLedger = new SubscriptionLedger()) {}
 
+  public async ensureLoaded(): Promise<void> {
+    await this.ledger.ensureLoaded();
+  }
+
   /**
    * Calculates tokens based on tiered bonuses:
    * - $1 = 200,000

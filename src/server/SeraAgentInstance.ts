@@ -271,7 +271,7 @@ export class SeraAgentInstance {
       },
       {
         name: 'SCHEDULE_GOAL',
-        description: 'Schedules a future or recurring automated task (e.g. "every 5 minutes", "every hour", "in 20 seconds"). Put the target action (e.g. THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION) in actionIntent.',
+        description: 'Schedules a future or recurring automated task (e.g. "every 5 minutes", "every hour", "in 20 seconds"). Put the target action (e.g. SEND_MESSAGE for reminders, THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION) in actionIntent.',
         parameters: {
           type: 'object',
           properties: {
@@ -279,8 +279,8 @@ export class SeraAgentInstance {
             humanIntent: { type: 'string', description: 'Human readable schedule description (e.g. "Every 5 minutes", "In 1 hour")' },
             cronExpression: { type: 'string', description: 'If recurring, 5-field UTC cron (e.g. "*/5 * * * *" for every 5 minutes)' },
             delaySeconds: { type: 'number', description: 'If exact, delay in seconds from now' },
-            actionIntent: { type: 'string', description: 'The action tool to execute (e.g. THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION)' },
-            actionParameters: { type: 'object', description: 'Parameters for the actionIntent (e.g. { "text": "..." } or { "taskPrompt": "..." })' }
+            actionIntent: { type: 'string', description: 'The action tool to execute (e.g. SEND_MESSAGE, THREADS_PUBLISH, CHECK_WALLET_BALANCE, DYNAMIC_SCHEDULED_ACTION)' },
+            actionParameters: { type: 'object', description: 'Parameters for the actionIntent (e.g. { "text": "reminder message" } for SEND_MESSAGE, { "taskPrompt": "..." } for dynamic tasks)' }
           },
           required: ['scheduleType', 'humanIntent', 'actionIntent', 'actionParameters']
         },

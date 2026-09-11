@@ -366,7 +366,7 @@ export const INTENT_EXTRACTION_PROMPT = `You are Sera's intent classifier. Analy
 
 Supported intents:
 - CHECK_NETWORK: user asks about the current network, chain, or blockchain Sera is connected to.
-- SCHEDULE_GOAL: user wants to run a task on a schedule (e.g. "every 5 mins", "remind me hourly"). parameters: "scheduleType" (cron or exact), "cronExpression", "delaySeconds", "actionIntent", "actionParameters". For dynamic generation tasks like social media posting, use "actionIntent": "DYNAMIC_SCHEDULED_ACTION" and "actionParameters": {"taskPrompt": "..."}.
+- SCHEDULE_GOAL: user wants to run a task on a schedule (e.g. "every 5 mins", "remind me hourly"). parameters: "scheduleType" (cron or exact), "cronExpression", "delaySeconds", "actionIntent", "actionParameters". For user reminders/notifications, use "actionIntent": "SEND_MESSAGE" and "actionParameters": {"text": "..."}. For dynamic generation tasks like social media posting, use "actionIntent": "DYNAMIC_SCHEDULED_ACTION" and "actionParameters": {"taskPrompt": "..."}.
 - FORGET_ME: user asks SERA to forget them, delete their data, wipe their memory, or opt-out.
 - NONE: anything else (conversation, UI commands, checking balances, transferring funds, web search, image generation, social media posts)
 

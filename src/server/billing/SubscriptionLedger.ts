@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { SupabaseRestClient } from '../../core/persistence/SupabaseRestClient';
 
 export interface SubscriptionEntry {
   address: string;
@@ -10,20 +11,39 @@ export interface SubscriptionEntry {
   updatedAt: number;
 }
 
+export interface SubscriptionLedgerOptions {
+  supabaseClient?: SupabaseRestClient | null;
+}
+
 /**
  * Data store for user Agent Credits (non-expiring utility token model).
- * Automatically persists entries to .data/subscriptions.json across server restarts.
+ * Automatically persists entries to .data/subscriptions.json and mirrors to
+ * Supabase `sera_memory_snapshots` (session_id: global:subscriptions) to survive Cloud Run container restarts.
  */
 export class SubscriptionLedger {
   private entries: Map<string, SubscriptionEntry> = new Map();
   private filePath: string;
   private isCustomPath: boolean;
+  private readonly supabaseClient?: SupabaseRestClient | null;
+  private loadPromise: Promise<void> | null = null;
+  private cloudSaveTimer: NodeJS.Timeout | null = null;
 
-  constructor(customPath?: string) {
+  constructor(customPath?: string, options: SubscriptionLedgerOptions = {}) {
     this.isCustomPath = Boolean(customPath);
     this.filePath = customPath || path.join(process.cwd(), '.data', 'subscriptions.json');
+    this.supabaseClient = options.supabaseClient !== undefined
+      ? options.supabaseClient
+      : SupabaseRestClient.fromEnvironment();
+
     if (!process.env.VITEST || this.isCustomPath) {
       this.loadFromFile();
+      this.loadPromise = this.loadFromCloud();
+    }
+  }
+
+  public async ensureLoaded(): Promise<void> {
+    if (this.loadPromise) {
+      await this.loadPromise;
     }
   }
 
@@ -43,7 +63,38 @@ export class SubscriptionLedger {
     }
   }
 
-  private saveToFile(): void {
+  private async loadFromCloud(): Promise<void> {
+    if (!this.supabaseClient) return;
+    try {
+      const rows = await this.supabaseClient.select<{ session_id: string; snapshot: any }>(
+        'sera_memory_snapshots',
+        `session_id=eq.global%3Asubscriptions`
+      );
+
+      if (rows && rows.length > 0 && rows[0].snapshot?.entries) {
+        const cloudEntries = rows[0].snapshot.entries as Record<string, SubscriptionEntry>;
+        let modified = false;
+
+        for (const [key, cloudEntry] of Object.entries(cloudEntries)) {
+          const lowerKey = key.toLowerCase();
+          const existing = this.entries.get(lowerKey);
+          if (!existing || (cloudEntry.updatedAt && cloudEntry.updatedAt >= (existing.updatedAt || 0))) {
+            this.entries.set(lowerKey, cloudEntry);
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          console.log(`[SubscriptionLedger] Restored ${this.entries.size} subscription entries from Supabase.`);
+          this.saveToFileLocalOnly();
+        }
+      }
+    } catch (err) {
+      console.warn('[SubscriptionLedger] Note: Could not fetch subscriptions from Supabase snapshot:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  private saveToFileLocalOnly(): void {
     if (process.env.VITEST && !this.isCustomPath) {
       return;
     }
@@ -61,6 +112,39 @@ export class SubscriptionLedger {
       fs.renameSync(tmp, this.filePath);
     } catch (err) {
       console.warn('[SubscriptionLedger] Could not persist subscriptions to disk:', err);
+    }
+  }
+
+  private saveToFile(): void {
+    this.saveToFileLocalOnly();
+    this.scheduleCloudSave();
+  }
+
+  private scheduleCloudSave(): void {
+    if (!this.supabaseClient || (process.env.VITEST && !this.isCustomPath)) return;
+    if (this.cloudSaveTimer) clearTimeout(this.cloudSaveTimer);
+
+    this.cloudSaveTimer = setTimeout(() => {
+      void this.saveToCloud();
+    }, 1000);
+  }
+
+  private async saveToCloud(): Promise<void> {
+    if (!this.supabaseClient) return;
+    try {
+      const obj: Record<string, SubscriptionEntry> = {};
+      for (const [key, value] of this.entries.entries()) {
+        obj[key] = value;
+      }
+
+      await this.supabaseClient.upsert('sera_memory_snapshots', {
+        session_id: 'global:subscriptions',
+        snapshot: { entries: obj },
+        updated_at: new Date().toISOString(),
+      }, 'session_id');
+      console.log(`[SubscriptionLedger] Synced ${this.entries.size} subscription entries to Supabase.`);
+    } catch (err) {
+      console.warn('[SubscriptionLedger] Failed to persist subscriptions to Supabase:', err instanceof Error ? err.message : err);
     }
   }
 

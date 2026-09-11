@@ -5,6 +5,7 @@ import { EventTypes } from '../../core/events/types';
 import { ResponseContext } from '../../capabilities/communication/types';
 
 import { WhatsAppManager } from '../../capabilities/communication/adapters/WhatsAppManager';
+import { DocumentParserService, ParsedDocumentResult } from '../../core/ingestion/DocumentParserService';
 
 export interface WhatsAppRouterOptions {
   agentManager: AgentManager;
@@ -121,11 +122,16 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         textContent = incomingMsg.text?.body || '';
       } else if (incomingMsg.type === 'interactive') {
         textContent = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
+      } else if (incomingMsg.type === 'image') {
+        textContent = incomingMsg.image?.caption || '';
+      } else if (incomingMsg.type === 'document') {
+        textContent = incomingMsg.document?.caption || '';
       } else {
         textContent = `[Media received: ${incomingMsg.type}]`;
       }
 
-      if (!textContent.trim()) return;
+      if (!textContent.trim() && incomingMsg.type !== 'image' && incomingMsg.type !== 'document') return;
+
 
       // ── Pairing Flow: Intercept /connect <CODE> or /start <CODE> ─────────────
       const connectMatch = textContent.trim().match(/^\/(?:connect|start)\s+([a-zA-Z0-9_-]+)/i);
@@ -281,6 +287,73 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         }
       }
 
+      let imagesList: string[] | undefined = undefined;
+      let documentsList: ParsedDocumentResult[] | undefined = undefined;
+
+      // ── Media Ingestion: Download and process image/document attachments ────
+      if (incomingMsg.type === 'image') {
+        const imageObj = incomingMsg.image;
+        const mediaId = imageObj?.id;
+        if (mediaId && whatsAppManager) {
+          try {
+            const downloaded = await whatsAppManager.downloadMedia(mediaId, {
+              maxSizeBytes: 15 * 1024 * 1024, // 15MB limit for images
+              timeoutMs: 30_000 // 30s timeout
+            });
+            if (downloaded) {
+              const base64Str = downloaded.buffer.toString('base64');
+              imagesList = [`data:${downloaded.mimeType || 'image/jpeg'};base64,${base64Str}`];
+              if (!textContent.trim()) {
+                textContent = 'Tolong analisa foto/gambar ini secara detail.';
+              }
+            } else {
+              if (!textContent.trim()) {
+                textContent = '[Gambar tidak dapat diunduh dari WhatsApp atau melebihi batas 15MB]';
+              }
+            }
+          } catch (err: any) {
+            console.error('[WhatsApp Webhook] Failed to download image:', err.message);
+            if (!textContent.trim()) {
+              textContent = '[Gagal memproses gambar dari WhatsApp]';
+            }
+          }
+        }
+      } else if (incomingMsg.type === 'document') {
+        const docObj = incomingMsg.document;
+        const mediaId = docObj?.id;
+        const fileName = docObj?.filename || 'document.csv';
+        if (mediaId && whatsAppManager) {
+          try {
+            const downloaded = await whatsAppManager.downloadMedia(mediaId, {
+              maxSizeBytes: 20 * 1024 * 1024, // 20MB limit for documents
+              timeoutMs: 30_000 // 30s timeout
+            });
+            if (downloaded) {
+              const parsedDoc = await DocumentParserService.parseDocument(
+                downloaded.buffer,
+                fileName,
+                downloaded.mimeType || docObj?.mime_type || 'application/octet-stream'
+              );
+              documentsList = [parsedDoc];
+              if (!textContent.trim()) {
+                textContent = `Saya mengunggah dokumen: ${fileName}. Tolong analisa data dan angka kuncinya.`;
+              }
+            } else {
+              if (!textContent.trim()) {
+                textContent = `[Dokumen ${fileName} tidak dapat diunduh dari WhatsApp atau melebihi batas 20MB]`;
+              }
+            }
+          } catch (err: any) {
+            console.error('[WhatsApp Webhook] Failed to download/parse document:', err.message);
+            if (!textContent.trim()) {
+              textContent = `[Gagal memproses dokumen ${fileName}]`;
+            }
+          }
+        }
+      }
+
+      if (!textContent.trim() && !imagesList?.length && !documentsList?.length) return;
+
       const responseContext: ResponseContext = {
         platform: 'whatsapp',
         channelId: from,
@@ -293,6 +366,8 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         source: 'WhatsAppAdapter',
         payload: {
           message: textContent,
+          images: imagesList,
+          documents: documentsList,
           _responseContext: responseContext,
           responseContext,
           senderName: contactName,
