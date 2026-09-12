@@ -378,9 +378,12 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     }
 
     // 3c. If native voice note was dispatched and no links/proposals/images exist,
-    // skip duplicate text bubbles so user receives a clean, natural voice note!
+    // skip duplicate text bubbles ONLY for short casual banters (< 200 chars).
+    // For substantive reports, post drafts, or long deliverables (>= 200 chars),
+    // ALWAYS send the formatted text bubbles so the user can read and reference the full content!
     const hasExternalUrl = /https?:\/\/[^\s\)]+/.test(rawText);
-    if (voiceNoteDispatched && !hasExternalUrl && !action.richContent?.proposal && imagesToSend.length === 0) {
+    const isShortCasualBanter = rawText.trim().length < 200;
+    if (voiceNoteDispatched && isShortCasualBanter && !hasExternalUrl && !action.richContent?.proposal && imagesToSend.length === 0) {
       return { success: true };
     }
 

@@ -154,7 +154,7 @@ export class CommunicationBridge {
       text: payload.text,
       threadRef: context.threadRef,
       images: payload.images || payload.richContent?.images,
-      isVoiceMessage: context.isVoiceMessage || payload.isVoiceMessage,
+      isVoiceMessage: payload.isInterim ? false : (context.isVoiceMessage || payload.isVoiceMessage),
       richContent: payload.richContent
     };
 

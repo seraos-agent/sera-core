@@ -256,48 +256,62 @@ export class ReActExecutor {
         };
         messages.push(assistantMsg);
 
-        // Proactive Interim Progress Notification on External Chat Channels (e.g. WhatsApp / Telegram)
+        // Proactive Dynamic Interim Progress Notification on External Mobile Channels (WhatsApp, Telegram)
+        // Whenever SERA decides to run operational tools (Threads audit, Spreadsheets, Crypto, Market Analysis, Image Gen, etc.),
+        // send an instantaneous (0-1s) dynamic, contextual 1-liner so the user knows exactly what SERA is doing and waiting is pleasant.
         const responseContext = event?.payload?._responseContext || event?.payload?.responseContext;
         const isExternalChat = responseContext?.platform === 'whatsapp' || responseContext?.platform === 'telegram';
-        const HEAVY_OPERATIONAL_TOOLS = ['GDRIVE_CREATE_SPREADSHEET', 'GDRIVE_SAVE_MEDIA', 'GDRIVE_CREATE_FOLDER', 'generate_image', 'media_generation', 'THREADS_PUBLISH'];
-        const hasHeavyTool = response.toolCalls.some((tc: any) => HEAVY_OPERATIONAL_TOOLS.includes(tc.name));
+        const EXCLUDED_INSTANT_TOOLS = ['SEND_MESSAGE', 'PROPOSAL_APPROVE', 'PROPOSAL_REJECT'];
+        const operationalToolCalls = response.toolCalls.filter((tc: any) => !EXCLUDED_INSTANT_TOOLS.includes(tc.name));
 
-        if (stepCount === 1 && isExternalChat && hasHeavyTool) {
+        if (stepCount === 1 && isExternalChat && operationalToolCalls.length > 0) {
           try {
             const targetLanguage = LanguageInference.infer(userMessage, messages);
 
-            // Check if model already provided usable text in the target language
+            // Check if model already provided usable, contextual text in the target language
             let candidateText = (response.text || '').trim();
             const isEnglishCandidate = /^[A-Za-z0-9\s.,!?'"#-]+$/.test(candidateText);
             const isCandidateUsable = candidateText.length >= 10 &&
+              candidateText.length <= 160 &&
               !candidateText.includes('```') &&
               (targetLanguage === 'English' || !isEnglishCandidate);
 
             if (isCandidateUsable) {
               emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: candidateText, isInterim: true });
             } else {
+              const toolDescriptions = operationalToolCalls
+                .map((tc: any) => {
+                  const label = ToolExecutionHandler.getCognitiveActivityLabel(tc.name);
+                  const argDetail = tc.arguments?.query || tc.arguments?.title || tc.arguments?.filename || tc.arguments?.action;
+                  return typeof argDetail === 'string' && argDetail.length < 40 ? `${label} (${argDetail})` : label;
+                })
+                .filter(Boolean)
+                .join(', ');
+
               const interimProfile = ExecutionProfileBuilder.forTier('Execution')
                 .withEstimatedInputTokens(80)
                 .build();
 
               const languageGuideline = targetLanguage === 'Indonesian'
-                ? 'Example in Indonesian: "Siap, lagi aku siapkan di background ya, tunggu sebentar..." or "Noted, langsung aku proses sekarang ya, sebentar lagi beres!"'
+                ? 'Example in Indonesian: "Bentar ya, aku buka dan tarik data performa postingan Threads kamu dulu...", "Siap, aku olah datanya dan buatkan Google Sheet-nya sebentar ya...", "Oke, aku cek riwayat transaksi wallet kamu dulu ya!"'
                 : targetLanguage === 'Spanish'
-                ? 'Example in Spanish: "¡Listo! Lo preparo ahora en segundo plano y te aviso en un momento."'
-                : 'Example in English: "Got it, preparing this in the background now and will update you shortly!"';
+                ? 'Example in Spanish: "¡Listo! Ya estoy revisando los datos en segundo plano y te aviso en un momento."'
+                : 'Example in English: "Got it, checking and pulling that data for you right now, will update you shortly!"';
 
               const interimPromptMessages: QwenMessage[] = [
                 {
                   role: 'system',
-                  content: `You are an intelligent, empathetic personal AI assistant on mobile messaging.\n` +
+                  content: `You are an intelligent, empathetic, and fast personal AI assistant on mobile chat.\n` +
                     `The user is conversing with you in ${targetLanguage}.\n` +
-                    `Generate ONE single, warm, natural, and concise sentence in ${targetLanguage} acknowledging their request and letting them know you are preparing it now in the background and will update them shortly.\n\n` +
+                    `You are actively running tools in the background to handle their request:\n` +
+                    `Active Tools in Progress: "${toolDescriptions || 'Data Analysis & Operations'}".\n\n` +
+                    `Generate ONE single, warm, natural, and highly contextual 1-sentence opening message in ${targetLanguage} acknowledging their request and dynamically telling them what you are pulling, checking, analyzing, or preparing right now so they know you are working on it.\n\n` +
                     `CRITICAL RULES:\n` +
-                    `- The sentence MUST be written completely in natural ${targetLanguage}.\n` +
-                    `- Even if the user mentions English words or other languages (e.g. "english", "publish", "sheet", "post"), your reply MUST remain strictly in ${targetLanguage}.\n` +
-                    `- Do NOT use English unless ${targetLanguage} is English.\n` +
+                    `- The sentence MUST be written completely in natural, conversational ${targetLanguage}.\n` +
+                    `- MUST be SPECIFIC to the user request and tools being executed. NEVER use generic robot clichés like "lagi aku siapkan di background" or "mohon tunggu". Mention the actual subject (e.g. Threads, spreadsheet, crypto, file, research).\n` +
+                    `- Exactly ONE sentence, under 18 words, zero markdown headers, zero bullet points, zero quotes.\n` +
                     `- ${languageGuideline}\n` +
-                    `- Vary your phrasing naturally. Do NOT use quotes, markdown headers, or bullet points. Keep it under 15 words.`
+                    `- Reply ONLY with that single natural sentence.`
                 },
                 {
                   role: 'user',
@@ -311,7 +325,7 @@ export class ReActExecutor {
               }
             }
           } catch (interimErr: any) {
-            console.warn('[ReActExecutor] Non-fatal: interim progress notification skipped:', interimErr.message);
+            console.warn('[ReActExecutor] Non-fatal: dynamic interim progress notification skipped:', interimErr.message);
           }
         }
 
