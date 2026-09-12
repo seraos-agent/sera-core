@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import { EventEmitter } from 'events';
-import { formatEther } from 'viem';
 import { base } from 'viem/chains';
-import { StandardEvent, EventTypes, SpawnGoalPayload, GoalResultPayload } from '../core/events/types';
+import { StandardEvent, EventTypes, GoalResultPayload } from '../core/events/types';
 import {
   UnavailableWalletCustodyProvider,
   WalletCustodyProvider,
@@ -10,10 +9,7 @@ import {
 } from '../capabilities/wallet/WalletCustodyProvider';
 import { createWalletCustodyProvider } from '../capabilities/wallet/WalletCustodyProviderFactory';
 import { TriggerEngine } from '../core/triggers/TriggerEngine';
-
 import { AutonomyAgreementStore } from '../core/autonomy/AutonomyAgreementStore';
-import { BaseSpotMarketCapability } from '../capabilities/spot/BaseSpotMarketCapability';
-import { TokenResolverService } from '../capabilities/spot/TokenResolverService';
 import { HyperliquidClient } from '../capabilities/hyperliquid/HyperliquidClient';
 import { HyperliquidTokenRegistry } from '../capabilities/hyperliquid/HyperliquidTokenRegistry';
 import { AutoBridgeService } from '../capabilities/hyperliquid/AutoBridgeService';
@@ -25,7 +21,6 @@ import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsPostHistoryStore } from '../capabilities/threads/ThreadsPostHistoryStore';
 import {
   SupabaseTransferAuditRepository,
-  TransferAuditEvent,
   TransferAuditRepository,
 } from '../core/persistence/SupabaseTransferAuditRepository';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
@@ -35,13 +30,14 @@ import { GDriveGoalHandler } from './handlers/GDriveGoalHandler';
 import { ThreadsGoalHandler } from './handlers/ThreadsGoalHandler';
 import { CryptoGoalHandler } from './handlers/CryptoGoalHandler';
 import { TriggerGoalHandler } from './handlers/TriggerGoalHandler';
+import { WalletGoalHandler } from './handlers/WalletGoalHandler';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
  *
  * Architecture role: Runtime Bridge (src/runtime/)
  * - Listens for SPAWN_GOAL / DOMAIN_ACTION_DISPATCHED events
- * - Routes each intent to specialized domain handlers (GDrive, Threads, Crypto, Triggers)
+ * - Routes each intent to specialized domain handlers (GDrive, Threads, Crypto, Triggers, Wallet)
  * - Emits GOAL_RESULT events back onto the EventBus
  *
  * Wallet custody is injected behind a provider boundary. The local-key
@@ -51,15 +47,30 @@ import { TriggerGoalHandler } from './handlers/TriggerGoalHandler';
 export class GoalBridge {
   private eventBus: EventEmitter;
   private walletAdapter: WalletCustodyProvider;
-  public walletInitialized = false;
-  public walletInitializing: Promise<void> | null = null;
-  public currentWalletId: { address: string; network: string } | null = null;
-  private cachedPersonal: string = '0';
-  private cachedVault: string = '0';
-  private sessionId: string;
+  private readonly walletHandler: WalletGoalHandler;
 
-  private readonly spotMarket = new BaseSpotMarketCapability();
-  private readonly tokenResolver = new TokenResolverService();
+  public get walletInitialized(): boolean {
+    return this.walletHandler.walletInitialized;
+  }
+  public set walletInitialized(val: boolean) {
+    this.walletHandler.walletInitialized = val;
+  }
+
+  public get walletInitializing(): Promise<void> | null {
+    return this.walletHandler.walletInitializing;
+  }
+  public set walletInitializing(val: Promise<void> | null) {
+    this.walletHandler.walletInitializing = val;
+  }
+
+  public get currentWalletId(): { address: string; network: string } | null {
+    return this.walletHandler.currentWalletId;
+  }
+  public set currentWalletId(val: { address: string; network: string } | null) {
+    this.walletHandler.currentWalletId = val;
+  }
+
+  private sessionId: string;
 
   // Domain handlers for modular, scalable architecture
   private readonly gdriveHandler: GDriveGoalHandler;
@@ -139,30 +150,32 @@ export class GoalBridge {
       this.requestContextMap
     );
 
-    this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
-
     try {
       this.walletAdapter = createWalletCustodyProvider();
-
-      // Pre-warm: initialize wallet on boot (generates one if it doesn't exist)
-      this.walletInitializing = this.initWallet(sessionId !== 'dev' ? sessionId : undefined);
     } catch (error) {
       if (!(error instanceof WalletCustodyUnavailableError)) throw error;
-
-      // A missing managed custody adapter must never create or use a server
-      // private key. It also must not prevent unrelated Core capabilities
-      // (dialogue, memory, Google Drive) from serving users.
       this.walletAdapter = new UnavailableWalletCustodyProvider(error.message);
-      this.walletInitializing = Promise.resolve();
       console.warn(`[GoalBridge] Wallet capability unavailable: ${error.message}`);
+    }
 
+    this.walletHandler = new WalletGoalHandler(
+      this.walletAdapter,
+      this.eventBus,
+      this.sessionId,
+      this.emitResult.bind(this),
+      typeof this.personalWalletAddress === 'string' ? this.personalWalletAddress : undefined,
+      this.transferAudit
+    );
+
+    if (this.walletAdapter instanceof UnavailableWalletCustodyProvider) {
+      this.walletHandler.walletInitializing = Promise.resolve();
       process.nextTick(() => {
         this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
           id: `evt-ws-fallback-${Date.now()}`,
           type: EventTypes.DOMAIN_WALLET_STATE,
           source: 'GoalBridge',
           payload: {
-            address: this.personalWalletAddress || '',
+            address: (typeof this.personalWalletAddress === 'string' ? this.personalWalletAddress : '') || '',
             vaultAddress: '',
             balance: '0',
             vaultBalance: '0',
@@ -174,129 +187,12 @@ export class GoalBridge {
           timestamp: Date.now()
         });
       });
+    } else {
+      this.walletHandler.walletInitializing = this.walletHandler.initWallet(sessionId !== 'dev' ? sessionId : undefined);
     }
 
+    this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
     console.log(`[GoalBridge] Initialized for session ${sessionId}. Listening for SPAWN_GOAL events.`);
-  }
-
-
-
-  private async initWallet(userAddress?: string): Promise<void> {
-    try {
-      const walletId = await this.walletAdapter.initializeAgentWallet(userAddress);
-      this.walletInitialized = true;
-      this.currentWalletId = walletId;
-
-      let primaryAddress = '';
-      let vaultAddress = '';
-      let primaryBalance = '0';
-      let primaryEthBalance = '0';
-      let vaultBalance = '0';
-
-      // EMIT SYNCING FIRST
-      if (!userAddress) {
-        primaryAddress = walletId.address;
-        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-      } else {
-        primaryAddress = this.personalWalletAddress || walletId.address;
-        vaultAddress = walletId.address;
-      }
-      this.emitSyncing(primaryAddress, vaultAddress, walletId.network);
-
-      if (!userAddress) {
-        // --- DEV BYPASS MODE (Legacy Behavior) ---
-        primaryAddress = walletId.address;
-        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-
-        try {
-          const [pb, eb] = await Promise.allSettled([
-            this.walletAdapter.getBalance(walletId, 'usdc'),
-            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
-          ]);
-          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-        } catch (e) {
-          console.error('Failed to get primary balance in dev mode:', e);
-        }
-
-        if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-          try {
-            const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-            vaultBalance = vb.toString();
-          } catch (e) {
-            console.error('Failed to get vault balance in dev mode:', e);
-          }
-        }
-      } else {
-        // --- 1:1 AGENT WALLET MODE ---
-        primaryAddress = this.personalWalletAddress || walletId.address;
-        vaultAddress = walletId.address; // The generated agent wallet for this user
-
-        // Fetch actual user balance instead of mocking
-        try {
-          if (primaryAddress) {
-            const [pb, eb] = await Promise.allSettled([
-              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
-              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
-            ]);
-            primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-            primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-          } else {
-            primaryBalance = '0';
-            primaryEthBalance = '0';
-          }
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get user personal balance:', e);
-          primaryBalance = '0';
-          primaryEthBalance = '0';
-        }
-
-        if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-          try {
-            const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-            vaultBalance = vb.toString();
-          } catch (e) {
-            console.error('Failed to get agent vault balance:', e);
-          }
-        }
-      }
-
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-ws-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: primaryAddress,
-          vaultAddress,
-          balance: primaryBalance,
-          ethBalance: primaryEthBalance,
-          vaultBalance,
-          vaultBalances: { base: vaultBalance, polygon: '0', ethereum: '0' },
-          network: walletId.network,
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
-      });
-    } catch (err: any) {
-      console.error('[GoalBridge] Wallet initialization failed:', err.message);
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-ws-err-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: this.personalWalletAddress || '',
-          vaultAddress: '',
-          balance: '0',
-          vaultBalance: '0',
-          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
-          network: 'auto',
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
-      });
-    }
   }
 
   private recentlyHandledRequests: Map<string, number> = new Map();
@@ -533,570 +429,19 @@ export class GoalBridge {
   }
 
   public async handleCheckBalance(requestId: string): Promise<void> {
-    if (!this.walletInitialized) {
-      this.emitResult(requestId, false, {}, 'Wallet not initialized. Check server logs for details.');
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-wallet-err-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: this.personalWalletAddress || '',
-          vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
-          balance: '0',
-          vaultBalance: '0',
-          vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
-          network: 'auto',
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    try {
-      const userAddress = this.personalWalletAddress;
-      const walletId = await this.walletAdapter.initializeAgentWallet(this.sessionId !== 'dev' ? this.sessionId : undefined);
-
-      let primaryAddress = '';
-      let vaultAddress = '';
-      let primaryBalance = '0';
-      let vaultBalance = this.cachedVault || '0';
-
-      // Multi-network vault balances
-      let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
-
-      let primaryEthBalance = '0';
-      if (!userAddress) {
-        primaryAddress = walletId.address;
-        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-        try {
-          const [pb, eb] = await Promise.allSettled([
-            this.walletAdapter.getBalance(walletId, 'usdc'),
-            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
-          ]);
-          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get primary balance:', e);
-        }
-      } else {
-        primaryAddress = userAddress;
-        vaultAddress = walletId.address;
-        try {
-          const [pb, eb] = await Promise.allSettled([
-            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
-            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
-          ]);
-          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get user personal balance:', e);
-          primaryBalance = '0';
-          primaryEthBalance = '0';
-        }
-      }
-
-      // Fetch vault balances across all networks concurrently
-      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        const [baseResult, polygonResult, ethResult] = await Promise.allSettled([
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'base-mainnet'),
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'polygon'),
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'ethereum'),
-        ]);
-
-        vaultBalances.base = baseResult.status === 'fulfilled' ? baseResult.value.toString() : '0';
-        vaultBalances.polygon = polygonResult.status === 'fulfilled' ? polygonResult.value.toString() : '0';
-        vaultBalances.ethereum = ethResult.status === 'fulfilled' ? ethResult.value.toString() : '0';
-
-        // Primary vault balance stays as the Base balance for backward compatibility
-        vaultBalance = vaultBalances.base;
-      }
-
-      this.cachedPersonal = primaryBalance;
-      this.cachedVault = vaultBalance;
-
-      const isBackgroundSync = !requestId || requestId.startsWith('login-') || requestId.startsWith('refresh-') || requestId.startsWith('fetch-') || requestId.startsWith('sync-');
-      if (!isBackgroundSync) {
-        this.emitResult(requestId, true, {
-          asset: 'USDC',
-          personalBalance: primaryBalance,
-          personalEthBalance: primaryEthBalance,
-          vaultBalance,
-          vaultBalances,
-          totalBalance: (parseFloat(primaryBalance) + parseFloat(vaultBalances.base) + parseFloat(vaultBalances.polygon) + parseFloat(vaultBalances.ethereum)).toString(),
-          network: walletId.network || 'Base Mainnet',
-          personalAddress: primaryAddress,
-          vaultAddress,
-        });
-      }
-
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-wallet-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: primaryAddress,
-          vaultAddress,
-          balance: primaryBalance,
-          ethBalance: primaryEthBalance,
-          vaultBalance,
-          vaultBalances,
-          network: walletId.network || 'Base Mainnet',
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
-      });
-    } catch (e: any) {
-      console.error('[GoalBridge] Error checking balance:', e.message);
-      if (this.currentWalletId) {
-        this.emitWalletState(this.currentWalletId.address, process.env.SERA_VAULT_ADDRESS || '', this.cachedPersonal, this.cachedVault, 'Base Mainnet');
-      } else {
-        this.emitResult(requestId, false, {}, e.message);
-        this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-          id: `evt-wallet-err-${Date.now()}`,
-          type: EventTypes.DOMAIN_WALLET_STATE,
-          source: 'GoalBridge',
-          payload: {
-            address: this.personalWalletAddress || '',
-            vaultAddress: process.env.SERA_VAULT_ADDRESS || '',
-            balance: '0',
-            vaultBalance: '0',
-            vaultBalances: { base: '0', polygon: '0', ethereum: '0' },
-            network: 'auto',
-            asset: 'USDC',
-            syncing: false
-          },
-          timestamp: Date.now()
-        });
-      }
-    }
-  }
-
-  /** Fetch live on-chain balances and emit DOMAIN_WALLET_STATE silently without triggering chat narration */
-  async syncWalletState(): Promise<void> {
-    if (this.walletInitializing) await this.walletInitializing;
-    if (!this.walletInitialized || !this.currentWalletId) return;
-
-    try {
-      const userAddress = this.personalWalletAddress;
-      const walletId = this.currentWalletId as any;
-
-      let primaryAddress = '';
-      let vaultAddress = '';
-      let primaryBalance = '0';
-      let primaryEthBalance = '0';
-      let vaultBalance = this.cachedVault || '0';
-      let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
-
-      if (!userAddress) {
-        primaryAddress = walletId.address;
-        vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-        try {
-          const [pb, eb] = await Promise.allSettled([
-            this.walletAdapter.getBalance(walletId, 'usdc'),
-            this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, 'eth', 'base-mainnet'),
-          ]);
-          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get primary balance in sync:', e);
-        }
-      } else {
-        primaryAddress = userAddress;
-        vaultAddress = walletId.address;
-        try {
-          const [pb, eb] = await Promise.allSettled([
-            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
-            this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
-          ]);
-          primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
-          primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get user balance in sync:', e);
-          primaryBalance = '0';
-          primaryEthBalance = '0';
-        }
-      }
-
-      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        const [baseResult, polygonResult, ethResult] = await Promise.allSettled([
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'base-mainnet'),
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'polygon'),
-          this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc', 'ethereum'),
-        ]);
-
-        vaultBalances.base = baseResult.status === 'fulfilled' ? baseResult.value.toString() : '0';
-        vaultBalances.polygon = polygonResult.status === 'fulfilled' ? polygonResult.value.toString() : '0';
-        vaultBalances.ethereum = ethResult.status === 'fulfilled' ? ethResult.value.toString() : '0';
-        vaultBalance = vaultBalances.base;
-      }
-
-      this.cachedPersonal = primaryBalance;
-      this.cachedVault = vaultBalance;
-
-      this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-        id: `evt-wallet-${Date.now()}`,
-        type: EventTypes.DOMAIN_WALLET_STATE,
-        source: 'GoalBridge',
-        payload: {
-          address: primaryAddress,
-          vaultAddress,
-          balance: primaryBalance,
-          ethBalance: primaryEthBalance,
-          vaultBalance,
-          vaultBalances,
-          network: walletId.network || 'Base Mainnet',
-          asset: 'USDC',
-          syncing: false
-        },
-        timestamp: Date.now()
-      });
-    } catch (e: any) {
-      console.error('[GoalBridge] Error syncing wallet state:', e.message);
-    }
+    return this.walletHandler.handleCheckBalance(requestId);
   }
 
   public async handleTransferFunds(requestId: string, parameters: Record<string, any>): Promise<void> {
-    if (!this.walletInitialized) {
-      this.emitResult(requestId, false, {}, 'Wallet not initialized.');
-      return;
-    }
-
-    let auditEvent: Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'> | null = null;
-
-    try {
-      const walletId = await this.walletAdapter.initializeAgentWallet();
-      const { recipient, amount, asset } = parameters;
-
-      if (!recipient || !amount || !asset) {
-        this.emitResult(requestId, false, {}, 'Missing recipient, amount, or asset for transfer.');
-        return;
-      }
-
-      let finalRecipient = '';
-      if (typeof recipient === 'string') {
-        // Fallback for backwards compatibility with old triggers
-        finalRecipient = recipient;
-      } else if (recipient && typeof recipient === 'object') {
-        if (recipient.type === 'USER_MAIN_WALLET') {
-          finalRecipient = this.personalWalletAddress || walletId.address;
-        } else if (recipient.type === 'SERA_VAULT') {
-          finalRecipient = process.env.SERA_VAULT_ADDRESS || '';
-        } else if (recipient.type === 'EXTERNAL_ADDRESS') {
-          if (!recipient.address || !recipient.address.startsWith('0x')) {
-            this.emitResult(requestId, false, {}, `Invalid recipient address format: ${recipient.address}`);
-            return;
-          }
-          finalRecipient = recipient.address;
-        } else {
-          this.emitResult(requestId, false, {}, `Invalid recipient type: ${recipient.type}`);
-          return;
-        }
-      }
-
-      // ── Pre-flight Check: AI can only spend from the Agent Vault ─────────
-      const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
-      if (!vaultAddress) {
-        this.emitResult(requestId, false, {}, 'No Agent Wallet initialized. Cannot send funds.');
-        return;
-      }
-
-      let transferAmount = typeof amount === 'number' ? amount.toString() : amount;
-      let preVault = 0;
-      let prePersonal = 0;
-
-      if (typeof this.walletAdapter.getAddressBalance === 'function') {
-        try {
-          preVault = await this.walletAdapter.getAddressBalance(walletId.address as `0x${string}`, asset, 'base-mainnet');
-          if (this.personalWalletAddress) {
-            prePersonal = await this.walletAdapter.getAddressBalance(this.personalWalletAddress as `0x${string}`, asset, 'base-mainnet');
-          }
-        } catch (e) {
-          console.warn('[GoalBridge] Pre-transfer snapshot failed, using cache:', e);
-          preVault = parseFloat(this.cachedVault) || 0;
-          prePersonal = parseFloat(this.cachedPersonal) || 0;
-        }
-
-        if (typeof amount === 'string' && amount.toLowerCase() === 'all') {
-          transferAmount = preVault.toString();
-        }
-
-        if (parseFloat(transferAmount) > preVault) {
-          this.emitResult(requestId, false, {}, `Insufficient Agent balance. Available: ${preVault} ${asset.toUpperCase()}, Requested: ${transferAmount} ${asset.toUpperCase()}`);
-          return;
-        }
-      }
-      // ────────────────────────────────────────────────────────────────────────
-
-      const numericAmount = Number(transferAmount);
-      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-        this.emitResult(requestId, false, {}, `Transfer amount must be a positive number. (Available: ${preVault} ${asset.toUpperCase()})`);
-        return;
-      }
-
-      auditEvent = this.createTransferAuditEvent({
-        idempotencyKey: requestId,
-        approvalSource: 'GOVERNED_ACTION',
-        sourceWallet: (parameters.fromWallet === 'agent_vault' || parameters.fromWallet === 'sera_vault') ? vaultAddress : walletId.address,
-        destinationWallet: finalRecipient,
-        chain: this.auditChain(walletId.network),
-        asset,
-        amount: numericAmount.toString(),
-      });
-      await this.recordTransferApproval(auditEvent);
-
-      // STEP 1: Show syncing indicator — current balance stays visible, spinner appears
-      this.emitSyncing(walletId.address, vaultAddress, walletId.network);
-      console.log(`[GoalBridge] ⏳ Syncing... sending ${transferAmount} ${asset} → ${finalRecipient}`);
-
-      // ── Dispatch via ExecutionContext ────────────────────────────────────
-      const normalizedRecipient = {
-        type: finalRecipient.toLowerCase() === vaultAddress.toLowerCase() ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
-        address: finalRecipient
-      };
-
-      const context = {
-        network: 'auto',
-        asset: {
-          id: asset,
-          classification: 'token'
-        },
-        intent: {
-          recipient: normalizedRecipient,
-          amount: numericAmount,
-          asset,
-          fromWallet: 'agent_vault' // 1:1 Agent wallet
-        },
-        onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
-          ...auditEvent!,
-          status: 'BROADCAST',
-          transactionHash,
-          broadcastAt: new Date(),
-        }),
-      };
-
-      const result = await this.walletAdapter.execute(walletId, context as any);
-
-      if (result.status === 'SUCCESS') {
-        await this.recordTransferOutcome({
-          ...auditEvent,
-          status: 'CONFIRMED',
-          transactionHash: result.executionId,
-          confirmedAt: new Date(result.timestamp),
-        });
-        this.emitResult(requestId, true, {
-          transactionHash: result.executionId,
-          amount: result.amountExecuted,
-          asset: result.asset,
-        });
-        await this.syncWalletState();
-        console.log(`[GoalBridge] ✅ TX confirmed. Live balances synced.`);
-      } else {
-        await this.recordTransferOutcome({
-          ...auditEvent,
-          status: 'FAILED',
-          transactionHash: result.executionId,
-          failureReason: result.reason ?? 'Wallet provider did not confirm the transfer.',
-        });
-        console.log(`[GoalBridge] ❌ Transfer failed. Restoring original balance.`);
-        await this.syncWalletState();
-        this.emitResult(requestId, false, {
-          executionId: result.executionId,
-          amount: result.amountExecuted,
-          asset: result.asset,
-          reason: result.reason
-        });
-      }
-    } catch (err: any) {
-      if (auditEvent) {
-        await this.recordTransferOutcome({
-          ...auditEvent,
-          status: 'FAILED',
-          failureReason: err.message,
-        });
-      }
-      console.log(`[GoalBridge] ❌ Transfer threw error. Restoring original balance.`);
-      if (this.currentWalletId) {
-        this.emitWalletState(
-          this.currentWalletId.address,
-          process.env.SERA_VAULT_ADDRESS || '',
-          this.cachedPersonal,
-          this.cachedVault,
-          this.currentWalletId.network
-        );
-      }
-      this.emitResult(requestId, false, {}, err.message);
-    }
+    return this.walletHandler.handleTransferFunds(requestId, parameters);
   }
 
-  private emitWalletState(address: string, vaultAddress: string, balance: string, vaultBalance: string, network: string, syncing = false): void {
-    if (!syncing) {
-      this.cachedPersonal = balance;
-      this.cachedVault = vaultBalance;
-    }
-
-    this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-      id: `evt-wallet-${Date.now()}`,
-      type: EventTypes.DOMAIN_WALLET_STATE,
-      source: 'GoalBridge',
-      payload: { address, vaultAddress, balance, vaultBalance, network, asset: 'USDC', syncing },
-      timestamp: Date.now()
-    });
+  public async syncWalletState(): Promise<void> {
+    return this.walletHandler.syncWalletState();
   }
 
-  /** Emit a "balance is being updated" signal — does NOT change the displayed numbers */
-  private emitSyncing(address: string, vaultAddress: string, network: string): void {
-    // Emit current cached values but flag syncing=true so UI shows indicator
-    this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
-      id: `evt-wallet-${Date.now()}`,
-      type: EventTypes.DOMAIN_WALLET_STATE,
-      source: 'GoalBridge',
-      payload: {
-        address,
-        vaultAddress,
-        balance: this.cachedPersonal,
-        vaultBalance: this.cachedVault,
-        network,
-        asset: 'USDC',
-        syncing: true,
-      },
-      timestamp: Date.now()
-    });
-  }
-
-  private async pollUntilConfirmed(walletId: any, vaultAddress: string, expectedVault: number, expectedPersonal: number, asset: string, maxRetries: number): Promise<void> {
-    for (let i = 0; i < maxRetries; i++) {
-      await new Promise(r => setTimeout(r, 6000));
-      try {
-        const actualVault = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, asset);
-        const actualPersonal = await this.walletAdapter.getBalance(walletId, asset);
-        console.log(`[GoalBridge] 🔍 Poll ${i + 1}/${maxRetries} — Vault: ${actualVault} (exp ${expectedVault}), Personal: ${actualPersonal} (exp ${expectedPersonal})`);
-        this.emitWalletState(walletId.address, vaultAddress, actualPersonal.toString(), actualVault.toString(), walletId.network, false);
-        if (Math.abs(actualVault - expectedVault) < 0.001 && Math.abs(actualPersonal - expectedPersonal) < 0.001) {
-          console.log(`[GoalBridge] ✅ On-chain confirmed after ${i + 1} poll(s).`);
-          return;
-        }
-      } catch (e) {
-        console.warn(`[GoalBridge] Poll ${i + 1} failed:`, e);
-      }
-    }
-    console.log(`[GoalBridge] ⚠️ Max polls reached.`);
-  }
-
-  /** Direct transfer — called by the UI via socket (bypasses DialogueEngine) */
-  async directTransfer(params: { recipientAddress: string; amount: number; asset: string }): Promise<any> {
-    if (this.walletInitializing) await this.walletInitializing;
-    if (!this.walletInitialized || !this.currentWalletId) {
-      return { status: 'FAILED', error: 'Wallet not initialized' };
-    }
-
-    const walletId = this.currentWalletId as any;
-    const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
-    const walletIdAddress = walletId.address;
-
-    if (params.recipientAddress === 'SERA_VAULT_ADDRESS') {
-      params.recipientAddress = vaultAddress;
-    }
-
-    if (!Number.isFinite(params.amount) || params.amount <= 0) {
-      return { status: 'FAILED', error: 'Transfer amount must be a positive number.' };
-    }
-
-    const auditEvent = this.createTransferAuditEvent({
-      idempotencyKey: `direct-${this.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      approvalSource: 'DIRECT_UI',
-      sourceWallet: walletIdAddress,
-      destinationWallet: params.recipientAddress,
-      chain: this.auditChain(walletId.network),
-      asset: params.asset,
-      amount: params.amount.toString(),
-    });
-
-    try {
-      await this.recordTransferApproval(auditEvent);
-    } catch (error: any) {
-      return { status: 'FAILED', error: `Transfer audit could not be initialized: ${error.message}` };
-    }
-
-    // Snapshot balances BEFORE transfer
-    let prePersonal = parseFloat(this.cachedPersonal) || 0;
-    let preVault = parseFloat(this.cachedVault) || 0;
-    try {
-      preVault = await this.walletAdapter.getBalance(walletId, params.asset);
-      if (this.personalWalletAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        prePersonal = await this.walletAdapter.getAddressBalance(this.personalWalletAddress as `0x${string}`, params.asset);
-      }
-    } catch (e) {
-      console.warn('[GoalBridge] Pre-transfer snapshot failed, falling back to cache:', e);
-    }
-
-    // STEP 1: Show syncing — keep current numbers, add spinner
-    this.emitSyncing(walletId.address, vaultAddress, walletId.network);
-    console.log(`[GoalBridge] ⏳ Syncing (UI)... sending ${params.amount} ${params.asset} → ${params.recipientAddress}`);
-
-    const context = {
-      network: 'auto',
-      asset: {
-        id: params.asset,
-        classification: 'token'
-      },
-      intent: {
-        recipient: {
-          type: params.recipientAddress === vaultAddress ? 'SERA_VAULT' : 'EXTERNAL_ADDRESS',
-          address: params.recipientAddress
-        },
-        amount: params.amount,
-        asset: params.asset,
-        fromWallet: 'agent_vault'
-      }
-    };
-
-    let result;
-    try {
-      result = await this.walletAdapter.execute(walletId, {
-        ...context,
-        onBroadcast: (transactionHash: string) => this.recordTransferOutcome({
-          ...auditEvent,
-          status: 'BROADCAST',
-          transactionHash,
-          broadcastAt: new Date(),
-        }),
-      } as any);
-    } catch (error: any) {
-      await this.recordTransferOutcome({ ...auditEvent, status: 'FAILED', failureReason: error.message });
-      this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
-      return { status: 'FAILED', error: error.message };
-    }
-
-    if (result.status === 'SUCCESS') {
-      await this.recordTransferOutcome({
-        ...auditEvent,
-        status: 'CONFIRMED',
-        transactionHash: result.executionId,
-        confirmedAt: new Date(result.timestamp),
-      });
-      // TX confirmed on-chain — compute real final balance
-      const sent = params.amount;
-      const isToVault = vaultAddress && params.recipientAddress.toLowerCase() === vaultAddress.toLowerCase();
-      const confirmedPersonal = Math.max(0, prePersonal - sent);
-      const confirmedVault = isToVault ? preVault + sent : Math.max(0, preVault - sent);
-      this.emitWalletState(walletId.address, vaultAddress, confirmedPersonal.toString(), confirmedVault.toString(), walletId.network);
-      console.log(`[GoalBridge] ✅ UI TX confirmed. Balance updated — Personal: ${confirmedPersonal}, Vault: ${confirmedVault}`);
-    } else {
-      await this.recordTransferOutcome({
-        ...auditEvent,
-        status: 'FAILED',
-        transactionHash: result.executionId,
-        failureReason: result.reason ?? 'Wallet provider did not confirm the transfer.',
-      });
-      // TX failed — restore original, no damage
-      console.log(`[GoalBridge] ❌ UI Transfer failed. Restoring original balance.`);
-      this.emitWalletState(walletId.address, vaultAddress, prePersonal.toString(), preVault.toString(), walletId.network);
-    }
-
-    return result;
+  public async directTransfer(params: { recipientAddress: string; amount: number; asset: string }): Promise<any> {
+    return this.walletHandler.directTransfer(params);
   }
 
   public async executeGaslessDeposit(payload: {
@@ -1111,80 +456,15 @@ export class GoalBridge {
     r?: string;
     s?: string;
   }): Promise<{ status: 'SUCCESS' | 'FAILED'; transactionHash?: string; error?: string }> {
-    if (!this.walletAdapter.executeGaslessDeposit) {
-      return { status: 'FAILED', error: 'Gasless deposit is not supported by current wallet custody provider.' };
-    }
-
-    const result = await this.walletAdapter.executeGaslessDeposit(payload);
-    return result;
+    return this.walletHandler.executeGaslessDeposit(payload);
   }
 
   public async ensureAddressGas(targetAddress: `0x${string}`): Promise<boolean> {
-    if (this.walletAdapter && typeof (this.walletAdapter as any).ensureAddressGas === 'function') {
-      return (this.walletAdapter as any).ensureAddressGas(targetAddress);
-    }
-    return false;
+    return this.walletHandler.ensureAddressGas(targetAddress);
   }
 
-  private createTransferAuditEvent(event: Omit<TransferAuditEvent, 'userId' | 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'>): Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'> {
-    return { ...event, userId: this.sessionId };
-  }
-
-  private auditChain(network: string): string {
-    return network.toLowerCase().includes('base') || network === 'auto' ? 'base-mainnet' : network.toLowerCase();
-  }
-
-  private async recordTransferApproval(event: Omit<TransferAuditEvent, 'status' | 'transactionHash' | 'failureReason' | 'broadcastAt' | 'confirmedAt'>): Promise<void> {
-    if (!this.transferAudit) {
-      if (process.env.NODE_ENV === 'production' && this.sessionId !== 'dev') {
-        throw new Error('Transfer audit persistence is not configured.');
-      }
-      return;
-    }
-    await this.transferAudit.record({ ...event, status: 'APPROVED' });
-  }
-
-  private async recordTransferOutcome(event: TransferAuditEvent): Promise<void> {
-    if (!this.transferAudit) return;
-    try {
-      await this.transferAudit.record(event);
-    } catch (error: any) {
-      // Never tell a user that an already-broadcast transaction failed merely
-      // because the audit database had a transient error.
-      console.error(`[GoalBridge] Failed to persist transfer audit outcome: ${error.message}`);
-    }
-  }
-
-  /** Refresh on-chain balance and return the latest wallet state payload */
-  async refreshBalance(): Promise<any | null> {
-    if (!this.walletInitialized || !this.currentWalletId) return null;
-    try {
-      const balance = await this.walletAdapter.getBalance(this.currentWalletId as any, 'usdc');
-      const vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
-      let vaultBalance = this.cachedVault || '0';
-      if (vaultAddress && typeof this.walletAdapter.getAddressBalance === 'function') {
-        try {
-          const vb = await this.walletAdapter.getAddressBalance(vaultAddress as `0x${string}`, 'usdc');
-          vaultBalance = vb.toString();
-        } catch (e) {
-          console.warn('[GoalBridge] Failed to get vault balance during refresh, keeping cached:', e);
-        }
-      }
-
-      this.emitWalletState(this.currentWalletId.address, vaultAddress, balance.toString(), vaultBalance, this.currentWalletId.network);
-
-      return {
-        address: this.currentWalletId.address,
-        vaultAddress,
-        vaultBalance,
-        balance: balance.toString(),
-        network: this.currentWalletId.network,
-        asset: 'USDC',
-        syncing: false
-      };
-    } catch {
-      return null;
-    }
+  public async refreshBalance(): Promise<any | null> {
+    return this.walletHandler.refreshBalance();
   }
 }
 
