@@ -808,11 +808,19 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
         timestamp: msgTimestamp
       });
 
+      const clientTimezone = (typeof rawPayload === 'object' && (rawPayload.timezone || rawPayload.clientTimezone)) ||
+                             (typeof socket.handshake.query.timezone === 'string' ? socket.handshake.query.timezone : undefined);
+
       const event: StandardEvent = {
         id: `evt-${msgTimestamp}`,
         type: EventTypes.DIALOGUE_USER_OBSERVED,
         source: 'SocketServer',
-        payload: { message, images, documents },
+        payload: {
+          message,
+          images,
+          documents,
+          ...(clientTimezone ? { responseContext: { platform: 'web_ui', channelId: socket.data.sessionId, timezone: clientTimezone } } : {})
+        },
         timestamp: msgTimestamp,
       };
 

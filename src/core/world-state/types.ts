@@ -46,6 +46,10 @@ export interface WalletState {
 export interface TemporalState {
   currentTime: number;
   timezone: string;
+  utcIso?: string;
+  utcFormatted?: string;
+  localFormatted?: string;
+  detectedCountry?: string;
   quality: ObservationQuality;
 }
 
@@ -72,6 +76,8 @@ export interface CommunicationState {
 
 export interface UserProfileState {
   preferredName?: string;
+  timezone?: string;
+  location?: string;
   updatedAt: number;
   notes?: string;
 }

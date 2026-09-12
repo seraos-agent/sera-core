@@ -4,6 +4,7 @@ import { MemoryQueryService } from '../../core/memory/MemoryQueryService';
 import { ChatHistoryStore } from './ChatHistoryStore';
 import { ConversationContextCompressor } from './ConversationContextCompressor';
 import { SYSTEM_PROMPT } from './SystemPrompts';
+import { formatTemporalReality } from '../../core/world-state/temporalUtils';
 
 /**
  * CognitiveContextBuilder — Assembles working memory, cognitive state, and platform history for LLM generation.
@@ -47,14 +48,31 @@ export class CognitiveContextBuilder {
       ? `- User Name: ${preferredName}`
       : `- User Name: Not established yet. (If the user asks who they are or whether you remember them, warmly acknowledge them and ask how they prefer to be called. NEVER guess, assume, or invent a name from platform handles or phone numbers).`;
 
+    // Resolve Live Global Temporal Reality (Rule 2: WorldStateService Owns Reality)
+    const phone = activeResponseContext?.senderPhone || (activeResponseContext?.platform === 'whatsapp' ? activeResponseContext?.channelId : undefined);
+    const timezone = activeResponseContext?.timezone;
+    const temporalReality = typeof (this.worldStateService as any)?.resolveTemporalReality === 'function'
+      ? (this.worldStateService as any).resolveTemporalReality({ timezone, phone })
+      : formatTemporalReality(new Date(), timezone || 'Asia/Jakarta');
+
+    const userLocationInfo = profile?.location
+      ? `- User Location / Travel Base: ${profile.location}`
+      : (temporalReality.detectedCountry ? `- User Inferred Country/Locale: ${temporalReality.detectedCountry}` : `- User Location / Travel Base: Not explicitly set`);
+
     // High-Efficiency Streamlined Cognitive Working Memory (Markdown format)
     let cognitiveStateMarkdown = `[COGNITIVE STATE (WORKING MEMORY)]
 ${userNameInfo}
+${userLocationInfo}
 - Active Workspace Integrations: ${activeCaps}`;
 
     if (walletState?.address) {
       cognitiveStateMarkdown += `\n- Agent Operational Wallet: ${walletState.address} (USDC on Base)`;
     }
+
+    cognitiveStateMarkdown += `\n\n[TEMPORAL REALITY (CANONICAL WORLD CLOCK)]
+- Universal Anchor (UTC): ${temporalReality.utcFormatted}
+- User Primary Local Time: ${temporalReality.localFormatted}
+- Temporal Awareness & World Time: You possess complete real-time temporal intelligence for every timezone worldwide, calculated from the Universal UTC Anchor. If the user mentions travel (e.g. Umrah in Saudi Arabia, trips to Australia, Japan, Europe) or asks about time across different cities/countries, provide accurate local time and naturally contrast time differences when helpful.`;
 
     if (memoryContext?.items && memoryContext.items.length > 0) {
       cognitiveStateMarkdown += `\n\n[ARCHIVED HISTORICAL MEMORY (PREVIOUS SESSIONS - BACKGROUND ONLY)]\n(Notice: The following are past historical memories. Do NOT assert or hallucinate that past bugs, errors, or previous testing claims apply to the current test or active session unless explicitly requested by the user):\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;

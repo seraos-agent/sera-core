@@ -4,6 +4,12 @@ import { EventEmitter } from 'events';
 import { EventTypes, StandardEvent } from '../events/types';
 import { Observation, WorldStateSnapshot, WalletState, TemporalState, UserProfileState } from './types';
 import { SupabaseRestClient } from '../persistence/SupabaseRestClient';
+import {
+  formatTemporalReality,
+  resolveTimezoneFromPhone,
+  isValidTimezone,
+  FormattedTemporalReality
+} from './temporalUtils';
 
 export interface WorldStateServiceOptions {
   persistLocally?: boolean;
@@ -63,14 +69,14 @@ export class WorldStateService {
         const snap = rows[0].snapshot;
         let modified = false;
 
-        if (snap.profile && snap.profile.preferredName) {
-          if (!this.state.profile || !this.state.profile.preferredName || (snap.profile.updatedAt && snap.profile.updatedAt >= (this.state.profile.updatedAt || 0))) {
+        if (snap.profile) {
+          if (!this.state.profile || (snap.profile.updatedAt && snap.profile.updatedAt >= (this.state.profile.updatedAt || 0))) {
             this.state.profile = {
               ...this.state.profile,
               ...snap.profile
             };
             modified = true;
-            console.log(`[WorldStateService] Restored userProfile from Supabase for ${this.sessionId}: preferredName="${snap.profile.preferredName}"`);
+            console.log(`[WorldStateService] Restored userProfile from Supabase for ${this.sessionId}: preferredName="${snap.profile.preferredName || ''}", timezone="${snap.profile.timezone || ''}", location="${snap.profile.location || ''}"`);
           }
         }
 
@@ -173,19 +179,41 @@ export class WorldStateService {
 
     this.eventBus.on('USER_PROFILE_UPDATED', (event: any) => {
       const p = event.payload || event;
-      if (p.preferredName) {
+      if (p.preferredName !== undefined || p.timezone !== undefined || p.location !== undefined) {
         this.state.profile = {
-          preferredName: p.preferredName,
+          ...this.state.profile,
+          ...(p.preferredName !== undefined ? { preferredName: p.preferredName } : {}),
+          ...(p.timezone !== undefined ? { timezone: p.timezone } : {}),
+          ...(p.location !== undefined ? { location: p.location } : {}),
           updatedAt: Date.now(),
-          notes: p.notes
+          notes: p.notes !== undefined ? p.notes : this.state.profile?.notes
         };
         this.state.lastUpdatedAt = Date.now();
         this.savePersistedData();
-        console.log(`[WorldStateService] UserProfile updated: preferredName="${p.preferredName}"`);
+        console.log(`[WorldStateService] UserProfile updated: preferredName="${this.state.profile.preferredName || ''}", timezone="${this.state.profile.timezone || ''}", location="${this.state.profile.location || ''}"`);
       }
     });
 
-    // In the future, listen to DOMAIN_TEMPORAL_STATE, DOMAIN_LOCATION_STATE, etc.
+    this.eventBus.on(EventTypes.TEMPORAL_TICK, (event: StandardEvent<any>) => {
+      const nowMs = event.payload?.timestampUtc || event.timestamp || Date.now();
+      const currentTz = this.state.profile?.timezone || 'Asia/Jakarta';
+      const formatted = formatTemporalReality(new Date(nowMs), currentTz, this.state.profile?.location);
+      this.state.temporal = {
+        currentTime: formatted.currentTime,
+        timezone: formatted.timezone,
+        utcIso: formatted.utcIso,
+        utcFormatted: formatted.utcFormatted,
+        localFormatted: formatted.localFormatted,
+        detectedCountry: formatted.detectedCountry,
+        quality: {
+          updatedAt: formatted.currentTime,
+          source: 'TemporalClockService/TEMPORAL_TICK',
+          freshness: 'FRESH',
+          confidence: 1.0
+        }
+      };
+      this.state.lastUpdatedAt = Date.now();
+    });
   }
 
   private loadPersistedData() {
@@ -246,8 +274,63 @@ export class WorldStateService {
     return this.state.wallet;
   }
 
-  public getTemporalState(): TemporalState | null {
-    return this.state.temporal;
+  /**
+   * Resolves canonical world temporal reality using multi-tier resolution:
+   * 1. User Profile saved timezone / travel location
+   * 2. Client explicit timezone (e.g. browser Intl)
+   * 3. Phone country code heuristic (WhatsApp E.164)
+   * 4. Default fallback: Asia/Jakarta
+   */
+  public resolveTemporalReality(options?: { timezone?: string; phone?: string }): FormattedTemporalReality {
+    let targetTz: string = 'Asia/Jakarta';
+    let detectedCountry: string | undefined = undefined;
+
+    // Tier 1: User profile preference / remembered location
+    if (this.state.profile?.timezone && isValidTimezone(this.state.profile.timezone)) {
+      targetTz = this.state.profile.timezone;
+      detectedCountry = this.state.profile.location || 'User Profile Setting';
+    }
+    // Tier 2: Client explicit timezone (e.g. Web UI browser Intl)
+    else if (options?.timezone && isValidTimezone(options.timezone)) {
+      targetTz = options.timezone;
+      detectedCountry = 'Client Browser Locale';
+    }
+    // Tier 3: Phone country code heuristic (WhatsApp E.164)
+    else if (options?.phone) {
+      const phoneResolved = resolveTimezoneFromPhone(options.phone);
+      if (phoneResolved) {
+        targetTz = phoneResolved.timezone;
+        detectedCountry = phoneResolved.country;
+      }
+    }
+
+    const reality = formatTemporalReality(new Date(), targetTz, detectedCountry);
+
+    // Keep WorldState temporal snapshot continuously fresh (Rule 2: WorldState Owns Reality)
+    this.state.temporal = {
+      currentTime: reality.currentTime,
+      timezone: reality.timezone,
+      utcIso: reality.utcIso,
+      utcFormatted: reality.utcFormatted,
+      localFormatted: reality.localFormatted,
+      detectedCountry: reality.detectedCountry,
+      quality: {
+        updatedAt: reality.currentTime,
+        source: 'TemporalReality/WorldStateService',
+        freshness: 'FRESH',
+        confidence: 1.0
+      }
+    };
+    this.state.lastUpdatedAt = Date.now();
+
+    return reality;
+  }
+
+  public getTemporalState(): TemporalState {
+    if (!this.state.temporal) {
+      this.resolveTemporalReality();
+    }
+    return this.state.temporal!;
   }
 
   public getUserProfile(): UserProfileState | null {
@@ -256,11 +339,38 @@ export class WorldStateService {
 
   public setUserPreferredName(name: string): void {
     this.state.profile = {
+      ...this.state.profile,
       preferredName: name,
       updatedAt: Date.now()
     };
     this.state.lastUpdatedAt = Date.now();
     this.savePersistedData();
+  }
+
+  public setUserLocation(location: string, timezone?: string): void {
+    let safeTz = timezone && isValidTimezone(timezone) ? timezone : this.state.profile?.timezone;
+    if (!safeTz && location) {
+      const locLower = location.toLowerCase();
+      if (locLower.includes('mekkah') || locLower.includes('makkah') || locLower.includes('madinah') || locLower.includes('riyadh') || locLower.includes('arab saudi') || locLower.includes('saudi')) {
+        safeTz = 'Asia/Riyadh';
+      } else if (locLower.includes('sydney') || locLower.includes('australia')) {
+        safeTz = 'Australia/Sydney';
+      } else if (locLower.includes('tokyo') || locLower.includes('jepang') || locLower.includes('japan')) {
+        safeTz = 'Asia/Tokyo';
+      } else if (locLower.includes('london') || locLower.includes('inggris') || locLower.includes('uk')) {
+        safeTz = 'Europe/London';
+      }
+    }
+
+    this.state.profile = {
+      ...this.state.profile,
+      location,
+      ...(safeTz ? { timezone: safeTz } : {}),
+      updatedAt: Date.now()
+    };
+    this.state.lastUpdatedAt = Date.now();
+    this.savePersistedData();
+    console.log(`[WorldStateService] User location updated: location="${location}", timezone="${safeTz || 'unchanged'}"`);
   }
 
   /**

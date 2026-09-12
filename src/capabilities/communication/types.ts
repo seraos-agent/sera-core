@@ -122,6 +122,10 @@ export interface ResponseContext {
   threadRef?: string;
   /** Original sender (for governance: who triggered this action) */
   senderId?: string;
+  /** International phone number if available (for timezone and locale heuristics) */
+  senderPhone?: string;
+  /** Explicit timezone if provided by client/device */
+  timezone?: string;
   /** Whether the original observation was an audio voice note */
   isVoiceMessage?: boolean;
 }

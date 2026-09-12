@@ -408,6 +408,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         platform: 'whatsapp',
         channelId: from,
         senderId: from,
+        senderPhone: from,
         isVoiceMessage
       };
 
