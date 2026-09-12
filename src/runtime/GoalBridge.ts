@@ -21,7 +21,7 @@ import { HyperliquidSpotCapability } from '../capabilities/hyperliquid/Hyperliqu
 import { GasAbstractionService } from '../capabilities/wallet/GasAbstractionService';
 import { SecretManager } from '../core/secrets/SecretManager';
 import { EncryptedDatabaseSecretStore } from '../core/secrets/stores/EncryptedDatabaseSecretStore';
-import { ThreadsAPI, ThreadsCarouselItem, sanitizeThreadsText } from '../capabilities/threads/ThreadsAPI';
+import { ThreadsAPI } from '../capabilities/threads/ThreadsAPI';
 import { ThreadsPostHistoryStore } from '../capabilities/threads/ThreadsPostHistoryStore';
 import {
   SupabaseTransferAuditRepository,
@@ -30,16 +30,18 @@ import {
 } from '../core/persistence/SupabaseTransferAuditRepository';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
-import { SpreadsheetEngine } from '../capabilities/google-drive/SpreadsheetEngine';
-import { GoogleSheetsFormatter } from '../capabilities/google-drive/spreadsheet/GoogleSheetsFormatter';
 import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
+import { GDriveGoalHandler } from './handlers/GDriveGoalHandler';
+import { ThreadsGoalHandler } from './handlers/ThreadsGoalHandler';
+import { CryptoGoalHandler } from './handlers/CryptoGoalHandler';
+import { TriggerGoalHandler } from './handlers/TriggerGoalHandler';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
  *
  * Architecture role: Runtime Bridge (src/runtime/)
- * - Listens for SPAWN_GOAL events from DialogueEngine
- * - Routes each intent to the appropriate Capability
+ * - Listens for SPAWN_GOAL / DOMAIN_ACTION_DISPATCHED events
+ * - Routes each intent to specialized domain handlers (GDrive, Threads, Crypto, Triggers)
  * - Emits GOAL_RESULT events back onto the EventBus
  *
  * Wallet custody is injected behind a provider boundary. The local-key
@@ -59,9 +61,15 @@ export class GoalBridge {
   private readonly spotMarket = new BaseSpotMarketCapability();
   private readonly tokenResolver = new TokenResolverService();
 
+  // Domain handlers for modular, scalable architecture
+  private readonly gdriveHandler: GDriveGoalHandler;
+  private readonly threadsHandler: ThreadsGoalHandler;
+  private readonly cryptoHandler: CryptoGoalHandler;
+  private readonly triggerHandler: TriggerGoalHandler;
+
   // Google Drive capability (lazy-initialized)
   private _googleDriveCapability: GoogleDriveCapability | null = null;
-  private get googleDriveCapability(): GoogleDriveCapability {
+  public get googleDriveCapability(): GoogleDriveCapability {
     if (!this._googleDriveCapability) {
       const connections = GoogleDriveConnectionRepository.fromEnvironment();
       if (!connections) throw new Error('GoogleDriveConnectionRepository missing environment variables.');
@@ -73,7 +81,7 @@ export class GoalBridge {
 
   // Hyperliquid spot trading capability (lazy-initialized)
   private _hlSpot: HyperliquidSpotCapability | null = null;
-  private get hlSpot(): HyperliquidSpotCapability {
+  public get hlSpot(): HyperliquidSpotCapability {
     if (!this._hlSpot) {
       const hlClient = new HyperliquidClient();
       const hlTokenRegistry = new HyperliquidTokenRegistry(hlClient);
@@ -101,6 +109,36 @@ export class GoalBridge {
     this.sessionId = sessionId;
     this.threadsApi = new ThreadsAPI(secretManager || new SecretManager(new EncryptedDatabaseSecretStore()));
     this.threadsPostHistoryStore = threadsPostHistoryStore || new ThreadsPostHistoryStore();
+
+    // Instantiate domain handlers
+    this.gdriveHandler = new GDriveGoalHandler(
+      () => this.googleDriveCapability,
+      this.sessionId,
+      this.emitResult.bind(this)
+    );
+    this.threadsHandler = new ThreadsGoalHandler(
+      this.threadsApi,
+      this.threadsPostHistoryStore,
+      this.sessionId,
+      this.emitResult.bind(this),
+      () => this.googleDriveCapability
+    );
+    this.cryptoHandler = new CryptoGoalHandler(
+      () => this.hlSpot,
+      this.sessionId,
+      this.emitResult.bind(this),
+      this.personalWalletAddress,
+      () => this.currentWalletId?.address
+    );
+    this.triggerHandler = new TriggerGoalHandler(
+      this.triggerEngine,
+      this.autonomyAgreementStore,
+      this.eventBus,
+      this.sessionId,
+      this.emitResult.bind(this),
+      this.requestContextMap
+    );
+
     this.eventBus.on(EventTypes.DOMAIN_ACTION_DISPATCHED, this.handleDispatchedAction.bind(this));
 
     try {
@@ -338,60 +376,60 @@ export class GoalBridge {
           break;
 
         case 'SCHEDULE_GOAL':
-          await this.handleScheduleGoal(requestId, actionPayload);
+          await this.triggerHandler.handleScheduleGoal(requestId, actionPayload);
           break;
 
         case 'SPOT_SWAP':
-          await this.handleSpotSwap(requestId, actionPayload);
+          await this.cryptoHandler.handleSpotSwap(requestId, actionPayload);
           break;
         case 'RESOLVE_TOKEN':
-          await this.handleResolveToken(requestId, actionPayload);
+          await this.cryptoHandler.handleResolveToken(requestId, actionPayload);
           break;
 
         // Hyperliquid Spot Trading
         case 'HL_SPOT_MARKET_DATA':
-          await this.handleHLSpotMarketData(requestId, actionPayload);
+          await this.cryptoHandler.handleHLSpotMarketData(requestId, actionPayload);
           break;
         case 'HL_SPOT_ORDER':
-          await this.handleHLSpotOrder(requestId, actionPayload);
+          await this.cryptoHandler.handleHLSpotOrder(requestId, actionPayload);
           break;
         case 'HL_SPOT_CANCEL':
-          await this.handleHLSpotCancel(requestId, actionPayload);
+          await this.cryptoHandler.handleHLSpotCancel(requestId, actionPayload);
           break;
         case 'HL_SPOT_PORTFOLIO':
-          await this.handleHLSpotPortfolio(requestId);
+          await this.cryptoHandler.handleHLSpotPortfolio(requestId);
           break;
         case 'HL_SPOT_OPEN_ORDERS':
-          await this.handleHLSpotOpenOrders(requestId);
+          await this.cryptoHandler.handleHLSpotOpenOrders(requestId);
           break;
         case 'ACTIVATE_AUTONOMY_AGREEMENT':
-          this.handleActivateAutonomyAgreement(requestId, actionPayload);
+          this.triggerHandler.handleActivateAutonomyAgreement(requestId, actionPayload);
           break;
         case 'THREADS_PUBLISH':
         case 'THREADS_REPLY':
-          await this.handleThreadsPublish(requestId, actionPayload);
+          await this.threadsHandler.handlePublish(requestId, actionPayload);
           break;
         case 'THREADS_DELETE':
-          await this.handleThreadsDelete(requestId, actionPayload);
+          await this.threadsHandler.handleDelete(requestId, actionPayload);
           break;
         case 'THREADS_GET_POSTS':
-          await this.handleThreadsGetPosts(requestId, actionPayload);
+          await this.threadsHandler.handleGetPosts(requestId, actionPayload);
           break;
         case 'THREADS_GET_INSIGHTS':
-          await this.handleThreadsGetInsights(requestId, actionPayload);
+          await this.threadsHandler.handleGetInsights(requestId, actionPayload);
           break;
 
         case 'GDRIVE_WRITE':
         case 'gdrive:write_file':
-          await this.handleGDriveWrite(requestId, actionPayload);
+          await this.gdriveHandler.handleWrite(requestId, actionPayload);
           break;
         case 'GDRIVE_APPEND':
         case 'gdrive:append_file':
-          await this.handleGDriveAppend(requestId, actionPayload);
+          await this.gdriveHandler.handleAppend(requestId, actionPayload);
           break;
         case 'GDRIVE_READ':
         case 'gdrive:read_file':
-          await this.handleGDriveRead(requestId, actionPayload);
+          await this.gdriveHandler.handleRead(requestId, actionPayload);
           break;
         case 'GDRIVE_CREATE_SPREADSHEET':
         case 'GDRIVE_CREATE_SHEET':
@@ -400,56 +438,56 @@ export class GoalBridge {
         case 'CREATE_SPREADSHEET':
         case 'sera_gdrive_create_sheet':
         case 'SHEET_CREATE':
-          await this.handleGDriveCreateSheet(requestId, actionPayload);
+          await this.gdriveHandler.handleCreateSheet(requestId, actionPayload);
           break;
         case 'GDRIVE_UPDATE_CELL':
         case 'UPDATE_CELL':
         case 'gdrive:update_cell':
-          await this.handleGDriveUpdateCell(requestId, actionPayload);
+          await this.gdriveHandler.handleUpdateCell(requestId, actionPayload);
           break;
         case 'GDRIVE_LIST':
         case 'gdrive:list_files':
-          await this.handleGDriveList(requestId, actionPayload);
+          await this.gdriveHandler.handleList(requestId, actionPayload);
           break;
         case 'GDRIVE_DELETE':
         case 'GDRIVE_DELETE_FILE':
         case 'DELETE_FILE':
         case 'gdrive:delete_file':
-          await this.handleGDriveDelete(requestId, actionPayload);
+          await this.gdriveHandler.handleDelete(requestId, actionPayload);
           break;
         case 'GDRIVE_SAVE_MEDIA':
         case 'gdrive:save_media':
         case 'SAVE_MEDIA':
-          await this.handleGDriveSaveMedia(requestId, actionPayload);
+          await this.gdriveHandler.handleSaveMedia(requestId, actionPayload);
           break;
         case 'GDRIVE_CREATE_FOLDER':
         case 'CREATE_FOLDER':
         case 'gdrive:create_folder':
-          await this.handleGDriveCreateFolder(requestId, actionPayload);
+          await this.gdriveHandler.handleCreateFolder(requestId, actionPayload);
           break;
         case 'GDRIVE_RENAME':
         case 'RENAME':
         case 'RENAME_FILE':
         case 'RENAME_FOLDER':
         case 'gdrive:rename':
-          await this.handleGDriveRename(requestId, actionPayload);
+          await this.gdriveHandler.handleRename(requestId, actionPayload);
           break;
         case 'GDRIVE_MOVE':
         case 'MOVE':
         case 'MOVE_FILE':
         case 'gdrive:move':
-          await this.handleGDriveMove(requestId, actionPayload);
+          await this.gdriveHandler.handleMove(requestId, actionPayload);
           break;
         case 'GDRIVE_DELETE_FOLDER':
         case 'DELETE_FOLDER':
         case 'gdrive:delete_folder':
-          await this.handleGDriveDeleteFolder(requestId, actionPayload);
+          await this.gdriveHandler.handleDeleteFolder(requestId, actionPayload);
           break;
         case 'GDRIVE_TIDY_VAULT':
         case 'TIDY_VAULT':
         case 'gdrive:tidy_vault':
         case 'RAPIKAN_DRIVE':
-          await this.handleGDriveTidyVault(requestId, actionPayload);
+          await this.gdriveHandler.handleTidyVault(requestId, actionPayload);
           break;
 
         case 'CONVERSATION':
@@ -490,429 +528,8 @@ export class GoalBridge {
     this.emitResult(requestId, true, result);
   }
 
-  private async handleThreadsPublish(requestId: string, parameters: Record<string, any>): Promise<void> {
-    let { text, replyToId, imageUrl, videoUrl, driveFileName, imageUrls, driveFileNames, threadChain } = parameters;
-    if (!text) throw new Error('Threads publish requires text parameter.');
-
-    // Sanitize text and threadChain: strictly remove em dashes (—) and en dashes (–)
-    text = sanitizeThreadsText(text);
-    if (Array.isArray(threadChain)) {
-      threadChain = threadChain.map((t: any) => typeof t === 'string' ? sanitizeThreadsText(t) : t);
-    }
-
-    const bridgeCleanupKeys: string[] = [];
-
-    try {
-      // 1. Check for Carousel Publication (Multi-Image)
-      const carouselItems: ThreadsCarouselItem[] = [];
-
-      if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-        for (const url of imageUrls) {
-          if (typeof url === 'string' && url.trim()) {
-            carouselItems.push({ url: url.trim(), isVideo: false });
-          }
-        }
-      }
-
-      if (Array.isArray(driveFileNames) && driveFileNames.length > 0 && this.googleDriveCapability) {
-        for (const filename of driveFileNames) {
-          if (typeof filename === 'string' && filename.trim()) {
-            const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, filename.trim());
-            carouselItems.push({ url: bridge.publicUrl, isVideo: bridge.isVideo });
-            bridgeCleanupKeys.push(bridge.fileKey);
-          }
-        }
-      }
-
-      let rootPostId: string;
-
-      if (carouselItems.length >= 2) {
-        rootPostId = await this.threadsApi.publishCarousel(this.sessionId, text, carouselItems, replyToId);
-      } else {
-        let finalImageUrl = imageUrl;
-        let finalVideoUrl = videoUrl;
-
-        if (driveFileName && this.googleDriveCapability) {
-          const bridge = await this.googleDriveCapability.bridgeDriveMediaToCdn(this.sessionId, driveFileName);
-          if (bridge.isVideo) {
-            finalVideoUrl = bridge.publicUrl;
-          } else {
-            finalImageUrl = bridge.publicUrl;
-          }
-          bridgeCleanupKeys.push(bridge.fileKey);
-        }
-
-        rootPostId = await this.threadsApi.publishPost(this.sessionId, text, replyToId, finalImageUrl, finalVideoUrl);
-      }
-
-      this.threadsPostHistoryStore.recordPost(this.sessionId, text, rootPostId);
-
-      // 2. Check for Atomic Chained Threads (Utas)
-      const chainedIds: string[] = [rootPostId];
-      if (Array.isArray(threadChain) && threadChain.length > 0) {
-        let parentId = rootPostId;
-        for (const followUpText of threadChain) {
-          if (typeof followUpText === 'string' && followUpText.trim()) {
-            const followUpId = await this.threadsApi.publishPost(this.sessionId, followUpText.trim(), parentId);
-            this.threadsPostHistoryStore.recordPost(this.sessionId, followUpText.trim(), followUpId);
-            chainedIds.push(followUpId);
-            parentId = followUpId;
-          }
-        }
-      }
-
-      // Cleanup ephemeral bridge media
-      if (bridgeCleanupKeys.length > 0 && this.googleDriveCapability) {
-        for (const key of bridgeCleanupKeys) {
-          this.googleDriveCapability.cleanupCdnBridge(key).catch((e: any) => {
-            console.warn('[GoalBridge] Bridge cleanup warning:', e.message);
-          });
-        }
-      }
-
-      const summary = chainedIds.length > 1
-        ? `Successfully published chained thread with ${chainedIds.length} parts to Threads (Root ID: ${rootPostId})`
-        : (carouselItems.length >= 2
-            ? `Successfully published carousel (${carouselItems.length} slides) to Threads (ID: ${rootPostId})`
-            : `Successfully published to Threads (ID: ${rootPostId})`);
-
-      this.emitResult(requestId, true, {
-        provider: 'Meta Threads',
-        id: rootPostId,
-        chainedIds: chainedIds.length > 1 ? chainedIds : undefined,
-        summary
-      });
-    } catch (err: any) {
-      this.emitResult(requestId, false, {}, err.message || 'Failed to publish to Threads');
-    }
-  }
-
-  private async handleThreadsGetPosts(requestId: string, parameters: Record<string, any>): Promise<void> {
-    try {
-      const limit = Math.min(20, Math.max(1, Number(parameters?.limit) || 5));
-      const posts = await this.threadsApi.getUserThreads(this.sessionId, limit);
-      this.emitResult(requestId, true, {
-        provider: 'Meta Threads',
-        count: posts.length,
-        posts,
-        summary: `Retrieved ${posts.length} recent posts from Threads.`
-      });
-    } catch (err: any) {
-      this.emitResult(requestId, false, {}, err.message || 'Failed to retrieve recent Threads posts');
-    }
-  }
-
-  private async handleThreadsGetInsights(requestId: string, parameters: Record<string, any>): Promise<void> {
-    try {
-      const targetId = parameters?.postId || parameters?.mediaId;
-      if (targetId) {
-        const insights = await this.threadsApi.getPostInsights(this.sessionId, targetId);
-        this.emitResult(requestId, true, {
-          provider: 'Meta Threads',
-          type: 'post',
-          insights,
-          summary: `Fetched insights for post ${targetId}: ${insights.views} views, ${insights.likes} likes, ${insights.replies} replies.`
-        });
-        return;
-      }
-
-      const userInsights = await this.threadsApi.getUserInsights(this.sessionId);
-      this.emitResult(requestId, true, {
-        provider: 'Meta Threads',
-        type: 'account',
-        insights: userInsights,
-        summary: `Account Insights: ${userInsights.views} views, ${userInsights.likes} likes, ${userInsights.replies} replies, ${userInsights.reposts} reposts.`
-      });
-    } catch (err: any) {
-      this.emitResult(requestId, false, {}, err.message || 'Failed to fetch Threads insights');
-    }
-  }
-
-  private async handleThreadsDelete(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const rawPostId = parameters.postId || parameters.id;
-    const responseContext = parameters._responseContext || parameters.responseContext;
-    if (!rawPostId) {
-      this.emitResult(requestId, false, { _responseContext: responseContext }, 'Missing postId parameter for THREADS_DELETE.');
-      return;
-    }
-    try {
-      const resolvedId = await this.threadsApi.resolveNumericPostId(this.sessionId, String(rawPostId));
-      const success = await this.threadsApi.deletePost(this.sessionId, resolvedId);
-      this.emitResult(requestId, success, {
-        postId: resolvedId,
-        message: `Post ${resolvedId} was deleted successfully from Threads.`,
-        _responseContext: responseContext,
-        _userMessage: 'Udah beres, postingan barusan udah berhasil aku hapus dari Threads ya! 👍'
-      });
-    } catch (err: any) {
-      this.emitResult(requestId, false, {
-        _responseContext: responseContext
-      }, err.message || 'Failed to delete Threads post');
-    }
-  }
-
-
-
-  private async handleSpotSwap(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const fromToken = parameters.fromToken || 'USDC';
-    const toToken = parameters.toToken || 'WETH';
-    const amountIn = Number(parameters.amount || 10);
-    const recipient = parameters.recipient || this.currentWalletId?.address || '0x0000000000000000000000000000000000000000';
-
-    const result = await this.spotMarket.executeSpotSwap({
-      fromTokenSymbol: fromToken,
-      toTokenSymbol: toToken,
-      amountInUsdc: amountIn,
-      recipientAddress: recipient
-    });
-
-    this.emitResult(requestId, result.success, result, result.errorMessage);
-  }
-
-  private async handleResolveToken(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const query = String(parameters.query || parameters.coin || 'WETH');
-    const metadata = await this.tokenResolver.resolveToken(query);
-    this.emitResult(requestId, true, metadata);
-  }
-
-  // ===========================================================================
-  // Hyperliquid Spot Trading Handlers
-  // ===========================================================================
-
-  private async handleHLSpotMarketData(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const rawCoin = String(parameters.coin || parameters.query || parameters.symbol || '').trim();
-    const isTopQuery = !rawCoin || ['all', 'top', 'coins', 'crypto', 'tokens', 'market', 'rankings', 'overview'].includes(rawCoin.toLowerCase()) || parameters.limit !== undefined;
-
-    if (isTopQuery) {
-      const limit = Number(parameters.limit || 10);
-      const topData = await this.hlSpot.getTopMarketData(limit);
-      this.emitResult(requestId, true, {
-        provider: 'Hyperliquid Spot',
-        mode: 'TOP_MARKET_OVERVIEW',
-        count: topData.length,
-        tokens: topData.map(d => ({
-          symbol: d.coin,
-          name: d.token.fullName,
-          priceUsdc: d.midPrice,
-          bestBid: d.bestBid,
-          bestAsk: d.bestAsk,
-          volume24h: d.volume24h,
-          priceChange24hPercent: d.priceChange24hPercent
-        }))
-      });
-      return;
-    }
-
-    const data = await this.hlSpot.getMarketData(rawCoin);
-    this.emitResult(requestId, true, {
-      provider: 'Hyperliquid Spot',
-      mode: 'SPOT',
-      symbol: data.coin,
-      name: data.token.fullName,
-      midPrice: data.midPrice,
-      bestBid: data.bestBid,
-      bestAsk: data.bestAsk,
-      volume24h: data.volume24h,
-      priceChange24hPercent: data.priceChange24hPercent
-    });
-  }
-
-  private async handleHLSpotOrder(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || '').trim();
-    const side = (parameters.side || 'buy') as 'buy' | 'sell';
-    const amount = Number(parameters.amount || 0);
-    const orderType = (parameters.orderType || 'market') as 'market' | 'limit';
-    const limitPrice = parameters.limitPrice ? Number(parameters.limitPrice) : undefined;
-    const userAddress = this.personalWalletAddress || this.sessionId;
-
-    if (!coin) throw new Error('Please specify which token to trade (e.g. HYPE, ETH, BTC).');
-    if (amount <= 0) throw new Error('Please specify a valid amount in USDC.');
-
-    const result = await this.hlSpot.executeOrder({
-      coin,
-      side,
-      amountUsdc: amount,
-      orderType,
-      limitPrice,
-      userAddress
-    });
-    this.emitResult(requestId, result.success, result, result.errorMessage);
-  }
-
-  private async handleHLSpotCancel(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const coin = String(parameters.coin || '').trim();
-    const orderId = Number(parameters.orderId || 0);
-
-    if (!coin) throw new Error('Please specify the token symbol of the order to cancel.');
-    if (!orderId) throw new Error('Please specify the order ID to cancel.');
-
-    const result = await this.hlSpot.cancelOrder(coin, orderId);
-    this.emitResult(requestId, result.success, result, result.errorMessage);
-  }
-
-  private async handleHLSpotPortfolio(requestId: string): Promise<void> {
-    const userAddress = this.personalWalletAddress || this.sessionId;
-    const portfolio = await this.hlSpot.getPortfolio(userAddress);
-    this.emitResult(requestId, true, {
-      provider: 'Hyperliquid Spot',
-      mode: 'PORTFOLIO',
-      items: portfolio.items,
-      totalValueUsdc: portfolio.totalValueUsdc,
-      userAddress
-    });
-  }
-
-  private async handleHLSpotOpenOrders(requestId: string): Promise<void> {
-    const orders = await this.hlSpot.getOpenOrders();
-    this.emitResult(requestId, true, {
-      provider: 'Hyperliquid Spot',
-      mode: 'OPEN_ORDERS',
-      orders: orders.map(o => ({
-        coin: o.coin,
-        side: o.side === 'B' ? 'buy' : 'sell',
-        price: o.limitPx,
-        size: o.sz,
-        orderId: o.oid,
-        timestamp: o.timestamp
-      }))
-    });
-  }
-
-  private handleActivateAutonomyAgreement(requestId: string, parameters: Record<string, any>): void {
-    if (!this.autonomyAgreementStore) throw new Error('Autonomy Agreement store is not initialized.');
-    const mode = parameters.mode === 'FULL_ACCESS' ? 'FULL_ACCESS' : 'ASSISTANT';
-    const permissions = Array.isArray(parameters.permissions)
-      ? parameters.permissions.filter((permission): permission is string => typeof permission === 'string' && permission.length > 0)
-      : [];
-    const agreement = this.autonomyAgreementStore.activate({
-      principalId: this.sessionId,
-      title: String(parameters.title || '').trim(),
-      intent: String(parameters.intent || '').trim(),
-      mode,
-      permissions,
-      nextActionSummary: typeof parameters.nextActionSummary === 'string' ? parameters.nextActionSummary : undefined
-    });
-    this.eventBus.emit(EventTypes.AUTONOMY_AGREEMENT_ACTIVATED, {
-      id: `evt-agreement-${Date.now()}`,
-      type: EventTypes.AUTONOMY_AGREEMENT_ACTIVATED,
-      source: 'GoalBridge',
-      timestamp: Date.now(),
-      payload: { agreement }
-    } as StandardEvent);
-    this.emitResult(requestId, true, {
-      agreement,
-      message: 'Operating Agreement is active.',
-      _userMessage: typeof parameters._userMessage === 'string' ? parameters._userMessage : undefined
-    });
-  }
-
-  private async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {
-    if (!this.triggerEngine) {
-      this.emitResult(requestId, false, {}, 'TriggerEngine is not initialized');
-      return;
-    }
-
-    let { scheduleType, humanIntent, cronExpression, executeAfterUtc, delaySeconds, actionIntent, actionParameters } = parameters;
-
-    // Option B Relative Interval Extraction & Cron Normalization
-    let computedIntervalMs: number | undefined = undefined;
-    let sanitizedCron = cronExpression ? cronExpression.trim() : undefined;
-
-    if (scheduleType === 'cron' || parameters.intervalHours || parameters.intervalMinutes || parameters.intervalMs) {
-      if (parameters.intervalMs && Number(parameters.intervalMs) > 0) {
-        computedIntervalMs = Number(parameters.intervalMs);
-      } else if (parameters.intervalHours && Number(parameters.intervalHours) > 0) {
-        computedIntervalMs = Number(parameters.intervalHours) * 3600 * 1000;
-      } else if (parameters.intervalMinutes && Number(parameters.intervalMinutes) > 0) {
-        computedIntervalMs = Number(parameters.intervalMinutes) * 60 * 1000;
-      } else if (sanitizedCron) {
-        const parts = sanitizedCron.split(/\s+/);
-        if (parts.length === 6) {
-          sanitizedCron = '*/1 * * * *';
-        } else if (parts.length < 5) {
-          sanitizedCron = '*/5 * * * *';
-        } else if (parts.length === 5) {
-          if (parts[0] === '*/60') {
-            parts[0] = '0';
-            sanitizedCron = parts.join(' ');
-          }
-          if (parts[0] === '*' && parts[1].includes('/')) {
-            parts[0] = '0';
-            sanitizedCron = parts.join(' ');
-          }
-        }
-
-        // Check for relative interval patterns (Option B)
-        const mMin = sanitizedCron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
-        const mHourStep = sanitizedCron.match(/^0\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
-        const mHourEvery = sanitizedCron.match(/^0\s+\*\s+\*\s+\*\s+\*$/);
-
-        if (mMin) {
-          computedIntervalMs = Math.max(60000, parseInt(mMin[1]) * 60 * 1000);
-        } else if (mHourStep) {
-          computedIntervalMs = Math.max(3600000, parseInt(mHourStep[1]) * 3600 * 1000);
-        } else if (mHourEvery) {
-          computedIntervalMs = 3600000; // 1 hour
-        }
-      } else {
-        computedIntervalMs = 300000; // Default: 5 minutes
-      }
-    }
-
-    let computedExecuteAfterUtc = executeAfterUtc;
-    if (scheduleType === 'exact' && delaySeconds !== undefined) {
-      const safeDelay = Math.max(10, Number(delaySeconds));
-      computedExecuteAfterUtc = new Date(Date.now() + safeDelay * 1000).toISOString();
-    } else if (scheduleType === 'exact' && !executeAfterUtc) {
-      // Fallback: If LLM forgets to pass delaySeconds for exact schedule, default to 60 seconds
-      computedExecuteAfterUtc = new Date(Date.now() + 60000).toISOString();
-    }
-
-    // Preserve origin response context (e.g. WhatsApp, Telegram, or Web UI) so scheduled reminders know their destination channel
-    const originContext = parameters._responseContext ||
-                          parameters.responseContext ||
-                          this.requestContextMap.get(requestId)?._responseContext;
-
-    const triggerId = `trg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const newTrigger = {
-      id: triggerId,
-      type: 'TIME' as const,
-      state: 'ACTIVE' as const,
-      firePolicy: scheduleType === 'cron' ? ('REPEAT' as const) : ('ONCE' as const),
-      condition: {
-        type: scheduleType === 'cron' ? ('RECURRING' as const) : ('EXACT' as const),
-        humanIntent: humanIntent || 'Recurring schedule',
-        timezoneContext: 'UTC (Global)',
-        internalCompiled: sanitizedCron,
-        intervalMs: computedIntervalMs,
-        executeAfterUtc: scheduleType === 'exact' ? computedExecuteAfterUtc : undefined,
-      },
-      action: {
-        type: actionIntent,
-        payload: {
-          ...(actionParameters || {}),
-          ...(originContext ? {
-            _responseContext: originContext,
-            platform: (actionParameters && actionParameters.platform) || originContext.platform,
-            channelId: (actionParameters && actionParameters.channelId) || originContext.channelId,
-          } : {})
-        }
-      },
-      createdAt: Date.now()
-    };
-
-    this.triggerEngine.register(newTrigger);
-
-    // Emit event so the server socket and Active Intent Stream update in real-time
-    this.eventBus.emit('system.trigger.registered', {
-      id: `evt-trg-reg-${Date.now()}`,
-      type: 'system.trigger.registered',
-      source: 'GoalBridge',
-      timestamp: Date.now(),
-      payload: newTrigger
-    });
-
-    this.emitResult(requestId, true, { scheduled: true, humanIntent, actionIntent, triggerId });
+  public async handleScheduleGoal(requestId: string, parameters: Record<string, any>): Promise<void> {
+    return this.triggerHandler.handleScheduleGoal(requestId, parameters);
   }
 
   public async handleCheckBalance(requestId: string): Promise<void> {
@@ -1567,293 +1184,6 @@ export class GoalBridge {
       };
     } catch {
       return null;
-    }
-  }
-
-  private async handleGDriveWrite(requestId: string, payload: any): Promise<void> {
-    try {
-      const { filename, content, mimeType } = payload;
-      const fileId = await this.googleDriveCapability.writeFile(this.sessionId, filename, content, mimeType);
-      this.emitResult(requestId, true, { fileId, filename });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveAppend(requestId: string, payload: any): Promise<void> {
-    try {
-      const { filename, content } = payload;
-      if (!filename || content === undefined) throw new Error('GDrive append requires filename and content.');
-      const fileId = await this.googleDriveCapability.appendToFile(this.sessionId, filename, content);
-      this.emitResult(requestId, true, { fileId, filename });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveRead(requestId: string, payload: any): Promise<void> {
-    try {
-      const filename = payload?.filename || payload?.fileName || payload?.name || payload?.title;
-      const target = payload?.fileId || payload?.id || filename;
-      if (!target) throw new Error('Must provide either filename or fileId to read a file.');
-      
-      const resolvedId = await this.googleDriveCapability.resolveFileId(this.sessionId, target);
-      const content = await this.googleDriveCapability.readFile(this.sessionId, resolvedId);
-      this.emitResult(requestId, true, { content, fileId: resolvedId });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveCreateSheet(requestId: string, payload: any): Promise<void> {
-    try {
-      const { title, headers, rows, options, sheets, mode, folder, sheetName } = payload;
-      const effectiveOptions = {
-        ...options,
-        mode: mode || options?.mode,
-        folder: folder || options?.folder,
-        sheetName: sheetName || options?.sheetName
-      };
-
-      // Early normalization of headers & rows to guarantee 2D arrays even if LLM sent stringified JSON or objects
-      const normalizedInput = GoogleSheetsFormatter.normalizeSpreadsheetInput(headers, rows);
-      let effectiveHeaders = normalizedInput.headers;
-      let effectiveRows = normalizedInput.rows;
-
-      let normalizedSheets = sheets;
-      if (Array.isArray(sheets) && sheets.length > 0) {
-        normalizedSheets = sheets.map((s: any) => {
-          const sNorm = GoogleSheetsFormatter.normalizeSpreadsheetInput(s.headers, s.rows);
-          return {
-            ...s,
-            headers: sNorm.headers,
-            rows: sNorm.rows
-          };
-        });
-        if (effectiveHeaders.length === 0 && normalizedSheets[0]?.headers) {
-          effectiveHeaders = normalizedSheets[0].headers;
-        }
-        if (effectiveRows.length === 0 && normalizedSheets[0]?.rows) {
-          effectiveRows = normalizedSheets[0].rows;
-        }
-      }
-
-      const hasAnyRows = effectiveRows.length > 0 || (normalizedSheets && normalizedSheets.some((s: any) => s.rows && s.rows.length > 0));
-      if (!hasAnyRows && !effectiveOptions?.allowEmpty) {
-        throw new Error(`Cannot create spreadsheet "${title}" with 0 data rows. All provided rows were empty or invalid. Please provide valid data rows in the "rows" parameter.`);
-      }
-
-      const result = await this.googleDriveCapability.createSpreadsheet(
-        this.sessionId,
-        title,
-        effectiveHeaders,
-        effectiveRows,
-        effectiveOptions,
-        normalizedSheets
-      );
-
-      const summaryMetrics = SpreadsheetEngine.calculateSummaryMetrics(effectiveHeaders, effectiveRows, effectiveOptions);
-
-      const sheetNames = normalizedSheets && normalizedSheets.length > 0 
-        ? normalizedSheets.map((s: any) => s.name) 
-        : [effectiveOptions.sheetName || 'Sheet1'];
-
-      this.emitResult(requestId, true, {
-        fileId: result.fileId,
-        webViewLink: result.webViewLink,
-        title,
-        isUpdate: result.isUpdate,
-        sheetNames,
-        renderedRows: summaryMetrics.renderedRows,
-        calculatedSummary: summaryMetrics.totals,
-        summary: `Spreadsheet "${title}" ${result.isUpdate ? 'updated in-place' : 'created'} with tabs [${sheetNames.join(', ')}] and ${summaryMetrics.renderedRows} data rows.`,
-        _systemMessage: `File "${title}" ${result.isUpdate ? 'successfully updated in-place' : 'successfully generated'} with tabs [${sheetNames.join(', ')}] and ${summaryMetrics.renderedRows} data rows. View link: ${result.webViewLink}. Rendered totals: ${JSON.stringify(summaryMetrics.totals)}.`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveUpdateCell(requestId: string, payload: any): Promise<void> {
-    try {
-      const { title, cell, value, sheetName, fileId } = payload || {};
-      const target = title || fileId;
-      if (!target) throw new Error('Must provide spreadsheet title or fileId to update a cell.');
-      if (!cell) throw new Error('Must provide cell address (e.g. "B5").');
-      if (value === undefined) throw new Error('Must provide a new value for the cell.');
-
-      const result = await this.googleDriveCapability.updateCell(
-        this.sessionId,
-        target,
-        cell,
-        value,
-        sheetName
-      );
-
-      this.emitResult(requestId, true, {
-        fileId: result.fileId,
-        cell: result.cell,
-        value: result.value,
-        webViewLink: result.webViewLink,
-        summary: `Cell ${cell} in spreadsheet "${target}" updated to: ${value}`,
-        _systemMessage: `Cell ${cell} in spreadsheet "${target}" successfully updated to: ${value}. View link: ${result.webViewLink}`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveList(requestId: string, payload: any): Promise<void> {
-    try {
-      const { name, searchTerm, mimeType } = payload || {};
-      const files = await this.googleDriveCapability.listFiles(this.sessionId, { name, searchTerm, mimeType });
-      this.emitResult(requestId, true, { files, count: files.length });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveDelete(requestId: string, payload: any): Promise<void> {
-    try {
-      const filename = payload?.filename || payload?.fileName || payload?.name || payload?.title;
-      const fileId = payload?.fileId || payload?.id;
-      await this.googleDriveCapability.deleteFile(this.sessionId, { filename, fileId });
-      this.emitResult(requestId, true, { deleted: true, filename: filename || fileId });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveSaveMedia(requestId: string, payload: any): Promise<void> {
-    try {
-      const filename = payload?.filename || payload?.name || payload?.title;
-      const mediaUrl = payload?.mediaUrl || payload?.url || payload?.dataUrl;
-      const folder = payload?.folder || '🎨 Media & Creative';
-      const mimeType = payload?.mimeType;
-
-      if (!filename) throw new Error('Saving media to Google Drive requires a filename.');
-      if (!mediaUrl) throw new Error('Saving media to Google Drive requires attached media or a mediaUrl.');
-
-      const result = await this.googleDriveCapability.saveMedia(
-        this.sessionId,
-        filename,
-        mediaUrl,
-        mimeType,
-        folder
-      );
-
-      this.emitResult(requestId, true, {
-        fileId: result.fileId,
-        filename: result.filename,
-        webViewLink: result.webViewLink,
-        folder: result.folder,
-        isVideo: result.isVideo,
-        summary: `Media file "${result.filename}" successfully saved to Google Drive in folder "${result.folder}".`,
-        _userMessage: `Foto/video "${result.filename}" berhasil disimpan ke Google Drive di folder ${result.folder}. Link: ${result.webViewLink}`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveCreateFolder(requestId: string, payload: any): Promise<void> {
-    try {
-      const folderName = payload?.folderName || payload?.name || payload?.title;
-      const parentFolder = payload?.parentFolder || payload?.parent;
-      if (!folderName) throw new Error('Folder name is required to create a folder.');
-
-      const result = await this.googleDriveCapability.createFolder(this.sessionId, folderName, parentFolder);
-      this.emitResult(requestId, true, {
-        folderId: result.folderId,
-        folderName: result.folderName,
-        webViewLink: result.webViewLink,
-        summary: `Folder "${result.folderName}" successfully created in Google Drive SERA Vault.`,
-        _userMessage: `Folder "${result.folderName}" berhasil dibuat di Google Drive SERA Vault. Link: ${result.webViewLink}`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveRename(requestId: string, payload: any): Promise<void> {
-    try {
-      const targetName = payload?.targetName || payload?.name || payload?.oldName || payload?.filename || payload?.fileId;
-      const newName = payload?.newName || payload?.title;
-      if (!targetName) throw new Error('Target item name or ID is required for rename.');
-      if (!newName) throw new Error('New name is required for rename.');
-
-      const result = await this.googleDriveCapability.renameItem(this.sessionId, targetName, newName);
-      this.emitResult(requestId, true, {
-        id: result.id,
-        oldName: result.oldName,
-        newName: result.newName,
-        isFolder: result.isFolder,
-        summary: `${result.isFolder ? 'Folder' : 'File'} "${result.oldName}" successfully renamed to "${result.newName}".`,
-        _userMessage: `${result.isFolder ? 'Folder' : 'File'} "${result.oldName}" berhasil diubah namanya menjadi "${result.newName}".`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveMove(requestId: string, payload: any): Promise<void> {
-    try {
-      const filename = payload?.filename || payload?.targetFile || payload?.name || payload?.fileId;
-      const targetFolder = payload?.targetFolder || payload?.destinationFolder || payload?.folder;
-      if (!filename) throw new Error('Filename or ID is required to move a file.');
-      if (!targetFolder) throw new Error('Destination folder is required to move a file.');
-
-      const result = await this.googleDriveCapability.moveItem(this.sessionId, filename, targetFolder);
-      this.emitResult(requestId, true, {
-        id: result.id,
-        name: result.name,
-        destinationFolder: result.destinationFolder,
-        webViewLink: result.webViewLink,
-        summary: `File "${result.name}" successfully moved to folder "${result.destinationFolder}".`,
-        _userMessage: `File "${result.name}" berhasil dipindahkan ke folder "${result.destinationFolder}".`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveDeleteFolder(requestId: string, payload: any): Promise<void> {
-    try {
-      const folderName = payload?.folderName || payload?.name || payload?.folderId || payload?.id;
-      if (!folderName) throw new Error('Folder name or ID is required to delete a folder.');
-
-      const result = await this.googleDriveCapability.deleteFolder(this.sessionId, folderName, false);
-      this.emitResult(requestId, true, {
-        id: result.id,
-        name: result.name,
-        trashed: result.trashed,
-        summary: `Folder "${result.name}" successfully moved to Google Drive Trash.`,
-        _userMessage: `Folder "${result.name}" berhasil dipindahkan ke Sampah (Trash) Google Drive.`
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
-    }
-  }
-
-  private async handleGDriveTidyVault(requestId: string, payload: any): Promise<void> {
-    try {
-      const result = await this.googleDriveCapability.tidyVault(this.sessionId);
-      const summaryMsg = result.movedCount > 0
-        ? `Organized ${result.movedCount} file(s) into their appropriate subfolders.`
-        : 'All files in your SERA Vault are already neatly organized in their subfolders.';
-      const userMsg = result.movedCount > 0
-        ? `Beres! Sebanyak ${result.movedCount} file yang tercecer di Google Drive berhasil dirapikan ke subfolder masing-masing:\n` +
-          result.items.map(item => `• ${item.name} ➔ ${item.destinationFolder}`).join('\n')
-        : 'Google Drive SERA Vault Anda sudah rapi! Semua file sudah berada di subfoldernya masing-masing.';
-
-      this.emitResult(requestId, true, {
-        movedCount: result.movedCount,
-        items: result.items,
-        summary: summaryMsg,
-        _userMessage: userMsg
-      });
-    } catch (e: any) {
-      this.emitResult(requestId, false, {}, e.message);
     }
   }
 }
