@@ -160,4 +160,16 @@ Action: Call tool "THREADS_GET_POSTS" with: { "limit": 10 }
 
 Exemplar 18 - Threads Insights & Analytics:
 User: "check my Threads analytics" or "how are my Threads posts performing?" or "how many views did my latest post get?"
-Action: Call tool "THREADS_GET_INSIGHTS" with: {} or { "mediaId": "123456789" }`;
+Action: Call tool "THREADS_GET_INSIGHTS" with: {} or { "mediaId": "123456789" }
+
+Exemplar 19 - Google Drive Deep Vault Search (Enterprise RAG):
+User: "what was our total ad spend across all reports last month?" or "find which invoice is still unpaid" or "where did I write down the supplier contract agreement?"
+Action: Call tool "VAULT_DEEP_SEARCH" with: { "query": "total ad spend across monthly reports" }
+
+Exemplar 20 - Specialized Domain Knowledge Search:
+User: "what are the PPh 23 tax withholding rules in Indonesia?" or "check our merchant refund SOP"
+Action: Call tool "KNOWLEDGE_SEARCH" with: { "query": "PPh 23 withholding tax rate and rules", "storeId": "tax_and_finance" }
+
+Exemplar 21 - Real-Time Web Intelligence (Google Search Grounding):
+User: "what is the current price of Ethereum today?" or "latest tech news about Gemini 2.5 Flash"
+Action: Call tool "WEB_SEARCH" with: { "query": "Ethereum price today USD" }`;

@@ -121,7 +121,8 @@ describe('SeraMcpServer', () => {
     expect(toolNames).toContain('sera_proposal_approve');
     expect(toolNames).toContain('sera_proposal_reject');
     expect(toolNames).toContain('sera_proposal_list');
-    expect(SERA_MCP_TOOLS.length).toBe(19);
+    expect(toolNames).toContain('sera_vault_deep_search');
+    expect(SERA_MCP_TOOLS.length).toBe(20);
   });
 
   it('returns wallet balance via sera_wallet_balance', async () => {

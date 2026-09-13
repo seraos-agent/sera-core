@@ -137,6 +137,8 @@ export class SeraMcpServer {
         return this.integrationHandler.handleGDriveAppend(instance, args);
       case 'sera_gdrive_delete':
         return this.integrationHandler.handleGDriveDelete(instance, args);
+      case 'sera_vault_deep_search':
+        return await this.integrationHandler.handleVaultDeepSearch(instance, args);
 
       default:
         return {

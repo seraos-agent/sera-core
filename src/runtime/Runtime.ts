@@ -17,7 +17,7 @@ import { ThreadsCapability } from '../capabilities/threads/ThreadsCapability';
 import { ThreadsDaemon } from '../capabilities/threads/ThreadsDaemon';
 import { AutonomyAgreementCapability } from '../capabilities/autonomy/AutonomyAgreementCapability';
 import { ImageGenerationCapability } from '../capabilities/media/ImageGenerationCapability';
-import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
+import { WebSearchCapability } from '../capabilities/search/WebSearchCapability';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 import { SecretManager } from '../core/secrets/SecretManager';
@@ -79,7 +79,7 @@ export class Runtime {
     const googleDriveCap = googleDriveRepo ? (GoogleDriveCapability.fromEnvironment(googleDriveRepo) || undefined) : undefined;
     const threadsCap = new ThreadsCapability(threadsApi, this.secretManager, undefined, googleDriveCap);
     const imageGenCap = new ImageGenerationCapability();
-    const braveSearchCap = new BraveSearchCapability();
+    const webSearchCap = new WebSearchCapability();
 
     if (process.env.THREADS_APP_ID && !Runtime.globalThreadsDaemon) {
       const activeSession = options?.sessionId || 'default';
@@ -129,11 +129,11 @@ export class Runtime {
       id: 'web_search',
       name: 'Web Intelligence',
       category: 'connectors',
-      description: 'Live internet web search powered by Brave',
-      riskSummary: 'Fetches real-time web search results.',
+      description: 'Live internet web search powered by Google Search Grounding & Brave',
+      riskSummary: 'Fetches real-time web search results with factual citations.',
       alwaysActive: true,
-      tools: braveSearchCap.getTools(),
-      executeTool: braveSearchCap.executeTool.bind(braveSearchCap),
+      tools: webSearchCap.getTools(),
+      executeTool: webSearchCap.executeTool.bind(webSearchCap),
     });
 
     this.capabilityCatalog.registerConnector({
@@ -235,6 +235,16 @@ export class Runtime {
       category: 'connectors',
       description: 'Access and manage files in your personal Google Drive (SERA Vault)',
       riskSummary: 'Access user Google Drive vault to create and manage spreadsheets and files.',
+      alwaysActive: true,
+      tools: [],
+    });
+
+    this.capabilityCatalog.registerConnector({
+      id: 'vertex_search',
+      name: 'Deep Vault Search (Enterprise RAG)',
+      category: 'connectors',
+      description: 'Semantic enterprise search and summarization across all documents in your Google Drive SERA Vault powered by Vertex AI',
+      riskSummary: 'Indexes and searches personal Google Drive documents using Vertex AI Search.',
       alwaysActive: true,
       tools: [],
     });

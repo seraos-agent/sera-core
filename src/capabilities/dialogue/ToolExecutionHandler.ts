@@ -74,6 +74,9 @@ export class ToolExecutionHandler {
       'GDRIVE_MOVE': 'Moving file in Google Drive',
       'GDRIVE_DELETE_FOLDER': 'Removing folder from Google Drive',
       'GDRIVE_TIDY_VAULT': 'Organizing Google Drive files',
+      'VAULT_DEEP_SEARCH': 'Searching Google Drive Vault',
+      'VAULT_SEARCH': 'Searching Google Drive Vault',
+      'VAULT_SYNC_INDEX': 'Indexing Google Drive Vault',
       'HL_SPOT_MARKET_DATA': 'Fetching market data',
       'HL_SPOT_ORDER': 'Executing spot order',
       'HL_SPOT_CANCEL': 'Cancelling spot order',
@@ -283,6 +286,21 @@ export class ToolExecutionHandler {
             content: outputData.content.slice(0, 2000) + '\n...[Content truncated for brevity]'
           };
         }
+      } else if ((toolIntent === 'VAULT_DEEP_SEARCH' || toolIntent === 'VAULT_SEARCH' || toolIntent === 'KNOWLEDGE_SEARCH' || toolIntent === 'DOMAIN_KNOWLEDGE_SEARCH') && outputData?.success) {
+        outputData = {
+          success: true,
+          query: outputData.query,
+          summary: outputData.summary || 'Knowledge search completed successfully.',
+          totalResults: outputData.totalResults || (Array.isArray(outputData.documents) ? outputData.documents.length : 0),
+          documents: Array.isArray(outputData.documents)
+            ? outputData.documents.slice(0, 5).map((d: any) => ({
+                title: d.title,
+                link: d.link || d.uri,
+                excerpt: typeof d.excerpt === 'string' ? d.excerpt.slice(0, 300) : (d.snippets?.[0] || '').slice(0, 300)
+              }))
+            : [],
+          citations: Array.isArray(outputData.citations) ? outputData.citations.slice(0, 5) : []
+        };
       }
 
       return {

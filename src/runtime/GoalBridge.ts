@@ -25,12 +25,15 @@ import {
 } from '../core/persistence/SupabaseTransferAuditRepository';
 import { GoogleDriveCapability } from '../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
-import { BraveSearchCapability } from '../capabilities/search/BraveSearchCapability';
+import { WebSearchCapability } from '../capabilities/search/WebSearchCapability';
 import { GDriveGoalHandler } from './handlers/GDriveGoalHandler';
 import { ThreadsGoalHandler } from './handlers/ThreadsGoalHandler';
 import { CryptoGoalHandler } from './handlers/CryptoGoalHandler';
 import { TriggerGoalHandler } from './handlers/TriggerGoalHandler';
 import { WalletGoalHandler } from './handlers/WalletGoalHandler';
+import { VertexSearchGoalHandler } from './handlers/VertexSearchGoalHandler';
+import { VertexSearchService } from '../capabilities/vertex-search/VertexSearchService';
+import { VaultIndexSyncService } from '../capabilities/vertex-search/VaultIndexSyncService';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -77,6 +80,7 @@ export class GoalBridge {
   private readonly threadsHandler: ThreadsGoalHandler;
   private readonly cryptoHandler: CryptoGoalHandler;
   private readonly triggerHandler: TriggerGoalHandler;
+  private readonly vertexSearchHandler: VertexSearchGoalHandler;
 
   // Google Drive capability (lazy-initialized)
   private _googleDriveCapability: GoogleDriveCapability | null = null;
@@ -88,6 +92,27 @@ export class GoalBridge {
       if (!this._googleDriveCapability) throw new Error('GoogleDriveCapability failed to initialize.');
     }
     return this._googleDriveCapability;
+  }
+
+  // Vertex Search service (lazy-initialized)
+  private _vertexSearchService: VertexSearchService | null = null;
+  public get vertexSearchService(): VertexSearchService {
+    if (!this._vertexSearchService) {
+      this._vertexSearchService = new VertexSearchService();
+    }
+    return this._vertexSearchService;
+  }
+
+  // Vault Index Sync service (lazy-initialized)
+  private _vaultIndexSyncService: VaultIndexSyncService | null = null;
+  public get vaultIndexSyncService(): VaultIndexSyncService {
+    if (!this._vaultIndexSyncService) {
+      this._vaultIndexSyncService = new VaultIndexSyncService({
+        vertexSearchService: this.vertexSearchService,
+        googleDriveCapability: this.googleDriveCapability
+      });
+    }
+    return this._vaultIndexSyncService;
   }
 
   // Hyperliquid spot trading capability (lazy-initialized)
@@ -148,6 +173,12 @@ export class GoalBridge {
       this.sessionId,
       this.emitResult.bind(this),
       this.requestContextMap
+    );
+    this.vertexSearchHandler = new VertexSearchGoalHandler(
+      () => this.vertexSearchService,
+      () => this.vaultIndexSyncService,
+      this.sessionId,
+      this.emitResult.bind(this)
     );
 
     try {
@@ -386,6 +417,23 @@ export class GoalBridge {
           await this.gdriveHandler.handleTidyVault(requestId, actionPayload);
           break;
 
+        case 'VAULT_DEEP_SEARCH':
+        case 'VAULT_SEARCH':
+        case 'DEEP_SEARCH':
+        case 'sera_vault_deep_search':
+          await this.vertexSearchHandler.handleVaultSearch(requestId, actionPayload);
+          break;
+
+        case 'VAULT_SYNC_INDEX':
+        case 'SYNC_VAULT_INDEX':
+          await this.vertexSearchHandler.handleSyncIndex(requestId, actionPayload);
+          break;
+
+        case 'KNOWLEDGE_SEARCH':
+        case 'DOMAIN_KNOWLEDGE_SEARCH':
+          await this.vertexSearchHandler.handleKnowledgeSearch(requestId, actionPayload);
+          break;
+
         case 'CONVERSATION':
         case 'NONE':
         case 'NO_ACTION':
@@ -418,7 +466,7 @@ export class GoalBridge {
   }
 
   private async handleWebSearch(requestId: string, parameters: Record<string, any>): Promise<void> {
-    const searchCap = new BraveSearchCapability();
+    const searchCap = new WebSearchCapability();
     const query = String(parameters?.query || parameters?.q || parameters?.searchQuery || parameters?.searchTerm || '').trim();
     const result = await searchCap.executeTool('WEB_SEARCH', { ...parameters, query });
     this.emitResult(requestId, true, result);

@@ -517,6 +517,39 @@ export class SeraAgentInstance {
             fileId: { type: 'string', description: 'Direct file ID if known' }
           }
         }
+      },
+      {
+        name: 'VAULT_DEEP_SEARCH',
+        description: 'Performs deep semantic RAG search across ALL documents, spreadsheets, PDFs, financial reports, and notes in the user\'s Google Drive SERA Vault. Returns synthesised summaries, extractive answers, and exact source file citations. Use this whenever the user asks questions spanning multiple documents, historical reports, past data, or unlocated files.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Natural language search query or analytical question (e.g. "total marketing expenses last quarter", "unpaid invoices", "Q3 sales comparisons")' },
+            pageSize: { type: 'number', description: 'Maximum number of source documents to return (default: 5)' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'VAULT_SYNC_INDEX',
+        description: 'Synchronizes and re-indexes all eligible Google Drive SERA Vault documents into the Vertex AI Search semantic knowledge store.',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'KNOWLEDGE_SEARCH',
+        description: 'Searches specialized domain knowledge stores (e.g. Indonesian tax & financial regulations, e-commerce SOPs, enterprise policies, crawled documentation). Use this whenever the user asks for industry-specific rules, legal/tax guidelines, or specialized domain references.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The search query or question about the specialized domain' },
+            storeId: { type: 'string', description: 'Optional knowledge store ID (e.g. "tax_and_finance", "general_knowledge"). Defaults to general_knowledge.' },
+            pageSize: { type: 'number', description: 'Maximum number of results to return (default: 5)' }
+          },
+          required: ['query']
+        }
       }
     ];
     this.capabilityCatalog.registerTools(baseTools);

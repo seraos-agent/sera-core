@@ -255,5 +255,17 @@ export const SERA_MCP_TOOLS = [
       type: 'object' as const,
       properties: {}
     }
+  },
+  {
+    name: 'sera_vault_deep_search',
+    description: 'Perform an enterprise semantic RAG search across all documents, spreadsheets, PDFs, and notes in your Google Drive SERA Vault. Returns synthesised answers and source citations.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'The natural language search query or analytical question' },
+        pageSize: { type: 'number', description: 'Maximum source documents to return (default: 5)' }
+      },
+      required: ['query']
+    }
   }
 ];

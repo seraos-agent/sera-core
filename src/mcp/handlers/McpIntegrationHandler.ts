@@ -1,5 +1,7 @@
 import { GoogleDriveCapability } from '../../capabilities/google-drive/GoogleDriveCapability';
 import { GoogleDriveConnectionRepository } from '../../core/integrations/google-drive/GoogleDriveConnectionRepository';
+import { VertexSearchService } from '../../capabilities/vertex-search/VertexSearchService';
+import { VaultIndexSyncService } from '../../capabilities/vertex-search/VaultIndexSyncService';
 
 /**
  * Handles third-party ecosystem integrations (Google Drive, Sheets, Meta Threads)
@@ -183,6 +185,40 @@ export class McpIntegrationHandler {
       };
     } catch (e: any) {
       return { isError: true, content: [{ type: 'text', text: `Failed to write memory: ${e.message}` }] };
+    }
+  }
+
+  public async handleVaultDeepSearch(instance: any, args: Record<string, any>): Promise<any> {
+    try {
+      const cap = await this.getGDriveCapability();
+      const vertexService = new VertexSearchService();
+      const syncService = new VaultIndexSyncService({
+        vertexSearchService: vertexService,
+        googleDriveCapability: cap
+      });
+
+      const userId = instance.sessionId || instance.userId || 'dev';
+      const result = await syncService.search(userId, args.query, args.pageSize || 5);
+
+      let text = `🔍 **Deep Vault Search Results for:** "${args.query}"\n\n`;
+      if (result.summary) {
+        text += `**Executive Summary:**\n${result.summary}\n\n`;
+      }
+      if (result.documents && result.documents.length > 0) {
+        text += `**Relevant Documents:**\n`;
+        result.documents.forEach((d, idx) => {
+          text += `${idx + 1}. [${d.title}](${d.uri || '#'}) (${d.mimeType || 'Document'})\n`;
+          if (d.snippets && d.snippets[0]) {
+            text += `   > ${d.snippets[0]}\n`;
+          }
+        });
+      } else {
+        text += `No matching documents found in Google Drive SERA Vault.`;
+      }
+
+      return { content: [{ type: 'text', text }] };
+    } catch (e: any) {
+      return { isError: true, content: [{ type: 'text', text: `Deep Vault Search failed: ${e.message}` }] };
     }
   }
 }
