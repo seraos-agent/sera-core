@@ -59,7 +59,10 @@ CRITICAL - GOOGLE DRIVE & SPREADSHEETS:
   * Move file: GDRIVE_MOVE (e.g. 'move file to another folder')
   * Delete folder: GDRIVE_DELETE_FOLDER (e.g. 'delete folder')
   * Tidy vault: GDRIVE_TIDY_VAULT (e.g. 'organize files', 'tidy vault')
-  Never claim you cannot organize or manage folders. Invoke these tools directly.`,
+  Never claim you cannot organize or manage folders. Invoke these tools directly.
+- USER ISOLATION & UNCONNECTED STATE:
+  * All Google Drive files and spreadsheets are strictly private to the authenticated user's personal Google Drive Vault.
+  * If GDRIVE_CREATE_SPREADSHEET returns an error that Google Drive is not connected for this user, present the complete requested table and numbers directly in chat as a clean Markdown table, and guide the user to connect their personal Google Drive in Settings > Integrations.`,
 
     defi: `
 CRITICAL - WALLET & DEFI OPERATIONS:

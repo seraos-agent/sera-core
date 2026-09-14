@@ -112,12 +112,7 @@ export class GoogleDriveConnectionRepository {
       if (lowerRows[0] && lowerRows[0].status === 'CONNECTED') return lowerRows[0];
     }
 
-    // 3. Graceful fallback: If this instance or admin has a connected Google Drive connection,
-    // ensure the active session has access to the user-authorized Google Drive Vault.
-    const activeRows = await this.client.select<ConnectionRow>(
-      'user_cloud_connections',
-      `provider=eq.GOOGLE_DRIVE&status=eq.CONNECTED&limit=1`,
-    );
-    return activeRows[0] ?? rows[0] ?? null;
+    // Strict User Isolation: Never fall back to another user's or admin's Google Drive connection.
+    return null;
   }
 }
