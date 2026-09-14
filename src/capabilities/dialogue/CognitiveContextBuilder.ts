@@ -67,8 +67,9 @@ ${userLocationInfo}
 
     if (walletState?.address) {
       cognitiveStateMarkdown += `\n- User Personal Connected Wallet: ${walletState.address}`;
+      cognitiveStateMarkdown += `\n- Agent Operational Wallet: ${walletState.vaultAddress || walletState.address} (USDC on Base)`;
     }
-    if (walletState?.vaultAddress) {
+    if (walletState?.vaultAddress && walletState.vaultAddress !== walletState.address) {
       cognitiveStateMarkdown += `\n- SERA Agent Vault (Dedicated Custodial Contract on Base): ${walletState.vaultAddress} (Agent Vault Balance: ${walletState.vaultBalance ?? 0} USDC)`;
     }
 
