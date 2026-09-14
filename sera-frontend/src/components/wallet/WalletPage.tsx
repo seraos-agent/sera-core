@@ -82,7 +82,6 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const handleCopy = copyToClipboard;
 
   const personalAddr = address || walletState.fullAddress || "";
-  const agentAddr = personalAddr;
   const vaultAddr = walletState.vaultAddress || "";
   const shortPersonal = personalAddr ? personalAddr.slice(0, 6) + "..." + personalAddr.slice(-4) : "—";
   const shortVault = vaultAddr ? vaultAddr.slice(0, 6) + "..." + vaultAddr.slice(-4) : "—";
@@ -267,7 +266,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                 onClick={() => setQrModal({
                   isOpen: true,
                   title: "Sera Agent Vault",
-                  address: vaultAddr || agentAddr,
+                  address: vaultAddr || personalAddr,
                   type: "agent"
                 })}
                 title="Show Wallet QR Code"
@@ -292,7 +291,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
 
               {/* View on Basescan Text Button (No icon) */}
               <a
-                href={`https://basescan.org/address/${vaultAddr || agentAddr}`}
+                href={`https://basescan.org/address/${vaultAddr || personalAddr}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -720,7 +719,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
             </div>
 
             {/* Wallet Toggle Tabs inside Modal */}
-            {agentAddr && vaultAddr && (
+            {personalAddr && vaultAddr && (
               <div style={{ display: "flex", background: theme.surface2, padding: 3, borderRadius: 10, marginBottom: 16, width: "100%", boxSizing: "border-box" }}>
                 <button
                   onClick={() => setQrModal(prev => prev ? { ...prev, title: "Sera Agent Vault", address: vaultAddr, type: "agent" } : null)}
@@ -740,7 +739,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                   Agent Vault
                 </button>
                 <button
-                  onClick={() => setQrModal(prev => prev ? { ...prev, title: "Personal Wallet", address: agentAddr, type: "personal" } : null)}
+                  onClick={() => setQrModal(prev => prev ? { ...prev, title: "Personal Wallet", address: personalAddr, type: "personal" } : null)}
                   style={{
                     flex: 1,
                     padding: "6px 0",

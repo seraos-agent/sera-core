@@ -211,17 +211,32 @@ export class WorldStateService {
   private subscribeToReality() {
     this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: StandardEvent) => {
       const p = event.payload as any;
+      const existingVault = this.state.wallet?.vaultAddress;
+      const incomingVault = p.vaultAddress;
+      const incomingAddress = p.address;
+
+      // Preserve canonical vault address (Rule 2: WorldStateService Owns Reality)
+      // Do not allow an incoming payload to overwrite a distinct verified vault with the user's personal address or empty string
+      let targetVault = existingVault || '';
+      if (incomingVault && typeof incomingVault === 'string' && incomingVault.startsWith('0x')) {
+        if (!incomingAddress || incomingVault.toLowerCase() !== incomingAddress.toLowerCase()) {
+          targetVault = incomingVault;
+        } else if (!targetVault) {
+          targetVault = incomingVault;
+        }
+      }
+
       this.state.wallet = {
-        address: p.address,
-        vaultAddress: p.vaultAddress,
+        address: p.address || this.state.wallet?.address || '',
+        vaultAddress: targetVault,
         balance: parseFloat(p.balance) || 0,
         vaultBalance: parseFloat(p.vaultBalance) || 0,
         vaultBalances: p.vaultBalances || { base: p.vaultBalance || "0", polygon: "0", ethereum: "0" },
         network: p.network || 'unknown',
         asset: p.asset || 'USDC',
         syncing: p.syncing || false,
-        agentCredits: p.agentCredits,
-        tier: p.tier,
+        agentCredits: p.agentCredits ?? this.state.wallet?.agentCredits,
+        tier: p.tier ?? this.state.wallet?.tier,
         quality: {
           updatedAt: Date.now(),
           source: 'EventBus/DOMAIN_WALLET_STATE',

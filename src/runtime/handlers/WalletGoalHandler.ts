@@ -33,7 +33,10 @@ export class WalletGoalHandler {
           this.personalWalletAddress = event.payload.address;
         }
         if (event.payload.vaultAddress && event.payload.vaultAddress.startsWith('0x')) {
-          this.canonicalVaultAddress = event.payload.vaultAddress;
+          // Never adopt personal address as agent vault address
+          if (!this.personalWalletAddress || event.payload.vaultAddress.toLowerCase() !== this.personalWalletAddress.toLowerCase()) {
+            this.canonicalVaultAddress = event.payload.vaultAddress;
+          }
         }
       }
     });
@@ -53,13 +56,13 @@ export class WalletGoalHandler {
 
       // Emit syncing indicator first
       if (this.canonicalVaultAddress) {
-        primaryAddress = this.personalWalletAddress || walletId.address;
+        primaryAddress = this.personalWalletAddress || (userAddress && userAddress.startsWith('0x') ? userAddress : walletId.address);
         vaultAddress = this.canonicalVaultAddress;
       } else if (!userAddress) {
         primaryAddress = this.personalWalletAddress || walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
       } else {
-        primaryAddress = this.personalWalletAddress || walletId.address;
+        primaryAddress = this.personalWalletAddress || (userAddress.startsWith('0x') ? userAddress : walletId.address);
         vaultAddress = walletId.address;
       }
       this.emitSyncing(primaryAddress, vaultAddress, walletId.network);
@@ -90,7 +93,7 @@ export class WalletGoalHandler {
         }
       } else {
         // --- 1:1 AGENT WALLET MODE ---
-        primaryAddress = this.personalWalletAddress || walletId.address;
+        primaryAddress = this.personalWalletAddress || (userAddress.startsWith('0x') ? userAddress : walletId.address);
         vaultAddress = this.canonicalVaultAddress || walletId.address;
 
         try {
@@ -210,7 +213,7 @@ export class WalletGoalHandler {
         }
       } else {
         primaryAddress = userAddress;
-        vaultAddress = walletId.address;
+        vaultAddress = this.canonicalVaultAddress || walletId.address;
         try {
           const [pb, eb] = await Promise.allSettled([
             this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
@@ -346,7 +349,7 @@ export class WalletGoalHandler {
         }
       } else {
         primaryAddress = this.personalWalletAddress || userAddress;
-        vaultAddress = walletId.address;
+        vaultAddress = this.canonicalVaultAddress || walletId.address;
         try {
           const [pb, eb] = await Promise.allSettled([
             this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
@@ -436,7 +439,7 @@ export class WalletGoalHandler {
         }
       }
 
-      const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
+      const vaultAddress = this.canonicalVaultAddress || walletId.address || process.env.SERA_VAULT_ADDRESS || '';
       if (!vaultAddress) {
         this.emitResult(requestId, false, {}, 'No Agent Wallet initialized. Cannot send funds.');
         return;
@@ -607,7 +610,7 @@ export class WalletGoalHandler {
     }
 
     const walletId = this.currentWalletId as any;
-    const vaultAddress = walletId.address || process.env.SERA_VAULT_ADDRESS || '';
+    const vaultAddress = this.canonicalVaultAddress || walletId.address || process.env.SERA_VAULT_ADDRESS || '';
     const walletIdAddress = walletId.address;
 
     if (params.recipientAddress === 'SERA_VAULT_ADDRESS') {

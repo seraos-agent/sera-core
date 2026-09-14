@@ -66,7 +66,10 @@ ${userLocationInfo}
 - Active Workspace Integrations: ${activeCaps}`;
 
     if (walletState?.address) {
-      cognitiveStateMarkdown += `\n- Agent Operational Wallet: ${walletState.address} (USDC on Base)`;
+      cognitiveStateMarkdown += `\n- User Personal Connected Wallet: ${walletState.address}`;
+    }
+    if (walletState?.vaultAddress) {
+      cognitiveStateMarkdown += `\n- SERA Agent Vault (Dedicated Custodial Contract on Base): ${walletState.vaultAddress} (Agent Vault Balance: ${walletState.vaultBalance ?? 0} USDC)`;
     }
 
     cognitiveStateMarkdown += `\n\n[TEMPORAL REALITY (CANONICAL WORLD CLOCK)]

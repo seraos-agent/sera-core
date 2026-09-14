@@ -44,7 +44,13 @@ export function ProfilePage({
 }: ProfilePageProps) {
   const pad = isMobileView ? 16 : 40;
   const connectedAddress = walletState.fullAddress;
-  const agentAddress = walletState.vaultAddress;
+  const rawAgentAddress = walletState.vaultAddress;
+  const isAgentAddressDistinct = Boolean(
+    rawAgentAddress &&
+    rawAgentAddress.startsWith('0x') &&
+    (!connectedAddress || rawAgentAddress.toLowerCase() !== connectedAddress.toLowerCase())
+  );
+  const agentAddress = isAgentAddressDistinct ? rawAgentAddress : '';
   
   const cardStyle: CSSProperties = {
     border: `1px solid ${theme.border}`,

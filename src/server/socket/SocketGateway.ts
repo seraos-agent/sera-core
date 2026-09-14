@@ -41,6 +41,9 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
       try {
         await instance.chatHistoryStore.ensureLoaded();
         await instance.triggerStore.ensureLoaded();
+        if (instance.worldStateService && typeof (instance.worldStateService as any).ensureLoaded === 'function') {
+          await (instance.worldStateService as any).ensureLoaded();
+        }
 
         // Session Handoff: If this is an authenticated wallet session and history is empty,
         // seamlessly migrate any recent conversation from the anonymous session
@@ -51,7 +54,7 @@ export function registerSocketGateway(io: SocketIOServer, deps: SocketGatewayDep
           }
         }
       } catch (e) {
-        console.warn('[Server] Failed to ensure chat history / triggers loaded:', e);
+        console.warn('[Server] Failed to ensure chat history / triggers / world state loaded:', e);
       }
 
       const walletState = instance.worldStateService.getWalletState();

@@ -397,8 +397,8 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
             entry.walletAddress = inst.personalWalletAddress;
             entry.connections.baseWallet = true;
           }
-          if (!entry.agentVaultAddress && inst.goalBridge?.['personalWalletAddress']) {
-            entry.agentVaultAddress = inst.goalBridge?.['personalWalletAddress'];
+          if (!entry.agentVaultAddress && inst.worldStateService?.getWalletState()?.vaultAddress) {
+            entry.agentVaultAddress = inst.worldStateService.getWalletState()!.vaultAddress;
           }
           entry.lastActiveAt = Date.now();
           continue;
@@ -408,7 +408,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         const credits = rawCredits === Infinity || !isFinite(rawCredits) ? 999999999 : (rawCredits ?? 0);
         const triggersCount = inst.triggerStore ? inst.triggerStore.getAll().length : 0;
         const wallet = inst.personalWalletAddress || (id.startsWith('0x') ? id : '');
-        const vault = inst.goalBridge?.['personalWalletAddress'] || '';
+        const vault = inst.worldStateService?.getWalletState()?.vaultAddress || '';
         const { connections } = await resolveUserConnections(id, wallet, getConnsForUser(id, wallet));
 
         userMap.set(id, {
@@ -533,7 +533,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       let cloudConnections: any[] = [];
       let walletAccounts: any[] = [];
       let personalWalletAddress = instance?.personalWalletAddress || (sessionId.startsWith('0x') ? sessionId : '');
-      let agentVaultAddress = instance?.goalBridge?.['personalWalletAddress'] || '';
+      let agentVaultAddress = instance?.worldStateService?.getWalletState()?.vaultAddress || '';
 
       if (supabaseClient) {
         try {
