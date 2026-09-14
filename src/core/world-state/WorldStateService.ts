@@ -84,6 +84,78 @@ export class WorldStateService {
           this.savePersistedDataLocalOnly();
         }
       }
+
+      // Hydrate canonical twin-wallet from Supabase (Rule 2: WorldStateService Owns Reality)
+      try {
+        let resolvedUserId = this.sessionId;
+        if (resolvedUserId.startsWith('0x')) {
+          const authRows = await this.supabaseClient.select<{ user_id: string }>(
+            'auth_identities',
+            `provider=eq.reown_wallet&subject=eq.${encodeURIComponent(resolvedUserId.toLowerCase())}&limit=1`
+          );
+          if (authRows && authRows[0]?.user_id) {
+            resolvedUserId = authRows[0].user_id;
+          }
+        }
+
+        const walletRows = await this.supabaseClient.select<{
+          user_id: string;
+          kind: 'PERSONAL' | 'AGENT';
+          address: string;
+          provider: string;
+        }>(
+          'wallet_accounts',
+          `user_id=eq.${encodeURIComponent(resolvedUserId)}`
+        );
+
+        if (walletRows && walletRows.length > 0) {
+          const personal = walletRows.find(w => w.kind === 'PERSONAL')?.address;
+          const agent = walletRows.find(w => w.kind === 'AGENT')?.address;
+          if (personal || agent) {
+            const canonicalAddress = personal || this.state.wallet?.address || '';
+            const canonicalVault = agent || this.state.wallet?.vaultAddress || '';
+
+            this.state.wallet = {
+              address: canonicalAddress,
+              vaultAddress: canonicalVault,
+              balance: this.state.wallet?.balance || 0,
+              vaultBalance: this.state.wallet?.vaultBalance || 0,
+              vaultBalances: this.state.wallet?.vaultBalances || { base: '0', polygon: '0', ethereum: '0' },
+              network: 'Base Mainnet',
+              asset: 'USDC',
+              syncing: false,
+              quality: {
+                updatedAt: Date.now(),
+                source: 'Supabase/wallet_accounts',
+                freshness: 'FRESH',
+                confidence: 1
+              }
+            };
+
+            this.eventBus.emit(EventTypes.DOMAIN_WALLET_STATE, {
+              id: `evt-wallet-cloud-${Date.now()}`,
+              type: EventTypes.DOMAIN_WALLET_STATE,
+              source: 'WorldStateService/loadFromCloud',
+              payload: {
+                address: canonicalAddress,
+                vaultAddress: canonicalVault,
+                balance: this.state.wallet.balance.toString(),
+                vaultBalance: this.state.wallet.vaultBalance.toString(),
+                vaultBalances: this.state.wallet.vaultBalances,
+                network: 'Base Mainnet',
+                asset: 'USDC',
+                syncing: false
+              },
+              timestamp: Date.now()
+            });
+
+            this.savePersistedDataLocalOnly();
+            console.log(`[WorldStateService] Restored canonical wallets from Supabase for ${this.sessionId}: Personal=${canonicalAddress}, Agent=${canonicalVault}`);
+          }
+        }
+      } catch (wErr) {
+        console.warn('[WorldStateService] Note: Could not fetch wallet_accounts from Supabase:', wErr instanceof Error ? wErr.message : wErr);
+      }
     } catch (e) {
       console.warn('[WorldStateService] Note: Could not fetch profile from Supabase snapshot:', e instanceof Error ? e.message : e);
     }

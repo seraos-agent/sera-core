@@ -102,3 +102,36 @@ export interface GlobalTrigger extends TriggerItem {
   sessionId: string;
   walletAddress?: string;
 }
+
+export interface StoreOperatingHours {
+  open: string;
+  close: string;
+  days: number[];
+}
+
+export interface StoreStatusResult {
+  isOpen: boolean;
+  statusText: string;
+  reason?: string;
+  allowPreOrder: boolean;
+}
+
+export interface StoreSummary {
+  storeId: string;
+  storeName: string;
+  businessType: 'GOODS' | 'SERVICE';
+  category?: string;
+  ownerWhatsApp: string;
+  address?: string;
+  coverageArea?: string;
+  description?: string;
+  logoUrl?: string;
+  timezone: string;
+  operatingHours: StoreOperatingHours;
+  isOpenManualOverride?: boolean | null;
+  allowPreOrder: boolean;
+  notice?: string;
+  createdAt: number;
+  updatedAt: number;
+  status?: StoreStatusResult;
+}

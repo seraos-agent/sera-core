@@ -4,6 +4,7 @@ import { SupabaseRestClient } from '../../core/persistence/SupabaseRestClient';
 import { SecretManager } from '../../core/secrets/SecretManager';
 import { OAuthStore } from '../auth/oauth/OAuthStore';
 import { createAdminAuthMiddleware, AuthenticatedAdminRequest } from '../auth/adminAuthMiddleware';
+import { StoreProfileService } from '../../capabilities/communication/services/StoreProfileService';
 
 export interface AdminRouterOptions {
   agentManager: AgentManager;
@@ -346,6 +347,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       // 1. Populate from persisted Supabase users
       for (const u of persistedUsers) {
         const uid = (u.id || '').toLowerCase();
+        if (!uid || uid.startsWith('global:') || uid.startsWith('system:')) continue;
         const userWallets = walletsByUser.get(uid) || [];
         const userAuths = authByUser.get(uid) || [];
         const personalWallet = userWallets.find(w => w.kind === 'PERSONAL')?.address
@@ -387,6 +389,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       // 2. Overlay or add active instances in memory
       for (const inst of activeInstances) {
         const id = inst.sessionId.toLowerCase();
+        if (!id || id.startsWith('global:') || id.startsWith('system:')) continue;
         if (userMap.has(id)) {
           const entry = userMap.get(id);
           entry.isInstanceActive = true;
@@ -715,6 +718,62 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       });
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to list global triggers', message: err.message });
+    }
+  });
+
+  // 8. Merchant Stores List & Status
+  router.get('/stores', async (req: AuthenticatedAdminRequest, res: Response): Promise<void> => {
+    try {
+      const storeService = StoreProfileService.getInstance();
+      const stores = storeService.listStores();
+
+      const enriched = stores.map((s) => {
+        const status = storeService.isStoreOpenNow(s.storeId);
+        return {
+          ...s,
+          status
+        };
+      });
+
+      res.json({
+        success: true,
+        count: enriched.length,
+        stores: enriched
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to list merchant stores', message: err.message });
+    }
+  });
+
+  // 9. Toggle Store Manual Override (Open/Close/Auto)
+  router.post('/stores/:storeId/override', async (req: AuthenticatedAdminRequest, res: Response): Promise<void> => {
+    try {
+      const storeId = String(req.params.storeId || '').trim();
+      const { isOpenManualOverride } = req.body || {};
+      const storeService = StoreProfileService.getInstance();
+      const existing = storeService.getStore(storeId);
+
+      if (!existing) {
+        res.status(404).json({ error: `Store ${storeId} not found.` });
+        return;
+      }
+
+      const updated = await storeService.upsertStore({
+        storeName: existing.storeName,
+        storeId: existing.storeId,
+        isOpenManualOverride: isOpenManualOverride === null ? null : Boolean(isOpenManualOverride)
+      });
+
+      const status = storeService.isStoreOpenNow(updated.storeId);
+
+      res.json({
+        success: true,
+        store: updated,
+        status,
+        message: `Store "${updated.storeName}" status override set to ${isOpenManualOverride === null ? 'AUTO (Schedule)' : isOpenManualOverride ? 'FORCE OPEN' : 'FORCE CLOSED'}.`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update store status', message: err.message });
     }
   });
 

@@ -1,4 +1,4 @@
-import { AdminOverview, UserSummary, UserDetail, GlobalTrigger, AdminUser } from './types';
+import { AdminOverview, UserSummary, UserDetail, GlobalTrigger, AdminUser, StoreSummary } from './types';
 
 // In local development Vite proxies /api -> http://localhost:3001
 // In production Vercel/Cloud Run, VITE_API_URL points to https://api.seraos.xyz
@@ -163,4 +163,28 @@ export async function fetchGlobalTriggers(): Promise<GlobalTrigger[]> {
     throw new Error(data.message || data.error || 'Failed to fetch global triggers');
   }
   return data.triggers || [];
+}
+
+export async function fetchStores(): Promise<StoreSummary[]> {
+  const res = await fetch(`${API_BASE}/api/admin/stores`, {
+    headers: getAuthHeaders()
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || data.error || 'Failed to fetch stores');
+  }
+  return data.stores || [];
+}
+
+export async function updateStoreOverride(storeId: string, isOpenManualOverride: boolean | null): Promise<StoreSummary> {
+  const res = await fetch(`${API_BASE}/api/admin/stores/${encodeURIComponent(storeId)}/override`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ isOpenManualOverride })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || data.error || 'Failed to update store status');
+  }
+  return data.store;
 }

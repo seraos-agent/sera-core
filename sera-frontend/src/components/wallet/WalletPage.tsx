@@ -81,9 +81,10 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   };
   const handleCopy = copyToClipboard;
 
-  const agentAddr = walletState.fullAddress || "";
+  const personalAddr = address || walletState.fullAddress || "";
+  const agentAddr = personalAddr;
   const vaultAddr = walletState.vaultAddress || "";
-  const shortAgent = agentAddr ? agentAddr.slice(0, 6) + "..." + agentAddr.slice(-4) : "—";
+  const shortPersonal = personalAddr ? personalAddr.slice(0, 6) + "..." + personalAddr.slice(-4) : "—";
   const shortVault = vaultAddr ? vaultAddr.slice(0, 6) + "..." + vaultAddr.slice(-4) : "—";
   const parsedAgentBalance = parseFloat(walletState.balance) || 0;
   const parsedVaultBalance = parseFloat(walletState.vaultBalance) || 0;
@@ -92,7 +93,7 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
   const activeBalance = direction === "toSera" ? parsedAgentBalance : parsedVaultBalance;
   const fromLabel = direction === "toSera" ? "Personal" : "Sera";
   const toLabel = direction === "toSera" ? "Sera" : "Personal";
-  const toAddr = direction === "toSera" ? vaultAddr : agentAddr;
+  const toAddr = direction === "toSera" ? vaultAddr : personalAddr;
   const isValid = parsedAmount > 0 && parsedAmount <= activeBalance;
 
   const handleConfirm = () => {
@@ -430,9 +431,9 @@ export function WalletPage({ theme, walletState, onBack, socket, isMobileView }:
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 500, color: theme.inkSoft, marginBottom: 8 }}>Personal</div>
                     <div style={{ fontFamily: "Inter, sans-serif", fontSize: isMobileView ? 16 : 18, fontWeight: 600, color: theme.ink }}>{parsedAgentBalance.toFixed(2)} USDC</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortAgent}</div>
-                      {agentAddr && (
-                        <button onClick={() => handleCopy(agentAddr, "agent")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedAgent ? theme.status : theme.inkFaint }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: theme.inkFaint }}>{shortPersonal}</div>
+                      {personalAddr && (
+                        <button onClick={() => handleCopy(personalAddr, "agent")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, display: "flex", color: copiedAgent ? theme.status : theme.inkFaint }}>
                           {copiedAgent ? <Check size={12} /> : <Copy size={12} />}
                         </button>
                       )}

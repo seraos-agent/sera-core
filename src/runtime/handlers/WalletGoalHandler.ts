@@ -23,9 +23,21 @@ export class WalletGoalHandler {
     private readonly eventBus: EventEmitter,
     private readonly sessionId: string,
     private readonly emitResult: EmitResultFn,
-    private readonly personalWalletAddress?: string,
-    private readonly transferAudit: TransferAuditRepository | null = null
-  ) {}
+    private personalWalletAddress?: string,
+    private readonly transferAudit: TransferAuditRepository | null = null,
+    private canonicalVaultAddress?: string
+  ) {
+    this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: any) => {
+      if (event?.payload) {
+        if (event.payload.address && event.payload.address.startsWith('0x')) {
+          this.personalWalletAddress = event.payload.address;
+        }
+        if (event.payload.vaultAddress && event.payload.vaultAddress.startsWith('0x')) {
+          this.canonicalVaultAddress = event.payload.vaultAddress;
+        }
+      }
+    });
+  }
 
   public async initWallet(userAddress?: string): Promise<void> {
     try {
@@ -40,8 +52,11 @@ export class WalletGoalHandler {
       let vaultBalance = '0';
 
       // Emit syncing indicator first
-      if (!userAddress) {
-        primaryAddress = walletId.address;
+      if (this.canonicalVaultAddress) {
+        primaryAddress = this.personalWalletAddress || walletId.address;
+        vaultAddress = this.canonicalVaultAddress;
+      } else if (!userAddress) {
+        primaryAddress = this.personalWalletAddress || walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
       } else {
         primaryAddress = this.personalWalletAddress || walletId.address;
@@ -76,7 +91,7 @@ export class WalletGoalHandler {
       } else {
         // --- 1:1 AGENT WALLET MODE ---
         primaryAddress = this.personalWalletAddress || walletId.address;
-        vaultAddress = walletId.address;
+        vaultAddress = this.canonicalVaultAddress || walletId.address;
 
         try {
           if (primaryAddress) {
@@ -301,8 +316,23 @@ export class WalletGoalHandler {
       let vaultBalance = this.cachedVault || '0';
       let vaultBalances = { base: '0', polygon: '0', ethereum: '0' };
 
-      if (!userAddress) {
-        primaryAddress = walletId.address;
+      if (this.canonicalVaultAddress) {
+        primaryAddress = this.personalWalletAddress || walletId.address;
+        vaultAddress = this.canonicalVaultAddress;
+        try {
+          if (primaryAddress) {
+            const [pb, eb] = await Promise.allSettled([
+              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'usdc', 'base-mainnet'),
+              this.walletAdapter.getAddressBalance(primaryAddress as `0x${string}`, 'eth', 'base-mainnet'),
+            ]);
+            primaryBalance = pb.status === 'fulfilled' ? pb.value.toString() : '0';
+            primaryEthBalance = eb.status === 'fulfilled' ? eb.value.toString() : '0';
+          }
+        } catch (e) {
+          console.warn('[WalletGoalHandler] Failed to get user balance in sync:', e);
+        }
+      } else if (!userAddress) {
+        primaryAddress = this.personalWalletAddress || walletId.address;
         vaultAddress = process.env.SERA_VAULT_ADDRESS || '';
         try {
           const [pb, eb] = await Promise.allSettled([
@@ -315,7 +345,7 @@ export class WalletGoalHandler {
           console.warn('[WalletGoalHandler] Failed to get primary balance in sync:', e);
         }
       } else {
-        primaryAddress = userAddress;
+        primaryAddress = this.personalWalletAddress || userAddress;
         vaultAddress = walletId.address;
         try {
           const [pb, eb] = await Promise.allSettled([

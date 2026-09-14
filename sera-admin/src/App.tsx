@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Navbar } from './components/Navbar';
+import { Sidebar, AdminTab } from './components/Sidebar';
 import { OverviewCards } from './components/OverviewCards';
 import { UserTable } from './components/UserTable';
+import { StoresMonitor } from './components/StoresMonitor';
 import { UserDetailModal } from './components/UserDetailModal';
 import { AutomationsMonitor } from './components/AutomationsMonitor';
 import { SystemHealth } from './components/SystemHealth';
 import { LoginModal } from './components/LoginModal';
-import { getStoredAuth, clearStoredAuth, fetchOverview, fetchUsers } from './api';
-import { AdminUser, AdminOverview, UserSummary } from './types';
-import { Loader2 } from 'lucide-react';
+import { getStoredAuth, clearStoredAuth, fetchOverview, fetchUsers, fetchStores } from './api';
+import { AdminUser, AdminOverview, UserSummary, StoreSummary } from './types';
+import { Loader2, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'automations' | 'system'>('users');
+  const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [stores, setStores] = useState<StoreSummary[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -35,12 +37,14 @@ export const App: React.FC = () => {
     if (!isSilent) setRefreshing(true);
     try {
       setError(null);
-      const [ovData, usersData] = await Promise.all([
+      const [ovData, usersData, storesData] = await Promise.all([
         fetchOverview(),
-        fetchUsers()
+        fetchUsers(),
+        fetchStores().catch(() => [])
       ]);
       setOverview(ovData);
       setUsers(usersData);
+      setStores(storesData);
     } catch (err: any) {
       if (err.message === 'UNAUTHORIZED') {
         setAdminUser(null);
@@ -72,6 +76,7 @@ export const App: React.FC = () => {
     setAdminUser(null);
     setOverview(null);
     setUsers([]);
+    setStores([]);
     setSelectedUser(null);
   };
 
@@ -80,69 +85,178 @@ export const App: React.FC = () => {
   }
 
   const totalCredits = users.reduce((sum, u) => sum + (u.agentCredits || 0), 0);
+  const activeTriggersCount = overview?.activeTriggers || overview?.activeAutomations || 0;
+
+  const tabTitles: Record<AdminTab, { title: string; subtitle: string }> = {
+    users: {
+      title: 'Users & Subscriptions',
+      subtitle: 'Managed agent identities, wallet provisioning, and compute balances'
+    },
+    stores: {
+      title: 'Merchant Stores & Commerce',
+      subtitle: 'Multi-merchant WhatsApp catalog brands, schedules, and live status'
+    },
+    automations: {
+      title: 'Automations & Daemon Crons',
+      subtitle: 'Active background goal schedules, temporal triggers, and autonomous monitors'
+    },
+    system: {
+      title: 'System Health & Node Status',
+      subtitle: 'Agent OS core vitals, memory vectors, and third-party connector diagnostics'
+    }
+  };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#08080A', color: '#F3F4F6' }}>
-      <Navbar
+    <div style={{
+      display: 'flex',
+      minHeight: '100vh',
+      backgroundColor: '#08080A',
+      color: '#F3F4F6'
+    }}>
+      {/* Left Sidebar */}
+      <Sidebar
         user={adminUser}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onRefresh={() => loadDashboardData()}
         isRefreshing={refreshing}
         onLogout={handleLogout}
+        usersCount={users.length}
+        storesCount={stores.length}
+        triggersCount={activeTriggersCount}
       />
 
-      <main style={{ maxWidth: '1440px', margin: '0 auto', padding: '28px 24px' }}>
-        {error && (
-          <div style={{
-            padding: '12px 16px',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '10px',
-            color: '#F87171',
-            fontSize: '0.82rem',
-            marginBottom: '20px'
-          }}>
-            {error}
+      {/* Main Content Area */}
+      <div style={{
+        flex: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#0A0A0E'
+      }}>
+        {/* Top Breadcrumb & Status Bar */}
+        <header style={{
+          height: '56px',
+          borderBottom: '1px solid #1C1C24',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 28px',
+          backgroundColor: '#0E0E14',
+          position: 'sticky',
+          top: 0,
+          zIndex: 30
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.78rem', color: '#71717A' }}>Control Tower</span>
+            <span style={{ fontSize: '0.78rem', color: '#3F3F46' }}>/</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#E4E4E7' }}>
+              {tabTitles[activeTab].title}
+            </span>
           </div>
-        )}
 
-        {loading ? (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '400px',
-            gap: '12px',
-            color: '#9CA3AF'
-          }}>
-            <Loader2 size={28} className="animate-spin" style={{ color: '#3B82F6' }} />
-            <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Connecting to SERA Control Tower Runtime...</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 9px',
+              borderRadius: '5px',
+              backgroundColor: '#14141C',
+              border: '1px solid #242432',
+              fontSize: '0.72rem',
+              color: '#A1A1AA'
+            }}>
+              <span className="status-indicator status-active" />
+              <span>Core Socket Active</span>
+            </div>
+
+            <button
+              onClick={() => loadDashboardData()}
+              title="Refresh Current View"
+              disabled={refreshing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                backgroundColor: '#14141C',
+                border: '1px solid #242432',
+                color: '#A1A1AA',
+                fontSize: '0.72rem',
+                cursor: refreshing ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              <span>{refreshing ? 'Syncing...' : 'Sync'}</span>
+            </button>
           </div>
-        ) : (
-          <>
-            {/* Executive KPIs */}
-            <OverviewCards overview={overview} totalCredits={totalCredits} />
+        </header>
 
-            {/* Tab Views */}
-            {activeTab === 'users' && (
-              <UserTable
-                users={users}
-                onSelectUser={(u) => setSelectedUser(u)}
-              />
-            )}
+        {/* Scrollable Main Area */}
+        <main style={{
+          flex: 1,
+          maxWidth: '1400px',
+          width: '100%',
+          margin: '0 auto',
+          padding: '28px'
+        }}>
+          {error && (
+            <div style={{
+              padding: '12px 16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '10px',
+              color: '#F87171',
+              fontSize: '0.82rem',
+              marginBottom: '20px'
+            }}>
+              {error}
+            </div>
+          )}
 
-            {activeTab === 'automations' && (
-              <AutomationsMonitor />
-            )}
+          {loading ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '400px',
+              gap: '12px',
+              color: '#9CA3AF'
+            }}>
+              <Loader2 size={28} className="animate-spin" style={{ color: '#3B82F6' }} />
+              <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Connecting to SERA Control Tower Runtime...</span>
+            </div>
+          ) : (
+            <>
+              {/* Executive KPIs */}
+              <OverviewCards overview={overview} totalCredits={totalCredits} />
 
-            {activeTab === 'system' && (
-              <SystemHealth overview={overview} />
-            )}
-          </>
-        )}
-      </main>
+              {/* Tab Views */}
+              {activeTab === 'users' && (
+                <UserTable
+                  users={users}
+                  onSelectUser={(u) => setSelectedUser(u)}
+                />
+              )}
+
+              {activeTab === 'stores' && (
+                <StoresMonitor />
+              )}
+
+              {activeTab === 'automations' && (
+                <AutomationsMonitor />
+              )}
+
+              {activeTab === 'system' && (
+                <SystemHealth overview={overview} />
+              )}
+            </>
+          )}
+        </main>
+      </div>
 
       {/* User Inspection & Control Modal */}
       {selectedUser && (

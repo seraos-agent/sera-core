@@ -67,6 +67,8 @@ export class AgentManager {
           console.error(`[AgentManager] Error in instanceCreated callback:`, e);
         }
       }
+    } else if (user.personalWalletAddress && !instance.personalWalletAddress) {
+      instance.personalWalletAddress = user.personalWalletAddress;
     }
     
     return instance;
@@ -132,7 +134,7 @@ export class AgentManager {
       
       let count = 0;
       for (const row of rows) {
-        if (row.session_id && row.session_id !== 'dev') {
+        if (row.session_id && row.session_id !== 'dev' && !row.session_id.startsWith('global:') && !row.session_id.startsWith('system:')) {
           const instance = this.getOrCreateInstance(row.session_id);
           try {
             await instance.triggerStore.ensureLoaded();

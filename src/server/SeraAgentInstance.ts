@@ -31,7 +31,7 @@ import { serverConfig } from './config';
 
 export class SeraAgentInstance {
   public sessionId: string;
-  public readonly personalWalletAddress?: string;
+  public personalWalletAddress?: string;
   public eventBus: EventEmitter;
   
   public runtime!: Runtime;
@@ -171,6 +171,12 @@ export class SeraAgentInstance {
         || (serverConfig.isProduction && process.env.SERA_ENABLE_MCP !== 'true'),
     });
     this.worldStateService = this.runtime.worldStateService;
+
+    this.eventBus.on(EventTypes.DOMAIN_WALLET_STATE, (event: any) => {
+      if (event?.payload?.address && !this.personalWalletAddress) {
+        this.personalWalletAddress = event.payload.address;
+      }
+    });
 
     this.temporalClockService = new TemporalClockService(this.eventBus, 10000);
     this.cognitiveCompressor = new CognitiveCompressor(this.eventBus);
