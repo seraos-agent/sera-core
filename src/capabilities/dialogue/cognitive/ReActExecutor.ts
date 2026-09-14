@@ -33,6 +33,7 @@ export interface ReActExecutionResult {
   durationSeconds: number;
   hadTools: boolean;
   proposalEncountered: boolean;
+  richContent?: Record<string, any>;
 }
 
 /**
@@ -113,6 +114,7 @@ export class ReActExecutor {
     const successfulToolResults: Array<{ name: string; output: any }> = [];
     const actionLinks: Array<{ label: string; url: string; type: string }> = [];
     let proposalEncountered = false;
+    let accumulatedRichContent: Record<string, any> | undefined;
 
     const maxSafetySteps = params.stepBudget || 20;
 
@@ -414,6 +416,13 @@ export class ReActExecutor {
               });
             }
 
+            if (execResult.output.richContent) {
+              accumulatedRichContent = {
+                ...accumulatedRichContent,
+                ...execResult.output.richContent
+              };
+            }
+
             const toolDisplay = ToolExecutionHandler.getCognitiveActivityLabel(toolCall.name);
             const rawDetail = toolCall.arguments?.title || toolCall.arguments?.filename || (typeof execResult.output === 'object' && execResult.output?.message ? execResult.output.message : undefined);
             const cleanDetail = typeof rawDetail === 'string' ? rawDetail : undefined;
@@ -522,7 +531,8 @@ export class ReActExecutor {
       successfulToolResults,
       durationSeconds,
       hadTools: successfulToolResults.length > 0,
-      proposalEncountered
+      proposalEncountered,
+      richContent: accumulatedRichContent
     };
   }
 

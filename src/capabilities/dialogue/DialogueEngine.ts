@@ -583,7 +583,8 @@ export class DialogueEngine {
           actionLinks: execResult.actionLinks.length > 0 ? execResult.actionLinks : undefined,
           cognitiveSteps: execResult.cognitiveSteps.length > 0 ? execResult.cognitiveSteps : undefined,
           durationSeconds: execResult.durationSeconds,
-          hadTools: execResult.hadTools
+          hadTools: execResult.hadTools,
+          richContent: execResult.richContent
         });
       }
 

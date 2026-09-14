@@ -172,4 +172,36 @@ Action: Call tool "KNOWLEDGE_SEARCH" with: { "query": "PPh 23 withholding tax ra
 
 Exemplar 21 - Real-Time Web Intelligence (Google Search Grounding):
 User: "what is the current price of Ethereum today?" or "latest tech news about Gemini 2.5 Flash"
-Action: Call tool "WEB_SEARCH" with: { "query": "Ethereum price today USD" }`;
+Action: Call tool "WEB_SEARCH" with: { "query": "Ethereum price today USD" }
+
+Exemplar 22 - Product & Price Inquiry on WhatsApp Store:
+User: "ada beras apa aja dan berapa harganya?" or "apakah jual minyak goreng bimoli?"
+Action: Call tool "CATALOG_SEARCH_PRODUCTS" with: { "query": "beras" }
+
+Exemplar 23 - Request Product Card on WhatsApp (Single Product Message / SPM):
+User: "mau lihat produk beras ramos dong" or "kirim kartu produk minyak bimoli ya" or "minta kartu produk indomie"
+Action: Call tool "WHATSAPP_SEND_PRODUCT" with: { "retailerId": "SKU-BERAS-01", "bodyText": "Beras Premium Ramos 5kg — Rp 75.000 (Pulen & Bersih)" }
+
+Exemplar 24 - Request Full Store Catalog on WhatsApp (Multi-Product List / MPM):
+User: "minta katalog sembakonya dong" or "kirim daftar katalog produk toko" or "bisa lihat daftar sembako?"
+Action: Call tool "WHATSAPP_SEND_CATALOG" with: { "headerText": "Katalog Sembako Pilihan", "bodyText": "Silakan pilih produk sembako yang ingin dipesan langsung di WhatsApp:" }
+
+Exemplar 25 - Merchant Adds New Physical Product (Goods) via Chat:
+User: "SERA, masukkan menu baru Toko Ayam Geprek Mas Joko: Paket Geprek Sambal Matah Rp 25.000, deskripsi ayam krispi sambal matah pedas segar, stok ready"
+Action: Call tool "CATALOG_CREATE_PRODUCT" with: { "name": "Paket Geprek Sambal Matah", "price": 25000, "storeName": "Ayam Geprek Mas Joko", "description": "Ayam goreng krispi renyah dengan racikan sambal matah pedas segar khas Bali.", "businessType": "GOODS", "availability": "in stock" }
+
+Exemplar 26 - Merchant Adds Service Booking Package via Chat:
+User: "SERA, tambahkan paket layanan jasa untuk Bening Home Care: Deep Cleaning Kasur King Size Rp 200.000, cuci vakum tungau dan sterilisasi uv"
+Action: Call tool "CATALOG_CREATE_PRODUCT" with: { "name": "Deep Cleaning Kasur King Size", "price": 200000, "storeName": "Bening Home Care", "description": "Layanan pembersihan kasur mendalam dengan teknologi hydro-vacuum sedot tungau, anti-bakteri, dan sterilisasi UV.", "businessType": "SERVICE", "availability": "in stock" }
+
+Exemplar 27 - Merchant Updates Product Price / Availability via Chat:
+User: "SERA, ubah harga Beras Ramos jadi Rp 70.000 ya hari ini" or "Margarin sachet lagi kosong, tandai habis dulu"
+Action: Call tool "CATALOG_UPDATE_PRODUCT" with: { "query": "Beras Ramos", "price": 70000 } or { "query": "Margarin", "availability": "out of stock" }
+
+Exemplar 28 - Merchant Configures Store Operating Hours via Chat:
+User: "SERA, jam buka Toko Ayam Geprek Mas Joko dari jam 10 pagi sampai 9 malam, buka setiap hari ya" or "toko kami tutup hari Minggu ya"
+Action: Call tool "STORE_CONFIG_PROFILE" with: { "storeName": "Ayam Geprek Mas Joko", "openTime": "10:00", "closeTime": "21:00", "days": [1, 2, 3, 4, 5, 6, 7] }
+
+Exemplar 29 - Customer Inquires or Orders When Store Is Closed:
+User: "apakah Toko Ayam Geprek Mas Joko buka sekarang?" or sends an order cart outside operating hours
+Action: Call tool "STORE_CHECK_STATUS" with: { "storeName": "Ayam Geprek Mas Joko" }`;

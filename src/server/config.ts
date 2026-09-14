@@ -31,6 +31,8 @@ export const serverConfig = {
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
     businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+    catalogId: process.env.WHATSAPP_CATALOG_ID ? process.env.WHATSAPP_CATALOG_ID.trim().split(/\s+/)[0] : undefined,
+    catalogToken: process.env.TOKEN_KATALOG_META || (process.env.WHATSAPP_CATALOG_ID?.includes('TOKEN_KATALOG_META=') ? process.env.WHATSAPP_CATALOG_ID.split('TOKEN_KATALOG_META=')[1]?.trim() : undefined) || process.env.WHATSAPP_ACCESS_TOKEN,
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
     isEnabled: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN),
   },

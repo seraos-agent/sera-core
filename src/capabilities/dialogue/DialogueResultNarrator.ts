@@ -112,7 +112,11 @@ export class DialogueResultNarrator {
       finalOutput += `\n\n![Generated Image](${result.data.imageUrl})`;
     }
 
-    emit(EventTypes.DIALOGUE_AGENT_SPEAK, { text: finalOutput, actionLinks });
+    emit(EventTypes.DIALOGUE_AGENT_SPEAK, {
+      text: finalOutput,
+      actionLinks,
+      ...(result.data?.richContent ? { richContent: result.data.richContent } : {})
+    });
   }
 
 

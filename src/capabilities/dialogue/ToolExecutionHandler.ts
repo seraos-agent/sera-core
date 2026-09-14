@@ -96,7 +96,15 @@ export class ToolExecutionHandler {
       'ACTIVATE_AUTONOMY_AGREEMENT': 'Configuring agreement',
       'REMEMBER_FACT': 'Saving to memory',
       'SET_THEME': 'Updating theme',
-      'CLEAR_CHAT': 'Clearing chat'
+      'CLEAR_CHAT': 'Clearing chat',
+      'CATALOG_SEARCH_PRODUCTS': 'Searching catalog',
+      'WHATSAPP_SEND_PRODUCT': 'Sharing product card',
+      'WHATSAPP_SEND_CATALOG': 'Sharing product catalog',
+      'CATALOG_CREATE_PRODUCT': 'Adding product to store',
+      'CATALOG_UPDATE_PRODUCT': 'Updating product',
+      'CATALOG_DELETE_PRODUCT': 'Removing product',
+      'STORE_CONFIG_PROFILE': 'Configuring store profile',
+      'STORE_CHECK_STATUS': 'Checking store status'
     };
 
     if (map[toolIntent]) return map[toolIntent];

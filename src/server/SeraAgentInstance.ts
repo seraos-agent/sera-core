@@ -202,7 +202,7 @@ export class SeraAgentInstance {
       }
     });
 
-    this.capabilityCatalog = new CapabilityCatalog();
+    this.capabilityCatalog = this.runtime.capabilityCatalog;
     const baseTools: SeraTool[] = [
       {
         name: 'system_ping',
@@ -549,6 +549,114 @@ export class SeraAgentInstance {
             pageSize: { type: 'number', description: 'Maximum number of results to return (default: 5)' }
           },
           required: ['query']
+        }
+      },
+      {
+        name: 'CATALOG_SEARCH_PRODUCTS',
+        description: 'Searches the store catalog for products, current pricing, stock availability, and SKUs. Use this whenever the user asks about available products, sembako, prices, or inventory.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Product name, category, or keyword to search (e.g. "beras", "minyak", "telur", "indomie")' }
+          }
+        }
+      },
+      {
+        name: 'WHATSAPP_SEND_PRODUCT',
+        description: 'Sends a native interactive WhatsApp product card (Single Product Message / SPM) directly into the chat for a given product retailer_id/SKU. Users can tap the card to view details, add to cart, and order.',
+        parameters: {
+          type: 'object',
+          properties: {
+            retailerId: { type: 'string', description: 'The unique SKU / retailer ID of the product (e.g. "SKU-BERAS-01", "SKU-MINYAK-01")' },
+            bodyText: { type: 'string', description: 'Optional personalized description or recommendation text accompanying the product card' }
+          },
+          required: ['retailerId']
+        }
+      },
+      {
+        name: 'WHATSAPP_SEND_CATALOG',
+        description: 'Sends an interactive multi-product list (MPM) or full catalog link to the user on WhatsApp so they can browse all available store items and add multiple items to their cart.',
+        parameters: {
+          type: 'object',
+          properties: {
+            headerText: { type: 'string', description: 'Header title for the catalog list (e.g. "Katalog Sembako SERA")' },
+            bodyText: { type: 'string', description: 'Introductory body message for the catalog list' }
+          }
+        }
+      },
+      {
+        name: 'CATALOG_CREATE_PRODUCT',
+        description: 'Adds a new product or service package to the store catalog under the merchant brand. Use this when a seller wants to add an item (e.g. food, hampers, cleaning service, automotive repair package) with price, description, and optional photo.',
+        parameters: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Product or service title (e.g. "Paket Geprek Sambal Matah", "Deep Cleaning Sofa")' },
+            price: { type: 'number', description: 'Price in IDR (e.g. 25000 for Rp 25.000)' },
+            storeName: { type: 'string', description: 'Store / Merchant brand name (e.g. "Dapur Geprek Mas Joko", "Bening Home Care")' },
+            description: { type: 'string', description: 'Optional product description or service details' },
+            imageUrl: { type: 'string', description: 'Optional image URL for the product/service' },
+            category: { type: 'string', description: 'Category (e.g. "Kuliner", "Kebersihan", "Otomotif", "Hampers")' },
+            businessType: { type: 'string', enum: ['GOODS', 'SERVICE'], description: 'Whether this item is physical goods or a service/booking' },
+            availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock or service availability (default: in stock)' }
+          },
+          required: ['name', 'price']
+        }
+      },
+      {
+        name: 'CATALOG_UPDATE_PRODUCT',
+        description: 'Updates an existing product or service in the catalog (e.g. change price, mark as out of stock / ready stock, update description).',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Product name or SKU to find and update' },
+            price: { type: 'number', description: 'Updated price in IDR' },
+            availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Updated availability' },
+            description: { type: 'string', description: 'Updated description' },
+            imageUrl: { type: 'string', description: 'Updated image URL' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'CATALOG_DELETE_PRODUCT',
+        description: 'Removes a product or service permanently from the catalog.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Product name or SKU to delete' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'STORE_CONFIG_PROFILE',
+        description: 'Configures or updates a store profile (business type Goods vs Service, operating hours, address, coverage area, vacation/holiday notice, or owner WhatsApp contact). Use this when a merchant sets store hours, holiday mode, or store details.',
+        parameters: {
+          type: 'object',
+          properties: {
+            storeName: { type: 'string', description: 'Store name (e.g. "Dapur Geprek Mas Joko")' },
+            businessType: { type: 'string', enum: ['GOODS', 'SERVICE'], description: 'Physical goods (delivery) or service (appointment/booking)' },
+            category: { type: 'string', description: 'Category (e.g. "Kuliner", "Kebersihan", "Otomotif")' },
+            openTime: { type: 'string', description: 'Opening time in 24h format (e.g. "10:00")' },
+            closeTime: { type: 'string', description: 'Closing time in 24h format (e.g. "21:00")' },
+            ownerWhatsApp: { type: 'string', description: 'Merchant personal WhatsApp number for order alerts' },
+            address: { type: 'string', description: 'Store address or workshop location' },
+            coverageArea: { type: 'string', description: 'Service radius or delivery coverage (e.g. "Radius 10 km", "Bandung Raya")' },
+            description: { type: 'string', description: 'Store marketing bio / copywriting' },
+            notice: { type: 'string', description: 'Holiday / temporary announcement (e.g. "Libur Hari Raya sampai Senin")' },
+            isOpenManual: { type: 'boolean', description: 'Manual override to instantly open (true) or close (false) the store' }
+          },
+          required: ['storeName']
+        }
+      },
+      {
+        name: 'STORE_CHECK_STATUS',
+        description: 'Checks the operating status (open/closed, current hours, pre-order eligibility, and contact) of a store. Use this when a buyer asks if a store is open or asks about operational hours.',
+        parameters: {
+          type: 'object',
+          properties: {
+            storeName: { type: 'string', description: 'Name of the store to check (e.g. "Ayam Geprek Mas Joko", "SERA Mart")' }
+          }
         }
       }
     ];

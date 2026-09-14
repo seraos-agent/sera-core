@@ -13,5 +13,14 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["src/**/archive/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/archive/**",
+    "sera-admin",
+    "sera-docs",
+    "sera-frontend",
+    "sera-landing",
+    "sera-reception"
+  ]
 }

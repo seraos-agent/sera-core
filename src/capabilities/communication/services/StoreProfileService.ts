@@ -1,0 +1,401 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { SupabaseRestClient } from '../../../core/persistence/SupabaseRestClient';
+
+export type BusinessType = 'GOODS' | 'SERVICE';
+
+export interface StoreOperatingHours {
+  open: string; // e.g. "10:00" in 24h format
+  close: string; // e.g. "21:00" in 24h format
+  days: number[]; // 1=Monday, 2=Tuesday, ..., 7=Sunday. Default [1,2,3,4,5,6,7]
+}
+
+export interface StoreProfile {
+  storeId: string; // URL-safe slug e.g. "dapur-geprek-mas-joko"
+  storeName: string; // Display name & Meta Catalog brand e.g. "Dapur Geprek Mas Joko"
+  businessType: BusinessType; // 'GOODS' (physical items/food) or 'SERVICE' (cleaning/mechanic/booking)
+  category?: string; // e.g. "Kuliner", "Kebersihan", "Otomotif", "Hampers"
+  ownerWhatsApp: string; // International phone number without plus e.g. "628123456789"
+  address?: string; // Physical address or workshop base
+  coverageArea?: string; // e.g. "Radius 10 km", "Jakarta Selatan & Sekitarnya", "Seluruh Indonesia"
+  description?: string; // Store marketing bio or tagline
+  logoUrl?: string; // Optional logo image URL
+  timezone: string; // e.g. "Asia/Jakarta" (WIB)
+  operatingHours: StoreOperatingHours;
+  isOpenManualOverride?: boolean | null; // true=forced open, false=forced closed/vacation, null=follow schedule
+  allowPreOrder: boolean; // whether buyers can place orders when store is closed (default: true)
+  notice?: string; // e.g. "Libur Idul Fitri hingga hari Senin"
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StoreStatusResult {
+  isOpen: boolean;
+  statusText: string;
+  reason?: string;
+  allowPreOrder: boolean;
+  store: StoreProfile;
+}
+
+export interface StoreProfileServiceOptions {
+  persistLocally?: boolean;
+  storageFilePath?: string;
+  supabaseClient?: SupabaseRestClient | null;
+}
+
+/**
+ * StoreProfileService — Coordinates multi-merchant store registration,
+ * operational schedules, open/closed evaluation, and merchant contact lookup.
+ *
+ * Architecture Role: Capability Sub-Service (src/capabilities/communication/services/)
+ * Strictly conforms to Rule 7 (Universal Codebase Language: English Standard).
+ */
+export class StoreProfileService {
+  private static instance: StoreProfileService | null = null;
+  private readonly stores = new Map<string, StoreProfile>();
+  private readonly filePath: string;
+  private readonly persistLocally: boolean;
+  private readonly supabaseClient?: SupabaseRestClient | null;
+
+  constructor(options: StoreProfileServiceOptions = {}) {
+    this.persistLocally = options.persistLocally ?? true;
+    this.filePath = options.storageFilePath || path.resolve(process.cwd(), '.data', 'stores.json');
+    this.supabaseClient = options.supabaseClient !== undefined
+      ? options.supabaseClient
+      : SupabaseRestClient.fromEnvironment();
+
+    this.loadInitialStores();
+  }
+
+  public static getInstance(options?: StoreProfileServiceOptions): StoreProfileService {
+    if (!StoreProfileService.instance) {
+      StoreProfileService.instance = new StoreProfileService(options);
+    }
+    return StoreProfileService.instance;
+  }
+
+  /**
+   * Generates a clean URL-safe slug from store name.
+   */
+  public static slugify(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || `store-${Date.now()}`;
+  }
+
+  private loadInitialStores(): void {
+    if (this.persistLocally && fs.existsSync(this.filePath)) {
+      try {
+        const raw = fs.readFileSync(this.filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const s of parsed) {
+            if (s && s.storeId) {
+              this.stores.set(s.storeId, s);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[StoreProfileService] Failed to parse local stores file:', err.message);
+      }
+    }
+
+    // Hydrate stores from Supabase cloud database if available
+    if (this.supabaseClient) {
+      this.supabaseClient.select<any>('merchant_stores', 'select=*')
+        .then((rows) => {
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              if (r && r.store_id) {
+                const s: StoreProfile = {
+                  storeId: r.store_id,
+                  storeName: r.store_name,
+                  businessType: r.business_type || 'GOODS',
+                  category: r.category,
+                  ownerWhatsApp: (r.owner_whatsapp || '').replace(/[^0-9]/g, ''),
+                  address: r.address,
+                  coverageArea: r.coverage_area,
+                  description: r.description,
+                  logoUrl: r.logo_url,
+                  timezone: r.timezone || 'Asia/Jakarta',
+                  operatingHours: r.operating_hours || { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
+                  isOpenManualOverride: r.is_open_override ?? null,
+                  allowPreOrder: r.allow_pre_order ?? true,
+                  notice: r.notice,
+                  createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+                  updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
+                };
+                this.stores.set(s.storeId, s);
+              }
+            }
+          }
+        })
+        .catch((err) => {
+          // Supabase table may not exist yet in test environment; log cleanly
+          console.warn('[StoreProfileService] Supabase initial load skipped:', err.message);
+        });
+    }
+
+    // Ensure default system store (SERA Mart) exists
+    if (!this.stores.has('sera-mart')) {
+      const defaultStore: StoreProfile = {
+        storeId: 'sera-mart',
+        storeName: 'SERA Mart',
+        businessType: 'GOODS',
+        category: 'Sembako & Kebutuhan Pokok',
+        ownerWhatsApp: process.env.OWNER_WHATSAPP || '6285784321952',
+        address: 'Jl. Merdeka No. 10, Jakarta',
+        coverageArea: 'Seluruh Indonesia',
+        description: 'Toko sembako dan kebutuhan harian resmi SERA Mart.',
+        timezone: 'Asia/Jakarta',
+        operatingHours: {
+          open: '08:00',
+          close: '22:00',
+          days: [1, 2, 3, 4, 5, 6, 7]
+        },
+        isOpenManualOverride: null,
+        allowPreOrder: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      this.stores.set(defaultStore.storeId, defaultStore);
+      this.saveStores();
+    }
+  }
+
+  private saveStores(): void {
+    if (!this.persistLocally) return;
+    try {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = Array.from(this.stores.values());
+      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err: any) {
+      console.error('[StoreProfileService] Failed to persist stores locally:', err.message);
+    }
+  }
+
+  /**
+   * Creates or updates a store profile.
+   */
+  public async upsertStore(input: Partial<StoreProfile> & { storeName: string }): Promise<StoreProfile> {
+    const rawName = input.storeName.trim();
+    const storeId = input.storeId || StoreProfileService.slugify(rawName);
+
+    const existing = this.stores.get(storeId) || this.findStoreByName(rawName);
+    const now = Date.now();
+
+    const merged: StoreProfile = {
+      storeId: existing ? existing.storeId : storeId,
+      storeName: rawName,
+      businessType: input.businessType || existing?.businessType || 'GOODS',
+      category: input.category !== undefined ? input.category : existing?.category,
+      ownerWhatsApp: (input.ownerWhatsApp || existing?.ownerWhatsApp || '').replace(/[^0-9]/g, ''),
+      address: input.address !== undefined ? input.address : existing?.address,
+      coverageArea: input.coverageArea !== undefined ? input.coverageArea : existing?.coverageArea,
+      description: input.description !== undefined ? input.description : existing?.description,
+      logoUrl: input.logoUrl !== undefined ? input.logoUrl : existing?.logoUrl,
+      timezone: input.timezone || existing?.timezone || 'Asia/Jakarta',
+      operatingHours: input.operatingHours || existing?.operatingHours || {
+        open: '09:00',
+        close: '21:00',
+        days: [1, 2, 3, 4, 5, 6, 7]
+      },
+      isOpenManualOverride: input.isOpenManualOverride !== undefined ? input.isOpenManualOverride : (existing?.isOpenManualOverride ?? null),
+      allowPreOrder: input.allowPreOrder !== undefined ? input.allowPreOrder : (existing?.allowPreOrder ?? true),
+      notice: input.notice !== undefined ? input.notice : existing?.notice,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now
+    };
+
+    this.stores.set(merged.storeId, merged);
+    this.saveStores();
+
+    // Cloud snapshot to Supabase if configured
+    if (this.supabaseClient) {
+      try {
+        await this.supabaseClient.upsert('merchant_stores', {
+          store_id: merged.storeId,
+          store_name: merged.storeName,
+          business_type: merged.businessType,
+          category: merged.category,
+          owner_whatsapp: merged.ownerWhatsApp,
+          address: merged.address,
+          coverage_area: merged.coverageArea,
+          description: merged.description,
+          timezone: merged.timezone,
+          operating_hours: merged.operatingHours,
+          is_open_override: merged.isOpenManualOverride,
+          allow_pre_order: merged.allowPreOrder,
+          notice: merged.notice,
+          updated_at: new Date(now).toISOString()
+        }, 'store_id');
+      } catch (err: any) {
+        console.warn('[StoreProfileService] Supabase sync skipped:', err.message);
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * Retrieves a store by storeId or storeName.
+   */
+  public getStore(storeNameOrId: string): StoreProfile | undefined {
+    if (!storeNameOrId) return undefined;
+    const clean = storeNameOrId.trim();
+    if (this.stores.has(clean)) {
+      return this.stores.get(clean);
+    }
+    return this.findStoreByName(clean);
+  }
+
+  /**
+   * Retrieves store by owner's WhatsApp number.
+   */
+  public getStoreByOwner(phone: string): StoreProfile | undefined {
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    for (const store of this.stores.values()) {
+      if (store.ownerWhatsApp === cleanPhone) {
+        return store;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Lists all registered stores.
+   */
+  public listStores(): StoreProfile[] {
+    return Array.from(this.stores.values());
+  }
+
+  /**
+   * Deletes a store by storeId.
+   */
+  public deleteStore(storeId: string): boolean {
+    const deleted = this.stores.delete(storeId);
+    if (deleted) {
+      this.saveStores();
+    }
+    return deleted;
+  }
+
+  /**
+   * Evaluates if a store is currently open based on timezone, hours, and override status.
+   */
+  public isStoreOpenNow(storeNameOrId: string, referenceDate: Date = new Date()): StoreStatusResult {
+    const store = this.getStore(storeNameOrId) || this.stores.get('sera-mart')!;
+
+    // 1. Manual Override check
+    if (store.isOpenManualOverride === false) {
+      return {
+        isOpen: false,
+        statusText: store.notice ? `Tutup Sementara (${store.notice})` : 'Tutup Sementara',
+        reason: store.notice || 'Toko ditutup sementara oleh pemilik.',
+        allowPreOrder: store.allowPreOrder,
+        store
+      };
+    }
+    if (store.isOpenManualOverride === true) {
+      return {
+        isOpen: true,
+        statusText: 'Buka (Manual Override)',
+        allowPreOrder: store.allowPreOrder,
+        store
+      };
+    }
+
+    // 2. Schedule Evaluation in Store's Timezone
+    try {
+      const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: store.timezone || 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        weekday: 'short'
+      });
+
+      const parts = timeFormatter.formatToParts(referenceDate);
+      const hourPart = parts.find((p) => p.type === 'hour')?.value || '00';
+      const minutePart = parts.find((p) => p.type === 'minute')?.value || '00';
+      const weekdayPart = parts.find((p) => p.type === 'weekday')?.value || 'Mon';
+
+      const currentMinutes = parseInt(hourPart, 10) * 60 + parseInt(minutePart, 10);
+
+      // Convert weekday to 1..7 (Mon=1, Sun=7)
+      const dayMap: Record<string, number> = {
+        Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7
+      };
+      const currentDayNumber = dayMap[weekdayPart] || 1;
+
+      const scheduleDays = store.operatingHours.days || [1, 2, 3, 4, 5, 6, 7];
+      if (!scheduleDays.includes(currentDayNumber)) {
+        return {
+          isOpen: false,
+          statusText: `Tutup (Libur Hari Ini)`,
+          reason: `Toko libur pada hari ini. Buka kembali sesuai jadwal: ${store.operatingHours.open} - ${store.operatingHours.close} WIB.`,
+          allowPreOrder: store.allowPreOrder,
+          store
+        };
+      }
+
+      const [openHour, openMin] = (store.operatingHours.open || '09:00').split(':').map((v) => parseInt(v, 10));
+      const [closeHour, closeMin] = (store.operatingHours.close || '21:00').split(':').map((v) => parseInt(v, 10));
+
+      const openMinutes = openHour * 60 + (openMin || 0);
+      const closeMinutes = closeHour * 60 + (closeMin || 0);
+
+      const isOpen = currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+
+      if (isOpen) {
+        return {
+          isOpen: true,
+          statusText: `Buka (Tutup pukul ${store.operatingHours.close} WIB)`,
+          allowPreOrder: store.allowPreOrder,
+          store
+        };
+      } else {
+        const nextTime = currentMinutes < openMinutes
+          ? `pukul ${store.operatingHours.open} WIB hari ini`
+          : `besok pagi pukul ${store.operatingHours.open} WIB`;
+        return {
+          isOpen: false,
+          statusText: `Tutup (Buka ${nextTime})`,
+          reason: `Toko sedang di luar jam operasional. Buka kembali ${nextTime}.`,
+          allowPreOrder: store.allowPreOrder,
+          store
+        };
+      }
+    } catch (err: any) {
+      // Fallback: safe open
+      return {
+        isOpen: true,
+        statusText: 'Buka',
+        allowPreOrder: store.allowPreOrder,
+        store
+      };
+    }
+  }
+
+  private findStoreByName(name: string): StoreProfile | undefined {
+    const lower = name.toLowerCase().trim();
+    for (const store of this.stores.values()) {
+      if (store.storeName.toLowerCase().trim() === lower || store.storeId === lower) {
+        return store;
+      }
+    }
+    // Partial search
+    for (const store of this.stores.values()) {
+      if (store.storeName.toLowerCase().includes(lower) || lower.includes(store.storeName.toLowerCase())) {
+        return store;
+      }
+    }
+    return undefined;
+  }
+}

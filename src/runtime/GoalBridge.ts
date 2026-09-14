@@ -34,6 +34,8 @@ import { WalletGoalHandler } from './handlers/WalletGoalHandler';
 import { VertexSearchGoalHandler } from './handlers/VertexSearchGoalHandler';
 import { VertexSearchService } from '../capabilities/vertex-search/VertexSearchService';
 import { VaultIndexSyncService } from '../capabilities/vertex-search/VaultIndexSyncService';
+import { WhatsAppCatalogGoalHandler } from './handlers/WhatsAppCatalogGoalHandler';
+import { WhatsAppCatalogService } from '../capabilities/communication/services/WhatsAppCatalogService';
 
 /**
  * GoalBridge — Connects the Sera EventBus to real Capabilities.
@@ -81,6 +83,16 @@ export class GoalBridge {
   private readonly cryptoHandler: CryptoGoalHandler;
   private readonly triggerHandler: TriggerGoalHandler;
   private readonly vertexSearchHandler: VertexSearchGoalHandler;
+  private readonly catalogHandler: WhatsAppCatalogGoalHandler;
+
+  // WhatsApp Catalog service (lazy-initialized)
+  private _whatsappCatalogService: WhatsAppCatalogService | null = null;
+  public get whatsappCatalogService(): WhatsAppCatalogService {
+    if (!this._whatsappCatalogService) {
+      this._whatsappCatalogService = new WhatsAppCatalogService();
+    }
+    return this._whatsappCatalogService;
+  }
 
   // Google Drive capability (lazy-initialized)
   private _googleDriveCapability: GoogleDriveCapability | null = null;
@@ -177,6 +189,11 @@ export class GoalBridge {
     this.vertexSearchHandler = new VertexSearchGoalHandler(
       () => this.vertexSearchService,
       () => this.vaultIndexSyncService,
+      this.sessionId,
+      this.emitResult.bind(this)
+    );
+    this.catalogHandler = new WhatsAppCatalogGoalHandler(
+      () => this.whatsappCatalogService,
       this.sessionId,
       this.emitResult.bind(this)
     );
@@ -432,6 +449,51 @@ export class GoalBridge {
         case 'KNOWLEDGE_SEARCH':
         case 'DOMAIN_KNOWLEDGE_SEARCH':
           await this.vertexSearchHandler.handleKnowledgeSearch(requestId, actionPayload);
+          break;
+
+        case 'CATALOG_SEARCH_PRODUCTS':
+        case 'SEARCH_CATALOG':
+        case 'SEARCH_PRODUCTS':
+          await this.catalogHandler.handleSearchProducts(requestId, actionPayload);
+          break;
+
+        case 'WHATSAPP_SEND_PRODUCT':
+        case 'SEND_PRODUCT_CARD':
+          await this.catalogHandler.handleSendProduct(requestId, actionPayload);
+          break;
+
+        case 'WHATSAPP_SEND_CATALOG':
+        case 'SEND_CATALOG':
+          await this.catalogHandler.handleSendCatalog(requestId, actionPayload);
+          break;
+
+        case 'CATALOG_CREATE_PRODUCT':
+        case 'CREATE_PRODUCT':
+        case 'ADD_PRODUCT':
+          await this.catalogHandler.handleCreateProduct(requestId, actionPayload);
+          break;
+
+        case 'CATALOG_UPDATE_PRODUCT':
+        case 'UPDATE_PRODUCT':
+        case 'EDIT_PRODUCT':
+          await this.catalogHandler.handleUpdateProduct(requestId, actionPayload);
+          break;
+
+        case 'CATALOG_DELETE_PRODUCT':
+        case 'DELETE_PRODUCT':
+        case 'REMOVE_PRODUCT':
+          await this.catalogHandler.handleDeleteProduct(requestId, actionPayload);
+          break;
+
+        case 'STORE_CONFIG_PROFILE':
+        case 'STORE_CONFIG_OPERATING_HOURS':
+        case 'CONFIG_STORE':
+          await this.catalogHandler.handleConfigureStore(requestId, actionPayload);
+          break;
+
+        case 'STORE_CHECK_STATUS':
+        case 'CHECK_STORE_STATUS':
+          await this.catalogHandler.handleCheckStoreStatus(requestId, actionPayload);
           break;
 
         case 'CONVERSATION':

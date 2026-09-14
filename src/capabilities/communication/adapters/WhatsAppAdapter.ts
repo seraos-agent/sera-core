@@ -2,11 +2,13 @@ import { ICommunicationAdapter, CommunicationAction } from '../types';
 import { EventTypes } from '../../../core/events/types';
 import { EventEmitter } from 'events';
 import { XAITextToSpeechService } from '../../audio/XAITextToSpeechService';
+import { WhatsAppCatalogService } from '../services/WhatsAppCatalogService';
 
 export interface WhatsAppAdapterConfig {
   phoneNumberId: string;
   accessToken: string;
   apiVersion?: string;
+  catalogService?: WhatsAppCatalogService;
 }
 
 export class WhatsAppAdapter implements ICommunicationAdapter {
@@ -15,6 +17,7 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
   private phoneNumberId: string;
   private accessToken: string;
   private apiVersion: string;
+  private catalogService: WhatsAppCatalogService;
 
   constructor(
     private sessionId: string,
@@ -24,6 +27,7 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     this.phoneNumberId = config.phoneNumberId;
     this.accessToken = config.accessToken;
     this.apiVersion = config.apiVersion || 'v21.0';
+    this.catalogService = config.catalogService || new WhatsAppCatalogService();
   }
 
   async start(): Promise<void> {
@@ -325,6 +329,109 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
         console.warn(`[WhatsAppAdapter] Interactive proposal button rejected (${response.status}): ${errText}. Falling back to conversational text bubbles.`);
       } catch (err: any) {
         console.warn('[WhatsAppAdapter] Interactive proposal exception, falling back to text:', err.message);
+      }
+    }
+
+    // 2b. Native WhatsApp Single Product Message (SPM)
+    if (action.richContent?.product && this.catalogService) {
+      const { retailerId, bodyText, footerText } = action.richContent.product;
+      const effectiveBody = action.text
+        ? WhatsAppAdapter.formatToWhatsApp(action.text)
+        : (bodyText || `${retailerId}`);
+      const spmPayload = this.catalogService.buildSingleProductPayload(
+        cleanRecipient,
+        retailerId,
+        effectiveBody,
+        footerText
+      );
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(spmPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive Single Product Message rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Single Product Message exception, falling back to text:', err.message);
+      }
+    }
+
+    // 2c. Native WhatsApp Multi-Product Message (MPM / Product List)
+    if (action.richContent?.productList && this.catalogService) {
+      const { sections, headerText, bodyText, footerText } = action.richContent.productList;
+      const effectiveBody = action.text
+        ? WhatsAppAdapter.formatToWhatsApp(action.text)
+        : (bodyText || 'Berikut pilihan produk yang tersedia untuk dipesan:');
+      const mpmPayload = this.catalogService.buildMultiProductPayload(
+        cleanRecipient,
+        sections || [],
+        headerText,
+        effectiveBody,
+        footerText
+      );
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(mpmPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive Multi-Product Message rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Multi-Product Message exception, falling back to text:', err.message);
+      }
+    }
+
+    // 2d. Native WhatsApp Full Catalog Link Message
+    if (action.richContent?.catalog && this.catalogService) {
+      const { bodyText, footerText, thumbnailRetailerId } = action.richContent.catalog;
+      const effectiveBody = action.text
+        ? WhatsAppAdapter.formatToWhatsApp(action.text)
+        : (bodyText || 'Jelajahi seluruh katalog produk kami langsung di WhatsApp.');
+      const catPayload = this.catalogService.buildCatalogPayload(
+        cleanRecipient,
+        effectiveBody,
+        footerText,
+        thumbnailRetailerId
+      );
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(catPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive Catalog Message rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Catalog Message exception, falling back to text:', err.message);
       }
     }
 

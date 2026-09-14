@@ -6,6 +6,8 @@ import { EventTypes } from '../../core/events/types';
 import { ResponseContext } from '../../capabilities/communication/types';
 import { WhatsAppPairingService } from '../../capabilities/communication/services/WhatsAppPairingService';
 import { WhatsAppMediaProcessor } from '../../capabilities/communication/services/WhatsAppMediaProcessor';
+import { WhatsAppCatalogService } from '../../capabilities/communication/services/WhatsAppCatalogService';
+import { StoreProfileService } from '../../capabilities/communication/services/StoreProfileService';
 
 export interface WhatsAppRouterOptions {
   agentManager: AgentManager;
@@ -120,6 +122,65 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         textContent = incomingMsg.document?.caption || '';
       } else if (incomingMsg.type === 'audio') {
         isVoiceMessage = true;
+      } else if (incomingMsg.type === 'order') {
+        const storeService = StoreProfileService.getInstance();
+        const parsedOrder = WhatsAppCatalogService.parseIncomingOrder(incomingMsg.order);
+
+        // Lookup store from first product or default
+        const firstSku = parsedOrder.items[0]?.product_retailer_id || '';
+        let targetStore = storeService.getStore('sera-mart');
+        for (const store of storeService.listStores()) {
+          const storeSlug = store.storeId.replace(/-/g, '');
+          if (firstSku.toLowerCase().includes(storeSlug) || firstSku.toLowerCase().includes(store.storeName.toLowerCase().replace(/\s+/g, ''))) {
+            targetStore = store;
+            break;
+          }
+        }
+
+        const storeStatus = targetStore ? storeService.isStoreOpenNow(targetStore.storeId) : undefined;
+        let orderSummary = parsedOrder.formattedSummary;
+
+        if (targetStore && storeStatus) {
+          orderSummary += `\n[STATUS TOKO: ${targetStore.storeName} - ${storeStatus.statusText}]`;
+          if (!storeStatus.isOpen && storeStatus.allowPreOrder) {
+            orderSummary += `\n[INFORMASI: Toko saat ini sedang tutup. Pesanan dicatat sebagai PRE-ORDER untuk diproses saat toko buka.]`;
+          }
+          if (targetStore.businessType === 'SERVICE') {
+            orderSummary += `\n[TIPE: JASA / BOOKING LAYANAN. Tanyakan jadwal tanggal/jam panggilan dan lokasi/alamat kepada pemesan.]`;
+          }
+
+          // Asynchronously dispatch order alert to merchant's personal WhatsApp if configured
+          if (targetStore.ownerWhatsApp && targetStore.ownerWhatsApp !== from && phoneNumberId && accessToken) {
+            const cleanOwnerPhone = targetStore.ownerWhatsApp.replace(/[^0-9]/g, '');
+            const merchantAlertText = `🔔 *PESANAN BARU MASUK!* (#${Date.now().toString(36).toUpperCase()})\n\n` +
+              `Toko: *${targetStore.storeName}*\n` +
+              `Pembeli: +${from}\n` +
+              `Total: Rp ${parsedOrder.totalEstimated.toLocaleString('id-ID')}\n` +
+              (parsedOrder.customerNote ? `Catatan Pembeli: "${parsedOrder.customerNote}"\n\n` : '\n') +
+              `Item:\n` +
+              parsedOrder.items.map((it, i) => `${i + 1}. ${it.product_retailer_id} (${it.quantity}x @ Rp ${it.item_price.toLocaleString('id-ID')})`).join('\n') +
+              `\n\nStatus Operasional: ${storeStatus.statusText}`;
+
+            fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: cleanOwnerPhone,
+                type: 'text',
+                text: { body: merchantAlertText }
+              })
+            }).then(r => r.json()).then(res => {
+              console.log(`[WhatsApp Webhook] Order alert dispatched to merchant (+${cleanOwnerPhone}):`, res?.messages?.[0]?.id || 'OK');
+            }).catch(e => console.warn('[WhatsApp Webhook] Failed to notify merchant:', e.message));
+          }
+        }
+
+        textContent = orderSummary;
       } else {
         textContent = `[Media received: ${incomingMsg.type}]`;
       }
