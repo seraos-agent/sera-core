@@ -113,7 +113,7 @@ describe('Proposal Safety & WhatsApp Interactive Buttons', () => {
 
       const result = await adapter.sendMessage({
         platform: 'whatsapp',
-        channelId: '6285784321952',
+        channelId: '6281234567890',
         text: 'Postingan Threads (ID: 9988) akan dihapus secara permanen.\n\n⏳ Berlaku 60 detik.',
         richContent: {
           proposal: {
@@ -163,7 +163,7 @@ describe('Proposal Safety & WhatsApp Interactive Buttons', () => {
 
       await adapter.sendMessage({
         platform: 'whatsapp',
-        channelId: '6285784321952',
+        channelId: '6281234567890',
         text: 'Threads post will be permanently deleted.\n\n⏳ Valid for 60 seconds.',
         richContent: {
           proposal: {

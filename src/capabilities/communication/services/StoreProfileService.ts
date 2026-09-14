@@ -146,7 +146,7 @@ export class StoreProfileService {
         storeName: 'SERA Mart',
         businessType: 'GOODS',
         category: 'Sembako & Kebutuhan Pokok',
-        ownerWhatsApp: process.env.OWNER_WHATSAPP || '6285784321952',
+        ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
         address: 'Jl. Merdeka No. 10, Jakarta',
         coverageArea: 'Seluruh Indonesia',
         description: 'Toko sembako dan kebutuhan harian resmi SERA Mart.',
