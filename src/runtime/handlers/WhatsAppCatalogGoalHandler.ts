@@ -330,6 +330,14 @@ export class WhatsAppCatalogGoalHandler {
 
       const batchRes = await this.catalogService.createProductsBatch(inputs);
 
+      // Immediately synchronize store showcase cover product with starting price
+      try {
+        const minPrice = this.storeService.calculateStoreMinPrice(store.storeId, batchRes.createdProducts);
+        await this.catalogService.ensureStoreShowcaseProduct(store, minPrice, store.logoUrl);
+      } catch (err: any) {
+        console.warn('[WhatsAppCatalogGoalHandler] Failed to sync showcase after bulk create:', err.message);
+      }
+
       this.emitResult(requestId, true, {
         store,
         successCount: batchRes.successCount,
@@ -362,24 +370,41 @@ export class WhatsAppCatalogGoalHandler {
 
       let allProducts: any[] = [];
       try {
-        allProducts = await this.catalogService.getProducts();
+        allProducts = await this.catalogService.getProducts(true);
       } catch (err: any) {
         // Continue with fallback prices
       }
 
-      const carouselStores = topStores.map((s) => {
-        const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
-        return {
-          store: s.store,
-          minPrice,
-          showcaseRetailerId: `showcase_${s.store.storeId}`
-        };
-      });
+      const existingRetailerIds = new Set(allProducts.map((p) => p.retailer_id));
+      const validCarouselStores: Array<{ store: StoreProfile; minPrice: number; showcaseRetailerId: string }> = [];
 
-      // Best-effort background sync of showcase items for discovery
       for (const s of topStores) {
+        // Exclude empty stores without products (e.g. katering-sedap)
+        const hasProducts = allProducts.some((p) => {
+          if (p.retailer_id.startsWith('showcase_')) return false;
+          const b = (p.brand || '').toLowerCase();
+          const target = s.store.storeName.toLowerCase();
+          return b.includes(target) || target.includes(b);
+        });
+        if (!hasProducts && s.store.storeId === 'katering-sedap') continue;
+
+        const showcaseId = `showcase_${s.store.storeId}`;
         const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
-        this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice).catch(() => {});
+
+        if (!existingRetailerIds.has(showcaseId)) {
+          const created = await this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice);
+          if (created) {
+            existingRetailerIds.add(showcaseId);
+          }
+        }
+
+        if (existingRetailerIds.has(showcaseId)) {
+          validCarouselStores.push({
+            store: s.store,
+            minPrice,
+            showcaseRetailerId: showcaseId
+          });
+        }
       }
 
       const storeListFormatted = topStores.map((s) => ({
@@ -404,9 +429,9 @@ export class WhatsAppCatalogGoalHandler {
         stores: storeListFormatted,
         summary: summaryText,
         richContent: {
-          storeCarousel: topStores.length >= 2 ? {
-            stores: carouselStores,
-            bodyText: `Temukan ${topStores.length} pilihan warung & layanan terdekat. Geser ke samping dan pilih "Lihat" untuk membuka menu lengkap:`
+          storeCarousel: validCarouselStores.length >= 2 ? {
+            stores: validCarouselStores,
+            bodyText: `Temukan ${validCarouselStores.length} pilihan warung & layanan terdekat. Geser ke samping dan pilih "Lihat" untuk membuka menu lengkap:`
           } : undefined,
           storeList: {
             title: `Toko Terdekat${category ? ` (${category})` : ''}`,
