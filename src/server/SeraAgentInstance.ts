@@ -605,7 +605,8 @@ export class SeraAgentInstance {
             imageUrl: { type: 'string', description: 'Optional image URL for the product/service' },
             category: { type: 'string', description: 'Category (e.g. "Kuliner", "Kebersihan", "Otomotif", "Hampers")' },
             businessType: { type: 'string', enum: ['GOODS', 'SERVICE'], description: 'Whether this item is physical goods or a service/booking' },
-            availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock or service availability (default: in stock)' }
+            availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock or service availability (default: in stock)' },
+            stockQuantity: { type: 'number', description: 'Available numerical stock quantity or daily quota (e.g. 20 portions)' }
           },
           required: ['name', 'price']
         }
@@ -633,7 +634,8 @@ export class SeraAgentInstance {
                   description: { type: 'string', description: 'Optional item description' },
                   imageUrl: { type: 'string', description: 'Optional high-resolution image URL' },
                   category: { type: 'string', description: 'Sub-category (e.g. "Makanan", "Minuman")' },
-                  availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock status' }
+                  availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock status' },
+                  stockQuantity: { type: 'number', description: 'Initial stock quantity or quota' }
                 },
                 required: ['name', 'price']
               }
@@ -658,17 +660,44 @@ export class SeraAgentInstance {
       },
       {
         name: 'CATALOG_UPDATE_PRODUCT',
-        description: 'Updates an existing product or service in the catalog (e.g. change price, mark as out of stock / ready stock, update description).',
+        description: 'Updates an existing product or service in the catalog (e.g. change price, mark as out of stock / ready stock, update description, or adjust stock quantity).',
         parameters: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Product name or SKU to find and update' },
             price: { type: 'number', description: 'Updated price in IDR' },
             availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Updated availability' },
+            stockQuantity: { type: 'number', description: 'Updated available stock quantity' },
             description: { type: 'string', description: 'Updated description' },
             imageUrl: { type: 'string', description: 'Updated image URL' }
           },
           required: ['query']
+        }
+      },
+      {
+        name: 'CATALOG_SET_STOCK',
+        description: 'Sets or updates the numerical stock quantity or daily quota for a product (e.g. "stok geprek hari ini 20 porsi", "beras ramos sisa 5"). When stock reaches 0, it automatically marks the item Out of Stock in Meta WhatsApp Catalog.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Product name or SKU to set stock for (e.g. "Geprek Original", "Beras Ramos")' },
+            stockQuantity: { type: 'number', description: 'Available numerical stock quantity or daily quota (e.g. 20)' },
+            storeName: { type: 'string', description: 'Optional store name if scoping to a specific merchant' }
+          },
+          required: ['query', 'stockQuantity']
+        }
+      },
+      {
+        name: 'CATALOG_ADJUST_STOCK',
+        description: 'Adjusts (deducts or restores) stock quantity upon order confirmation or cancellation/refund.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Product name or SKU' },
+            change: { type: 'number', description: 'Stock quantity adjustment (e.g. -2 for order confirmed, +2 for cancelled/refunded)' },
+            reason: { type: 'string', description: 'Reason for adjustment (e.g. "order_confirmed", "order_cancelled", "refund")' }
+          },
+          required: ['query', 'change']
         }
       },
       {

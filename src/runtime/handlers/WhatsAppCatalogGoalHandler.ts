@@ -256,6 +256,7 @@ export class WhatsAppCatalogGoalHandler {
         image_url: imageUrl,
         category,
         availability,
+        stockQuantity: payload?.stockQuantity !== undefined ? Number(payload.stockQuantity) : undefined,
         retailer_id: payload?.retailerId || payload?.sku
       });
 
@@ -263,9 +264,10 @@ export class WhatsAppCatalogGoalHandler {
         throw new Error(res.error || 'Failed to create product in Meta Catalog');
       }
 
+      const stockMsg = res.product.stockQuantity !== undefined ? ` • Stok: ${res.product.stockQuantity}` : '';
       this.emitResult(requestId, true, {
         product: res.product,
-        message: `Produk "${res.product.name}" berhasil ditambahkan ke toko "${storeName}" dengan harga Rp ${rawPrice.toLocaleString('id-ID')}. Status: ${availability === 'in stock' ? 'Ready Stock' : 'Habis'}.`
+        message: `Produk "${res.product.name}" berhasil ditambahkan ke toko "${storeName}" dengan harga Rp ${rawPrice.toLocaleString('id-ID')}. Status: ${availability === 'in stock' ? 'Ready Stock' : 'Habis'}${stockMsg}.`
       });
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to create product:', err.message);
@@ -321,6 +323,7 @@ export class WhatsAppCatalogGoalHandler {
           description: p.description || p.desc || undefined,
           image_url: p.imageUrl || p.image_url || p.image || undefined,
           availability: p.availability === 'out of stock' ? 'out of stock' : 'in stock',
+          stockQuantity: p.stockQuantity !== undefined ? Number(p.stockQuantity) : undefined,
           variants: Array.isArray(p.variants) ? p.variants : undefined
         };
       });
@@ -433,8 +436,9 @@ export class WhatsAppCatalogGoalHandler {
         const num = Number(payload.price);
         if (!isNaN(num) && num > 0) updates.price = num;
       }
-      if (payload?.availability) {
-        updates.availability = payload.availability === 'out of stock' || payload.availability === 'habis' ? 'out of stock' : 'in stock';
+      if (payload?.stockQuantity !== undefined) {
+        const sq = Number(payload.stockQuantity);
+        if (!isNaN(sq) && sq >= 0) updates.stockQuantity = sq;
       }
 
       const res = await this.catalogService.updateProduct(targetRetailerId, updates);
@@ -442,13 +446,85 @@ export class WhatsAppCatalogGoalHandler {
         throw new Error(res.error || 'Failed to update product in Meta Catalog');
       }
 
+      const stockMsg = res.product.stockQuantity !== undefined ? ` • Stok: ${res.product.stockQuantity}` : '';
       this.emitResult(requestId, true, {
         product: res.product,
-        message: `Produk "${res.product.name}" (${res.product.retailer_id}) berhasil diperbarui. Harga: Rp ${(res.product.rawPrice || 0).toLocaleString('id-ID')}, Status: ${res.product.availability}.`
+        message: `Produk "${res.product.name}" (${res.product.retailer_id}) berhasil diperbarui. Harga: Rp ${(res.product.rawPrice || 0).toLocaleString('id-ID')}, Status: ${res.product.availability}${stockMsg}.`
       });
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to update product:', err.message);
       this.emitResult(requestId, false, {}, err.message || 'Failed to update catalog product');
+    }
+  }
+
+  /**
+   * Sets or updates the numerical stock quantity for a product or menu item.
+   */
+  public async handleSetStock(requestId: string, payload: any): Promise<void> {
+    try {
+      const query = String(payload?.query || payload?.retailerId || payload?.sku || payload?.name || '').trim();
+      const stockQuantity = Number(payload?.stockQuantity !== undefined ? payload.stockQuantity : (payload?.stock !== undefined ? payload.stock : payload?.quantity));
+
+      if (!query) {
+        throw new Error('Must provide product name or SKU to set stock.');
+      }
+      if (isNaN(stockQuantity) || stockQuantity < 0) {
+        throw new Error('Stock quantity must be a non-negative number.');
+      }
+
+      const res = await this.catalogService.setProductStock(query, stockQuantity);
+      if (!res.success) {
+        throw new Error('Failed to set product stock.');
+      }
+
+      const prodName = res.product?.name || query;
+      const statusText = stockQuantity === 0 ? 'Habis (Out of Stock)' : `Tersedia (${res.stock} unit/porsi)`;
+
+      this.emitResult(requestId, true, {
+        product: res.product,
+        stock: res.stock,
+        triggeredOutOfStock: res.triggeredOutOfStock,
+        message: `Stok untuk "${prodName}" berhasil diatur menjadi ${res.stock}. Status katalog WhatsApp: ${statusText}.`
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed to set stock:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to set product stock');
+    }
+  }
+
+  /**
+   * Adjusts (deducts or restores) stock quantity upon order confirmation or cancellation/refund.
+   */
+  public async handleAdjustStock(requestId: string, payload: any): Promise<void> {
+    try {
+      const query = String(payload?.query || payload?.retailerId || payload?.sku || payload?.name || '').trim();
+      const change = Number(payload?.change !== undefined ? payload.change : payload?.amount);
+      const reason = String(payload?.reason || 'manual_adjustment');
+
+      if (!query) {
+        throw new Error('Must provide product name or SKU to adjust stock.');
+      }
+      if (isNaN(change) || change === 0) {
+        throw new Error('Adjustment change must be a non-zero number.');
+      }
+
+      let res: any;
+      if (change < 0) {
+        res = await this.catalogService.deductProductStock(query, Math.abs(change));
+      } else {
+        res = await this.catalogService.restoreProductStock(query, change);
+      }
+
+      const remainingText = res.remaining !== undefined ? `Sisa stok sekarang: ${res.remaining}` : 'Stok produk ini tidak dilacak angka.';
+      this.emitResult(requestId, true, {
+        remaining: res.remaining,
+        triggeredOutOfStock: res.triggeredOutOfStock,
+        triggeredInStock: res.triggeredInStock,
+        message: `Stok "${query}" disesuaikan (${change > 0 ? `+${change}` : change}, alasan: ${reason}). ${remainingText}`
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed to adjust stock:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to adjust product stock');
     }
   }
 

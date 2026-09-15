@@ -491,6 +491,18 @@ export class GoalBridge {
           await this.catalogHandler.handleUpdateProduct(requestId, actionPayload);
           break;
 
+        case 'CATALOG_SET_STOCK':
+        case 'SET_PRODUCT_STOCK':
+        case 'SET_STOCK':
+          await this.catalogHandler.handleSetStock(requestId, actionPayload);
+          break;
+
+        case 'CATALOG_ADJUST_STOCK':
+        case 'ADJUST_PRODUCT_STOCK':
+        case 'ADJUST_STOCK':
+          await this.catalogHandler.handleAdjustStock(requestId, actionPayload);
+          break;
+
         case 'CATALOG_DELETE_PRODUCT':
         case 'DELETE_PRODUCT':
         case 'REMOVE_PRODUCT':

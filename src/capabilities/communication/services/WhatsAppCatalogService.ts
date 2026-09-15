@@ -13,6 +13,7 @@ export interface CatalogProduct {
   brand?: string;
   url?: string;
   category?: string;
+  stockQuantity?: number;
 }
 
 export interface CreateProductInput {
@@ -25,6 +26,7 @@ export interface CreateProductInput {
   category?: string; // category or service type
   image_url?: string;
   availability?: 'in stock' | 'out of stock';
+  stockQuantity?: number;
   url?: string;
   variants?: Array<{ name: string; price: number; description?: string }>;
 }
@@ -34,6 +36,7 @@ export interface UpdateProductInput {
   price?: number;
   description?: string;
   availability?: 'in stock' | 'out of stock';
+  stockQuantity?: number;
   image_url?: string;
   brand?: string;
 }
@@ -77,6 +80,7 @@ export class WhatsAppCatalogService {
   private cachedProducts: CatalogProduct[] = [];
   private lastFetchTime = 0;
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes in-memory cache
+  private readonly productStock = new Map<string, number>();
 
   constructor(config?: WhatsAppCatalogServiceConfig) {
     const rawId = (config?.catalogId || serverConfig.whatsapp.catalogId || '1460600679458168').trim();
@@ -128,9 +132,12 @@ export class WhatsAppCatalogService {
             rawPrice = item.price / 100; // Meta integer offset
           }
 
+          const retailerId = item.retailer_id || '';
+          const trackedStock = this.productStock.get(retailerId.toLowerCase());
+
           return {
             id: item.id,
-            retailer_id: item.retailer_id,
+            retailer_id: retailerId,
             name: item.name,
             description: item.description,
             price: item.price,
@@ -140,7 +147,8 @@ export class WhatsAppCatalogService {
             availability: item.availability,
             brand: item.brand,
             category: item.category,
-            url: item.url
+            url: item.url,
+            stockQuantity: trackedStock
           };
         });
         this.lastFetchTime = now;
@@ -271,7 +279,15 @@ export class WhatsAppCatalogService {
       const description = (input.description || `${name} dari ${brand}`).trim();
       const currency = (input.currency || 'IDR').toUpperCase();
       const priceInCents = Math.round(input.price * 100); // Meta integer offset
-      const availability = input.availability || 'in stock';
+      let availability = input.availability || 'in stock';
+      if (input.stockQuantity !== undefined) {
+        const qty = Math.max(0, Math.floor(input.stockQuantity));
+        this.productStock.set(retailerId.toLowerCase(), qty);
+        if (qty === 0) {
+          availability = 'out of stock';
+        }
+      }
+
       // Default high-quality fallback image if merchant doesn't provide photo immediately
       const imageUrl = input.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
 
@@ -319,7 +335,8 @@ export class WhatsAppCatalogService {
         currency,
         image_url: imageUrl,
         availability,
-        brand
+        brand,
+        stockQuantity: input.stockQuantity !== undefined ? Math.max(0, Math.floor(input.stockQuantity)) : undefined
       };
 
       return { success: true, product: created };
@@ -330,36 +347,36 @@ export class WhatsAppCatalogService {
   }
 
   /**
-   * Creates multiple products in batch to Meta Commerce Catalog with variant expansion.
+   * Fast Store & Bulk Product Creation: Adds multiple products simultaneously to Meta Commerce Catalog with variant expansion.
    */
-  public async createProductsBatch(inputs: CreateProductInput[]): Promise<{
-    successCount: number;
-    failedCount: number;
-    createdProducts: CatalogProduct[];
-    errors: string[];
-  }> {
+  public async createProductsBatch(
+    inputs: CreateProductInput[]
+  ): Promise<{ successCount: number; failedCount: number; createdProducts: CatalogProduct[]; errors: string[] }> {
     const createdProducts: CatalogProduct[] = [];
     const errors: string[] = [];
 
-    // Expand variant items into discrete catalog products with clear prices
-    const expandedInputs: CreateProductInput[] = [];
+    // Flatten any products with variants into discrete catalog items
+    const itemsToCreate: CreateProductInput[] = [];
     for (const item of inputs) {
-      if (item.variants && Array.isArray(item.variants) && item.variants.length > 0) {
-        for (const v of item.variants) {
-          expandedInputs.push({
-            ...item,
-            name: `${item.name} - ${v.name}`,
-            price: v.price || item.price,
-            description: v.description || item.description,
-            retailer_id: undefined
+      if (Array.isArray(item.variants) && item.variants.length > 0) {
+        for (const variant of item.variants) {
+          itemsToCreate.push({
+            name: `${item.name} (${variant.name})`,
+            price: variant.price || item.price,
+            description: variant.description || item.description,
+            image_url: item.image_url,
+            category: item.category,
+            availability: item.availability,
+            stockQuantity: item.stockQuantity,
+            brand: item.brand
           });
         }
       } else {
-        expandedInputs.push(item);
+        itemsToCreate.push(item);
       }
     }
 
-    for (const item of expandedInputs) {
+    for (const item of itemsToCreate) {
       const res = await this.createProduct(item);
       if (res.success && res.product) {
         createdProducts.push(res.product);
@@ -377,7 +394,7 @@ export class WhatsAppCatalogService {
   }
 
   /**
-   * Updates an existing product's price, availability, or description in Meta Commerce Catalog.
+   * Updates an existing product's price, availability, description, or stock quantity in Meta Commerce Catalog.
    */
   public async updateProduct(
     retailerIdOrId: string,
@@ -399,12 +416,30 @@ export class WhatsAppCatalogService {
       const payload: Record<string, any> = {};
       if (updates.name) payload.name = updates.name.trim();
       if (updates.description) payload.description = updates.description.trim();
-      if (updates.availability) payload.availability = updates.availability;
       if (updates.image_url) payload.image_url = updates.image_url;
       if (updates.brand) payload.brand = updates.brand.trim();
       if (updates.price !== undefined && updates.price > 0) {
         payload.price = Math.round(updates.price * 100);
         payload.currency = existing.currency || 'IDR';
+      }
+
+      let updatedAvailability = updates.availability || existing.availability;
+
+      if (updates.stockQuantity !== undefined) {
+        const qty = Math.max(0, Math.floor(updates.stockQuantity));
+        this.productStock.set(existing.retailer_id.toLowerCase(), qty);
+        if (qty === 0 && !updates.availability) {
+          payload.availability = 'out of stock';
+          updatedAvailability = 'out of stock';
+        } else if (qty > 0 && !updates.availability && existing.availability === 'out of stock') {
+          payload.availability = 'in stock';
+          updatedAvailability = 'in stock';
+        }
+      }
+
+      if (updates.availability) {
+        payload.availability = updates.availability;
+        updatedAvailability = updates.availability;
       }
 
       const response = await fetch(url, {
@@ -428,11 +463,12 @@ export class WhatsAppCatalogService {
         ...existing,
         name: updates.name || existing.name,
         description: updates.description || existing.description,
-        availability: updates.availability || existing.availability,
+        availability: updatedAvailability,
         brand: updates.brand || existing.brand,
         image_url: updates.image_url || existing.image_url,
         rawPrice: updates.price !== undefined ? updates.price : existing.rawPrice,
-        price: updates.price !== undefined ? `${existing.currency} ${updates.price.toLocaleString('id-ID')}` : existing.price
+        price: updates.price !== undefined ? `${existing.currency} ${updates.price.toLocaleString('id-ID')}` : existing.price,
+        stockQuantity: updates.stockQuantity !== undefined ? Math.max(0, Math.floor(updates.stockQuantity)) : this.productStock.get(existing.retailer_id.toLowerCase())
       };
 
       return { success: true, product: updatedProduct };
@@ -440,6 +476,112 @@ export class WhatsAppCatalogService {
       console.error('[WhatsAppCatalogService] Exception updating product:', err.message);
       return { success: false, error: err.message || 'Unknown error updating product' };
     }
+  }
+
+  /**
+   * Sets the numerical stock quantity for a product.
+   * If stock reaches 0, automatically updates Meta Catalog availability to 'out of stock'.
+   * If stock is set > 0, automatically ensures Meta Catalog availability is 'in stock'.
+   */
+  public async setProductStock(
+    retailerIdOrQuery: string,
+    quantity: number
+  ): Promise<{ success: boolean; product?: CatalogProduct; stock: number; triggeredOutOfStock: boolean }> {
+    const cleanQuery = retailerIdOrQuery.trim();
+    let product = await this.getProductByRetailerId(cleanQuery);
+    if (!product) {
+      const search = await this.searchProducts(cleanQuery);
+      if (search.length > 0) product = search[0];
+    }
+
+    const validQty = Math.max(0, Math.floor(quantity));
+    const targetRetailerId = product ? product.retailer_id : cleanQuery;
+    this.productStock.set(targetRetailerId.toLowerCase(), validQty);
+
+    let triggeredOutOfStock = false;
+    if (product) {
+      if (validQty === 0 && product.availability !== 'out of stock') {
+        triggeredOutOfStock = true;
+        await this.updateProduct(product.retailer_id, { availability: 'out of stock' });
+      } else if (validQty > 0 && product.availability === 'out of stock') {
+        await this.updateProduct(product.retailer_id, { availability: 'in stock' });
+      }
+    }
+
+    return {
+      success: true,
+      product: product || undefined,
+      stock: validQty,
+      triggeredOutOfStock
+    };
+  }
+
+  /**
+   * Deducts product stock upon order confirmation.
+   * If stock hits 0, marks product as 'out of stock' in Meta Catalog.
+   */
+  public async deductProductStock(
+    retailerId: string,
+    quantity: number
+  ): Promise<{ success: boolean; remaining?: number; triggeredOutOfStock: boolean }> {
+    const cleanId = retailerId.trim().toLowerCase();
+    if (!this.productStock.has(cleanId)) {
+      // Stock not tracked numerically for this item
+      return { success: true, triggeredOutOfStock: false };
+    }
+
+    const current = this.productStock.get(cleanId) ?? 0;
+    const remaining = Math.max(0, current - quantity);
+    this.productStock.set(cleanId, remaining);
+
+    let triggeredOutOfStock = false;
+    if (remaining === 0 && current > 0) {
+      triggeredOutOfStock = true;
+      await this.updateProduct(retailerId, { availability: 'out of stock' });
+    }
+
+    return {
+      success: true,
+      remaining,
+      triggeredOutOfStock
+    };
+  }
+
+  /**
+   * Restores product stock upon order cancellation or refund.
+   * If product was previously marked out of stock, restores availability to 'in stock'.
+   */
+  public async restoreProductStock(
+    retailerId: string,
+    quantity: number
+  ): Promise<{ success: boolean; remaining?: number; triggeredInStock: boolean }> {
+    const cleanId = retailerId.trim().toLowerCase();
+    if (!this.productStock.has(cleanId)) {
+      return { success: true, triggeredInStock: false };
+    }
+
+    const current = this.productStock.get(cleanId) ?? 0;
+    const remaining = current + quantity;
+    this.productStock.set(cleanId, remaining);
+
+    let triggeredInStock = false;
+    if (current === 0 && remaining > 0) {
+      triggeredInStock = true;
+      await this.updateProduct(retailerId, { availability: 'in stock' });
+    }
+
+    return {
+      success: true,
+      remaining,
+      triggeredInStock
+    };
+  }
+
+  /**
+   * Retrieves current stock quantity for a product if tracked.
+   */
+  public getProductStock(retailerId: string): number | undefined {
+    return this.productStock.get(retailerId.trim().toLowerCase());
   }
 
   /**

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { SupabaseRestClient } from '../../../core/persistence/SupabaseRestClient';
 
 export type BusinessType = 'GOODS' | 'SERVICE';
+export type BusinessCategory = 'FOOD_INSTANT' | 'SERVICE' | 'RETAIL_GOODS';
 
 export interface StoreOperatingHours {
   open: string; // e.g. "10:00" in 24h format
@@ -14,6 +15,7 @@ export interface StoreProfile {
   storeId: string; // URL-safe slug e.g. "dapur-geprek-mas-joko"
   storeName: string; // Display name & Meta Catalog brand e.g. "Dapur Geprek Mas Joko"
   businessType: BusinessType; // 'GOODS' (physical items/food) or 'SERVICE' (cleaning/mechanic/booking)
+  businessCategory: BusinessCategory; // 'FOOD_INSTANT' (ready-to-eat), 'SERVICE' (booking), 'RETAIL_GOODS' (general goods)
   category?: string; // e.g. "Kuliner", "Kebersihan", "Otomotif", "Hampers"
   ownerWhatsApp: string; // International phone number without plus e.g. "628123456789"
   address?: string; // Physical address or workshop base
@@ -23,13 +25,25 @@ export interface StoreProfile {
   timezone: string; // e.g. "Asia/Jakarta" (WIB)
   operatingHours: StoreOperatingHours;
   isOpenManualOverride?: boolean | null; // true=forced open, false=forced closed/vacation, null=follow schedule
-  allowPreOrder: boolean; // whether buyers can place orders when store is closed (default: true)
+  allowPreOrder: boolean; // whether buyers can place orders when store is closed (default: false for FOOD_INSTANT, true for SERVICE/RETAIL)
   notice?: string; // e.g. "Libur Idul Fitri hingga hari Senin"
   userId?: string; // Optional linked user account or wallet address
   latitude?: number; // Store location coordinates
   longitude?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export function inferBusinessCategory(category?: string, businessType?: BusinessType, storeName?: string): BusinessCategory {
+  if (businessType === 'SERVICE') return 'SERVICE';
+  const combined = `${category || ''} ${storeName || ''}`.toLowerCase();
+  if (/kuliner|makanan|minuman|geprek|bakso|kopi|cafe|warung|resto|kitchen|dapur|snack|martabak|sate|mie/i.test(combined)) {
+    return 'FOOD_INSTANT';
+  }
+  if (/jasa|service|servis|cuci|mekanik|laundry|cleaning|salon|pijat|barber|teknisi|tukang/i.test(combined)) {
+    return 'SERVICE';
+  }
+  return 'RETAIL_GOODS';
 }
 
 export const MARKETPLACE_CATEGORIES = [
@@ -125,7 +139,14 @@ export class StoreProfileService {
         if (Array.isArray(parsed)) {
           for (const s of parsed) {
             if (s && s.storeId) {
-              this.stores.set(s.storeId, s);
+              const bType: BusinessType = s.businessType || 'GOODS';
+              const bCat: BusinessCategory = s.businessCategory || inferBusinessCategory(s.category, bType, s.storeName);
+              this.stores.set(s.storeId, {
+                ...s,
+                businessType: bType,
+                businessCategory: bCat,
+                allowPreOrder: s.allowPreOrder !== undefined ? s.allowPreOrder : (bCat !== 'FOOD_INSTANT')
+              });
             }
           }
         }
@@ -141,10 +162,13 @@ export class StoreProfileService {
           if (Array.isArray(rows)) {
             for (const r of rows) {
               if (r && r.store_id) {
+                const bType: BusinessType = r.business_type || 'GOODS';
+                const bCat: BusinessCategory = r.business_category || inferBusinessCategory(r.category, bType, r.store_name);
                 const s: StoreProfile = {
                   storeId: r.store_id,
                   storeName: r.store_name,
-                  businessType: r.business_type || 'GOODS',
+                  businessType: bType,
+                  businessCategory: bCat,
                   category: r.category,
                   ownerWhatsApp: (r.owner_whatsapp || '').replace(/[^0-9]/g, ''),
                   address: r.address,
@@ -154,7 +178,7 @@ export class StoreProfileService {
                   timezone: r.timezone || 'Asia/Jakarta',
                   operatingHours: r.operating_hours || { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
                   isOpenManualOverride: r.is_open_override ?? null,
-                  allowPreOrder: r.allow_pre_order ?? true,
+                  allowPreOrder: r.allow_pre_order !== undefined ? r.allow_pre_order : (bCat !== 'FOOD_INSTANT'),
                   notice: r.notice,
                   userId: r.user_id,
                   latitude: r.latitude !== undefined && r.latitude !== null ? Number(r.latitude) : undefined,
@@ -179,6 +203,7 @@ export class StoreProfileService {
         storeId: 'sera-mart',
         storeName: 'SERA Mart',
         businessType: 'GOODS',
+        businessCategory: 'RETAIL_GOODS',
         category: 'Sembako & Kebutuhan Pokok',
         ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
         address: 'Jl. Merdeka No. 10, Jakarta',
@@ -224,11 +249,25 @@ export class StoreProfileService {
     const existing = this.stores.get(storeId) || this.findStoreByName(rawName);
     const now = Date.now();
 
+    const businessType: BusinessType = input.businessType || existing?.businessType || 'GOODS';
+    const category = input.category !== undefined ? input.category : existing?.category;
+    const businessCategory: BusinessCategory = input.businessCategory ||
+      existing?.businessCategory ||
+      inferBusinessCategory(category, businessType, rawName);
+
+    // For instant food, default allowPreOrder is false (hungry at night -> no pre-order for next morning!)
+    // For service and retail, default allowPreOrder is true
+    const defaultAllowPreOrder = businessCategory === 'FOOD_INSTANT' ? false : true;
+    const allowPreOrder = input.allowPreOrder !== undefined
+      ? input.allowPreOrder
+      : (existing?.allowPreOrder !== undefined ? existing.allowPreOrder : defaultAllowPreOrder);
+
     const merged: StoreProfile = {
       storeId: existing ? existing.storeId : storeId,
       storeName: rawName,
-      businessType: input.businessType || existing?.businessType || 'GOODS',
-      category: input.category !== undefined ? input.category : existing?.category,
+      businessType,
+      businessCategory,
+      category,
       ownerWhatsApp: (input.ownerWhatsApp || existing?.ownerWhatsApp || '').replace(/[^0-9]/g, ''),
       address: input.address !== undefined ? input.address : existing?.address,
       coverageArea: input.coverageArea !== undefined ? input.coverageArea : existing?.coverageArea,
@@ -241,7 +280,7 @@ export class StoreProfileService {
         days: [1, 2, 3, 4, 5, 6, 7]
       },
       isOpenManualOverride: input.isOpenManualOverride !== undefined ? input.isOpenManualOverride : (existing?.isOpenManualOverride ?? null),
-      allowPreOrder: input.allowPreOrder !== undefined ? input.allowPreOrder : (existing?.allowPreOrder ?? true),
+      allowPreOrder,
       notice: input.notice !== undefined ? input.notice : existing?.notice,
       userId: input.userId !== undefined ? input.userId : existing?.userId,
       latitude: input.latitude !== undefined ? input.latitude : existing?.latitude,

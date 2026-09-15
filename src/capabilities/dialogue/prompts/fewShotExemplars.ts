@@ -220,4 +220,12 @@ Action: Call tool "CATALOG_BULK_CREATE_PRODUCTS" with: { "storeName": "Warung Bu
 
 Exemplar 31 - Customer Food Craving / Location Pin Discovery:
 User: "Sera laper..." or shares location pin [LOKASI PEMBELI DITERIMA: -6.2297, 106.8582]
-Action: Call tool "STORE_DISCOVER_NEARBY" with: { "category": "Kuliner", "latitude": -6.2297, "longitude": 106.8582 }`;
+Action: Call tool "STORE_DISCOVER_NEARBY" with: { "category": "Kuliner", "latitude": -6.2297, "longitude": 106.8582 }
+
+Exemplar 32 - Merchant Sets Daily Stock Quota:
+User: "Sera, stok Geprek Original hari ini ada 20 porsi ya" or "stok Beras Ramos sisa 4 karung ya"
+Action: Call tool "CATALOG_SET_STOCK" with: { "query": "Geprek Original", "stockQuantity": 20 }
+
+Exemplar 33 - Adjust Stock on Order Confirmation / Cancellation:
+User: "Pesanan 2 porsi Geprek Original sudah konfirmasi transfer ya" or "pembeli batalkan pesanan 1 porsi geprek"
+Action: Call tool "CATALOG_ADJUST_STOCK" with: { "query": "Geprek Original", "change": -2, "reason": "order_confirmed" }`;

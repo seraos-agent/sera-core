@@ -253,10 +253,20 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
 
         if (targetStore && storeStatus) {
           orderSummary += `\n[STATUS TOKO: ${targetStore.storeName} - ${storeStatus.statusText}]`;
-          if (!storeStatus.isOpen && storeStatus.allowPreOrder) {
-            orderSummary += `\n[INFORMASI: Toko saat ini sedang tutup. Pesanan dicatat sebagai PRE-ORDER untuk diproses saat toko buka.]`;
-          }
-          if (targetStore.businessType === 'SERVICE') {
+          if (!storeStatus.isOpen) {
+            if (targetStore.businessCategory === 'FOOD_INSTANT' || !storeStatus.allowPreOrder) {
+              orderSummary += `\n[STATUS OPERASIONAL: Toko kuliner ini saat ini SEDANG TUTUP (${storeStatus.statusText}).\n` +
+                `PENTING: DILARANG menawarkan pre-order makanan untuk besok pagi kepada pembeli yang lapar malam hari!\n` +
+                `Sampaikan dengan ramah dan empatik bahwa toko sudah tutup dan buka kembali jam ${targetStore.operatingHours.open}.\n` +
+                `Tawarkan apakah pembeli ingin dicarikan kuliner/makanan alternatif terdekat yang masih buka sekarang.]`;
+            } else if (targetStore.businessCategory === 'SERVICE') {
+              orderSummary += `\n[STATUS OPERASIONAL: Layanan di luar jam operasional (${storeStatus.statusText}).\n` +
+                `Tawarkan reservasi / booking jadwal panggilan teknisi/layanan untuk esok hari, dan tanyakan jam serta alamat lokasi.]`;
+            } else {
+              orderSummary += `\n[STATUS OPERASIONAL: Toko retail/sembako saat ini sedang tutup (${storeStatus.statusText}).\n` +
+                `Catat pesanan sebagai pre-order yang akan disiapkan dan dikirim pada kloter pertama esok hari jam ${targetStore.operatingHours.open}.]`;
+            }
+          } else if (targetStore.businessType === 'SERVICE') {
             orderSummary += `\n[TIPE: JASA / BOOKING LAYANAN. Tanyakan jadwal tanggal/jam panggilan dan lokasi/alamat kepada pemesan.]`;
           }
 
