@@ -8,7 +8,6 @@ import { resolveVerifiedWalletIdentity } from '../../../core/identity/WalletIden
 import { WalletAlreadyLinkedError } from '../../../core/identity/ReownWalletIdentityService';
 import { SeraUserContext } from '../../../core/identity/types';
 import { generateSessionToken, verifySessionToken } from '../socketAuth';
-import { SubscriptionRequiredError } from '../../AgentManager';
 import { EventTypes } from '../../../core/events/types';
 
 const challengeCache = new Map<string, string>();
@@ -167,27 +166,46 @@ export function registerAuthHandlers(context: SocketSessionContext): void {
     bindListeners();
     await sendInitialState();
 
-    try {
-      agentManager.checkEntitlement(principal!.userId);
-    } catch (err) {
-      if (err instanceof SubscriptionRequiredError) {
-        agentManager.getSubscriptionService().addCreditsDirectly(principal!.userId, 1000000);
-        console.log(`[Server] Granted 1,000,000 welcome tokens to ${principal!.userId}`);
+    const subscriptionService = agentManager.getSubscriptionService();
+    if (typeof subscriptionService.ensureLoaded === 'function') {
+      await subscriptionService.ensureLoaded();
+    }
 
-        newInstance.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
-          id: `evt-billing-${Date.now()}`,
-          type: EventTypes.BILLING_CREDITS_UPDATED,
-          source: 'Server',
-          payload: {
-            address: principal!.userId,
-            agentCredits: 1000000,
-            periods: 1
-          },
-          timestamp: Date.now()
-        });
-      } else {
-        throw err;
-      }
+    const hasExistingEntry = subscriptionService.hasEntry(principal!.userId)
+      || (principal!.personalWalletAddress ? subscriptionService.hasEntry(principal!.personalWalletAddress) : false);
+
+    if (!hasExistingEntry) {
+      // One-time welcome grant strictly for brand new registrations
+      subscriptionService.addCreditsDirectly(principal!.userId, 1000000);
+      console.log(`[Server] Granted one-time 1,000,000 welcome computation tokens to new account: ${principal!.userId}`);
+
+      newInstance.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
+        id: `evt-billing-${Date.now()}`,
+        type: EventTypes.BILLING_CREDITS_UPDATED,
+        source: 'Server',
+        payload: {
+          address: principal!.userId,
+          agentCredits: 1000000,
+          periods: 1
+        },
+        timestamp: Date.now()
+      });
+    } else {
+      // Existing user: emit current actual credits balance without refilling
+      const currentCredits = subscriptionService.getAgentCredits(principal!.userId);
+      console.log(`[Server] Authenticated existing user ${principal!.userId} with balance: ${currentCredits} tokens`);
+
+      newInstance.eventBus.emit(EventTypes.BILLING_CREDITS_UPDATED, {
+        id: `evt-billing-${Date.now()}`,
+        type: EventTypes.BILLING_CREDITS_UPDATED,
+        source: 'Server',
+        payload: {
+          address: principal!.userId,
+          agentCredits: currentCredits,
+          periods: currentCredits > 0 ? 1 : 0
+        },
+        timestamp: Date.now()
+      });
     }
 
     socket.data.isAuthenticated = true;

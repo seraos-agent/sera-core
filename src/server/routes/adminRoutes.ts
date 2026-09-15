@@ -360,8 +360,10 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         if ((!rawCredits || rawCredits === 0) && personalWallet) {
           rawCredits = subscriptionService.getAgentCredits(personalWallet);
         }
-        // Every registered account receives SERA's standard 1,000,000 welcome computation credits
-        if (!rawCredits || rawCredits === 0) {
+        // One-time welcome grant strictly for brand new accounts that have never been initialized in ledger
+        const hasExistingEntry = (typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(uid) : false)
+          || (personalWallet && typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(personalWallet) : false);
+        if (!hasExistingEntry) {
           rawCredits = 1000000;
           subscriptionService.addCreditsDirectly(uid, 1000000);
           if (personalWallet) {
@@ -440,7 +442,9 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
           if ((!rawCredits || rawCredits === 0) && personalWallet) {
             rawCredits = subscriptionService.getAgentCredits(personalWallet);
           }
-          if (!rawCredits || rawCredits === 0) {
+          const hasExistingEntry = (typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(uid) : false)
+            || (personalWallet && typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(personalWallet) : false);
+          if (!hasExistingEntry) {
             rawCredits = 1000000;
             subscriptionService.addCreditsDirectly(uid, 1000000);
           }
@@ -568,7 +572,9 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       if ((!rawCredits || rawCredits === 0) && personalWalletAddress) {
         rawCredits = subscriptionService.getAgentCredits(personalWalletAddress);
       }
-      if (!rawCredits || rawCredits === 0) {
+      const hasExistingEntry = (typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(sessionId) : false)
+        || (personalWalletAddress && typeof subscriptionService.hasEntry === 'function' ? subscriptionService.hasEntry(personalWalletAddress) : false);
+      if (!hasExistingEntry) {
         rawCredits = 1000000;
         subscriptionService.addCreditsDirectly(sessionId, 1000000);
       }
