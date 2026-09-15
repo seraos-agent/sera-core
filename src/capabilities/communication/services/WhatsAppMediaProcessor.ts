@@ -55,20 +55,23 @@ export class WhatsAppMediaProcessor {
         imagesList = [`data:${mimeType};base64,${base64Str}`];
 
         // Mirror directly to Supabase CDN for Meta Commerce Catalog & marketplace
-        try {
-          const cdnResult = await uploadMediaToSupabase(
-            downloaded.buffer,
-            mimeType,
-            `wa_${mediaId}`,
-            sessionId || 'whatsapp',
-            'catalog'
-          );
-          if (cdnResult?.url && cdnResult.url.startsWith('http')) {
-            publicUrl = cdnResult.url;
-            console.log(`[WhatsAppMediaProcessor] Image ${mediaId} uploaded to CDN: ${publicUrl}`);
+        const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+        if (!isTest) {
+          try {
+            const cdnResult = await uploadMediaToSupabase(
+              downloaded.buffer,
+              mimeType,
+              `wa_${mediaId}`,
+              sessionId || 'whatsapp',
+              'catalog'
+            );
+            if (cdnResult?.url && cdnResult.url.startsWith('http')) {
+              publicUrl = cdnResult.url;
+              console.log(`[WhatsAppMediaProcessor] Image ${mediaId} uploaded to CDN: ${publicUrl}`);
+            }
+          } catch (cdnErr: any) {
+            console.warn('[WhatsAppMediaProcessor] CDN upload fallback:', cdnErr.message);
           }
-        } catch (cdnErr: any) {
-          console.warn('[WhatsAppMediaProcessor] CDN upload fallback:', cdnErr.message);
         }
 
         if (!textContent.trim()) {
