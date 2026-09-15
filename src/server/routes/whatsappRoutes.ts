@@ -41,6 +41,101 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
   });
   const mediaProcessor = new WhatsAppMediaProcessor();
 
+  interface PendingBatchItem {
+    textContent: string;
+    imagesList: string[];
+    cdnUrls: string[];
+    documentsList: any[];
+    isVoiceMessage: boolean;
+    location?: { latitude: number; longitude: number; name?: string };
+  }
+
+  interface PendingBatch {
+    timer: NodeJS.Timeout;
+    items: PendingBatchItem[];
+    sessionId: string;
+    from: string;
+    contactName: string;
+  }
+
+  const pendingBatches = new Map<string, PendingBatch>();
+  const DEBOUNCE_MS = process.env.NODE_ENV === 'test' ? 10 : 2000;
+
+  const dispatchBatch = (from: string) => {
+    const batch = pendingBatches.get(from);
+    if (!batch) return;
+    pendingBatches.delete(from);
+
+    const instance = agentManager.getOrCreateInstance(batch.sessionId);
+    const combinedTexts: string[] = [];
+    const allImages: string[] = [];
+    const allCdnUrls: string[] = [];
+    const allDocs: any[] = [];
+    let isVoiceMessage = false;
+    let lastLocation: { latitude: number; longitude: number; name?: string } | undefined;
+
+    for (const item of batch.items) {
+      if (item.textContent && item.textContent.trim()) {
+        combinedTexts.push(item.textContent.trim());
+      }
+      if (item.imagesList && item.imagesList.length > 0) {
+        allImages.push(...item.imagesList);
+      }
+      if (item.cdnUrls && item.cdnUrls.length > 0) {
+        allCdnUrls.push(...item.cdnUrls);
+      }
+      if (item.documentsList && item.documentsList.length > 0) {
+        allDocs.push(...item.documentsList);
+      }
+      if (item.isVoiceMessage) {
+        isVoiceMessage = true;
+      }
+      if (item.location) {
+        lastLocation = item.location;
+      }
+    }
+
+    let finalMessage = combinedTexts.join('\n');
+    if (allCdnUrls.length > 0) {
+      finalMessage += `\n[CDN_IMAGE_URLS: ${allCdnUrls.join(', ')}]`;
+    }
+
+    if (!finalMessage.trim() && allImages.length === 0 && allDocs.length === 0 && !lastLocation) {
+      return;
+    }
+
+    const responseContext: ResponseContext = {
+      platform: 'whatsapp',
+      channelId: from,
+      senderId: from,
+      senderPhone: from,
+      isVoiceMessage,
+      location: lastLocation
+    };
+
+    const event = {
+      id: `evt-wa-${Date.now()}`,
+      type: EventTypes.DIALOGUE_USER_OBSERVED,
+      source: 'WhatsAppAdapter',
+      payload: {
+        message: finalMessage,
+        images: allImages.length > 0 ? allImages : undefined,
+        documents: allDocs.length > 0 ? allDocs : undefined,
+        cdnImageUrls: allCdnUrls.length > 0 ? allCdnUrls : undefined,
+        location: lastLocation,
+        isVoiceMessage,
+        _responseContext: responseContext,
+        responseContext,
+        senderName: batch.contactName,
+        platform: 'whatsapp'
+      },
+      timestamp: Date.now()
+    };
+
+    console.log(`[WhatsApp Webhook] Dispatching batched turn for +${from} (${batch.items.length} msgs, ${allImages.length} images, ${allCdnUrls.length} CDN URLs)`);
+    instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
+  };
+
   // ── 1. Webhook Verification Handshake (GET) ────────────────────────────────
   const handleVerification = (req: Request, res: Response): void => {
     const mode = req.query['hub.mode'];
@@ -122,6 +217,12 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         textContent = incomingMsg.document?.caption || '';
       } else if (incomingMsg.type === 'audio') {
         isVoiceMessage = true;
+      } else if (incomingMsg.type === 'location') {
+        const loc = incomingMsg.location;
+        const lat = loc?.latitude;
+        const lng = loc?.longitude;
+        const locName = loc?.name || loc?.address || '';
+        textContent = `[LOKASI PEMBELI DITERIMA: ${lat}, ${lng}${locName ? ` - ${locName}` : ''}]`;
       } else if (incomingMsg.type === 'order') {
         const storeService = StoreProfileService.getInstance();
         const parsedOrder = WhatsAppCatalogService.parseIncomingOrder(incomingMsg.order);
@@ -231,12 +332,16 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       }
 
       let imagesList: string[] | undefined;
+      let cdnUrls: string[] = [];
       let documentsList: any[] | undefined;
 
       // Media Ingestion: Delegate image, document, and audio processing
       if (incomingMsg.type === 'image') {
-        const res = await mediaProcessor.processImage(incomingMsg.image?.id, textContent, whatsAppManager);
+        const res = await mediaProcessor.processImage(incomingMsg.image?.id, textContent, whatsAppManager, sessionId);
         imagesList = res.imagesList;
+        if (res.publicUrl) {
+          cdnUrls.push(res.publicUrl);
+        }
         textContent = res.textContent;
       } else if (incomingMsg.type === 'document') {
         const res = await mediaProcessor.processDocument(
@@ -254,34 +359,48 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         isVoiceMessage = res.isVoiceMessage;
       }
 
-      if (!textContent.trim() && !imagesList?.length && !documentsList?.length) return;
+      if (!textContent.trim() && !imagesList?.length && !documentsList?.length && incomingMsg.type !== 'location') return;
 
-      const responseContext: ResponseContext = {
-        platform: 'whatsapp',
-        channelId: from,
-        senderId: from,
-        senderPhone: from,
-        isVoiceMessage
+      // Ingress Debouncer: Buffer message into pending batch for this sender
+      const item: PendingBatchItem = {
+        textContent,
+        imagesList: imagesList || [],
+        cdnUrls,
+        documentsList: documentsList || [],
+        isVoiceMessage,
+        location: incomingMsg.type === 'location' ? {
+          latitude: incomingMsg.location?.latitude,
+          longitude: incomingMsg.location?.longitude,
+          name: incomingMsg.location?.name || incomingMsg.location?.address
+        } : undefined
       };
 
-      const event = {
-        id: `evt-wa-${Date.now()}`,
-        type: EventTypes.DIALOGUE_USER_OBSERVED,
-        source: 'WhatsAppAdapter',
-        payload: {
-          message: textContent,
-          images: imagesList,
-          documents: documentsList,
-          isVoiceMessage,
-          _responseContext: responseContext,
-          responseContext,
-          senderName: contactName,
-          platform: 'whatsapp'
-        },
-        timestamp: Date.now()
-      };
-
-      instance.eventBus.emit(EventTypes.DIALOGUE_USER_OBSERVED, event);
+      if (incomingMsg.type === 'order') {
+        pendingBatches.set(from, {
+          timer: setTimeout(() => {}, 0),
+          items: [item],
+          sessionId,
+          from,
+          contactName
+        });
+        dispatchBatch(from);
+      } else {
+        const existingBatch = pendingBatches.get(from);
+        if (existingBatch) {
+          clearTimeout(existingBatch.timer);
+          existingBatch.items.push(item);
+          existingBatch.timer = setTimeout(() => dispatchBatch(from), DEBOUNCE_MS);
+        } else {
+          const timer = setTimeout(() => dispatchBatch(from), DEBOUNCE_MS);
+          pendingBatches.set(from, {
+            timer,
+            items: [item],
+            sessionId,
+            from,
+            contactName
+          });
+        }
+      }
     } catch (err: any) {
       console.error('[WhatsApp Webhook] Error processing incoming webhook:', err);
     }

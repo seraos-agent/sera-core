@@ -609,6 +609,52 @@ export class SeraAgentInstance {
         }
       },
       {
+        name: 'CATALOG_BULK_CREATE_PRODUCTS',
+        description: 'Registers or updates a store and adds multiple products or menu items simultaneously to the store catalog. Use this when a merchant sends a photo of a physical menu, price banner, or a text list of products (e.g. "1. Bakso 20rb, 2. Es Jeruk 5rb").',
+        parameters: {
+          type: 'object',
+          properties: {
+            storeName: { type: 'string', description: 'Store or Merchant brand name (e.g. "Warung Bu Siti", "Bengkel Maju Jaya")' },
+            category: { type: 'string', description: 'Store category (e.g. "Kuliner", "Sembako", "Jasa", "Otomotif")' },
+            businessType: { type: 'string', enum: ['GOODS', 'SERVICE'], description: 'Physical goods or service/booking (default: GOODS)' },
+            address: { type: 'string', description: 'Physical store address or base area' },
+            latitude: { type: 'number', description: 'Store latitude coordinates if provided' },
+            longitude: { type: 'number', description: 'Store longitude coordinates if provided' },
+            products: {
+              type: 'array',
+              description: 'Array of products or menu items to create',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Product or item title' },
+                  price: { type: 'number', description: 'Price in IDR (e.g. 25000)' },
+                  description: { type: 'string', description: 'Optional item description' },
+                  imageUrl: { type: 'string', description: 'Optional high-resolution image URL' },
+                  category: { type: 'string', description: 'Sub-category (e.g. "Makanan", "Minuman")' },
+                  availability: { type: 'string', enum: ['in stock', 'out of stock'], description: 'Stock status' }
+                },
+                required: ['name', 'price']
+              }
+            }
+          },
+          required: ['products']
+        }
+      },
+      {
+        name: 'STORE_DISCOVER_NEARBY',
+        description: 'Discovers nearby registered stores or food stalls based on coordinates or category. Use this when a buyer expresses hunger, food craving ("laper...", "mau makan siang", "cari bakso"), asks for nearby stores, or sends a WhatsApp location pin.',
+        parameters: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', description: 'Optional category filter (e.g. "Kuliner", "Sembako", "Jasa")' },
+            latitude: { type: 'number', description: 'Buyer latitude coordinates' },
+            longitude: { type: 'number', description: 'Buyer longitude coordinates' },
+            maxDistanceKm: { type: 'number', description: 'Maximum radius in km (default 15)' },
+            query: { type: 'string', description: 'Specific food or item name query if searching specifically (e.g. "bakso", "geprek")' }
+          }
+        }
+      },
+      {
         name: 'CATALOG_UPDATE_PRODUCT',
         description: 'Updates an existing product or service in the catalog (e.g. change price, mark as out of stock / ready stock, update description).',
         parameters: {

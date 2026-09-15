@@ -375,7 +375,8 @@ export class DialogueEngine {
 
       if (credits <= 0) {
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-          text: '🔋 **Agent Energy Core depleted.**\n\nPlease top up your tokens in the battery menu to continue processing tasks.'
+          text: '🔋 **Agent Energy Core depleted.**\n\nPlease top up your tokens in the battery menu to continue processing tasks.',
+          responseContext: this._activeResponseContext
         });
         return;
       }
@@ -584,14 +585,18 @@ export class DialogueEngine {
           cognitiveSteps: execResult.cognitiveSteps.length > 0 ? execResult.cognitiveSteps : undefined,
           durationSeconds: execResult.durationSeconds,
           hadTools: execResult.hadTools,
-          richContent: execResult.richContent
+          richContent: execResult.richContent,
+          responseContext: this._activeResponseContext
         });
       }
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('[DialogueEngine] Generation aborted by user.');
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: '[Generation stopped by user]' });
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: '[Generation stopped by user]',
+          responseContext: this._activeResponseContext
+        });
       } else {
         console.error('[DialogueEngine] Error:', error.message);
         console.error('[DialogueEngine] Stack:', error.stack);
@@ -616,7 +621,10 @@ export class DialogueEngine {
             `• **Action**: Please try rephrasing your request.`;
         }
 
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, { text: fallbackNotice });
+        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+          text: fallbackNotice,
+          responseContext: this._activeResponseContext
+        });
       }
     } finally {
       this._activeResponseContext = undefined;

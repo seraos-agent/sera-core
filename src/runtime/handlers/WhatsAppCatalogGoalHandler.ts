@@ -99,37 +99,44 @@ export class WhatsAppCatalogGoalHandler {
    */
   public async handleSendCatalog(requestId: string, payload: any): Promise<void> {
     try {
-      const allProducts = await this.catalogService.getProducts();
-      if (allProducts.length === 0) {
-        throw new Error('No products available in the store catalog.');
+      const targetStore = String(payload?.storeName || payload?.store || payload?.brand || '').trim();
+      let allProducts: CatalogProduct[];
+
+      if (targetStore) {
+        allProducts = await this.catalogService.getProductsByBrand(targetStore);
+        if (allProducts.length === 0) {
+          allProducts = await this.catalogService.getProducts();
+        }
+      } else {
+        allProducts = await this.catalogService.getProducts();
       }
 
-      const headerText = payload?.headerText || 'Katalog Sembako Pilihan';
-      const bodyText = payload?.bodyText || 'Berikut daftar produk sembako siap pesan langsung dari WhatsApp:';
+      if (allProducts.length === 0) {
+        throw new Error('Belum ada produk yang tersedia di katalog toko.');
+      }
 
-      // Group into logical sections (max 30 items total across all sections in WhatsApp MPM)
-      const bahanPokok = allProducts.filter((p) =>
-        /beras|minyak|gula|margarin|mentega|telur/i.test(p.name) || /SKU-(BERAS|MINYAK|GULA|MARGARIN|TELUR)/i.test(p.retailer_id)
-      );
-      const kebutuhanDapur = allProducts.filter((p) => !bahanPokok.includes(p));
+      const displayStoreName = targetStore || 'SERA Marketplace';
+      const headerText = payload?.headerText || `${displayStoreName}`;
+      const bodyText = payload?.bodyText || `Berikut daftar produk siap pesan dari ${displayStoreName}:`;
+
+      // Group products dynamically by category
+      const catMap = new Map<string, string[]>();
+      for (const p of allProducts) {
+        const cat = p.category || 'Menu Utama';
+        if (!catMap.has(cat)) catMap.set(cat, []);
+        catMap.get(cat)!.push(p.retailer_id);
+      }
 
       const sections: Array<{ title: string; productRetailerIds: string[] }> = [];
-
-      if (bahanPokok.length > 0) {
+      for (const [title, ids] of catMap.entries()) {
         sections.push({
-          title: 'Bahan Pokok Utama',
-          productRetailerIds: bahanPokok.slice(0, 10).map((p) => p.retailer_id)
+          title: title.slice(0, 24),
+          productRetailerIds: ids.slice(0, 10)
         });
+        if (sections.length >= 3) break; // Max 3 sections in MPM
       }
 
-      if (kebutuhanDapur.length > 0) {
-        sections.push({
-          title: 'Kebutuhan Dapur & Minuman',
-          productRetailerIds: kebutuhanDapur.slice(0, 10).map((p) => p.retailer_id)
-        });
-      }
-
-      // Fallback if filtering yielded single flat list
+      // Fallback if empty sections
       if (sections.length === 0) {
         sections.push({
           title: 'Produk Tersedia',
@@ -138,8 +145,9 @@ export class WhatsAppCatalogGoalHandler {
       }
 
       this.emitResult(requestId, true, {
+        storeName: displayStoreName,
         totalProducts: allProducts.length,
-        message: 'Interactive product catalog list has been prepared.',
+        message: `Katalog interaktif untuk "${displayStoreName}" telah disiapkan.`,
         richContent: {
           productList: {
             headerText,
@@ -230,6 +238,127 @@ export class WhatsAppCatalogGoalHandler {
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to create product:', err.message);
       this.emitResult(requestId, false, {}, err.message || 'Failed to create catalog product');
+    }
+  }
+
+  /**
+   * Fast Store & Bulk Product Creation: Adds a store profile and multiple products simultaneously.
+   */
+  public async handleBulkCreateProducts(requestId: string, payload: any): Promise<void> {
+    try {
+      const callerPhone = this.resolveCallerPhone(payload);
+      let storeName = String(payload?.storeName || payload?.name || payload?.brand || '').trim();
+      if (!storeName && callerPhone) {
+        const ownedStore = this.storeService.getStoreByOwner(callerPhone);
+        if (ownedStore) storeName = ownedStore.storeName;
+      }
+      if (!storeName) {
+        storeName = 'Toko ' + (callerPhone ? callerPhone.slice(-4) : 'Baru');
+      }
+
+      const category = payload?.category || payload?.kategori || 'Kuliner';
+      const businessType = payload?.businessType || (/jasa|service|servis|cuci|mekanik|laundry/i.test(category) ? 'SERVICE' : 'GOODS');
+      const address = payload?.address || payload?.alamat;
+      const lat = payload?.latitude ? Number(payload.latitude) : undefined;
+      const lng = payload?.longitude ? Number(payload.longitude) : undefined;
+
+      // Upsert store profile
+      const store = await this.storeService.upsertStore({
+        storeName,
+        category,
+        businessType,
+        address,
+        latitude: lat,
+        longitude: lng,
+        ownerWhatsApp: callerPhone || undefined
+      });
+
+      const rawProducts = Array.isArray(payload?.products) ? payload.products : [];
+      if (rawProducts.length === 0) {
+        throw new Error('Must provide at least one product in products array for CATALOG_BULK_CREATE_PRODUCTS.');
+      }
+
+      const inputs: CreateProductInput[] = rawProducts.map((p: any, idx: number) => {
+        const pName = String(p.name || p.title || `Item ${idx + 1}`).trim();
+        const pPrice = Number(p.price || p.rawPrice || 0);
+        return {
+          name: pName,
+          price: pPrice > 0 ? pPrice : 10000,
+          brand: store.storeName,
+          category: p.category || category,
+          description: p.description || p.desc || undefined,
+          image_url: p.imageUrl || p.image_url || p.image || undefined,
+          availability: p.availability === 'out of stock' ? 'out of stock' : 'in stock',
+          businessType
+        };
+      });
+
+      const batchRes = await this.catalogService.createProductsBatch(inputs);
+
+      this.emitResult(requestId, true, {
+        store,
+        successCount: batchRes.successCount,
+        failedCount: batchRes.failedCount,
+        products: batchRes.createdProducts,
+        message: `Toko "${store.storeName}" dan ${batchRes.successCount} produk berhasil didaftarkan ke katalog WhatsApp!`
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed bulk create products:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to bulk create products');
+    }
+  }
+
+  /**
+   * Discovers nearby stores within radius km using Haversine formula and returns an Interactive List Message.
+   */
+  public async handleDiscoverNearbyStores(requestId: string, payload: any): Promise<void> {
+    try {
+      const lat = payload?.latitude !== undefined ? Number(payload.latitude) : undefined;
+      const lng = payload?.longitude !== undefined ? Number(payload.longitude) : undefined;
+      const category = payload?.category || payload?.kategori || undefined;
+      const maxDistanceKm = payload?.maxDistanceKm ? Number(payload.maxDistanceKm) : 15;
+
+      // Center coordinates fallback
+      const targetLat = lat !== undefined ? lat : -6.2088;
+      const targetLng = lng !== undefined ? lng : 106.8456;
+
+      const nearby = this.storeService.findNearbyStores(targetLat, targetLng, category, maxDistanceKm);
+      const topStores = nearby.slice(0, 10);
+
+      const storeListFormatted = topStores.map((s) => ({
+        storeId: s.store.storeId,
+        storeName: s.store.storeName,
+        category: s.store.category,
+        distanceKm: s.distanceKm,
+        isOpen: s.isOpen,
+        statusText: s.statusText,
+        operatingHours: `${s.store.operatingHours.open} - ${s.store.operatingHours.close}`
+      }));
+
+      const summaryText = topStores.length > 0
+        ? `Menemukan ${topStores.length} toko/warung terdekat${category ? ` kategori "${category}"` : ''}:`
+        : `Belum ada toko yang terdaftar di sekitar lokasi Anda.`;
+
+      this.emitResult(requestId, true, {
+        count: topStores.length,
+        category,
+        stores: storeListFormatted,
+        summary: summaryText,
+        richContent: {
+          storeList: {
+            title: `Toko Terdekat${category ? ` (${category})` : ''}`,
+            stores: topStores.map((s) => ({
+              id: s.store.storeId,
+              title: s.store.storeName,
+              description: `${s.distanceKm} km • ${s.statusText} (${s.store.operatingHours.open} - ${s.store.operatingHours.close})`
+            }))
+          }
+        },
+        message: summaryText
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed to discover nearby stores:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to discover nearby stores');
     }
   }
 

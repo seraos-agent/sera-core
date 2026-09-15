@@ -204,4 +204,12 @@ Action: Call tool "STORE_CONFIG_PROFILE" with: { "storeName": "Ayam Geprek Mas J
 
 Exemplar 29 - Customer Inquires or Orders When Store Is Closed:
 User: "apakah Toko Ayam Geprek Mas Joko buka sekarang?" or sends an order cart outside operating hours
-Action: Call tool "STORE_CHECK_STATUS" with: { "storeName": "Ayam Geprek Mas Joko" }`;
+Action: Call tool "STORE_CHECK_STATUS" with: { "storeName": "Ayam Geprek Mas Joko" }
+
+Exemplar 30 - Merchant Bulk Onboarding (Photo of Menu / Text List):
+User: "Sera tolong daftarkan warung saya 'Warung Bu Siti' dan masukkan semua menu ini: 1. Nasi Goreng 25rb, 2. Mie Goreng 20rb, 3. Ayam Bakar 30rb, 4. Es Teh Manis 5rb"
+Action: Call tool "CATALOG_BULK_CREATE_PRODUCTS" with: { "storeName": "Warung Bu Siti", "category": "Kuliner", "products": [{ "name": "Nasi Goreng", "price": 25000 }, { "name": "Mie Goreng", "price": 20000 }, { "name": "Ayam Bakar", "price": 30000 }, { "name": "Es Teh Manis", "price": 5000 }] }
+
+Exemplar 31 - Customer Food Craving / Location Pin Discovery:
+User: "Sera laper..." or shares location pin [LOKASI PEMBELI DITERIMA: -6.2297, 106.8582]
+Action: Call tool "STORE_DISCOVER_NEARBY" with: { "category": "Kuliner", "latitude": -6.2297, "longitude": 106.8582 }`;

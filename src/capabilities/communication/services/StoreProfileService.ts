@@ -25,8 +25,30 @@ export interface StoreProfile {
   isOpenManualOverride?: boolean | null; // true=forced open, false=forced closed/vacation, null=follow schedule
   allowPreOrder: boolean; // whether buyers can place orders when store is closed (default: true)
   notice?: string; // e.g. "Libur Idul Fitri hingga hari Senin"
+  userId?: string; // Optional linked user account or wallet address
+  latitude?: number; // Store location coordinates
+  longitude?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface NearbyStoreResult {
+  store: StoreProfile;
+  distanceKm: number;
+  isOpen: boolean;
+  statusText: string;
+}
+
+export function calculateHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
 }
 
 export interface StoreStatusResult {
@@ -125,6 +147,9 @@ export class StoreProfileService {
                   isOpenManualOverride: r.is_open_override ?? null,
                   allowPreOrder: r.allow_pre_order ?? true,
                   notice: r.notice,
+                  userId: r.user_id,
+                  latitude: r.latitude !== undefined && r.latitude !== null ? Number(r.latitude) : undefined,
+                  longitude: r.longitude !== undefined && r.longitude !== null ? Number(r.longitude) : undefined,
                   createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
                   updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
                 };
@@ -209,6 +234,9 @@ export class StoreProfileService {
       isOpenManualOverride: input.isOpenManualOverride !== undefined ? input.isOpenManualOverride : (existing?.isOpenManualOverride ?? null),
       allowPreOrder: input.allowPreOrder !== undefined ? input.allowPreOrder : (existing?.allowPreOrder ?? true),
       notice: input.notice !== undefined ? input.notice : existing?.notice,
+      userId: input.userId !== undefined ? input.userId : existing?.userId,
+      latitude: input.latitude !== undefined ? input.latitude : existing?.latitude,
+      longitude: input.longitude !== undefined ? input.longitude : existing?.longitude,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now
     };
@@ -233,6 +261,9 @@ export class StoreProfileService {
           is_open_override: merged.isOpenManualOverride,
           allow_pre_order: merged.allowPreOrder,
           notice: merged.notice,
+          user_id: merged.userId,
+          latitude: merged.latitude,
+          longitude: merged.longitude,
           updated_at: new Date(now).toISOString()
         }, 'store_id');
       } catch (err: any) {
@@ -241,6 +272,49 @@ export class StoreProfileService {
     }
 
     return merged;
+  }
+
+  /**
+   * Finds stores near given coordinates within radius km, optionally filtered by category.
+   * Open stores are sorted first, followed by shortest distance.
+   */
+  public findNearbyStores(
+    lat: number,
+    lng: number,
+    category?: string,
+    maxDistanceKm = 15
+  ): NearbyStoreResult[] {
+    const results: NearbyStoreResult[] = [];
+    const cleanCat = category ? category.trim().toLowerCase() : '';
+
+    for (const store of this.stores.values()) {
+      if (cleanCat && store.category && !store.category.toLowerCase().includes(cleanCat)) {
+        continue;
+      }
+
+      let distanceKm = 0;
+      if (store.latitude !== undefined && store.longitude !== undefined) {
+        distanceKm = calculateHaversineDistanceKm(lat, lng, store.latitude, store.longitude);
+        if (distanceKm > maxDistanceKm) continue;
+      } else {
+        // Fallback for stores without exact GPS pin: assume reachable default radius 2.5km
+        distanceKm = 2.5;
+      }
+
+      const status = this.isStoreOpenNow(store.storeId);
+      results.push({
+        store,
+        distanceKm,
+        isOpen: status.isOpen,
+        statusText: status.statusText
+      });
+    }
+
+    return results.sort((a, b) => {
+      if (a.isOpen && !b.isOpen) return -1;
+      if (!a.isOpen && b.isOpen) return 1;
+      return a.distanceKm - b.distanceKm;
+    });
   }
 
   /**

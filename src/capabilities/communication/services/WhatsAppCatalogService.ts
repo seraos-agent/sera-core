@@ -12,6 +12,7 @@ export interface CatalogProduct {
   availability?: string;
   brand?: string;
   url?: string;
+  category?: string;
 }
 
 export interface CreateProductInput {
@@ -137,6 +138,7 @@ export class WhatsAppCatalogService {
             image_url: item.image_url,
             availability: item.availability,
             brand: item.brand,
+            category: item.category,
             url: item.url
           };
         });
@@ -172,6 +174,16 @@ export class WhatsAppCatalogService {
     const products = await this.getProducts();
     const clean = retailerId.toLowerCase().trim();
     return products.find((p) => p.retailer_id.toLowerCase() === clean || p.id === clean) || null;
+  }
+
+  /**
+   * Retrieves products belonging strictly to a specific store brand.
+   */
+  public async getProductsByBrand(brand: string, forceRefresh = false): Promise<CatalogProduct[]> {
+    const products = await this.getProducts(forceRefresh);
+    if (!brand || !brand.trim()) return products;
+    const cleanBrand = brand.toLowerCase().trim();
+    return products.filter((p) => (p.brand || '').toLowerCase().trim() === cleanBrand);
   }
 
   /**
@@ -253,6 +265,35 @@ export class WhatsAppCatalogService {
       console.error('[WhatsAppCatalogService] Exception creating product:', err.message);
       return { success: false, error: err.message || 'Unknown error creating product' };
     }
+  }
+
+  /**
+   * Creates multiple products in batch to Meta Commerce Catalog.
+   */
+  public async createProductsBatch(inputs: CreateProductInput[]): Promise<{
+    successCount: number;
+    failedCount: number;
+    createdProducts: CatalogProduct[];
+    errors: string[];
+  }> {
+    const createdProducts: CatalogProduct[] = [];
+    const errors: string[] = [];
+
+    for (const item of inputs) {
+      const res = await this.createProduct(item);
+      if (res.success && res.product) {
+        createdProducts.push(res.product);
+      } else if (res.error) {
+        errors.push(`${item.name}: ${res.error}`);
+      }
+    }
+
+    return {
+      successCount: createdProducts.length,
+      failedCount: errors.length,
+      createdProducts,
+      errors
+    };
   }
 
   /**
@@ -441,6 +482,52 @@ export class WhatsAppCatalogService {
         action: {
           name: 'catalog_message',
           parameters: thumbnailRetailerId ? { thumbnail_product_retailer_id: thumbnailRetailerId } : undefined
+        }
+      }
+    };
+  }
+
+  /**
+   * Builds native WhatsApp Interactive List Message (Bottom Sheet) for selecting a nearby store.
+   */
+  public buildInteractiveStoreListPayload(
+    recipient: string,
+    stores: Array<{ store: { storeId: string; storeName: string; category?: string }; distanceKm: number; isOpen: boolean; statusText: string }>,
+    headerText = 'Toko & Warung Terdekat',
+    bodyText = 'Pilih toko untuk melihat daftar menu dan memesan langsung di WhatsApp:'
+  ): Record<string, any> {
+    const cleanRecipient = recipient.replace(/[^0-9]/g, '');
+    const topStores = stores.slice(0, 10);
+
+    return {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanRecipient,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: {
+          type: 'text',
+          text: headerText.slice(0, 60)
+        },
+        body: {
+          text: bodyText.slice(0, 1024)
+        },
+        footer: {
+          text: 'SERA Marketplace'
+        },
+        action: {
+          button: 'Pilih Toko',
+          sections: [
+            {
+              title: 'Daftar Toko',
+              rows: topStores.map((s) => ({
+                id: `store_${s.store.storeId}`,
+                title: s.store.storeName.slice(0, 24),
+                description: `${s.distanceKm} km • ${s.isOpen ? 'Buka' : 'Tutup'}${s.store.category ? ` • ${s.store.category}` : ''}`.slice(0, 72)
+              }))
+            }
+          ]
         }
       }
     };

@@ -128,6 +128,8 @@ export interface ResponseContext {
   timezone?: string;
   /** Whether the original observation was an audio voice note */
   isVoiceMessage?: boolean;
+  /** Geolocation coordinates if shared via WhatsApp location pin */
+  location?: { latitude: number; longitude: number; name?: string };
 }
 
 

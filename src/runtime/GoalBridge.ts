@@ -473,6 +473,18 @@ export class GoalBridge {
           await this.catalogHandler.handleCreateProduct(requestId, actionPayload);
           break;
 
+        case 'CATALOG_BULK_CREATE_PRODUCTS':
+        case 'BULK_CREATE_PRODUCTS':
+        case 'CREATE_PRODUCTS_BULK':
+          await this.catalogHandler.handleBulkCreateProducts(requestId, actionPayload);
+          break;
+
+        case 'STORE_DISCOVER_NEARBY':
+        case 'DISCOVER_NEARBY_STORES':
+        case 'FIND_NEARBY_STORES':
+          await this.catalogHandler.handleDiscoverNearbyStores(requestId, actionPayload);
+          break;
+
         case 'CATALOG_UPDATE_PRODUCT':
         case 'UPDATE_PRODUCT':
         case 'EDIT_PRODUCT':

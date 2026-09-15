@@ -1,10 +1,18 @@
 import { WhatsAppManager } from '../adapters/WhatsAppManager';
 import { DocumentParserService, ParsedDocumentResult } from '../../../core/ingestion/DocumentParserService';
 import { QwenAudioTranscriber } from '../../audio/QwenAudioTranscriber';
+import { uploadMediaToSupabase } from '../../../server/routes/mediaRoutes';
+
+export interface ProcessedImageResult {
+  imagesList?: string[];
+  publicUrl?: string;
+  textContent: string;
+}
 
 export interface ProcessedMediaResult {
   textContent: string;
   imagesList?: string[];
+  publicUrls?: string[];
   documentsList?: ParsedDocumentResult[];
   isVoiceMessage: boolean;
 }
@@ -12,24 +20,27 @@ export interface ProcessedMediaResult {
 /**
  * Handles incoming multimodal media attachments from WhatsApp:
  * - Safe download via Meta CDN with file size and timeout caps.
+ * - Direct upload to Supabase Storage CDN (bypassing Google Drive for fast, public catalog images).
  * - Base64 image payload preparation for multimodal vision models.
  * - Document parsing (Excel/CSV/PDF) via DocumentParserService.
  * - Voice note transcription via Qwen ASR with voice reply intent detection.
  */
 export class WhatsAppMediaProcessor {
   /**
-   * Processes incoming image attachment from WhatsApp.
+   * Processes incoming image attachment from WhatsApp and mirrors it to public Supabase CDN.
    */
   public async processImage(
     mediaId: string,
     caption: string,
-    whatsAppManager?: WhatsAppManager
-  ): Promise<{ imagesList?: string[]; textContent: string }> {
+    whatsAppManager?: WhatsAppManager,
+    sessionId?: string
+  ): Promise<ProcessedImageResult> {
     let imagesList: string[] | undefined;
+    let publicUrl: string | undefined;
     let textContent = caption || '';
 
     if (!mediaId || !whatsAppManager) {
-      return { imagesList, textContent };
+      return { imagesList, publicUrl, textContent };
     }
 
     try {
@@ -39,8 +50,27 @@ export class WhatsAppMediaProcessor {
       });
 
       if (downloaded) {
+        const mimeType = downloaded.mimeType || 'image/jpeg';
         const base64Str = downloaded.buffer.toString('base64');
-        imagesList = [`data:${downloaded.mimeType || 'image/jpeg'};base64,${base64Str}`];
+        imagesList = [`data:${mimeType};base64,${base64Str}`];
+
+        // Mirror directly to Supabase CDN for Meta Commerce Catalog & marketplace
+        try {
+          const cdnResult = await uploadMediaToSupabase(
+            downloaded.buffer,
+            mimeType,
+            `wa_${mediaId}`,
+            sessionId || 'whatsapp',
+            'catalog'
+          );
+          if (cdnResult?.url && cdnResult.url.startsWith('http')) {
+            publicUrl = cdnResult.url;
+            console.log(`[WhatsAppMediaProcessor] Image ${mediaId} uploaded to CDN: ${publicUrl}`);
+          }
+        } catch (cdnErr: any) {
+          console.warn('[WhatsAppMediaProcessor] CDN upload fallback:', cdnErr.message);
+        }
+
         if (!textContent.trim()) {
           textContent = 'Tolong analisa foto/gambar ini secara detail.';
         }
@@ -56,7 +86,7 @@ export class WhatsAppMediaProcessor {
       }
     }
 
-    return { imagesList, textContent };
+    return { imagesList, publicUrl, textContent };
   }
 
   /**

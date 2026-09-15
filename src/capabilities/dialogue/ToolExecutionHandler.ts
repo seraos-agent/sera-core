@@ -101,6 +101,8 @@ export class ToolExecutionHandler {
       'WHATSAPP_SEND_PRODUCT': 'Sharing product card',
       'WHATSAPP_SEND_CATALOG': 'Sharing product catalog',
       'CATALOG_CREATE_PRODUCT': 'Adding product to store',
+      'CATALOG_BULK_CREATE_PRODUCTS': 'Registering store & products',
+      'STORE_DISCOVER_NEARBY': 'Discovering nearby stores',
       'CATALOG_UPDATE_PRODUCT': 'Updating product',
       'CATALOG_DELETE_PRODUCT': 'Removing product',
       'STORE_CONFIG_PROFILE': 'Configuring store profile',
