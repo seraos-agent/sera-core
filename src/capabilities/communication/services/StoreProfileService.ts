@@ -505,6 +505,33 @@ export class StoreProfileService {
     }
   }
 
+  /**
+   * Calculates the lowest product price available in a store's catalog.
+   */
+  public calculateStoreMinPrice(storeNameOrId: string, products: Array<{ rawPrice?: number; price?: string | number; brand?: string }>): number {
+    const store = this.getStore(storeNameOrId);
+    const targetBrand = (store ? store.storeName : storeNameOrId).toLowerCase().trim();
+
+    const matchingPrices = products
+      .filter((p) => {
+        if (!p.brand) return true;
+        const b = p.brand.toLowerCase();
+        return b.includes(targetBrand) || targetBrand.includes(b);
+      })
+      .map((p) => {
+        if (typeof p.rawPrice === 'number' && p.rawPrice > 0) return p.rawPrice;
+        if (p.price) {
+          const num = Number(String(p.price).replace(/[^0-9]/g, ''));
+          if (num > 0) return num;
+        }
+        return 0;
+      })
+      .filter((p) => p > 0);
+
+    if (matchingPrices.length === 0) return 10000;
+    return Math.min(...matchingPrices);
+  }
+
   private findStoreByName(name: string): StoreProfile | undefined {
     const lower = name.toLowerCase().trim();
     for (const store of this.stores.values()) {

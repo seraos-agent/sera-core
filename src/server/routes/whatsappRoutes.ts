@@ -211,7 +211,14 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
           isVoiceMessage = true;
         }
       } else if (incomingMsg.type === 'interactive') {
-        textContent = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
+        const replyId = incomingMsg.interactive?.button_reply?.id || incomingMsg.interactive?.list_reply?.id || '';
+        const replyTitle = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
+        if (replyId.startsWith('store_')) {
+          const rawStoreSlug = replyId.replace('store_', '');
+          textContent = `[MEMILIH TOKO: "${replyTitle}" (ID: ${rawStoreSlug}) - Buka katalog lengkap menu/produk untuk toko ini menggunakan WHATSAPP_SEND_CATALOG]`;
+        } else {
+          textContent = replyTitle;
+        }
       } else if (incomingMsg.type === 'image') {
         textContent = incomingMsg.image?.caption || '';
       } else if (incomingMsg.type === 'document') {
@@ -304,6 +311,21 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         textContent = orderSummary;
       } else {
         textContent = `[Media received: ${incomingMsg.type}]`;
+      }
+
+      // Check if message is referred from a catalog product card (e.g. tapping 'View' / 'Message business' on a showcase item)
+      const referredSku = incomingMsg.context?.referred_product?.product_retailer_id;
+      if (referredSku) {
+        if (referredSku.startsWith('showcase_')) {
+          const storeSlug = referredSku.replace('showcase_', '');
+          const storeService = StoreProfileService.getInstance();
+          const target = storeService.getStore(storeSlug);
+          const sName = target ? target.storeName : storeSlug;
+          const contextPrompt = `[PEMBELI MELIHAT KARTU TOKO: "${sName}" (SKU: ${referredSku}). Buka katalog lengkap menu/produk toko "${sName}" menggunakan WHATSAPP_SEND_CATALOG agar pembeli bisa memilih varian dan memesan.]`;
+          textContent = textContent ? `${contextPrompt}\nPesan pembeli: "${textContent}"` : contextPrompt;
+        } else {
+          textContent = textContent ? `[Terkait Produk SKU: ${referredSku}] ${textContent}` : `[Melihat detail produk SKU: ${referredSku}]`;
+        }
       }
 
       if (!textContent.trim() && incomingMsg.type !== 'image' && incomingMsg.type !== 'document' && incomingMsg.type !== 'audio') {

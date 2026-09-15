@@ -726,6 +726,7 @@ export class SeraAgentInstance {
             address: { type: 'string', description: 'Store address or workshop location' },
             coverageArea: { type: 'string', description: 'Service radius or delivery coverage (e.g. "Radius 10 km", "Bandung Raya")' },
             description: { type: 'string', description: 'Store marketing bio / copywriting' },
+            logoUrl: { type: 'string', description: 'Store logo or storefront photo URL. If not provided, system falls back to first product image.' },
             notice: { type: 'string', description: 'Holiday / temporary announcement (e.g. "Libur Hari Raya sampai Senin")' },
             isOpenManual: { type: 'boolean', description: 'Manual override to instantly open (true) or close (false) the store' }
           },

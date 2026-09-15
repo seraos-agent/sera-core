@@ -228,4 +228,8 @@ Action: Call tool "CATALOG_SET_STOCK" with: { "query": "Geprek Original", "stock
 
 Exemplar 33 - Adjust Stock on Order Confirmation / Cancellation:
 User: "Pesanan 2 porsi Geprek Original sudah konfirmasi transfer ya" or "pembeli batalkan pesanan 1 porsi geprek"
-Action: Call tool "CATALOG_ADJUST_STOCK" with: { "query": "Geprek Original", "change": -2, "reason": "order_confirmed" }`;
+Action: Call tool "CATALOG_ADJUST_STOCK" with: { "query": "Geprek Original", "change": -2, "reason": "order_confirmed" }
+
+Exemplar 34 - Merchant Sets Store Logo or Storefront Photo via Chat:
+User: "Sera, ini foto profil / logo warung Geprek Cak Jiban: https://images.com/logo.png pasang di toko ya" or "pasang logo warung kami https://example.com/logo.jpg"
+Action: Call tool "STORE_CONFIG_PROFILE" with: { "storeName": "Geprek Cak Jiban", "logoUrl": "https://images.com/logo.png" }`;

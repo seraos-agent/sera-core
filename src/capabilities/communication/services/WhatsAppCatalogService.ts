@@ -1,4 +1,5 @@
 import { serverConfig } from '../../../server/config';
+import type { StoreProfile } from './StoreProfileService';
 
 export interface CatalogProduct {
   id: string;
@@ -39,6 +40,7 @@ export interface UpdateProductInput {
   stockQuantity?: number;
   image_url?: string;
   brand?: string;
+  category?: string;
 }
 
 export interface IncomingOrderItem {
@@ -845,6 +847,96 @@ export class WhatsAppCatalogService {
               title: String(b.title).slice(0, 20)
             }
           }))
+        }
+      }
+    };
+  }
+
+  /**
+   * Ensures a representative showcase cover item exists in Meta Catalog for a given store.
+   * Uses store.logoUrl (or fallback) as image, lowest product price as starting price.
+   */
+  public async ensureStoreShowcaseProduct(
+    store: StoreProfile,
+    minPrice = 10000,
+    imageUrl?: string
+  ): Promise<CatalogProduct | null> {
+    const showcaseRetailerId = `showcase_${store.storeId}`;
+    const targetImage = imageUrl || store.logoUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80';
+    const storeTitle = `🏪 ${store.storeName}`;
+    const addr = store.address ? `📍 ${store.address}. ` : '';
+    const hours = store.operatingHours ? `⏰ Buka ${store.operatingHours.open} - ${store.operatingHours.close} WIB. ` : '';
+    const desc = `${addr}${hours}Ketik pesan atau buka katalog untuk memesan seluruh menu lengkap ${store.storeName}.`;
+
+    try {
+      const existing = await this.getProductByRetailerId(showcaseRetailerId);
+      if (existing) {
+        const res = await this.updateProduct(showcaseRetailerId, {
+          name: storeTitle,
+          price: minPrice > 0 ? minPrice : 10000,
+          description: desc,
+          image_url: targetImage,
+          brand: store.storeName,
+          category: store.category || 'Toko'
+        });
+        return res.product || null;
+      }
+
+      const res = await this.createProduct({
+        retailer_id: showcaseRetailerId,
+        name: storeTitle,
+        price: minPrice > 0 ? minPrice : 10000,
+        currency: 'IDR',
+        description: desc,
+        brand: store.storeName,
+        category: store.category || 'Toko',
+        image_url: targetImage,
+        availability: 'in stock'
+      });
+      return res.product || null;
+    } catch (err: any) {
+      console.warn(`[WhatsAppCatalogService] Failed to ensure showcase product for "${store.storeName}":`, err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Builds native WhatsApp Product Carousel Message for Multi-Store Discovery.
+   * Allows buyers to horizontally scroll through stores with store logo, name, and starting price.
+   * Requires 2 to 10 cards per Meta Cloud API specifications.
+   */
+  public buildStoreCarouselPayload(
+    recipient: string,
+    stores: Array<{ store: StoreProfile; minPrice?: number; showcaseRetailerId?: string }>,
+    bodyText = 'Geser kartu di bawah untuk melihat pilihan warung & layanan terdekat. Tekan "Lihat" untuk membuka menu lengkap:'
+  ): Record<string, any> {
+    const cleanRecipient = recipient.replace(/[^0-9]/g, '');
+    const validStores = stores.slice(0, 10);
+    if (validStores.length < 2) {
+      throw new Error('WhatsApp Product Carousel requires at least 2 cards.');
+    }
+
+    const cards = validStores.map((s, idx) => ({
+      card_index: idx,
+      type: 'product',
+      action: {
+        catalog_id: this.catalogId,
+        product_retailer_id: s.showcaseRetailerId || `showcase_${s.store.storeId}`
+      }
+    }));
+
+    return {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanRecipient,
+      type: 'interactive',
+      interactive: {
+        type: 'carousel',
+        body: {
+          text: bodyText.slice(0, 1024)
+        },
+        action: {
+          cards
         }
       }
     };

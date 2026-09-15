@@ -360,6 +360,28 @@ export class WhatsAppCatalogGoalHandler {
       const nearby = this.storeService.findNearbyStores(targetLat, targetLng, category, maxDistanceKm);
       const topStores = nearby.slice(0, 10);
 
+      let allProducts: any[] = [];
+      try {
+        allProducts = await this.catalogService.getProducts();
+      } catch (err: any) {
+        // Continue with fallback prices
+      }
+
+      const carouselStores = topStores.map((s) => {
+        const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
+        return {
+          store: s.store,
+          minPrice,
+          showcaseRetailerId: `showcase_${s.store.storeId}`
+        };
+      });
+
+      // Best-effort background sync of showcase items for discovery
+      for (const s of topStores) {
+        const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
+        this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice).catch(() => {});
+      }
+
       const storeListFormatted = topStores.map((s) => ({
         storeId: s.store.storeId,
         storeName: s.store.storeName,
@@ -382,6 +404,10 @@ export class WhatsAppCatalogGoalHandler {
         stores: storeListFormatted,
         summary: summaryText,
         richContent: {
+          storeCarousel: topStores.length >= 2 ? {
+            stores: carouselStores,
+            bodyText: `Temukan ${topStores.length} pilihan warung & layanan terdekat. Geser ke samping dan pilih "Lihat" untuk membuka menu lengkap:`
+          } : undefined,
           storeList: {
             title: `Toko Terdekat${category ? ` (${category})` : ''}`,
             stores: topStores.map((s) => ({
@@ -591,6 +617,8 @@ export class WhatsAppCatalogGoalHandler {
       const close = payload?.closeTime || payload?.close;
       const days = Array.isArray(payload?.days) ? payload.days : undefined;
 
+      const logoUrl = payload?.logoUrl || payload?.logo || payload?.storeLogoUrl;
+
       const store = await this.storeService.upsertStore({
         storeName,
         businessType,
@@ -599,6 +627,7 @@ export class WhatsAppCatalogGoalHandler {
         address: payload?.address || payload?.alamat,
         coverageArea: payload?.coverageArea || payload?.area,
         description: payload?.description || payload?.deskripsi,
+        logoUrl: logoUrl !== undefined ? logoUrl : undefined,
         timezone: payload?.timezone,
         operatingHours: open && close ? { open, close, days: days || [1, 2, 3, 4, 5, 6, 7] } : undefined,
         isOpenManualOverride: payload?.isOpenManual !== undefined ? payload.isOpenManual : undefined,
@@ -606,12 +635,21 @@ export class WhatsAppCatalogGoalHandler {
         notice: payload?.notice
       });
 
+      // Sync showcase product in background
+      try {
+        const allProducts = await this.catalogService.getProducts();
+        const minPrice = this.storeService.calculateStoreMinPrice(store.storeId, allProducts);
+        await this.catalogService.ensureStoreShowcaseProduct(store, minPrice, logoUrl);
+      } catch (e: any) {
+        console.warn('[WhatsAppCatalogGoalHandler] Failed to sync showcase item after store config:', e.message);
+      }
+
       const status = this.storeService.isStoreOpenNow(store.storeId);
 
       this.emitResult(requestId, true, {
         store,
         status,
-        message: `Profil toko "${store.storeName}" berhasil diperbarui. Tipe: ${store.businessType}. Jam Operasional: ${store.operatingHours.open} - ${store.operatingHours.close} WIB. Status Saat Ini: ${status.statusText}.`
+        message: `Profil toko "${store.storeName}" berhasil diperbarui. Tipe: ${store.businessType}. Jam Operasional: ${store.operatingHours.open} - ${store.operatingHours.close} WIB. Status Saat Ini: ${status.statusText}.${store.logoUrl ? ' Logo/Foto Profil terpasang.' : ''}`
       });
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to configure store:', err.message);
