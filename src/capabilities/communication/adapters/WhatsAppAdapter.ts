@@ -435,6 +435,110 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       }
     }
 
+    // 2e. Native WhatsApp Interactive Store List Message (Bottom Sheet)
+    if (action.richContent?.storeList && this.catalogService) {
+      const { stores, headerText, bodyText, buttonText } = action.richContent.storeList;
+      const effectiveBody = action.text
+        ? WhatsAppAdapter.formatToWhatsApp(action.text)
+        : (bodyText || 'Pilih toko untuk melihat daftar menu dan memesan langsung di WhatsApp:');
+      const storeListPayload = this.catalogService.buildInteractiveStoreListPayload(
+        cleanRecipient,
+        stores || [],
+        headerText,
+        effectiveBody,
+        buttonText
+      );
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(storeListPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive Store List rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Interactive Store List exception, falling back to text:', err.message);
+      }
+    }
+
+    // 2f. Native WhatsApp Interactive Category List Message (Level 1 Categories)
+    if (action.richContent?.categoryList && this.catalogService) {
+      const { headerText, bodyText } = action.richContent.categoryList;
+      const effectiveBody = action.text
+        ? WhatsAppAdapter.formatToWhatsApp(action.text)
+        : (bodyText || 'Pilih kategori kebutuhan belanja atau layanan yang Anda cari:');
+      const catListPayload = this.catalogService.buildCategoryListPayload(
+        cleanRecipient,
+        headerText,
+        effectiveBody
+      );
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(catListPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json() as any;
+          return { success: true, platformMessageId: data?.messages?.[0]?.id };
+        }
+
+        const errText = await response.text();
+        console.warn(`[WhatsAppAdapter] Interactive Category List rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+      } catch (err: any) {
+        console.warn('[WhatsAppAdapter] Interactive Category List exception, falling back to text:', err.message);
+      }
+    }
+
+    // 2g. Native WhatsApp Quick Reply Buttons (Category / Action Shortcuts)
+    if ((action.richContent?.buttons || action.richContent?.quickReplies) && this.catalogService) {
+      const buttons = action.richContent.buttons || action.richContent.quickReplies;
+      if (Array.isArray(buttons) && buttons.length > 0) {
+        const effectiveBody = action.text
+          ? WhatsAppAdapter.formatToWhatsApp(action.text)
+          : 'Silakan pilih opsi di bawah ini:';
+        const buttonsPayload = this.catalogService.buildQuickReplyButtonsPayload(
+          cleanRecipient,
+          effectiveBody,
+          buttons,
+          action.richContent.footerText
+        );
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(buttonsPayload)
+          });
+
+          if (response.ok) {
+            const data = await response.json() as any;
+            return { success: true, platformMessageId: data?.messages?.[0]?.id };
+          }
+
+          const errText = await response.text();
+          console.warn(`[WhatsAppAdapter] Interactive Buttons rejected (${response.status}): ${errText}. Falling back to conversational text.`);
+        } catch (err: any) {
+          console.warn('[WhatsAppAdapter] Interactive Buttons exception, falling back to text:', err.message);
+        }
+      }
+    }
+
     // 3. Native Outbound Image Delivery (e.g. Generated Charts, Diagrams, Visuals)
     let rawText = action.text || '';
     const imagesToSend: Array<{ url: string; caption?: string }> = [];

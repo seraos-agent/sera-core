@@ -32,6 +32,15 @@ export interface StoreProfile {
   updatedAt: number;
 }
 
+export const MARKETPLACE_CATEGORIES = [
+  { id: 'cat_kuliner', name: 'Kuliner & Makanan', key: 'KULINER', icon: '🍲', description: 'Warung makan, ayam geprek, bakso, katering, minuman' },
+  { id: 'cat_sembako', name: 'Sembako & Kebutuhan Harian', key: 'SEMBAKO', icon: '🛒', description: 'Beras, minyak, mie instan, kebutuhan dapur & rumah' },
+  { id: 'cat_listrik', name: 'Alat Listrik & Bangunan', key: 'ELEKTRONIK_LISTRIK', icon: '⚡', description: 'Kabel, saklar, lampu, perkakas, alat pertukangan' },
+  { id: 'cat_mainan', name: 'Mainan & Hobi', key: 'MAINAN_HOBI', icon: '🧸', description: 'Mainan anak, action figure, edukasi, perlengkapan hobi' },
+  { id: 'cat_jasa', name: 'Jasa & Layanan Panggilan', key: 'JASA', icon: '🛠️', description: 'Servis AC, montir panggilan, laundry, kebersihan' },
+  { id: 'cat_fashion', name: 'Fashion & Pakaian', key: 'FASHION', icon: '👕', description: 'Pakaian pria/wanita, hijab, aksesoris, sepatu' }
+] as const;
+
 export interface NearbyStoreResult {
   store: StoreProfile;
   distanceKm: number;

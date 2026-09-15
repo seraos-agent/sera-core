@@ -26,6 +26,7 @@ export interface CreateProductInput {
   image_url?: string;
   availability?: 'in stock' | 'out of stock';
   url?: string;
+  variants?: Array<{ name: string; price: number; description?: string }>;
 }
 
 export interface UpdateProductInput {
@@ -203,10 +204,36 @@ export class WhatsAppCatalogService {
     }
 
     try {
-      const retailerId = input.retailer_id?.trim() || `SKU-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-      const name = input.name.trim();
-      const description = (input.description || `${name} dari ${input.brand || this.defaultStoreName}`).trim();
       const brand = (input.brand || this.defaultStoreName).trim();
+      const name = input.name.trim();
+
+      // Check if product with same name already exists under this store brand to deduplicate (upsert)
+      const existingProducts = await this.getProductsByBrand(brand);
+      const cleanName = name.toLowerCase().replace(/\s+/g, ' ');
+      const existing = existingProducts.find(
+        (p) => p.name.toLowerCase().replace(/\s+/g, ' ') === cleanName ||
+               (input.retailer_id && p.retailer_id.toLowerCase() === input.retailer_id.toLowerCase().trim())
+      );
+
+      if (existing) {
+        console.log(`[WhatsAppCatalogService] Deduplicating: Product "${name}" already exists for "${brand}" (${existing.retailer_id}). Updating existing item.`);
+        const updateRes = await this.updateProduct(existing.retailer_id, {
+          name,
+          price: input.price,
+          description: input.description,
+          image_url: input.image_url,
+          availability: input.availability,
+          brand
+        });
+        if (updateRes.success && updateRes.product) {
+          return { success: true, product: updateRes.product };
+        }
+      }
+
+      const brandSlug = brand.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 15);
+      const nameSlug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
+      const retailerId = input.retailer_id?.trim() || `SKU-${brandSlug}-${nameSlug}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+      const description = (input.description || `${name} dari ${brand}`).trim();
       const currency = (input.currency || 'IDR').toUpperCase();
       const priceInCents = Math.round(input.price * 100); // Meta integer offset
       const availability = input.availability || 'in stock';
@@ -268,7 +295,7 @@ export class WhatsAppCatalogService {
   }
 
   /**
-   * Creates multiple products in batch to Meta Commerce Catalog.
+   * Creates multiple products in batch to Meta Commerce Catalog with variant expansion.
    */
   public async createProductsBatch(inputs: CreateProductInput[]): Promise<{
     successCount: number;
@@ -279,7 +306,25 @@ export class WhatsAppCatalogService {
     const createdProducts: CatalogProduct[] = [];
     const errors: string[] = [];
 
+    // Expand variant items into discrete catalog products with clear prices
+    const expandedInputs: CreateProductInput[] = [];
     for (const item of inputs) {
+      if (item.variants && Array.isArray(item.variants) && item.variants.length > 0) {
+        for (const v of item.variants) {
+          expandedInputs.push({
+            ...item,
+            name: `${item.name} - ${v.name}`,
+            price: v.price || item.price,
+            description: v.description || item.description,
+            retailer_id: undefined
+          });
+        }
+      } else {
+        expandedInputs.push(item);
+      }
+    }
+
+    for (const item of expandedInputs) {
       const res = await this.createProduct(item);
       if (res.success && res.product) {
         createdProducts.push(res.product);
@@ -492,12 +537,30 @@ export class WhatsAppCatalogService {
    */
   public buildInteractiveStoreListPayload(
     recipient: string,
-    stores: Array<{ store: { storeId: string; storeName: string; category?: string }; distanceKm: number; isOpen: boolean; statusText: string }>,
+    stores: any[],
     headerText = 'Toko & Warung Terdekat',
-    bodyText = 'Pilih toko untuk melihat daftar menu dan memesan langsung di WhatsApp:'
+    bodyText = 'Pilih toko untuk melihat daftar menu dan memesan langsung di WhatsApp:',
+    buttonText = 'Pilih Toko'
   ): Record<string, any> {
     const cleanRecipient = recipient.replace(/[^0-9]/g, '');
     const topStores = stores.slice(0, 10);
+
+    const rows = topStores.map((s) => {
+      const id = s.id ? s.id : `store_${s.store?.storeId || 'default'}`;
+      const title = String(s.title || s.store?.storeName || 'Toko').slice(0, 24);
+      let desc = s.description;
+      if (!desc && s.store) {
+        const distStr = s.distanceKm !== undefined ? `${s.distanceKm} km • ` : '';
+        const statusStr = s.isOpen ? '🟢 Buka' : '🔴 Tutup';
+        const addrStr = s.store.address ? ` • 📍 ${s.store.address}` : (s.store.category ? ` • ${s.store.category}` : '');
+        desc = `${distStr}${statusStr}${addrStr}`;
+      }
+      return {
+        id: String(id).slice(0, 200),
+        title,
+        description: String(desc || 'Toko resmi').slice(0, 72)
+      };
+    });
 
     return {
       messaging_product: 'whatsapp',
@@ -517,17 +580,94 @@ export class WhatsAppCatalogService {
           text: 'SERA Marketplace'
         },
         action: {
-          button: 'Pilih Toko',
+          button: buttonText.slice(0, 20),
           sections: [
             {
-              title: 'Daftar Toko',
-              rows: topStores.map((s) => ({
-                id: `store_${s.store.storeId}`,
-                title: s.store.storeName.slice(0, 24),
-                description: `${s.distanceKm} km • ${s.isOpen ? 'Buka' : 'Tutup'}${s.store.category ? ` • ${s.store.category}` : ''}`.slice(0, 72)
-              }))
+              title: 'Pilihan Toko & Layanan',
+              rows
             }
           ]
+        }
+      }
+    };
+  }
+
+  /**
+   * Builds native WhatsApp Interactive List Message for Level 1 Category Selection.
+   */
+  public buildCategoryListPayload(
+    recipient: string,
+    headerText = 'Kategori Marketplace',
+    bodyText = 'Pilih kategori kebutuhan belanja atau layanan yang Anda cari:'
+  ): Record<string, any> {
+    const cleanRecipient = recipient.replace(/[^0-9]/g, '');
+    return {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanRecipient,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        header: {
+          type: 'text',
+          text: headerText.slice(0, 60)
+        },
+        body: {
+          text: bodyText.slice(0, 1024)
+        },
+        footer: {
+          text: 'SERA Marketplace'
+        },
+        action: {
+          button: 'Pilih Kategori',
+          sections: [
+            {
+              title: 'Kategori Belanja & Jasa',
+              rows: [
+                { id: 'cat_kuliner', title: '🍲 Kuliner & Makanan', description: 'Warung makan, ayam geprek, bakso, katering, minuman' },
+                { id: 'cat_sembako', title: '🛒 Sembako & Harian', description: 'Beras, minyak, mie instan, kebutuhan dapur & rumah' },
+                { id: 'cat_listrik', title: '⚡ Listrik & Bangunan', description: 'Kabel, saklar, lampu, perkakas, alat pertukangan' },
+                { id: 'cat_mainan', title: '🧸 Mainan & Hobi', description: 'Mainan anak, action figure, edukasi, perlengkapan hobi' },
+                { id: 'cat_jasa', title: '🛠️ Jasa & Panggilan', description: 'Servis AC, montir panggilan, laundry, kebersihan' }
+              ]
+            }
+          ]
+        }
+      }
+    };
+  }
+
+  /**
+   * Builds native WhatsApp Quick Reply Buttons (up to 3 clickable buttons).
+   */
+  public buildQuickReplyButtonsPayload(
+    recipient: string,
+    bodyText: string,
+    buttons: Array<{ id: string; title: string }>,
+    footerText = 'SERA Marketplace'
+  ): Record<string, any> {
+    const cleanRecipient = recipient.replace(/[^0-9]/g, '');
+    return {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanRecipient,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: {
+          text: bodyText.slice(0, 1024)
+        },
+        footer: {
+          text: footerText.slice(0, 60)
+        },
+        action: {
+          buttons: buttons.slice(0, 3).map((b) => ({
+            type: 'reply',
+            reply: {
+              id: String(b.id).slice(0, 256),
+              title: String(b.title).slice(0, 20)
+            }
+          }))
         }
       }
     };

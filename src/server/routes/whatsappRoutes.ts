@@ -228,15 +228,24 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         const storeService = StoreProfileService.getInstance();
         const parsedOrder = WhatsAppCatalogService.parseIncomingOrder(incomingMsg.order);
 
-        // Lookup store from first product or default
+        // Strict store resolution from product SKU to prevent store data cross-contamination
         const firstSku = parsedOrder.items[0]?.product_retailer_id || '';
-        let targetStore = storeService.getStore('sera-mart');
-        for (const store of storeService.listStores()) {
-          const storeSlug = store.storeId.replace(/-/g, '');
-          if (firstSku.toLowerCase().includes(storeSlug) || firstSku.toLowerCase().includes(store.storeName.toLowerCase().replace(/\s+/g, ''))) {
+        let targetStore: any = undefined;
+        const allStores = storeService.listStores();
+
+        for (const store of allStores) {
+          const storeSlug = store.storeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const storeNameClean = store.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const skuClean = firstSku.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (skuClean.includes(storeSlug) || skuClean.includes(storeNameClean)) {
             targetStore = store;
             break;
           }
+        }
+
+        // Fallback: If only 1 store registered in system, resolve to that store
+        if (!targetStore && allStores.length === 1) {
+          targetStore = allStores[0];
         }
 
         const storeStatus = targetStore ? storeService.isStoreOpenNow(targetStore.storeId) : undefined;

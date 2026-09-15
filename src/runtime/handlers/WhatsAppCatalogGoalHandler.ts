@@ -289,7 +289,7 @@ export class WhatsAppCatalogGoalHandler {
           description: p.description || p.desc || undefined,
           image_url: p.imageUrl || p.image_url || p.image || undefined,
           availability: p.availability === 'out of stock' ? 'out of stock' : 'in stock',
-          businessType
+          variants: Array.isArray(p.variants) ? p.variants : undefined
         };
       });
 
@@ -300,7 +300,7 @@ export class WhatsAppCatalogGoalHandler {
         successCount: batchRes.successCount,
         failedCount: batchRes.failedCount,
         products: batchRes.createdProducts,
-        message: `Toko "${store.storeName}" dan ${batchRes.successCount} produk berhasil didaftarkan ke katalog WhatsApp!`
+        message: `Toko "${store.storeName}" (${store.address || 'Alamat fisik menyusul'}) dan ${batchRes.successCount} produk berhasil didaftarkan ke katalog WhatsApp!`
       });
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed bulk create products:', err.message);
@@ -309,14 +309,14 @@ export class WhatsAppCatalogGoalHandler {
   }
 
   /**
-   * Discovers nearby stores within radius km using Haversine formula and returns an Interactive List Message.
+   * Discovers stores within a given radius using Haversine distance, with operational status and category filter.
    */
   public async handleDiscoverNearbyStores(requestId: string, payload: any): Promise<void> {
     try {
       const lat = payload?.latitude !== undefined ? Number(payload.latitude) : undefined;
       const lng = payload?.longitude !== undefined ? Number(payload.longitude) : undefined;
-      const category = payload?.category || payload?.kategori || undefined;
-      const maxDistanceKm = payload?.maxDistanceKm ? Number(payload.maxDistanceKm) : 15;
+      const category = payload?.category || payload?.kategori;
+      const maxDistanceKm = Number(payload?.maxDistanceKm || payload?.radiusKm || 15);
 
       // Center coordinates fallback
       const targetLat = lat !== undefined ? lat : -6.2088;
@@ -329,6 +329,7 @@ export class WhatsAppCatalogGoalHandler {
         storeId: s.store.storeId,
         storeName: s.store.storeName,
         category: s.store.category,
+        address: s.store.address || 'Alamat belum diatur',
         distanceKm: s.distanceKm,
         isOpen: s.isOpen,
         statusText: s.statusText,
@@ -336,7 +337,8 @@ export class WhatsAppCatalogGoalHandler {
       }));
 
       const summaryText = topStores.length > 0
-        ? `Menemukan ${topStores.length} toko/warung terdekat${category ? ` kategori "${category}"` : ''}:`
+        ? `Menemukan ${topStores.length} toko/layanan terdaftar${category ? ` (${category})` : ''}:\n\n` +
+          topStores.map((s, i) => `${i + 1}. *${s.store.storeName}* (${s.store.category || 'Toko'})\n   📍 ${s.store.address || 'Alamat belum diatur'}\n   ${s.isOpen ? '🟢' : '🔴'} ${s.statusText} • ${s.distanceKm} km`).join('\n\n')
         : `Belum ada toko yang terdaftar di sekitar lokasi Anda.`;
 
       this.emitResult(requestId, true, {
@@ -348,11 +350,17 @@ export class WhatsAppCatalogGoalHandler {
           storeList: {
             title: `Toko Terdekat${category ? ` (${category})` : ''}`,
             stores: topStores.map((s) => ({
-              id: s.store.storeId,
+              id: `store_${s.store.storeId}`,
               title: s.store.storeName,
-              description: `${s.distanceKm} km • ${s.statusText} (${s.store.operatingHours.open} - ${s.store.operatingHours.close})`
+              description: `${s.distanceKm > 0 ? `${s.distanceKm} km • ` : ''}${s.statusText}${s.store.address ? ` • 📍 ${s.store.address}` : ''}`
             }))
-          }
+          },
+          buttons: topStores.length > 0 && topStores.length <= 3
+            ? topStores.map((s) => ({
+                id: `store_${s.store.storeId}`,
+                title: s.store.storeName.slice(0, 20)
+              }))
+            : undefined
         },
         message: summaryText
       });
