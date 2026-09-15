@@ -206,6 +206,10 @@ Exemplar 28 - Merchant Configures Store Operating Hours via Chat:
 User: "SERA, jam buka Toko Ayam Geprek Mas Joko dari jam 10 pagi sampai 9 malam, buka setiap hari ya" or "toko kami tutup hari Minggu ya"
 Action: Call tool "STORE_CONFIG_PROFILE" with: { "storeName": "Ayam Geprek Mas Joko", "openTime": "10:00", "closeTime": "21:00", "days": [1, 2, 3, 4, 5, 6, 7] }
 
+Exemplar 28b - Merchant Sets or Updates Store Physical Address via Chat:
+User: "Sera, alamat toko Geprek Cak Jiban di Jl. Tebet Raya No. 45 Jakarta Selatan ya" or "tambahkan alamat toko Cak Jiban: Jl. Kaliurang KM 5.5 No. 12 Sleman"
+Action: Call tool "STORE_CONFIG_PROFILE" with: { "storeName": "Geprek Cak Jiban", "address": "Jl. Tebet Raya No. 45 Jakarta Selatan" }
+
 Exemplar 29 - Customer Inquires or Orders When Store Is Closed:
 User: "apakah Toko Ayam Geprek Mas Joko buka sekarang?" or sends an order cart outside operating hours
 Action: Call tool "STORE_CHECK_STATUS" with: { "storeName": "Ayam Geprek Mas Joko" }
