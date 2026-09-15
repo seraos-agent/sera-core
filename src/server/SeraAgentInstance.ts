@@ -581,13 +581,15 @@ export class SeraAgentInstance {
       },
       {
         name: 'WHATSAPP_SEND_CATALOG',
-        description: 'Sends an interactive multi-product list (MPM) or full catalog link to the user on WhatsApp so they can browse all available store items and add multiple items to their cart.',
+        description: 'Sends an interactive multi-product list (MPM) or catalog message to the user on WhatsApp. CRITICAL: You MUST provide "storeName" (e.g. "Geprek Cak Jiban", "SERA Mart") so WhatsApp shows ONLY that store\'s products. NEVER mix products across different merchants.',
         parameters: {
           type: 'object',
           properties: {
-            headerText: { type: 'string', description: 'Header title for the catalog list (e.g. "Katalog Sembako SERA")' },
+            storeName: { type: 'string', description: 'Store or Merchant brand name to scope the catalog (e.g. "Geprek Cak Jiban", "SERA Mart"). CRITICAL: Required to ensure only this store\'s products are displayed.' },
+            headerText: { type: 'string', description: 'Header title for the catalog list (e.g. "Menu Geprek Cak Jiban", "Katalog SERA Mart")' },
             bodyText: { type: 'string', description: 'Introductory body message for the catalog list' }
-          }
+          },
+          required: ['storeName']
         }
       },
       {

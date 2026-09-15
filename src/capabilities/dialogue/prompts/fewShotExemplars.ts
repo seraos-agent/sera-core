@@ -182,9 +182,13 @@ Exemplar 23 - Request Product Card on WhatsApp (Single Product Message / SPM):
 User: "mau lihat produk beras ramos dong" or "kirim kartu produk minyak bimoli ya" or "minta kartu produk indomie"
 Action: Call tool "WHATSAPP_SEND_PRODUCT" with: { "retailerId": "SKU-BERAS-01", "bodyText": "Beras Premium Ramos 5kg — Rp 75.000 (Pulen & Bersih)" }
 
-Exemplar 24 - Request Full Store Catalog on WhatsApp (Multi-Product List / MPM):
-User: "minta katalog sembakonya dong" or "kirim daftar katalog produk toko" or "bisa lihat daftar sembako?"
-Action: Call tool "WHATSAPP_SEND_CATALOG" with: { "headerText": "Katalog Sembako Pilihan", "bodyText": "Silakan pilih produk sembako yang ingin dipesan langsung di WhatsApp:" }
+Exemplar 24 - Request Store Catalog on WhatsApp (Multi-Product List / MPM):
+User: "minta katalog sembakonya dong" or "kirim katalog SERA Mart" or "bisa lihat sembako?"
+Action: Call tool "WHATSAPP_SEND_CATALOG" with: { "storeName": "SERA Mart", "headerText": "Katalog Sembako SERA Mart", "bodyText": "Silakan pilih produk sembako yang ingin dipesan langsung di WhatsApp:" }
+
+Exemplar 24b - Request Specific Merchant Catalog on WhatsApp:
+User: "coba tampilkan menu geprek cak jiban" or "katalog cak jiban dong" or "mau lihat menu geprek"
+Action: Call tool "WHATSAPP_SEND_CATALOG" with: { "storeName": "Geprek Cak Jiban", "headerText": "Menu Geprek Cak Jiban", "bodyText": "Berikut daftar menu siap saji dari Geprek Cak Jiban:" }
 
 Exemplar 25 - Merchant Adds New Physical Product (Goods) via Chat:
 User: "SERA, masukkan menu baru Toko Ayam Geprek Mas Joko: Paket Geprek Sambal Matah Rp 25.000, deskripsi ayam krispi sambal matah pedas segar, stok ready"

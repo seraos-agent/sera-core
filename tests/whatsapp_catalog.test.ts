@@ -562,6 +562,77 @@ describe('WhatsApp Catalog & Commerce Integration', () => {
       expect(res.richContent?.product?.retailerId).toBe('SKU-BERAS-01');
       expect(res.finalAnswer).toContain('Ini kartu produknya ya.');
     });
+
+    it('strictly isolates products by brand without cross-contamination', async () => {
+      const mixedCatalog = [
+        { id: '1', retailer_id: 'SKU-GEPREK-01', name: 'Geprek Original', price: 'IDR13,000', brand: 'Geprek Cak Jiban' },
+        { id: '2', retailer_id: 'SKU-GEPREK-02', name: 'Geprek Keju', price: 'IDR18,000', brand: 'Geprek Cak Jiban' },
+        { id: '3', retailer_id: 'SKU-BERAS-01', name: 'Beras Ramos 5kg', price: 'IDR75,000', brand: 'Ramos' },
+        { id: '4', retailer_id: 'SKU-MINYAK-01', name: 'Minyak Bimoli 2L', price: 'IDR38,000', brand: 'Bimoli' }
+      ];
+
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: mixedCatalog })
+      } as any);
+
+      const service = new WhatsAppCatalogService({
+        catalogId: mockCatalogId,
+        accessToken: mockAccessToken
+      });
+
+      // Query for Cak Jiban only
+      const geprekItems = await service.getProductsByBrand('Geprek Cak Jiban');
+      expect(geprekItems.length).toBe(2);
+      expect(geprekItems.every(p => p.brand === 'Geprek Cak Jiban')).toBe(true);
+
+      // Query for SERA Mart only (should exclude geprek items)
+      const sembakoItems = await service.getProductsByBrand('SERA Mart');
+      expect(sembakoItems.length).toBe(2);
+      expect(sembakoItems.some(p => p.retailer_id.includes('GEPREK'))).toBe(false);
+    });
+
+    it('resolves store name from headerText in handleSendCatalog and enforces single store output', async () => {
+      const mixedCatalog = [
+        { id: '1', retailer_id: 'SKU-GEPREK-01', name: 'Geprek Original', price: 'IDR13,000', brand: 'Geprek Cak Jiban', category: 'Makanan' },
+        { id: '2', retailer_id: 'SKU-BERAS-01', name: 'Beras Ramos 5kg', price: 'IDR75,000', brand: 'Ramos', category: 'Sembako' }
+      ];
+
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: mixedCatalog })
+      } as any);
+
+      const service = new WhatsAppCatalogService({
+        catalogId: mockCatalogId,
+        accessToken: mockAccessToken
+      });
+
+      let emittedData: any = null;
+      const handler = new WhatsAppCatalogGoalHandler(
+        () => service,
+        'test-session',
+        (reqId, success, data, error) => {
+          emittedData = { reqId, success, data, error };
+        }
+      );
+
+      // Call handleSendCatalog without storeName, but with headerText referencing Geprek Cak Jiban
+      await handler.handleSendCatalog('req-test-1', {
+        headerText: 'Menu Geprek Cak Jiban',
+        bodyText: 'Silakan pilih menu geprek favorit Anda'
+      });
+
+      expect(emittedData).not.toBeNull();
+      expect(emittedData.success).toBe(true);
+      expect(emittedData.data.storeName).toBe('Geprek Cak Jiban');
+      expect(emittedData.data.totalProducts).toBe(1);
+
+      // Verify sections inside MPM richContent only contain the geprek product
+      const productIds = emittedData.data.richContent.productList.sections.flatMap((s: any) => s.productRetailerIds);
+      expect(productIds).toEqual(['SKU-GEPREK-01']);
+      expect(productIds).not.toContain('SKU-BERAS-01');
+    });
   });
 });
 

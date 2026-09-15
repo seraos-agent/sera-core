@@ -96,19 +96,51 @@ export class WhatsAppCatalogGoalHandler {
 
   /**
    * Prepares and dispatches a native interactive WhatsApp Multi-Product List (MPM) or Catalog link.
+   * Strictly enforces single-store isolation — products from different merchants never mix.
    */
   public async handleSendCatalog(requestId: string, payload: any): Promise<void> {
     try {
-      const targetStore = String(payload?.storeName || payload?.store || payload?.brand || '').trim();
-      let allProducts: CatalogProduct[];
+      const storeService = StoreProfileService.getInstance();
+      const allStores = storeService.listStores();
+
+      let targetStore = String(payload?.storeName || payload?.store || payload?.brand || '').trim();
+
+      // If targetStore not explicitly provided, try to extract from headerText or bodyText
+      if (!targetStore) {
+        const searchText = `${payload?.headerText || ''} ${payload?.bodyText || ''}`.toLowerCase();
+        for (const s of allStores) {
+          if (searchText.includes(s.storeName.toLowerCase()) || searchText.includes(s.storeId.toLowerCase())) {
+            targetStore = s.storeName;
+            break;
+          }
+        }
+        // Also check if text matches common store nicknames like "cak jiban" or "geprek"
+        if (!targetStore) {
+          if (searchText.includes('geprek') || searchText.includes('jiban')) {
+            targetStore = 'Geprek Cak Jiban';
+          } else if (searchText.includes('sera mart') || searchText.includes('sembako')) {
+            targetStore = 'SERA Mart';
+          }
+        }
+      }
+
+      let allProducts: CatalogProduct[] = [];
 
       if (targetStore) {
         allProducts = await this.catalogService.getProductsByBrand(targetStore);
         if (allProducts.length === 0) {
-          allProducts = await this.catalogService.getProducts();
+          throw new Error(`Belum ada produk yang terdaftar untuk toko "${targetStore}".`);
         }
       } else {
-        allProducts = await this.catalogService.getProducts();
+        // If no store specified, do NOT mix multiple stores into one MPM!
+        // If there's only 1 registered store, default to it
+        if (allStores.length === 1) {
+          targetStore = allStores[0].storeName;
+          allProducts = await this.catalogService.getProductsByBrand(targetStore);
+        } else {
+          // Guide user to select a store first (Level 2 Store Discovery)
+          return this.handleDiscoverNearbyStores(requestId, payload);
+        }
       }
 
       if (allProducts.length === 0) {

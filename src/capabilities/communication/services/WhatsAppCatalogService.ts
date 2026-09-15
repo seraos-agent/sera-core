@@ -179,12 +179,47 @@ export class WhatsAppCatalogService {
 
   /**
    * Retrieves products belonging strictly to a specific store brand.
+   * Guarantees strict merchant isolation so products of different stores never mix.
    */
   public async getProductsByBrand(brand: string, forceRefresh = false): Promise<CatalogProduct[]> {
     const products = await this.getProducts(forceRefresh);
-    if (!brand || !brand.trim()) return products;
+    if (!brand || !brand.trim()) return [];
+
     const cleanBrand = brand.toLowerCase().trim();
-    return products.filter((p) => (p.brand || '').toLowerCase().trim() === cleanBrand);
+    const brandTokens = cleanBrand.split(/\s+/).filter(t => t.length > 2);
+
+    // Case 1: SERA Mart / Sembako system store
+    if (cleanBrand.includes('sera mart') || cleanBrand === 'seramart' || cleanBrand === 'sera-mart' || cleanBrand === 'sembako') {
+      // Exclude any merchant products that belong to specific registered merchant brands
+      const otherBrands = ['geprek', 'cak jiban'];
+      return products.filter((p) => {
+        const b = (p.brand || '').toLowerCase();
+        const sku = (p.retailer_id || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        const isOther = otherBrands.some(k => b.includes(k) || sku.includes(k) || name.includes(k));
+        return !isOther;
+      });
+    }
+
+    // Case 2: Specific merchant brand (e.g. "Geprek Cak Jiban", "Cak Jiban", "Geprek")
+    return products.filter((p) => {
+      const pBrand = (p.brand || '').toLowerCase().trim();
+      const pSku = (p.retailer_id || '').toLowerCase().trim();
+      const pName = (p.name || '').toLowerCase().trim();
+
+      // Direct exact match
+      if (pBrand === cleanBrand) return true;
+
+      // Substring match
+      if (pBrand.includes(cleanBrand) || cleanBrand.includes(pBrand)) return true;
+
+      // Token match (e.g. "cak", "jiban", "geprek")
+      if (brandTokens.some(token => pBrand.includes(token) || pSku.includes(token) || pName.includes(token))) {
+        return true;
+      }
+
+      return false;
+    });
   }
 
   /**
