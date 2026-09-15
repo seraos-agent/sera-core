@@ -507,16 +507,38 @@ export class StoreProfileService {
 
   /**
    * Calculates the lowest product price available in a store's catalog.
+   * Strictly excludes showcase placeholder products and handles slug/brand normalization.
    */
-  public calculateStoreMinPrice(storeNameOrId: string, products: Array<{ rawPrice?: number; price?: string | number; brand?: string }>): number {
+  public calculateStoreMinPrice(
+    storeNameOrId: string,
+    products: Array<{ retailer_id?: string; rawPrice?: number; price?: string | number; brand?: string; name?: string }>
+  ): number {
     const store = this.getStore(storeNameOrId);
-    const targetBrand = (store ? store.storeName : storeNameOrId).toLowerCase().trim();
+    const targetName = (store ? store.storeName : storeNameOrId).toLowerCase().trim();
+    const cleanTarget = targetName.replace(/[^a-z0-9]/g, '');
+    const tokens = targetName.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
 
     const matchingPrices = products
       .filter((p) => {
-        if (!p.brand) return true;
-        const b = p.brand.toLowerCase();
-        return b.includes(targetBrand) || targetBrand.includes(b);
+        // Exclude showcase cover items from price calculation
+        if (p.retailer_id && String(p.retailer_id).startsWith('showcase_')) return false;
+
+        const pBrand = String(p.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const pSku = String(p.retailer_id || '').toLowerCase();
+        const pName = String(p.name || '').toLowerCase();
+
+        // 1. Direct alphanumeric containment match (e.g. "basopakkuumis" vs "basopakkuumis")
+        if (pBrand && (pBrand.includes(cleanTarget) || cleanTarget.includes(pBrand))) return true;
+
+        // 2. Token match across brand, SKU, or name
+        if (tokens.length > 0 && tokens.every((t) => pBrand.includes(t) || pSku.includes(t) || pName.includes(t))) {
+          return true;
+        }
+
+        // 3. Fallback if product has no brand: accept if tokens match name
+        if (!p.brand && tokens.length > 0 && tokens.some((t) => pName.includes(t))) return true;
+
+        return false;
       })
       .map((p) => {
         if (typeof p.rawPrice === 'number' && p.rawPrice > 0) return p.rawPrice;

@@ -203,4 +203,39 @@ describe('Store Carousel Discovery, Logo Support & Showcase Sync', () => {
       expect(capturedResult.message).toContain('Logo/Foto Profil terpasang');
     });
   });
+
+  describe('calculateStoreMinPrice', () => {
+    it('accurately calculates min price for store slug even when showcase item exists', () => {
+      const storeService = new StoreProfileService({ persistLocally: false, supabaseClient: null });
+
+      const products = [
+        { retailer_id: 'showcase_baso-pak-kumis', name: '🏪 Baso Pak Kumis', brand: 'Baso Pak Kumis', price: 'IDR10,000' },
+        { retailer_id: 'SKU-baso-1', name: 'Baso Iga Komplit', brand: 'Baso Pak Kumis', price: 'IDR45,000', rawPrice: 45000 },
+        { retailer_id: 'SKU-baso-2', name: 'Baso Iga Super', brand: 'Baso Pak Kumis', price: 'IDR39,000', rawPrice: 39000 },
+        { retailer_id: 'SKU-other', name: 'Ayam Bakar Madu', brand: 'Ayam Bakar Cak Cuk', price: 'IDR23,000', rawPrice: 23000 }
+      ];
+
+      // Using store slug (e.g. baso-pak-kumis)
+      const minPriceSlug = storeService.calculateStoreMinPrice('baso-pak-kumis', products);
+      expect(minPriceSlug).toBe(39000);
+
+      // Using store display name
+      const minPriceName = storeService.calculateStoreMinPrice('Baso Pak Kumis', products);
+      expect(minPriceName).toBe(39000);
+    });
+
+    it('accurately detects min price for Geprek Cak Jiban including drinks', () => {
+      const storeService = new StoreProfileService({ persistLocally: false, supabaseClient: null });
+
+      const products = [
+        { retailer_id: 'showcase_geprek-cak-jiban', name: '🏪 Geprek Cak Jiban', brand: 'Geprek Cak Jiban', price: 'IDR5,000' },
+        { retailer_id: 'SKU-1', name: 'Es Teh Manis Jumbo', brand: 'Geprek Cak Jiban', price: 'IDR5,000', rawPrice: 5000 },
+        { retailer_id: 'SKU-2', name: 'Geprek Original', brand: 'Geprek Cak Jiban', price: 'IDR13,000', rawPrice: 13000 },
+        { retailer_id: 'SKU-3', name: 'Geprek Mozarella', brand: 'Geprek Cak Jiban', price: 'IDR22,000', rawPrice: 22000 }
+      ];
+
+      const minPrice = storeService.calculateStoreMinPrice('geprek-cak-jiban', products);
+      expect(minPrice).toBe(5000);
+    });
+  });
 });

@@ -396,6 +396,13 @@ export class WhatsAppCatalogGoalHandler {
           if (created) {
             existingRetailerIds.add(showcaseId);
           }
+        } else {
+          // Self-heal showcase card price in background if it diverges from current catalog minimum
+          const existingItem = allProducts.find((p) => p.retailer_id === showcaseId);
+          const currentPrice = existingItem ? Number(String(existingItem.price).replace(/[^0-9]/g, '')) : 0;
+          if (currentPrice > 0 && currentPrice !== minPrice) {
+            this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice).catch(() => {});
+          }
         }
 
         if (existingRetailerIds.has(showcaseId)) {
