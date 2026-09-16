@@ -459,6 +459,28 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
 
           if (response.ok) {
             const data = await response.json() as any;
+            // Also dispatch companion interactive quick selector if storeList is provided
+            if (action.richContent?.storeList) {
+              try {
+                const companionPayload = this.catalogService.buildInteractiveStoreListPayload(
+                  cleanRecipient,
+                  action.richContent.storeList.stores || [],
+                  undefined,
+                  'Atau langsung tekan tombol di bawah untuk membuka daftar menu lengkap warung:',
+                  action.richContent.storeList.buttonText || 'Pilih Warung'
+                );
+                await fetch(url, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(companionPayload)
+                });
+              } catch (companionErr: any) {
+                console.warn('[WhatsAppAdapter] Companion storeList dispatch skipped:', companionErr.message);
+              }
+            }
             return { success: true, platformMessageId: data?.messages?.[0]?.id };
           }
 

@@ -854,7 +854,7 @@ export class WhatsAppCatalogService {
 
   /**
    * Ensures a representative showcase cover item exists in Meta Catalog for a given store.
-   * Uses store.logoUrl (or fallback) as image, lowest product price as starting price.
+   * Uses store.logoUrl, first product image, or fallback as image, lowest product price as starting price.
    */
   public async ensureStoreShowcaseProduct(
     store: StoreProfile,
@@ -862,11 +862,28 @@ export class WhatsAppCatalogService {
     imageUrl?: string
   ): Promise<CatalogProduct | null> {
     const showcaseRetailerId = `showcase_${store.storeId}`;
-    const targetImage = imageUrl || store.logoUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80';
+    let targetImage = imageUrl || store.logoUrl;
+
+    // If store has no logo or only an unsplash placeholder, default to first product's photo
+    if (!targetImage || targetImage.includes('unsplash.com')) {
+      try {
+        const prods = await this.getProductsByBrand(store.storeName);
+        const firstProdWithImg = prods.find((p) => p.image_url && !p.image_url.includes('unsplash.com'));
+        if (firstProdWithImg?.image_url) {
+          targetImage = firstProdWithImg.image_url;
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+    if (!targetImage) {
+      targetImage = 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80';
+    }
+
     const storeTitle = `🏪 ${store.storeName}`;
-    const addr = store.address ? `📍 ${store.address}. ` : '';
-    const hours = store.operatingHours ? `⏰ Buka ${store.operatingHours.open} - ${store.operatingHours.close} WIB. ` : '';
-    const desc = `${addr}${hours}Ketik pesan atau buka katalog untuk memesan seluruh menu lengkap ${store.storeName}.`;
+    const addr = store.address ? `📍 ${store.address}.\n` : '';
+    const hours = store.operatingHours ? `⏰ Buka ${store.operatingHours.open} - ${store.operatingHours.close} WIB.\n` : '';
+    const desc = `${addr}${hours}💵 Harga mulai Rp ${minPrice.toLocaleString('id-ID')}.\n\n👉 Tekan tombol "Kirim Pesan ke Bisnis" di bawah untuk membuka seluruh menu lengkap & memesan dari ${store.storeName}!`;
 
     try {
       const existing = await this.getProductByRetailerId(showcaseRetailerId);
@@ -908,7 +925,7 @@ export class WhatsAppCatalogService {
   public buildStoreCarouselPayload(
     recipient: string,
     stores: Array<{ store: StoreProfile; minPrice?: number; showcaseRetailerId?: string }>,
-    bodyText = 'Geser kartu di bawah untuk melihat pilihan warung & layanan terdekat. Tekan "Lihat" untuk membuka menu lengkap:'
+    bodyText = 'Geser kartu di bawah untuk melihat pilihan warung & harga mulai. Untuk membuka menu lengkap toko: ketik nama warungnya di chat atau tekan "Kirim Pesan" di dalam kartu:'
   ): Record<string, any> {
     const cleanRecipient = recipient.replace(/[^0-9]/g, '');
     const validStores = stores.slice(0, 10);

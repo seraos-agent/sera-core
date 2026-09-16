@@ -391,17 +391,31 @@ export class WhatsAppCatalogGoalHandler {
         const showcaseId = `showcase_${s.store.storeId}`;
         const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
 
+        // Find first product of this store with a real image to use as candidate cover if store has no custom logo
+        const storeProducts = allProducts.filter((p) => {
+          if (p.retailer_id.startsWith('showcase_')) return false;
+          const b = (p.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanId = s.store.storeId.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanName = s.store.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return b.includes(cleanId) || cleanId.includes(b) || b.includes(cleanName) || cleanName.includes(b);
+        });
+        const firstProductImage = storeProducts.find((p) => p.image_url && !p.image_url.includes('unsplash.com'))?.image_url;
+        const candidateImage = s.store.logoUrl || firstProductImage;
+
         if (!existingRetailerIds.has(showcaseId)) {
-          const created = await this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice);
+          const created = await this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice, candidateImage);
           if (created) {
             existingRetailerIds.add(showcaseId);
           }
         } else {
-          // Self-heal showcase card price in background if it diverges from current catalog minimum
+          // Self-heal showcase card price or image in background if it diverges
           const existingItem = allProducts.find((p) => p.retailer_id === showcaseId);
           const currentPrice = existingItem ? Number(String(existingItem.price).replace(/[^0-9]/g, '')) : 0;
-          if (currentPrice > 0 && currentPrice !== minPrice) {
-            this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice).catch(() => {});
+          const currentImg = existingItem?.image_url || '';
+          const needsPriceUpdate = currentPrice > 0 && currentPrice !== minPrice;
+          const needsImageUpdate = candidateImage && currentImg.includes('unsplash.com');
+          if (needsPriceUpdate || needsImageUpdate) {
+            this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice, candidateImage).catch(() => {});
           }
         }
 
@@ -438,7 +452,7 @@ export class WhatsAppCatalogGoalHandler {
         richContent: {
           storeCarousel: validCarouselStores.length >= 2 ? {
             stores: validCarouselStores,
-            bodyText: `Temukan ${validCarouselStores.length} pilihan warung & layanan terdekat. Geser ke samping dan pilih "Lihat" untuk membuka menu lengkap:`
+            bodyText: `Temukan ${validCarouselStores.length} warung terdekat & harga mulai. Untuk membuka menu lengkap: ketik nama warungnya di chat atau tekan "Kirim Pesan" di dalam kartu:`
           } : undefined,
           storeList: {
             title: `Toko Terdekat${category ? ` (${category})` : ''}`,
