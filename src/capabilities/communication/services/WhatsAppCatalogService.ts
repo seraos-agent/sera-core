@@ -1,5 +1,5 @@
 import { serverConfig } from '../../../server/config';
-import type { StoreProfile } from './StoreProfileService';
+import { StoreProfileService, type StoreProfile } from './StoreProfileService';
 
 export interface CatalogProduct {
   id: string;
@@ -196,36 +196,86 @@ export class WhatsAppCatalogService {
     if (!brand || !brand.trim()) return [];
 
     const cleanBrand = brand.toLowerCase().trim();
-    const brandTokens = cleanBrand.split(/\s+/).filter(t => t.length > 2);
+    const cleanBrandAlnum = cleanBrand.replace(/[^a-z0-9]/g, '');
 
-    // Case 1: SERA Mart / Sembako system store
-    if (cleanBrand.includes('sera mart') || cleanBrand === 'seramart' || cleanBrand === 'sera-mart' || cleanBrand === 'sembako') {
-      // Exclude any merchant products that belong to specific registered merchant brands
-      const otherBrands = ['geprek', 'cak jiban'];
+    // Resolve registered store from StoreProfileService if available
+    const storeService = StoreProfileService.getInstance();
+    const allStores = storeService.listStores();
+    const targetStore = storeService.getStore(cleanBrand);
+
+    // Identify if target is the official system store (SERA Mart)
+    const isSeraMart = targetStore
+      ? targetStore.storeId === 'sera-mart'
+      : (cleanBrand.includes('sera mart') || cleanBrand === 'seramart' || cleanBrand === 'sera-mart' || cleanBrand === 'sembako');
+
+    // Gather other registered merchant stores to guarantee cross-store exclusion
+    const otherMerchantStores = allStores.filter(s => {
+      if (s.storeId === 'sera-mart') return false;
+      if (targetStore && s.storeId === targetStore.storeId) return false;
+      return true;
+    });
+
+    if (isSeraMart) {
+      // SERA Mart gets products that do NOT belong to any registered merchant store
       return products.filter((p) => {
-        const b = (p.brand || '').toLowerCase();
-        const sku = (p.retailer_id || '').toLowerCase();
-        const name = (p.name || '').toLowerCase();
-        const isOther = otherBrands.some(k => b.includes(k) || sku.includes(k) || name.includes(k));
-        return !isOther;
+        const pBrandAlnum = (p.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const pSku = (p.retailer_id || '').toLowerCase();
+
+        const belongsToOtherMerchant = otherMerchantStores.some((other) => {
+          const otherAlnum = other.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const otherSlug = other.storeId.toLowerCase();
+          return (pBrandAlnum && pBrandAlnum === otherAlnum) || pSku.includes(otherSlug);
+        });
+
+        return !belongsToOtherMerchant;
       });
     }
 
-    // Case 2: Specific merchant brand (e.g. "Geprek Cak Jiban", "Cak Jiban", "Geprek")
+    // Target is a specific merchant store
+    const targetAlnum = targetStore
+      ? targetStore.storeName.toLowerCase().replace(/[^a-z0-9]/g, '')
+      : cleanBrandAlnum;
+    const targetSlug = targetStore ? targetStore.storeId.toLowerCase() : cleanBrand.replace(/[\s_]+/g, '-');
+
     return products.filter((p) => {
-      const pBrand = (p.brand || '').toLowerCase().trim();
+      const pBrandRaw = (p.brand || '').toLowerCase().trim();
+      const pBrandAlnum = pBrandRaw.replace(/[^a-z0-9]/g, '');
       const pSku = (p.retailer_id || '').toLowerCase().trim();
-      const pName = (p.name || '').toLowerCase().trim();
 
-      // Direct exact match
-      if (pBrand === cleanBrand) return true;
+      // First: STRICT EXCLUSION. If product explicitly belongs to another registered merchant, exclude it immediately!
+      const belongsToOther = otherMerchantStores.some((other) => {
+        const otherAlnum = other.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const otherSlug = other.storeId.toLowerCase();
+        return (pBrandAlnum && pBrandAlnum === otherAlnum) || pSku.includes(otherSlug);
+      });
+      if (belongsToOther) {
+        return false;
+      }
 
-      // Substring match
-      if (pBrand.includes(cleanBrand) || cleanBrand.includes(pBrand)) return true;
-
-      // Token match (e.g. "cak", "jiban", "geprek")
-      if (brandTokens.some(token => pBrand.includes(token) || pSku.includes(token) || pName.includes(token))) {
+      // Second: POSITIVE MATCH to target store
+      // 1. Exact or normalized brand match
+      if (pBrandAlnum && (pBrandAlnum === targetAlnum || pBrandRaw === cleanBrand)) {
         return true;
+      }
+
+      // 2. Retailer ID contains target storeId / slug
+      if (pSku.includes(targetSlug) || (targetStore && pSku.includes(targetStore.storeId))) {
+        return true;
+      }
+
+      // 3. Fallback for prefix matching in SKU (e.g. "SKU-ayam-bakar-cak-" matches store "ayam-bakar-cak-cuk")
+      if (targetStore) {
+        const slugPrefix = targetStore.storeId.split('-').slice(0, 3).join('-');
+        if (slugPrefix.length >= 8 && pSku.includes(slugPrefix)) {
+          return true;
+        }
+      }
+
+      // 4. Substring brand match ONLY if both strings are sufficiently long
+      if (pBrandAlnum && targetAlnum && pBrandAlnum.length >= 5 && targetAlnum.length >= 5) {
+        if (pBrandAlnum.includes(targetAlnum) || targetAlnum.includes(pBrandAlnum)) {
+          return true;
+        }
       }
 
       return false;

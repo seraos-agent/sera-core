@@ -58,6 +58,7 @@ export const MARKETPLACE_CATEGORIES = [
 export interface NearbyStoreResult {
   store: StoreProfile;
   distanceKm: number;
+  hasExactDistance?: boolean;
   isOpen: boolean;
   statusText: string;
 }
@@ -327,13 +328,14 @@ export class StoreProfileService {
    * Open stores are sorted first, followed by shortest distance.
    */
   public findNearbyStores(
-    lat: number,
-    lng: number,
+    lat?: number,
+    lng?: number,
     category?: string,
     maxDistanceKm = 15
   ): NearbyStoreResult[] {
     const results: NearbyStoreResult[] = [];
     const cleanCat = category ? category.trim().toLowerCase() : '';
+    const hasUserCoordinates = typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 
     for (const store of this.stores.values()) {
       if (cleanCat && store.category && !store.category.toLowerCase().includes(cleanCat)) {
@@ -341,18 +343,19 @@ export class StoreProfileService {
       }
 
       let distanceKm = 0;
-      if (store.latitude !== undefined && store.longitude !== undefined) {
+      let hasExactDistance = false;
+
+      if (hasUserCoordinates && store.latitude !== undefined && store.longitude !== undefined) {
         distanceKm = calculateHaversineDistanceKm(lat, lng, store.latitude, store.longitude);
         if (distanceKm > maxDistanceKm) continue;
-      } else {
-        // Fallback for stores without exact GPS pin: assume reachable default radius 2.5km
-        distanceKm = 2.5;
+        hasExactDistance = true;
       }
 
       const status = this.isStoreOpenNow(store.storeId);
       results.push({
         store,
         distanceKm,
+        hasExactDistance,
         isOpen: status.isOpen,
         statusText: status.statusText
       });
@@ -361,7 +364,10 @@ export class StoreProfileService {
     return results.sort((a, b) => {
       if (a.isOpen && !b.isOpen) return -1;
       if (!a.isOpen && b.isOpen) return 1;
-      return a.distanceKm - b.distanceKm;
+      if (a.hasExactDistance && b.hasExactDistance) {
+        return a.distanceKm - b.distanceKm;
+      }
+      return 0;
     });
   }
 
@@ -507,7 +513,7 @@ export class StoreProfileService {
 
   /**
    * Calculates the lowest product price available in a store's catalog.
-   * Strictly excludes showcase placeholder products and handles slug/brand normalization.
+   * Strictly excludes showcase placeholder products and guarantees multi-merchant isolation.
    */
   public calculateStoreMinPrice(
     storeNameOrId: string,
@@ -516,7 +522,13 @@ export class StoreProfileService {
     const store = this.getStore(storeNameOrId);
     const targetName = (store ? store.storeName : storeNameOrId).toLowerCase().trim();
     const cleanTarget = targetName.replace(/[^a-z0-9]/g, '');
-    const tokens = targetName.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+    const targetSlug = store ? store.storeId.toLowerCase() : cleanTarget;
+
+    const otherMerchantStores = Array.from(this.stores.values()).filter((s) => {
+      if (s.storeId === 'sera-mart') return false;
+      if (store && s.storeId === store.storeId) return false;
+      return true;
+    });
 
     const matchingPrices = products
       .filter((p) => {
@@ -525,18 +537,24 @@ export class StoreProfileService {
 
         const pBrand = String(p.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const pSku = String(p.retailer_id || '').toLowerCase();
-        const pName = String(p.name || '').toLowerCase();
 
-        // 1. Direct alphanumeric containment match (e.g. "basopakkuumis" vs "basopakkuumis")
-        if (pBrand && (pBrand.includes(cleanTarget) || cleanTarget.includes(pBrand))) return true;
+        // 1. Strict exclusion of other registered merchant stores
+        const belongsToOther = otherMerchantStores.some((other) => {
+          const otherAlnum = other.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const otherSlug = other.storeId.toLowerCase();
+          return (pBrand && pBrand === otherAlnum) || pSku.includes(otherSlug);
+        });
+        if (belongsToOther) return false;
 
-        // 2. Token match across brand, SKU, or name
-        if (tokens.length > 0 && tokens.every((t) => pBrand.includes(t) || pSku.includes(t) || pName.includes(t))) {
+        // 2. Exact or normalized brand match
+        if (pBrand && (pBrand === cleanTarget || (cleanTarget.length >= 5 && (pBrand.includes(cleanTarget) || cleanTarget.includes(pBrand))))) {
           return true;
         }
 
-        // 3. Fallback if product has no brand: accept if tokens match name
-        if (!p.brand && tokens.length > 0 && tokens.some((t) => pName.includes(t))) return true;
+        // 3. Retailer ID slug match
+        if (pSku.includes(targetSlug) || (store && pSku.includes(store.storeId))) {
+          return true;
+        }
 
         return false;
       })

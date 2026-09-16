@@ -345,6 +345,7 @@ export class WhatsAppCatalogGoalHandler {
 
   /**
    * Discovers stores within a given radius using Haversine distance, with operational status and category filter.
+   * Strictly filters out stores with zero products so buyers never encounter empty menus.
    */
   public async handleDiscoverNearbyStores(requestId: string, payload: any): Promise<void> {
     try {
@@ -353,28 +354,55 @@ export class WhatsAppCatalogGoalHandler {
       const category = payload?.category || payload?.kategori;
       const maxDistanceKm = Number(payload?.maxDistanceKm || payload?.radiusKm || 15);
 
-      // Center coordinates fallback
-      const targetLat = lat !== undefined ? lat : -6.2088;
-      const targetLng = lng !== undefined ? lng : 106.8456;
+      const nearby = this.storeService.findNearbyStores(lat, lng, category, maxDistanceKm);
 
-      const nearby = this.storeService.findNearbyStores(targetLat, targetLng, category, maxDistanceKm);
-      const topStores = nearby.slice(0, 10);
+      // Filter out stores that have 0 products in catalog so buyers never encounter empty stores
+      const activeStores: Array<typeof nearby[0] & { productCount: number; minPrice: number }> = [];
+      const isCatalogConfigured = this.catalogService.isConfigured;
+
+      for (const s of nearby) {
+        if (!isCatalogConfigured) {
+          activeStores.push({
+            ...s,
+            productCount: 1,
+            minPrice: 10000
+          });
+          continue;
+        }
+
+        const storeProducts = await this.catalogService.getProductsByBrand(s.store.storeName);
+        if (storeProducts.length > 0) {
+          activeStores.push({
+            ...s,
+            productCount: storeProducts.length,
+            minPrice: this.storeService.calculateStoreMinPrice(s.store.storeName, storeProducts)
+          });
+        }
+      }
+
+      const topStores = activeStores.slice(0, 10);
 
       const storeListFormatted = topStores.map((s) => ({
         storeId: s.store.storeId,
         storeName: s.store.storeName,
         category: s.store.category,
         address: s.store.address || 'Alamat belum diatur',
-        distanceKm: s.distanceKm,
+        distanceKm: s.hasExactDistance ? s.distanceKm : undefined,
         isOpen: s.isOpen,
         statusText: s.statusText,
-        operatingHours: `${s.store.operatingHours.open} - ${s.store.operatingHours.close}`
+        operatingHours: `${s.store.operatingHours.open} - ${s.store.operatingHours.close}`,
+        productCount: s.productCount,
+        minPrice: s.minPrice
       }));
 
       const summaryText = topStores.length > 0
-        ? `Menemukan ${topStores.length} toko/layanan terdaftar${category ? ` (${category})` : ''}:\n\n` +
-          topStores.map((s, i) => `${i + 1}. *${s.store.storeName}* (${s.store.category || 'Toko'})\n   📍 ${s.store.address || 'Alamat belum diatur'}\n   ${s.isOpen ? '🟢' : '🔴'} ${s.statusText} • ${s.distanceKm} km`).join('\n\n')
-        : `Belum ada toko yang terdaftar di sekitar lokasi Anda.`;
+        ? `Menemukan ${topStores.length} warung/toko aktif${category ? ` (${category})` : ''}:\n\n` +
+          topStores.map((s, i) => {
+            const dist = s.hasExactDistance && s.distanceKm > 0 ? ` • ${s.distanceKm} km` : '';
+            const price = s.minPrice > 0 ? ` • Mulai Rp ${s.minPrice.toLocaleString('id-ID')}` : '';
+            return `${i + 1}. *${s.store.storeName}* (${s.store.category || 'Toko'})\n   📍 ${s.store.address || 'Alamat fisik'}\n   ${s.isOpen ? '🟢' : '🔴'} ${s.statusText}${dist}${price}`;
+          }).join('\n\n')
+        : `Belum ada toko atau warung yang memiliki menu aktif di sekitar Anda.`;
 
       this.emitResult(requestId, true, {
         count: topStores.length,
@@ -385,11 +413,15 @@ export class WhatsAppCatalogGoalHandler {
           storeList: {
             title: `Warung Terdekat${category ? ` (${category})` : ''}`,
             buttonText: 'Pilih Toko',
-            stores: topStores.map((s) => ({
-              id: `store_${s.store.storeId}`,
-              title: s.store.storeName,
-              description: `${s.distanceKm > 0 ? `${s.distanceKm} km • ` : ''}${s.statusText}${s.store.address ? ` • 📍 ${s.store.address}` : ''}`
-            }))
+            stores: topStores.map((s) => {
+              const dist = s.hasExactDistance && s.distanceKm > 0 ? `${s.distanceKm} km • ` : '';
+              const addr = s.store.address ? ` • 📍 ${s.store.address}` : '';
+              return {
+                id: `store_${s.store.storeId}`,
+                title: s.store.storeName,
+                description: `${dist}${s.statusText}${addr}`.slice(0, 72)
+              };
+            })
           },
           buttons: topStores.length > 0 && topStores.length <= 3
             ? topStores.map((s) => ({

@@ -563,12 +563,15 @@ describe('WhatsApp Catalog & Commerce Integration', () => {
       expect(res.finalAnswer).toContain('Ini kartu produknya ya.');
     });
 
-    it('strictly isolates products by brand without cross-contamination', async () => {
+    it('strictly isolates products by brand without cross-contamination (including stores sharing common tokens like "Cak")', async () => {
       const mixedCatalog = [
         { id: '1', retailer_id: 'SKU-GEPREK-01', name: 'Geprek Original', price: 'IDR13,000', brand: 'Geprek Cak Jiban' },
         { id: '2', retailer_id: 'SKU-GEPREK-02', name: 'Geprek Keju', price: 'IDR18,000', brand: 'Geprek Cak Jiban' },
-        { id: '3', retailer_id: 'SKU-BERAS-01', name: 'Beras Ramos 5kg', price: 'IDR75,000', brand: 'Ramos' },
-        { id: '4', retailer_id: 'SKU-MINYAK-01', name: 'Minyak Bimoli 2L', price: 'IDR38,000', brand: 'Bimoli' }
+        { id: '3', retailer_id: 'SKU-ayam-bakar-cak--sambel-ijo', name: 'Ayam Bakar Sambel Ijo', price: 'IDR28,000', brand: 'Ayam Bakar Cak Cuk' },
+        { id: '4', retailer_id: 'SKU-ayam-bakar-cak--madu', name: 'Ayam Bakar Madu', price: 'IDR23,000', brand: 'Ayam Bakar Cak Cuk' },
+        { id: '5', retailer_id: 'SKU-baso-pak-kumis-iga', name: 'Baso Iga Komplit', price: 'IDR45,000', brand: 'Baso Pak Kumis' },
+        { id: '6', retailer_id: 'SKU-BERAS-01', name: 'Beras Ramos 5kg', price: 'IDR75,000', brand: 'Ramos' },
+        { id: '7', retailer_id: 'SKU-MINYAK-01', name: 'Minyak Bimoli 2L', price: 'IDR38,000', brand: 'Bimoli' }
       ];
 
       vi.spyOn(global, 'fetch').mockResolvedValue({
@@ -581,15 +584,27 @@ describe('WhatsApp Catalog & Commerce Integration', () => {
         accessToken: mockAccessToken
       });
 
-      // Query for Cak Jiban only
+      // Query for Cak Jiban only (must NOT include Cak Cuk items despite sharing token "Cak"!)
       const geprekItems = await service.getProductsByBrand('Geprek Cak Jiban');
       expect(geprekItems.length).toBe(2);
       expect(geprekItems.every(p => p.brand === 'Geprek Cak Jiban')).toBe(true);
+      expect(geprekItems.some(p => p.brand === 'Ayam Bakar Cak Cuk')).toBe(false);
 
-      // Query for SERA Mart only (should exclude geprek items)
+      // Query for Cak Cuk only (must NOT include Cak Jiban items!)
+      const cakCukItems = await service.getProductsByBrand('Ayam Bakar Cak Cuk');
+      expect(cakCukItems.length).toBe(2);
+      expect(cakCukItems.every(p => p.brand === 'Ayam Bakar Cak Cuk')).toBe(true);
+      expect(cakCukItems.some(p => p.brand === 'Geprek Cak Jiban')).toBe(false);
+
+      // Query for Baso Pak Kumis only
+      const basoItems = await service.getProductsByBrand('Baso Pak Kumis');
+      expect(basoItems.length).toBe(1);
+      expect(basoItems[0].name).toBe('Baso Iga Komplit');
+
+      // Query for SERA Mart only (should exclude all merchant items, only retail/sembako)
       const sembakoItems = await service.getProductsByBrand('SERA Mart');
       expect(sembakoItems.length).toBe(2);
-      expect(sembakoItems.some(p => p.retailer_id.includes('GEPREK'))).toBe(false);
+      expect(sembakoItems.some(p => p.retailer_id.includes('GEPREK') || p.retailer_id.includes('ayam-bakar') || p.retailer_id.includes('baso'))).toBe(false);
     });
 
     it('resolves store name from headerText in handleSendCatalog and enforces single store output', async () => {

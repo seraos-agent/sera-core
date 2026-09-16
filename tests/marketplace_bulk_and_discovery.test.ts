@@ -168,5 +168,94 @@ describe('Marketplace: Fast Onboarding & Store-First Discovery', () => {
       expect(emittedData.richContent.storeList).toBeDefined();
       expect(emittedData.richContent.storeList.stores.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('strictly excludes stores with zero active catalog products from discovery', async () => {
+      const storeService = new StoreProfileService({ persistLocally: false, supabaseClient: null });
+      const catalogService = new WhatsAppCatalogService({
+        catalogId: '1460600679458168',
+        accessToken: 'mock_token'
+      });
+
+      // Register Store A (with menu) and Store B (0 menu)
+      await storeService.upsertStore({
+        storeName: 'Warung Banyak Menu',
+        category: 'Kuliner',
+        latitude: -6.2290,
+        longitude: 106.8580,
+        isOpenManualOverride: true
+      });
+      await storeService.upsertStore({
+        storeName: 'Katering Sedap Kosong',
+        category: 'Kuliner',
+        latitude: -6.2292,
+        longitude: 106.8583,
+        isOpenManualOverride: true
+      });
+
+      // Mock catalog to only have products for "Warung Banyak Menu"
+      vi.spyOn(catalogService, 'getProducts').mockResolvedValue([
+        {
+          id: 'prod_1',
+          retailer_id: 'SKU-WARUNG-01',
+          name: 'Nasi Goreng Spesial',
+          price: 'IDR25,000',
+          rawPrice: 25000,
+          currency: 'IDR',
+          brand: 'Warung Banyak Menu'
+        }
+      ]);
+
+      let emittedData: any = null;
+      const handler = new WhatsAppCatalogGoalHandler(
+        () => catalogService,
+        'user-session',
+        (_id, _success, data) => { emittedData = data; },
+        () => storeService
+      );
+
+      await handler.handleDiscoverNearbyStores('req-disc-filter', {
+        latitude: -6.2297,
+        longitude: 106.8582,
+        category: 'Kuliner'
+      });
+
+      expect(emittedData).toBeDefined();
+      expect(emittedData.stores.some((s: any) => s.storeName === 'Warung Banyak Menu')).toBe(true);
+      // "Katering Sedap Kosong" must be excluded because it has 0 items!
+      expect(emittedData.stores.some((s: any) => s.storeName === 'Katering Sedap Kosong')).toBe(false);
+    });
+
+    it('does not display fake 2.5 km when user coordinates are omitted', async () => {
+      const storeService = new StoreProfileService({ persistLocally: false, supabaseClient: null });
+      const catalogService = new WhatsAppCatalogService();
+
+      await storeService.upsertStore({
+        storeName: 'Warung Tanpa GPS',
+        category: 'Kuliner',
+        address: 'Jl. Melati No. 5',
+        isOpenManualOverride: true
+      });
+
+      let emittedData: any = null;
+      const handler = new WhatsAppCatalogGoalHandler(
+        () => catalogService,
+        'user-session',
+        (_id, _success, data) => { emittedData = data; },
+        () => storeService
+      );
+
+      // Call discovery without latitude/longitude
+      await handler.handleDiscoverNearbyStores('req-no-gps', {
+        category: 'Kuliner'
+      });
+
+      expect(emittedData).toBeDefined();
+      expect(emittedData.stores.length).toBeGreaterThanOrEqual(1);
+      // distanceKm must be undefined (not fake 2.5)
+      expect(emittedData.stores[0].distanceKm).toBeUndefined();
+      // summary and rich content must NOT contain "2.5 km"
+      expect(emittedData.summary).not.toContain('2.5 km');
+      expect(emittedData.richContent.storeList.stores[0].description).not.toContain('2.5 km');
+    });
   });
 });
