@@ -198,30 +198,94 @@ export class StoreProfileService {
         });
     }
 
-    // Ensure default system store (SERA Mart) exists
-    if (!this.stores.has('sera-mart')) {
-      const defaultStore: StoreProfile = {
+    // Ensure default system and merchant seed stores exist
+    const seedStores: StoreProfile[] = [
+      {
         storeId: 'sera-mart',
-        storeName: 'SERA Mart',
+        storeName: 'SERA Mart Official',
         businessType: 'GOODS',
         businessCategory: 'RETAIL_GOODS',
         category: 'Sembako & Kebutuhan Pokok',
         ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
         address: 'Jl. Merdeka No. 10, Jakarta',
         coverageArea: 'Seluruh Indonesia',
-        description: 'Toko sembako dan kebutuhan harian resmi SERA Mart.',
+        description: 'Official store SERA',
+        latitude: -6.1754,
+        longitude: 106.8272,
         timezone: 'Asia/Jakarta',
-        operatingHours: {
-          open: '08:00',
-          close: '22:00',
-          days: [1, 2, 3, 4, 5, 6, 7]
-        },
+        operatingHours: { open: '08:00', close: '22:00', days: [1, 2, 3, 4, 5, 6, 7] },
         isOpenManualOverride: null,
         allowPreOrder: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-      this.stores.set(defaultStore.storeId, defaultStore);
+        createdAt: 1789346227609,
+        updatedAt: 1789346227209
+      },
+      {
+        storeId: 'geprek-cak-jiban',
+        storeName: 'Geprek Cak Jiban',
+        businessType: 'GOODS',
+        businessCategory: 'FOOD_INSTANT',
+        category: 'Kuliner',
+        ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
+        address: 'Jl. Diponegoro No. 35, Junrejo, Kota Batu, Jawa Timur',
+        coverageArea: 'Radius 5 km',
+        description: 'Ayam geprek pedas nampol, sambal beneran, harga bersahabat.',
+        latitude: -7.8931,
+        longitude: 112.5442,
+        timezone: 'Asia/Jakarta',
+        operatingHours: { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
+        isOpenManualOverride: null,
+        allowPreOrder: true,
+        createdAt: 1789347902922,
+        updatedAt: 1789505842803
+      },
+      {
+        storeId: 'ayam-bakar-cak-cuk',
+        storeName: 'Ayam Bakar Cak Cuk',
+        businessType: 'GOODS',
+        businessCategory: 'FOOD_INSTANT',
+        category: 'Kuliner',
+        ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
+        address: 'Jl. Raya Dau No. 40, Dau, Kabupaten Malang',
+        coverageArea: 'Radius 4 km',
+        description: 'Ayam bakar ungkep rempah, dibakar di atas arang.',
+        latitude: -7.9405,
+        longitude: 112.5802,
+        timezone: 'Asia/Jakarta',
+        operatingHours: { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
+        isOpenManualOverride: null,
+        allowPreOrder: false,
+        createdAt: 1789513432131,
+        updatedAt: 1789514880217
+      },
+      {
+        storeId: 'baso-pak-kumis',
+        storeName: 'Baso Pak Kumis',
+        businessType: 'GOODS',
+        businessCategory: 'FOOD_INSTANT',
+        category: 'Kuliner',
+        ownerWhatsApp: process.env.OWNER_WHATSAPP || '',
+        address: 'Alun-Alun Kota Batu, Jawa Timur',
+        coverageArea: 'Radius 3 km',
+        description: 'Baso spesial iga dengan kuah kaldu sapi gurih.',
+        latitude: -7.8712,
+        longitude: 112.5271,
+        timezone: 'Asia/Jakarta',
+        operatingHours: { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
+        isOpenManualOverride: null,
+        allowPreOrder: false,
+        createdAt: 1789514239246,
+        updatedAt: 1789514941477
+      }
+    ];
+
+    let hasNewSeed = false;
+    for (const seed of seedStores) {
+      if (!this.stores.has(seed.storeId)) {
+        this.stores.set(seed.storeId, seed);
+        hasNewSeed = true;
+      }
+    }
+    if (hasNewSeed) {
       this.saveStores();
     }
   }

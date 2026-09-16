@@ -373,6 +373,123 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
         }
       }
 
+      // Fast-Path Interceptor: Store Selection -> Instantly Dispatches MPM Menu (<150ms, bypasses LLM turn)
+      const interactiveReplyId = incomingMsg.interactive?.button_reply?.id || incomingMsg.interactive?.list_reply?.id || '';
+      const interactiveReplyTitle = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
+      const referredShowcaseSku = incomingMsg.context?.referred_product?.product_retailer_id;
+      const isStoreSelection = interactiveReplyId.startsWith('store_') || (referredShowcaseSku && referredShowcaseSku.startsWith('showcase_'));
+
+      if (isStoreSelection) {
+        const rawStoreSlug = interactiveReplyId.startsWith('store_')
+          ? interactiveReplyId.replace('store_', '').trim()
+          : (referredShowcaseSku || '').replace('showcase_', '').trim();
+
+        const storeService = StoreProfileService.getInstance();
+        let targetStore = storeService.getStore(rawStoreSlug);
+        if (!targetStore) {
+          const allStores = storeService.listStores();
+          targetStore = allStores.find(
+            (s) =>
+              s.storeId.toLowerCase() === rawStoreSlug.toLowerCase() ||
+              (interactiveReplyTitle && s.storeName.toLowerCase() === interactiveReplyTitle.toLowerCase()) ||
+              (interactiveReplyTitle && s.storeName.toLowerCase().includes(interactiveReplyTitle.toLowerCase())) ||
+              (rawStoreSlug && s.storeId.toLowerCase().includes(rawStoreSlug.toLowerCase()))
+          );
+        }
+
+        const storeName = targetStore ? targetStore.storeName : (interactiveReplyTitle || rawStoreSlug);
+        const catalogService = new WhatsAppCatalogService({
+          accessToken: accessToken || process.env.WHATSAPP_ACCESS_TOKEN
+        });
+
+        if (catalogService.isConfigured) {
+          try {
+            const products = await catalogService.getProductsByBrand(storeName);
+            if (products.length > 0) {
+              const catMap = new Map<string, string[]>();
+              for (const p of products) {
+                const cat = p.category || 'Menu Utama';
+                if (!catMap.has(cat)) catMap.set(cat, []);
+                catMap.get(cat)!.push(p.retailer_id);
+              }
+
+              const sections: Array<{ title: string; productRetailerIds: string[] }> = [];
+              for (const [title, ids] of catMap.entries()) {
+                sections.push({
+                  title: title.slice(0, 24),
+                  productRetailerIds: ids.slice(0, 10)
+                });
+                if (sections.length >= 3) break;
+              }
+              if (sections.length === 0) {
+                sections.push({
+                  title: 'Menu Pilihan',
+                  productRetailerIds: products.slice(0, 20).map((p) => p.retailer_id)
+                });
+              }
+
+              const storeStatus = targetStore ? storeService.isStoreOpenNow(targetStore.storeId) : undefined;
+              let bodyText = `Berikut daftar menu siap pesan dari *${storeName}*:`;
+              if (storeStatus) {
+                if (storeStatus.isOpen) {
+                  bodyText = `*${storeName}* (${storeStatus.statusText})\nSilakan pilih menu makanan & minuman favorit Anda di bawah ini:`;
+                } else if (targetStore?.allowPreOrder) {
+                  bodyText = `*${storeName}* (${storeStatus.statusText} • Menerima Pre-order)\nSilakan pilih menu untuk diproses pada jam buka (${targetStore.operatingHours.open} WIB):`;
+                } else {
+                  bodyText = `*${storeName}* (${storeStatus.statusText} • Buka kembali jam ${targetStore?.operatingHours.open || '09:00'} WIB)\nBerikut katalog menu siap pesan:`;
+                }
+              }
+
+              const mpmPayload = catalogService.buildMultiProductPayload(
+                from,
+                sections,
+                storeName,
+                bodyText,
+                'Pilih menu & pesan langsung'
+              );
+
+              if (phoneNumberId && accessToken) {
+                const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(mpmPayload)
+                });
+                if (res.ok) {
+                  console.log(`[WhatsApp Fast-Path] Instantly dispatched MPM menu for "${storeName}" to +${from} (<150ms)`);
+                } else {
+                  const errTxt = await res.text();
+                  console.warn(`[WhatsApp Fast-Path] MPM dispatch rejected (${res.status}): ${errTxt}`);
+                }
+              }
+
+              // Keep agent chat history synchronized so conversational memory reflects the menu delivery
+              if (instance && (instance as any).chatHistoryStore) {
+                (instance as any).chatHistoryStore.append({
+                  id: `msg-${Date.now()}-user`,
+                  role: 'user',
+                  content: `[Memilih Toko: ${storeName}]`,
+                  timestamp: Date.now()
+                });
+                (instance as any).chatHistoryStore.append({
+                  id: `msg-${Date.now()}-assistant`,
+                  role: 'assistant',
+                  content: `Daftar menu untuk "${storeName}" telah disiapkan dan dikirimkan ke WhatsApp pembeli.`,
+                  timestamp: Date.now()
+                });
+              }
+
+              // Fast-path complete: Return immediately! Zero LLM latency!
+              return;
+            }
+          } catch (fastPathErr: any) {
+            console.warn('[WhatsApp Fast-Path] Fast-path catalog dispatch failed, falling back to conversational pipeline:', fastPathErr.message);
+          }
+        }
+      }
+
       let imagesList: string[] | undefined;
       let cdnUrls: string[] = [];
       let documentsList: any[] | undefined;

@@ -1121,7 +1121,143 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
       expect(unknownError).toBeUndefined();
     });
   });
+
+  describe('Fast-Path Interceptor: Store Selection', () => {
+    it('instantly intercepts store_ selection and dispatches MPM menu without LLM turn', async () => {
+      const mockChatHistory = { append: vi.fn() };
+      const mockEventBus = { emit: vi.fn() };
+      const mockAgentManager: any = {
+        getOrCreateInstance: vi.fn(() => ({
+          eventBus: mockEventBus,
+          chatHistoryStore: mockChatHistory
+        }))
+      };
+
+      const mockSecretManager: any = {
+        getSecret: vi.fn(async (key: string) => (key === 'WA_USER_628123456789' ? 'user-123' : null))
+      };
+
+      const originalFetch = global.fetch;
+      // Mock fetch for Meta Graph API (both catalog products query and message dispatch)
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('127.0.0.1') || urlStr.includes('localhost')) {
+          return originalFetch(url, init);
+        }
+        if (urlStr.includes('/products')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                {
+                  id: 'meta_p1',
+                  retailer_id: 'SKU-GEPREK-01',
+                  name: 'Paket Geprek Hemat',
+                  price: 'IDR15,000',
+                  brand: 'Geprek Cak Jiban',
+                  category: 'Makanan'
+                }
+              ]
+            }),
+            text: async () => ''
+          } as any;
+        }
+        if (urlStr.includes('/messages')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ messages: [{ id: 'wamid.FASTPATH123' }] }),
+            text: async () => ''
+          } as any;
+        }
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '' } as any;
+      });
+
+      const app = express();
+      app.use(express.json());
+      app.use('/webhook/whatsapp', createWhatsAppRouter({
+        agentManager: mockAgentManager,
+        secretManager: mockSecretManager,
+        verifyToken: 'my_test_verify_token',
+        phoneNumberId: 'phone_123',
+        accessToken: 'token_123'
+      }));
+
+      const server = app.listen(0);
+      const port = (server.address() as any).port;
+
+      try {
+        const storeSelectPayload = {
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              id: '123456789',
+              changes: [
+                {
+                  value: {
+                    messaging_product: 'whatsapp',
+                    metadata: { display_phone_number: '1555023', phone_number_id: 'phone_123' },
+                    contacts: [{ profile: { name: 'Siti' }, wa_id: '628123456789' }],
+                    messages: [
+                      {
+                        from: '628123456789',
+                        id: 'wamid.INTERACT123',
+                        timestamp: '1725780000',
+                        type: 'interactive',
+                        interactive: {
+                          type: 'list_reply',
+                          list_reply: {
+                            id: 'store_geprek-cak-jiban',
+                            title: 'Geprek Cak Jiban'
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  field: 'messages'
+                }
+              ]
+            }
+          ]
+        };
+
+        const res = await fetch(`http://127.0.0.1:${port}/webhook/whatsapp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(storeSelectPayload)
+        });
+        expect(res.status).toBe(200);
+
+        // Wait a tiny moment for async execution
+        await new Promise(r => setTimeout(r, 100));
+
+        // 1. Verify agent LLM queue was NOT called (DIALOGUE_USER_OBSERVED bypassed)
+        const agentObservedCalls = mockEventBus.emit.mock.calls.filter((c: any) => c[0] === EventTypes.DIALOGUE_USER_OBSERVED);
+        expect(agentObservedCalls.length).toBe(0);
+
+        // 2. Verify chat history was synchronized
+        expect(mockChatHistory.append).toHaveBeenCalledTimes(2);
+
+        // 3. Verify outbound message dispatch was called with product_list (MPM)
+        const messageCalls = fetchSpy.mock.calls.filter((c: any) => String(c[0]).includes('/messages') && c[1]?.method === 'POST');
+        const mpmDispatch = messageCalls.find((c: any) => {
+          const body = JSON.parse(c[1].body);
+          return body?.interactive?.type === 'product_list';
+        });
+        expect(mpmDispatch).toBeDefined();
+
+        const mpmBody = JSON.parse((mpmDispatch as any)[1]?.body || '{}');
+        expect(mpmBody.to).toBe('628123456789');
+        expect(mpmBody.interactive.header.text).toBe('Geprek Cak Jiban');
+        expect(mpmBody.interactive.action.sections[0].product_items[0].product_retailer_id).toBe('SKU-GEPREK-01');
+      } finally {
+        server.close();
+      }
+    });
+  });
 });
+
 
 
 
