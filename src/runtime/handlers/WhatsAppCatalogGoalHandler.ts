@@ -330,14 +330,6 @@ export class WhatsAppCatalogGoalHandler {
 
       const batchRes = await this.catalogService.createProductsBatch(inputs);
 
-      // Immediately synchronize store showcase cover product with starting price
-      try {
-        const minPrice = this.storeService.calculateStoreMinPrice(store.storeId, batchRes.createdProducts);
-        await this.catalogService.ensureStoreShowcaseProduct(store, minPrice, store.logoUrl);
-      } catch (err: any) {
-        console.warn('[WhatsAppCatalogGoalHandler] Failed to sync showcase after bulk create:', err.message);
-      }
-
       this.emitResult(requestId, true, {
         store,
         successCount: batchRes.successCount,
@@ -368,66 +360,6 @@ export class WhatsAppCatalogGoalHandler {
       const nearby = this.storeService.findNearbyStores(targetLat, targetLng, category, maxDistanceKm);
       const topStores = nearby.slice(0, 10);
 
-      let allProducts: any[] = [];
-      try {
-        allProducts = await this.catalogService.getProducts(true);
-      } catch (err: any) {
-        // Continue with fallback prices
-      }
-
-      const existingRetailerIds = new Set(allProducts.map((p) => p.retailer_id));
-      const validCarouselStores: Array<{ store: StoreProfile; minPrice: number; showcaseRetailerId: string }> = [];
-
-      for (const s of topStores) {
-        // Exclude empty stores without products (e.g. katering-sedap)
-        const hasProducts = allProducts.some((p) => {
-          if (p.retailer_id.startsWith('showcase_')) return false;
-          const b = (p.brand || '').toLowerCase();
-          const target = s.store.storeName.toLowerCase();
-          return b.includes(target) || target.includes(b);
-        });
-        if (!hasProducts && s.store.storeId === 'katering-sedap') continue;
-
-        const showcaseId = `showcase_${s.store.storeId}`;
-        const minPrice = this.storeService.calculateStoreMinPrice(s.store.storeId, allProducts);
-
-        // Find first product of this store with a real image to use as candidate cover if store has no custom logo
-        const storeProducts = allProducts.filter((p) => {
-          if (p.retailer_id.startsWith('showcase_')) return false;
-          const b = (p.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cleanId = s.store.storeId.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cleanName = s.store.storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return b.includes(cleanId) || cleanId.includes(b) || b.includes(cleanName) || cleanName.includes(b);
-        });
-        const firstProductImage = storeProducts.find((p) => p.image_url && !p.image_url.includes('unsplash.com'))?.image_url;
-        const candidateImage = s.store.logoUrl || firstProductImage;
-
-        if (!existingRetailerIds.has(showcaseId)) {
-          const created = await this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice, candidateImage);
-          if (created) {
-            existingRetailerIds.add(showcaseId);
-          }
-        } else {
-          // Self-heal showcase card price or image in background if it diverges
-          const existingItem = allProducts.find((p) => p.retailer_id === showcaseId);
-          const currentPrice = existingItem ? Number(String(existingItem.price).replace(/[^0-9]/g, '')) : 0;
-          const currentImg = existingItem?.image_url || '';
-          const needsPriceUpdate = currentPrice > 0 && currentPrice !== minPrice;
-          const needsImageUpdate = candidateImage && currentImg.includes('unsplash.com');
-          if (needsPriceUpdate || needsImageUpdate) {
-            this.catalogService.ensureStoreShowcaseProduct(s.store, minPrice, candidateImage).catch(() => {});
-          }
-        }
-
-        if (existingRetailerIds.has(showcaseId)) {
-          validCarouselStores.push({
-            store: s.store,
-            minPrice,
-            showcaseRetailerId: showcaseId
-          });
-        }
-      }
-
       const storeListFormatted = topStores.map((s) => ({
         storeId: s.store.storeId,
         storeName: s.store.storeName,
@@ -450,12 +382,9 @@ export class WhatsAppCatalogGoalHandler {
         stores: storeListFormatted,
         summary: summaryText,
         richContent: {
-          storeCarousel: validCarouselStores.length >= 2 ? {
-            stores: validCarouselStores,
-            bodyText: `Temukan ${validCarouselStores.length} warung terdekat & harga mulai. Untuk membuka menu lengkap: ketik nama warungnya di chat atau tekan "Kirim Pesan" di dalam kartu:`
-          } : undefined,
           storeList: {
-            title: `Toko Terdekat${category ? ` (${category})` : ''}`,
+            title: `Warung Terdekat${category ? ` (${category})` : ''}`,
+            buttonText: 'Pilih Toko',
             stores: topStores.map((s) => ({
               id: `store_${s.store.storeId}`,
               title: s.store.storeName,
@@ -680,15 +609,6 @@ export class WhatsAppCatalogGoalHandler {
         allowPreOrder: payload?.allowPreOrder !== undefined ? payload.allowPreOrder : undefined,
         notice: payload?.notice
       });
-
-      // Sync showcase product in background
-      try {
-        const allProducts = await this.catalogService.getProducts();
-        const minPrice = this.storeService.calculateStoreMinPrice(store.storeId, allProducts);
-        await this.catalogService.ensureStoreShowcaseProduct(store, minPrice, logoUrl);
-      } catch (e: any) {
-        console.warn('[WhatsAppCatalogGoalHandler] Failed to sync showcase item after store config:', e.message);
-      }
 
       const status = this.storeService.isStoreOpenNow(store.storeId);
 

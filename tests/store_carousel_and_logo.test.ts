@@ -32,8 +32,8 @@ describe('Store Carousel Discovery, Logo Support & Showcase Sync', () => {
     });
   });
 
-  describe('buildStoreCarouselPayload', () => {
-    it('constructs a valid WhatsApp Cloud API Product Carousel with 2 to 10 cards', () => {
+  describe('buildInteractiveStoreListPayload', () => {
+    it('constructs a valid WhatsApp Cloud API Interactive List with store rows', () => {
       const catalogService = new WhatsAppCatalogService({
         catalogId: mockCatalogId,
         accessToken: mockAccessToken
@@ -41,138 +41,32 @@ describe('Store Carousel Discovery, Logo Support & Showcase Sync', () => {
 
       const mockStores = [
         {
-          store: {
-            storeId: 'geprek-cak-jiban',
-            storeName: 'Geprek Cak Jiban',
-            businessType: 'GOODS' as const,
-            businessCategory: 'FOOD_INSTANT' as const,
-            ownerWhatsApp: '62812345678',
-            timezone: 'Asia/Jakarta',
-            operatingHours: { open: '10:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
-            allowPreOrder: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          },
-          minPrice: 15000
+          id: 'store_geprek-cak-jiban',
+          title: 'Geprek Cak Jiban',
+          description: '0.8 km • 🟢 Buka • 📍 Jl. Tebet Raya No. 45'
         },
         {
-          store: {
-            storeId: 'bakso-mas-kumis',
-            storeName: 'Bakso Mas Kumis',
-            businessType: 'GOODS' as const,
-            businessCategory: 'FOOD_INSTANT' as const,
-            ownerWhatsApp: '62899887766',
-            timezone: 'Asia/Jakarta',
-            operatingHours: { open: '10:00', close: '22:00', days: [1, 2, 3, 4, 5, 6, 7] },
-            allowPreOrder: false,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          },
-          minPrice: 20000
+          id: 'store_bakso-mas-kumis',
+          title: 'Bakso Mas Kumis',
+          description: '1.2 km • 🟢 Buka • 📍 Jl. Merdeka No. 10'
         }
       ];
 
-      const payload = catalogService.buildStoreCarouselPayload('6281234567890', mockStores);
+      const payload = catalogService.buildInteractiveStoreListPayload(
+        '6281234567890',
+        mockStores,
+        'Toko Terdekat',
+        'Pilih warung terdekat untuk membuka menu:',
+        'Pilih Toko'
+      );
 
       expect(payload.messaging_product).toBe('whatsapp');
       expect(payload.type).toBe('interactive');
-      expect(payload.interactive.type).toBe('carousel');
-      expect(payload.interactive.action.cards).toHaveLength(2);
-      expect(payload.interactive.action.cards[0]).toEqual({
-        card_index: 0,
-        type: 'product',
-        action: {
-          catalog_id: mockCatalogId,
-          product_retailer_id: 'showcase_geprek-cak-jiban'
-        }
-      });
-      expect(payload.interactive.action.cards[1]).toEqual({
-        card_index: 1,
-        type: 'product',
-        action: {
-          catalog_id: mockCatalogId,
-          product_retailer_id: 'showcase_bakso-mas-kumis'
-        }
-      });
-    });
-
-    it('throws error if fewer than 2 stores are provided for Carousel', () => {
-      const catalogService = new WhatsAppCatalogService({
-        catalogId: mockCatalogId,
-        accessToken: mockAccessToken
-      });
-
-      const singleStore = [
-        {
-          store: {
-            storeId: 'single-store',
-            storeName: 'Single Store',
-            businessType: 'GOODS' as const,
-            businessCategory: 'RETAIL_GOODS' as const,
-            ownerWhatsApp: '6281111111',
-            timezone: 'Asia/Jakarta',
-            operatingHours: { open: '08:00', close: '20:00', days: [1, 2, 3] },
-            allowPreOrder: true,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          }
-        }
-      ];
-
-      expect(() => {
-        catalogService.buildStoreCarouselPayload('6281234567890', singleStore);
-      }).toThrow('WhatsApp Product Carousel requires at least 2 cards.');
-    });
-  });
-
-  describe('ensureStoreShowcaseProduct', () => {
-    it('creates or updates a showcase item in Meta Catalog with logoUrl and minPrice', async () => {
-      const catalogService = new WhatsAppCatalogService({
-        catalogId: mockCatalogId,
-        accessToken: mockAccessToken
-      });
-
-      const store = {
-        storeId: 'dapur-geprek-mas-joko',
-        storeName: 'Dapur Geprek Mas Joko',
-        businessType: 'GOODS' as const,
-        businessCategory: 'FOOD_INSTANT' as const,
-        category: 'Kuliner',
-        ownerWhatsApp: '62812345678',
-        address: 'Jl. Tebet Raya No. 45 Jakarta Selatan',
-        logoUrl: 'https://example.com/logo-joko.png',
-        timezone: 'Asia/Jakarta',
-        operatingHours: { open: '10:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
-        allowPreOrder: false,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-
-      // Mock getProductByRetailerId returning null (new product)
-      vi.spyOn(catalogService, 'getProductByRetailerId').mockResolvedValue(null);
-      const createSpy = vi.spyOn(catalogService, 'createProduct').mockResolvedValue({
-        success: true,
-        product: {
-          id: 'meta_prod_showcase_1',
-          retailer_id: 'showcase_dapur-geprek-mas-joko',
-          name: '🏪 Dapur Geprek Mas Joko',
-          price: 'Rp 15.000',
-          currency: 'IDR',
-          image_url: 'https://example.com/logo-joko.png',
-          availability: 'in stock',
-          brand: 'Dapur Geprek Mas Joko'
-        }
-      });
-
-      const res = await catalogService.ensureStoreShowcaseProduct(store, 15000);
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
-        retailer_id: 'showcase_dapur-geprek-mas-joko',
-        name: '🏪 Dapur Geprek Mas Joko',
-        price: 15000,
-        image_url: 'https://example.com/logo-joko.png',
-        brand: 'Dapur Geprek Mas Joko'
-      }));
-      expect(res?.retailer_id).toBe('showcase_dapur-geprek-mas-joko');
+      expect(payload.interactive.type).toBe('list');
+      expect(payload.interactive.action.button).toBe('Pilih Toko');
+      expect(payload.interactive.action.sections[0].rows).toHaveLength(2);
+      expect(payload.interactive.action.sections[0].rows[0].id).toBe('store_geprek-cak-jiban');
+      expect(payload.interactive.action.sections[0].rows[1].id).toBe('store_bakso-mas-kumis');
     });
   });
 

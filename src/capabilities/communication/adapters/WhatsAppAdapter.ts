@@ -435,63 +435,6 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       }
     }
 
-    // 2d-2. Native WhatsApp Interactive Product Carousel (Multi-Store Showcase)
-    if (action.richContent?.storeCarousel && this.catalogService) {
-      const { stores, bodyText } = action.richContent.storeCarousel;
-      if (Array.isArray(stores) && stores.length >= 2) {
-        try {
-          const effectiveBody = action.text
-            ? WhatsAppAdapter.formatToWhatsApp(action.text)
-            : (bodyText || 'Geser kartu di bawah untuk melihat pilihan warung & layanan terdekat. Tekan "Lihat" untuk membuka menu lengkap:');
-          const carouselPayload = this.catalogService.buildStoreCarouselPayload(
-            cleanRecipient,
-            stores,
-            effectiveBody
-          );
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${this.accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(carouselPayload)
-          });
-
-          if (response.ok) {
-            const data = await response.json() as any;
-            // Also dispatch companion interactive quick selector if storeList is provided
-            if (action.richContent?.storeList) {
-              try {
-                const companionPayload = this.catalogService.buildInteractiveStoreListPayload(
-                  cleanRecipient,
-                  action.richContent.storeList.stores || [],
-                  undefined,
-                  'Atau langsung tekan tombol di bawah untuk membuka daftar menu lengkap warung:',
-                  action.richContent.storeList.buttonText || 'Pilih Warung'
-                );
-                await fetch(url, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify(companionPayload)
-                });
-              } catch (companionErr: any) {
-                console.warn('[WhatsAppAdapter] Companion storeList dispatch skipped:', companionErr.message);
-              }
-            }
-            return { success: true, platformMessageId: data?.messages?.[0]?.id };
-          }
-
-          const errText = await response.text();
-          console.warn(`[WhatsAppAdapter] Interactive Carousel rejected (${response.status}): ${errText}. Falling back to Store List.`);
-        } catch (err: any) {
-          console.warn('[WhatsAppAdapter] Interactive Carousel exception, falling back to Store List:', err.message);
-        }
-      }
-    }
-
     // 2e. Native WhatsApp Interactive Store List Message (Bottom Sheet)
     if (action.richContent?.storeList && this.catalogService) {
       const { stores, headerText, bodyText, buttonText } = action.richContent.storeList;
