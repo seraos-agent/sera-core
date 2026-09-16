@@ -217,11 +217,22 @@ describe('Phase 3: KnowledgeStoreManager & Domain Knowledge Stores', () => {
         }
       });
 
-      // Wait a moment for async execution
-      await new Promise(r => setTimeout(r, 200));
+      // Wait for async execution
+      await new Promise<void>((resolve) => {
+        const start = Date.now();
+        const check = () => {
+          const found = emitSpy.mock.calls.some((c) => c[0] === EventTypes.DOMAIN_GOAL_RESULT);
+          if (found || Date.now() - start > 5000) {
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
 
       const completionEvents = emitSpy.mock.calls.filter(
-        c => c[0] === EventTypes.DOMAIN_GOAL_RESULT
+        (c) => c[0] === EventTypes.DOMAIN_GOAL_RESULT
       );
 
       expect(completionEvents.length).toBeGreaterThan(0);
