@@ -383,6 +383,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       const isStoreSelection = cleanReplyId.toLowerCase().startsWith('store_') || cleanShowcaseSku.toLowerCase().startsWith('showcase_');
 
       if (isStoreSelection) {
+        let cardSent = false;
         try {
           const rawStoreSlug = cleanReplyId.toLowerCase().startsWith('store_')
             ? cleanReplyId.replace(/^store_/i, '').trim()
@@ -460,6 +461,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
                   body: JSON.stringify(mpmPayload)
                 });
                 if (res.ok) {
+                  cardSent = true;
                   console.log(`[WhatsApp Fast-Path] Instantly dispatched MPM menu for "${storeName}" to +${from} (<150ms)`);
                 } else {
                   const errTxt = await res.text();
@@ -467,20 +469,21 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
                 }
               }
 
-              // Keep agent chat history synchronized so conversational memory reflects the menu delivery
-              if (instance && (instance as any).chatHistoryStore) {
-                (instance as any).chatHistoryStore.append({
-                  id: `msg-${Date.now()}-user`,
-                  role: 'user',
-                  content: `[Memilih Toko: ${storeName}]`,
-                  timestamp: Date.now()
-                });
-                (instance as any).chatHistoryStore.append({
-                  id: `msg-${Date.now()}-assistant`,
-                  role: 'assistant',
-                  content: `Daftar menu untuk "${storeName}" telah disiapkan dan dikirimkan ke WhatsApp pembeli.`,
-                  timestamp: Date.now()
-                });
+              // Keep agent chat history synchronized safely so conversational memory reflects the menu delivery
+              try {
+                if (instance && (instance as any).chatHistoryStore) {
+                  const ch = (instance as any).chatHistoryStore;
+                  if (typeof ch.appendPlatformTurn === 'function') {
+                    ch.appendPlatformTurn('whatsapp', from, 'user', `[Memilih Toko: ${storeName}]`);
+                    ch.appendPlatformTurn('whatsapp', from, 'assistant', `Daftar menu untuk "${storeName}" telah disiapkan dan dikirimkan ke WhatsApp pembeli.`);
+                  }
+                  if (typeof ch.append === 'function') {
+                    ch.append({ id: `msg-${Date.now()}-user`, role: 'user', content: `[Memilih Toko: ${storeName}]`, timestamp: Date.now() });
+                    ch.append({ id: `msg-${Date.now()}-assistant`, role: 'assistant', content: `Daftar menu untuk "${storeName}" telah disiapkan dan dikirimkan ke WhatsApp pembeli.`, timestamp: Date.now() });
+                  }
+                }
+              } catch (histErr: any) {
+                console.warn('[WhatsApp Fast-Path] Failed to sync history:', histErr.message);
               }
 
               return;
@@ -500,14 +503,14 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
                     type: 'text',
                     text: { body: `Mohon maaf, katalog menu untuk *${storeName}* sedang disiapkan. Silakan pilih warung/toko lain ya! 🙏` }
                   })
-                });
+                }).catch(() => {});
               }
               return;
             }
           }
         } catch (fastPathErr: any) {
           console.warn('[WhatsApp Fast-Path] Fast-path catalog dispatch failed:', fastPathErr.message);
-          if (phoneNumberId && accessToken) {
+          if (!cardSent && phoneNumberId && accessToken) {
             await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
               method: 'POST',
               headers: {
