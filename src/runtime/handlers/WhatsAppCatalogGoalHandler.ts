@@ -149,7 +149,7 @@ export class WhatsAppCatalogGoalHandler {
 
       const displayStoreName = targetStore || 'SERA Marketplace';
       const headerText = payload?.headerText || `${displayStoreName}`;
-      const bodyText = payload?.bodyText || `Berikut daftar produk siap pesan dari ${displayStoreName}:`;
+      const bodyText = payload?.bodyText || '🛍️ Silakan pilih menu yang ingin dipesan:';
 
       // Group products dynamically by category
       const catMap = new Map<string, string[]>();

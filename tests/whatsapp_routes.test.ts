@@ -1250,6 +1250,8 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
         const mpmBody = JSON.parse((mpmDispatch as any)[1]?.body || '{}');
         expect(mpmBody.to).toBe('628123456789');
         expect(mpmBody.interactive.header.text).toBe('Geprek Cak Jiban');
+        expect(mpmBody.interactive.body.text).toBe('🛍️ Silakan pilih menu yang ingin dipesan:');
+        expect(mpmBody.interactive.footer.text).toBe('SERA Mart');
         expect(mpmBody.interactive.action.sections[0].product_items[0].product_retailer_id).toBe('SKU-GEPREK-01');
       } finally {
         server.close();

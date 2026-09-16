@@ -718,7 +718,9 @@ export class WhatsAppCatalogService {
           text: (headerText || this.defaultStoreName).slice(0, 60)
         },
         body: {
-          text: (bodyText || 'Berikut pilihan produk yang tersedia untuk dipesan:').slice(0, 1024)
+          text: (bodyText && !/WHATSAPP_SEND_CATALOG|tindakan yang diminta telah berhasil dijalankan/i.test(bodyText)
+            ? bodyText
+            : '🛍️ Silakan pilih menu yang ingin dipesan:').slice(0, 1024)
         },
         footer: { text: (footerText || this.defaultStoreName).slice(0, 60) },
         action: {

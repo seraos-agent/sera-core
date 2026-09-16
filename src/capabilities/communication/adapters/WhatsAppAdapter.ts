@@ -369,15 +369,20 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     // 2c. Native WhatsApp Multi-Product Message (MPM / Product List)
     if (action.richContent?.productList && this.catalogService) {
       const { sections, headerText, bodyText, footerText } = action.richContent.productList;
-      const effectiveBody = action.text
-        ? WhatsAppAdapter.formatToWhatsApp(action.text)
-        : (bodyText || 'Berikut pilihan produk yang tersedia untuk dipesan:');
+      const isTechnicalNoise = !action.text || /WHATSAPP_SEND_CATALOG|tindakan yang diminta telah berhasil dijalankan|selesai\./i.test(action.text);
+      const rawBody = isTechnicalNoise
+        ? (bodyText || '🛍️ Silakan pilih menu yang ingin dipesan:')
+        : WhatsAppAdapter.formatToWhatsApp(action.text);
+      const effectiveBody = (!rawBody || /WHATSAPP_SEND_CATALOG|tindakan yang diminta telah berhasil dijalankan/i.test(rawBody))
+        ? '🛍️ Silakan pilih menu yang ingin dipesan:'
+        : rawBody;
+
       const mpmPayload = this.catalogService.buildMultiProductPayload(
         cleanRecipient,
         sections || [],
         headerText,
         effectiveBody,
-        footerText
+        footerText || 'SERA Mart'
       );
       try {
         const response = await fetch(url, {

@@ -429,14 +429,12 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
               }
 
               const storeStatus = targetStore ? storeService.isStoreOpenNow(targetStore.storeId) : undefined;
-              let bodyText = `Berikut daftar menu siap pesan dari *${storeName}*:`;
-              if (storeStatus) {
-                if (storeStatus.isOpen) {
-                  bodyText = `*${storeName}* (${storeStatus.statusText})\nSilakan pilih menu makanan & minuman favorit Anda di bawah ini:`;
-                } else if (targetStore?.allowPreOrder) {
-                  bodyText = `*${storeName}* (${storeStatus.statusText} • Menerima Pre-order)\nSilakan pilih menu untuk diproses pada jam buka (${targetStore.operatingHours.open} WIB):`;
+              let bodyText = '🛍️ Silakan pilih menu yang ingin dipesan:';
+              if (storeStatus && !storeStatus.isOpen) {
+                if (targetStore?.allowPreOrder) {
+                  bodyText = `🛍️ Silakan pilih menu yang ingin dipesan (${storeStatus.statusText} • Menerima Pre-order):`;
                 } else {
-                  bodyText = `*${storeName}* (${storeStatus.statusText} • Buka kembali jam ${targetStore?.operatingHours.open || '09:00'} WIB)\nBerikut katalog menu siap pesan:`;
+                  bodyText = `🛍️ Silakan pilih menu (${storeStatus.statusText} • Buka kembali jam ${targetStore?.operatingHours.open || '09:00'} WIB):`;
                 }
               }
 
@@ -445,7 +443,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
                 sections,
                 storeName,
                 bodyText,
-                'Pilih menu & pesan langsung'
+                'SERA Mart'
               );
 
               if (phoneNumberId && accessToken) {
