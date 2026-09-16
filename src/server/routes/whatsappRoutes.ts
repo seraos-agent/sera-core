@@ -8,6 +8,7 @@ import { WhatsAppPairingService } from '../../capabilities/communication/service
 import { WhatsAppMediaProcessor } from '../../capabilities/communication/services/WhatsAppMediaProcessor';
 import { WhatsAppCatalogService } from '../../capabilities/communication/services/WhatsAppCatalogService';
 import { StoreProfileService } from '../../capabilities/communication/services/StoreProfileService';
+import { serverConfig } from '../config';
 
 export interface WhatsAppRouterOptions {
   agentManager: AgentManager;
@@ -377,33 +378,36 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       const interactiveReplyId = incomingMsg.interactive?.button_reply?.id || incomingMsg.interactive?.list_reply?.id || '';
       const interactiveReplyTitle = incomingMsg.interactive?.button_reply?.title || incomingMsg.interactive?.list_reply?.title || '';
       const referredShowcaseSku = incomingMsg.context?.referred_product?.product_retailer_id;
-      const isStoreSelection = interactiveReplyId.startsWith('store_') || (referredShowcaseSku && referredShowcaseSku.startsWith('showcase_'));
+      const cleanReplyId = (interactiveReplyId || '').trim();
+      const cleanShowcaseSku = (referredShowcaseSku || '').trim();
+      const isStoreSelection = cleanReplyId.toLowerCase().startsWith('store_') || cleanShowcaseSku.toLowerCase().startsWith('showcase_');
 
       if (isStoreSelection) {
-        const rawStoreSlug = interactiveReplyId.startsWith('store_')
-          ? interactiveReplyId.replace('store_', '').trim()
-          : (referredShowcaseSku || '').replace('showcase_', '').trim();
+        try {
+          const rawStoreSlug = cleanReplyId.toLowerCase().startsWith('store_')
+            ? cleanReplyId.replace(/^store_/i, '').trim()
+            : cleanShowcaseSku.replace(/^showcase_/i, '').trim();
 
-        const storeService = StoreProfileService.getInstance();
-        let targetStore = storeService.getStore(rawStoreSlug);
-        if (!targetStore) {
-          const allStores = storeService.listStores();
-          targetStore = allStores.find(
-            (s) =>
-              s.storeId.toLowerCase() === rawStoreSlug.toLowerCase() ||
-              (interactiveReplyTitle && s.storeName.toLowerCase() === interactiveReplyTitle.toLowerCase()) ||
-              (interactiveReplyTitle && s.storeName.toLowerCase().includes(interactiveReplyTitle.toLowerCase())) ||
-              (rawStoreSlug && s.storeId.toLowerCase().includes(rawStoreSlug.toLowerCase()))
-          );
-        }
+          const storeService = StoreProfileService.getInstance();
+          let targetStore = storeService.getStore(rawStoreSlug);
+          if (!targetStore) {
+            const allStores = storeService.listStores();
+            targetStore = allStores.find(
+              (s) =>
+                s.storeId.toLowerCase() === rawStoreSlug.toLowerCase() ||
+                (interactiveReplyTitle && s.storeName.toLowerCase() === interactiveReplyTitle.toLowerCase()) ||
+                (interactiveReplyTitle && s.storeName.toLowerCase().includes(interactiveReplyTitle.toLowerCase())) ||
+                (rawStoreSlug && s.storeId.toLowerCase().includes(rawStoreSlug.toLowerCase()))
+            );
+          }
 
-        const storeName = targetStore ? targetStore.storeName : (interactiveReplyTitle || rawStoreSlug);
-        const catalogService = new WhatsAppCatalogService({
-          accessToken: accessToken || process.env.WHATSAPP_ACCESS_TOKEN
-        });
+          const storeName = targetStore ? targetStore.storeName : (interactiveReplyTitle || rawStoreSlug);
+          const catalogToken = serverConfig.whatsapp.catalogToken || process.env.TOKEN_KATALOG_META;
+          const catalogService = new WhatsAppCatalogService({
+            accessToken: catalogToken
+          });
 
-        if (catalogService.isConfigured) {
-          try {
+          if (catalogService.isConfigured) {
             const products = await catalogService.getProductsByBrand(storeName);
             if (products.length > 0) {
               const catMap = new Map<string, string[]>();
@@ -479,13 +483,51 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
                 });
               }
 
-              // Fast-path complete: Return immediately! Zero LLM latency!
+              return;
+            } else {
+              console.warn(`[WhatsApp Fast-Path] No products found in catalog for "${storeName}".`);
+              if (phoneNumberId && accessToken) {
+                await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: from,
+                    type: 'text',
+                    text: { body: `Mohon maaf, katalog menu untuk *${storeName}* sedang disiapkan. Silakan pilih warung/toko lain ya! 🙏` }
+                  })
+                });
+              }
               return;
             }
-          } catch (fastPathErr: any) {
-            console.warn('[WhatsApp Fast-Path] Fast-path catalog dispatch failed, falling back to conversational pipeline:', fastPathErr.message);
           }
+        } catch (fastPathErr: any) {
+          console.warn('[WhatsApp Fast-Path] Fast-path catalog dispatch failed:', fastPathErr.message);
+          if (phoneNumberId && accessToken) {
+            await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: from,
+                type: 'text',
+                text: { body: `Mohon maaf, sistem sedang menyiapkan katalog menu. Silakan coba kembali sesaat lagi ya! 🙏` }
+              })
+            }).catch(() => {});
+          }
+          return;
         }
+
+        // Guaranteed terminal return: Store selection MUST NEVER fall through to LLM conversational pipeline!
+        return;
       }
 
       let imagesList: string[] | undefined;
