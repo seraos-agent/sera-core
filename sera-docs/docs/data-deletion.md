@@ -17,7 +17,7 @@ You can remove our app's access to your Threads/Instagram account directly from 
 
 **Step 2: Request Full Data Wipe from SERA**
 To completely wipe any historical data, insights, or OAuth tokens stored on SERA's servers:
-1. Send an email to **seraos.agent@gmail.com**.
+1. Send an email to **info@seraos.xyz**.
 2. Use the subject line: `Data Deletion Request`.
 3. Include your Threads username in the body of the email.
 

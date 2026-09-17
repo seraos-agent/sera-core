@@ -29,4 +29,4 @@ Your authentication tokens are encrypted and stored securely using our internal 
 Our application integrates with the Meta Threads API. Your use of this integration is also subject to the Meta Privacy Policy. 
 
 ## 5. Contact Us
-If you have any questions or concerns regarding this Privacy Policy, please contact us at: **seraos.agent@gmail.com**.
+If you have any questions or concerns regarding this Privacy Policy, please contact us at: **info@seraos.xyz**.

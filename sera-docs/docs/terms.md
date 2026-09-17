@@ -25,4 +25,4 @@ SERA provides an autonomous Web3 and social AI agent that helps users manage the
 We reserve the right to suspend or terminate your access to SERA at any time if we determine that you have violated these terms or the policies of our third-party integrators (e.g., Meta).
 
 ## 5. Contact
-For any questions regarding these Terms, please contact us at **seraos.agent@gmail.com**.
+For any questions regarding these Terms, please contact us at **info@seraos.xyz**.
