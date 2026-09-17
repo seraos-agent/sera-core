@@ -106,29 +106,70 @@ export class EmailOtpService {
 
     if (resendApiKey) {
       try {
-        const fromAddress = process.env.RESEND_FROM_EMAIL || 'SERA OS <onboarding@resend.dev>';
+        const fromAddress = process.env.RESEND_FROM_EMAIL || 'SERA OS <auth@seraos.xyz>';
         const emailHtml = `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 24px; background: #ffffff; color: #1a1a1a; border-radius: 12px; border: 1px solid #eaeaea;">
-            <div style="margin-bottom: 24px; text-align: center;">
-              <h2 style="font-size: 24px; font-weight: 700; margin: 0; color: #111827;">SERA OS</h2>
-              <p style="font-size: 14px; color: #6b7280; margin-top: 4px;">Intelligent Agent Operating System</p>
-            </div>
-            <p style="font-size: 15px; line-height: 24px; color: #374151;">
-              Halo! Gunakan kode verifikasi di bawah ini untuk masuk ke akun SERA OS Anda:
-            </p>
-            <div style="text-align: center; margin: 32px 0;">
-              <div style="display: inline-block; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #111827; background: #f3f4f6; padding: 16px 32px; border-radius: 10px; border: 1px dashed #d1d5db;">
-                ${code}
-              </div>
-            </div>
-            <p style="font-size: 13px; color: #6b7280; line-height: 20px;">
-              Kode ini hanya berlaku selama <strong>5 menit</strong>. Jangan bagikan kode ini kepada siapapun demi keamanan akun Anda.
-            </p>
-            <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0;" />
-            <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
-              &copy; ${new Date().getFullYear()} PT Setara Indonesia Sentosa. All rights reserved.
-            </p>
-          </div>
+          <!DOCTYPE html>
+          <html lang="id">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Kode Verifikasi SERA OS</title>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f8fafc; padding: 40px 16px;">
+              <tr>
+                <td align="center">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 480px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); overflow: hidden;">
+                    <!-- Header with Logo -->
+                    <tr>
+                      <td align="center" style="padding: 40px 32px 24px 32px; background: #ffffff;">
+                        <img src="https://www.seraos.xyz/sera-logo.png" alt="SERA OS" width="56" height="56" style="display: block; width: 56px; height: 56px; margin: 0 auto 16px auto; border-radius: 12px;" />
+                        <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em;">SERA OS</h1>
+                        <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b; font-weight: 500;">Intelligent Agent Operating System</p>
+                      </td>
+                    </tr>
+
+                    <!-- Body Content -->
+                    <tr>
+                      <td style="padding: 0 32px 32px 32px; text-align: center;">
+                        <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 24px; color: #334155;">
+                          Gunakan kode verifikasi sekali pakai (OTP) di bawah ini untuk mengakses akun SERA OS Anda:
+                        </p>
+
+                        <!-- OTP Box -->
+                        <div style="background-color: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; margin: 0 auto 24px auto; display: inline-block; width: 85%; box-sizing: border-box;">
+                          <span style="font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #0f172a; display: block; margin-left: 10px;">
+                            ${code}
+                          </span>
+                        </div>
+
+                        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; line-height: 20px;">
+                          ⏱️ Kode ini hanya berlaku selama <strong>5 menit</strong>.
+                        </p>
+                        <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 18px;">
+                          Jika Anda tidak merasa meminta kode ini, abaikan email ini. Jangan pernah memberikan kode ini kepada siapa pun demi keamanan aset dan akun Anda.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding: 24px 32px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; text-align: center;">
+                        <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b; font-weight: 500;">
+                          <a href="https://seraos.xyz" target="_blank" style="color: #2563eb; text-decoration: none; font-weight: 600;">seraos.xyz</a> &bull; <a href="https://app.seraos.xyz" target="_blank" style="color: #2563eb; text-decoration: none; font-weight: 600;">Web Dashboard</a>
+                        </p>
+                        <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 16px;">
+                          &copy; ${new Date().getFullYear()} PT Setara Indonesia Sentosa. All rights reserved.<br />
+                          This is an automated system message. Please do not reply to this email.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+          </html>
         `;
 
         const res = await fetch('https://api.resend.com/emails', {
