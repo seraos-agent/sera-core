@@ -31,6 +31,7 @@ import { createMediaRouter } from './routes/mediaRoutes';
 import { createMcpRouter } from './routes/mcpRoutes';
 import { createAdminRouter } from './routes/adminRoutes';
 import { createWhatsAppRouter } from './routes/whatsappRoutes';
+import { createAuthRouter } from './routes/authRoutes';
 import { registerSocketGateway } from './socket/SocketGateway';
 
 
@@ -139,6 +140,9 @@ app.use(createGoogleDriveRouter(googleDriveOAuthService, io, async (userId) => {
 
 // 4. Multimodal Image Uploads
 app.use(createMediaRouter());
+
+// 4.5. Passwordless Email OTP Authentication
+app.use('/api/auth', createAuthRouter());
 
 // 5. OAuth 2.0 Authorization Server & Dynamic Client Registration (RFC 7591)
 app.use(createOAuthRouter(globalOAuthStore));

@@ -5,6 +5,7 @@ export const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toSt
 export interface SessionTokenPrincipal {
   userId: string;
   personalWalletAddress?: string;
+  email?: string;
   expiry: number;
 }
 

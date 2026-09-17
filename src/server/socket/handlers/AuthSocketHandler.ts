@@ -9,6 +9,7 @@ import { WalletAlreadyLinkedError } from '../../../core/identity/ReownWalletIden
 import { SeraUserContext } from '../../../core/identity/types';
 import { generateSessionToken, verifySessionToken } from '../socketAuth';
 import { EventTypes } from '../../../core/events/types';
+import { EmailOtpService } from '../../../core/identity/EmailOtpService';
 
 const challengeCache = new Map<string, string>();
 
@@ -49,6 +50,53 @@ export function registerAuthHandlers(context: SocketSessionContext): void {
   };
 
   socket.on('auth:challenge', issueLoginChallenge);
+
+  socket.on('auth:send_otp', async (payload: { email: string }) => {
+    try {
+      const email = payload?.email;
+      if (!email || typeof email !== 'string') {
+        socket.emit('auth:otp_sent', { success: false, message: 'Alamat email wajib diisi.' });
+        return;
+      }
+      const otpService = EmailOtpService.getInstance();
+      const result = await otpService.sendOtp(email);
+      socket.emit('auth:otp_sent', result);
+    } catch (err: any) {
+      socket.emit('auth:otp_sent', { success: false, message: err.message || 'Gagal mengirim OTP.' });
+    }
+  });
+
+  socket.on('auth:verify_otp', async (payload: { email: string; code: string }) => {
+    try {
+      const { email, code } = payload || {};
+      if (!email || !code) {
+        socket.emit('auth:error', { message: 'Email dan kode OTP 6-digit wajib diisi.', code: 'INVALID_OTP' });
+        return;
+      }
+      const otpService = EmailOtpService.getInstance();
+      const result = await otpService.verifyOtp(email, code);
+      if (!result.success || !result.token) {
+        socket.emit('auth:error', { message: result.message || 'Verifikasi OTP gagal.', code: 'INVALID_OTP' });
+        return;
+      }
+
+      socket.emit('auth:success', { token: result.token, user: { userId: result.userId, email: result.email } });
+
+      const principal: SeraUserContext = { userId: result.userId! };
+      if (socket.data.sessionId && socket.data.sessionId !== 'dev') socket.leave(`user:${socket.data.sessionId}`);
+      unbindListeners();
+      socket.data.sessionId = principal.userId;
+      socket.data.personalWalletAddress = undefined;
+      socket.data.isAuthenticated = true;
+
+      const newInstance = agentManager.getOrCreateInstance(principal);
+      setInstance(newInstance);
+      bindListeners();
+      await sendInitialState();
+    } catch (err: any) {
+      socket.emit('auth:error', { message: err.message || 'Verifikasi OTP gagal.', code: 'OTP_ERROR' });
+    }
+  });
 
   socket.on('auth:login', async (payload: { address?: string; message?: string; signature?: `0x${string}`; token?: string; supabaseAccessToken?: string; telegramInitData?: string }) => {
     let address = payload?.address?.toLowerCase();

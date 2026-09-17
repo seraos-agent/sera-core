@@ -342,7 +342,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       // Identity resolution: Find user session linked to this WhatsApp phone number
       const sessionId = await pairingService.resolveSessionId(from);
       if (!sessionId) {
-        await pairingService.handleUnlinkedGate(from);
+        await pairingService.handleUnlinkedGate(from, textContent);
         return;
       }
 

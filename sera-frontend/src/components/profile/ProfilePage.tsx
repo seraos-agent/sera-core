@@ -7,6 +7,7 @@ import './ProfilePage.css';
 interface ProfilePageProps {
   theme: ThemeType;
   walletState: WalletState;
+  userEmail?: string;
   mode: 'light' | 'dark';
   onModeChange: (mode: 'light' | 'dark') => void;
   onBack: () => void;
@@ -35,6 +36,7 @@ function Section({ title, description, children, theme }: { title: string; descr
 export function ProfilePage({
   theme,
   walletState,
+  userEmail,
   mode: _mode,
   onModeChange: _onModeChange,
   onBack,
@@ -119,12 +121,18 @@ export function ProfilePage({
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: theme.ink, fontSize: 15, fontWeight: 600 }}>Connected account</div>
-                  <div style={{ color: theme.inkSoft, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, marginTop: 4, wordBreak: 'break-all' }}>{shortAddress(connectedAddress)}</div>
+                  <div style={{ color: theme.inkSoft, fontFamily: userEmail ? 'Inter, sans-serif' : 'JetBrains Mono, monospace', fontSize: 13, marginTop: 4, wordBreak: 'break-all' }}>
+                    {userEmail || shortAddress(connectedAddress)}
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: isMobileView ? '100%' : 'auto' }}>
-                <button onClick={onManageWallet} className="profile-button-secondary" style={secondaryButton}>Manage connection</button>
-                <button onClick={onDisconnect} className="profile-button-secondary profile-danger-button" style={{ ...secondaryButton, color: '#D04646', borderColor: theme.isDark ? '#6D3434' : '#F0CACA' }}>Disconnect</button>
+                {!userEmail && (
+                  <button onClick={onManageWallet} className="profile-button-secondary" style={secondaryButton}>Manage connection</button>
+                )}
+                <button onClick={onDisconnect} className="profile-button-secondary profile-danger-button" style={{ ...secondaryButton, color: '#D04646', borderColor: theme.isDark ? '#6D3434' : '#F0CACA' }}>
+                  {userEmail ? 'Log out' : 'Disconnect'}
+                </button>
               </div>
             </div>
           </Section>

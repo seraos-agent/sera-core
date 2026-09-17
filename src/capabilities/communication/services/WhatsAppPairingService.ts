@@ -1,6 +1,7 @@
 import { SecretManager } from '../../../core/secrets/SecretManager';
 import { AgentManager } from '../../../server/AgentManager';
 import { WhatsAppManager } from '../adapters/WhatsAppManager';
+import { EmailOtpService } from '../../../core/identity/EmailOtpService';
 
 export interface WhatsAppPairingOptions {
   agentManager: AgentManager;
@@ -11,7 +12,7 @@ export interface WhatsAppPairingOptions {
 
 /**
  * Handles WhatsApp phone identity resolution, pairing code verification (/connect <code>),
- * onboarding guidance for unlinked phone numbers, and anti-spam 24-hour cooldown policies.
+ * conversational email OTP onboarding for unlinked phone numbers, and anti-spam cooldown policies.
  */
 export class WhatsAppPairingService {
   private readonly ingressFloodMap = new Map<string, number[]>();
@@ -103,11 +104,111 @@ export class WhatsAppPairingService {
   }
 
   /**
-   * Enforces onboarding guidance for unlinked phone numbers:
-   * Max 3 onboarding prompts, followed by a 24-hour silent cooldown.
-   * Returns true if the message was handled/intercepted (should not proceed to dialogue).
+   * Enforces conversational email OTP onboarding for unlinked phone numbers:
+   * 1. If text is an email: sends 6-digit OTP and asks for code.
+   * 2. If text is 6-digit code: verifies OTP and links WhatsApp identity permanently.
+   * 3. If standard message: provides onboarding guidance with max 3 prompts and 24h cooldown.
    */
-  public async handleUnlinkedGate(from: string): Promise<boolean> {
+  public async handleUnlinkedGate(from: string, textContent: string = ''): Promise<boolean> {
+    const cleanText = textContent.trim();
+
+    // 1. Check if user typed an email address to initiate onboarding
+    if (EmailOtpService.isValidEmail(cleanText)) {
+      const email = EmailOtpService.normalizeEmail(cleanText);
+      const otpService = EmailOtpService.getInstance();
+      await otpService.sendOtp(email);
+
+      if (this.options.secretManager) {
+        await this.options.secretManager.setSecret(
+          `WA_ONBOARDING_${from}`,
+          JSON.stringify({ state: 'AWAITING_OTP', email, expiresAt: Date.now() + 5 * 60 * 1000 })
+        );
+      }
+
+      console.log(`[WhatsApp Webhook] Initiated email onboarding for +${from} with email ${email}`);
+      if (this.options.whatsAppManager) {
+        await this.options.whatsAppManager.sendDirectMessage(
+          from,
+          `📩 A 6-digit verification code has been sent to *${email}*.\n\nPlease reply to this chat with the 6-digit code to activate your SERA OS account:`
+        ).catch((err) => console.error('[WhatsApp Webhook] Failed to send OTP prompt:', err.message));
+      }
+      return true;
+    }
+
+    // 2. Check if user is in AWAITING_OTP stage and typed a 6-digit code
+    let pendingOnboarding: any = null;
+    if (this.options.secretManager) {
+      try {
+        const rawOnboarding = await this.options.secretManager.getSecret(`WA_ONBOARDING_${from}`);
+        if (rawOnboarding) pendingOnboarding = JSON.parse(rawOnboarding);
+      } catch {}
+    }
+
+    if (pendingOnboarding?.state === 'AWAITING_OTP' && /^\d{6}$/.test(cleanText)) {
+      const otpService = EmailOtpService.getInstance();
+      const verifyRes = await otpService.verifyOtp(pendingOnboarding.email, cleanText);
+
+      if (verifyRes.success && verifyRes.userId) {
+        const userId = verifyRes.userId;
+        const email = pendingOnboarding.email;
+
+        if (this.options.secretManager) {
+          await this.options.secretManager.setSecret(`WA_USER_${from}`, userId);
+          await this.options.secretManager.setSecret(`WA_SESSION_${userId}`, from);
+          await this.options.secretManager.setSecret(`WA_EMAIL_${from}`, email);
+          await this.options.secretManager.deleteSecret(`WA_ONBOARDING_${from}`).catch(() => {});
+          await this.options.secretManager.deleteSecret(`WA_UNLINKED_LIMIT_${from}`).catch(() => {});
+        }
+
+        console.log(`[WhatsApp Webhook] Successfully onboarded +${from} linked to ${userId} (${email})`);
+
+        if (this.options.io) {
+          this.options.io.to(`user:${userId}`).emit('whatsapp:status', {
+            provider: 'WHATSAPP',
+            status: 'CONNECTED',
+            phoneNumber: from
+          });
+          const inst = this.options.agentManager.getInstance(userId);
+          if (inst?.runtime?.capabilityCatalog) {
+            inst.runtime.capabilityCatalog.activateConnector('whatsapp');
+            this.options.io.to(`user:${userId}`).emit('connector:catalog', inst.runtime.capabilityCatalog.allConnectorSummaries());
+            this.options.io.to(`user:${userId}`).emit('connector:status_changed', inst.runtime.capabilityCatalog.allConnectorSummaries());
+          }
+        }
+
+        if (this.options.whatsAppManager) {
+          await this.options.whatsAppManager.sendDirectMessage(
+            from,
+            `🎉 *Welcome to SERA OS!*\n\nYour WhatsApp (+${from}) is now officially linked to *${email}*.\n\n✨ *You can now:*\n🛍️ Discover & shop from nearby stores (type: *menu*)\n💼 Ask questions, organize notes & manage operational tasks\n🌐 Access your full web dashboard at https://app.seraos.xyz using your email.\n\nHow can SERA assist you today?`
+          ).catch((err) => console.error('[WhatsApp Webhook] Failed to send welcome confirmation:', err.message));
+        }
+        return true;
+      } else {
+        if (this.options.whatsAppManager) {
+          await this.options.whatsAppManager.sendDirectMessage(
+            from,
+            `⚠️ *Invalid or expired verification code.*\n\nPlease check your email (*${pendingOnboarding.email}*) and enter the 6-digit code, or reply with your email to request a new code.`
+          ).catch((err) => console.error('[WhatsApp Webhook] Failed to send retry prompt:', err.message));
+        }
+        return true;
+      }
+    }
+
+    // 3. Reset command
+    if (cleanText.toLowerCase() === '/reset' || cleanText.toLowerCase() === '/ulang') {
+      if (this.options.secretManager) {
+        await this.options.secretManager.deleteSecret(`WA_ONBOARDING_${from}`).catch(() => {});
+      }
+      if (this.options.whatsAppManager) {
+        await this.options.whatsAppManager.sendDirectMessage(
+          from,
+          `🔄 Registration session has been reset. Please type your email address to get started with SERA OS:`
+        ).catch((err) => console.error('[WhatsApp Webhook] Failed to send reset confirmation:', err.message));
+      }
+      return true;
+    }
+
+    // 4. Fallback attempt limit & standard onboarding guidance
     let attemptCount = 0;
     let cooldownUntil = 0;
 
@@ -138,7 +239,7 @@ export class WhatsAppPairingService {
     const newCount = attemptCount + 1;
 
     if (newCount < 3) {
-      // Attempts 1 and 2: Standard onboarding guidance
+      // Attempts 1 and 2: Standard conversational onboarding guidance
       if (this.options.secretManager) {
         await this.options.secretManager.setSecret(`WA_UNLINKED_LIMIT_${from}`, JSON.stringify({ count: newCount }));
       }
@@ -146,7 +247,7 @@ export class WhatsAppPairingService {
       if (this.options.whatsAppManager) {
         await this.options.whatsAppManager.sendDirectMessage(
           from,
-          `👋 Hello! Your WhatsApp number (+${from}) is not linked to any SERA OS identity yet.\n\nTo interact with SERA, please link your account first:\n1. Open https://app.seraos.xyz\n2. Go to Connections -> WhatsApp\n3. Tap 'Open in WhatsApp' or scan the QR code to connect.`
+          `👋 Hello! Your WhatsApp number (+${from}) is not linked to any SERA OS identity yet.\n\nTo interact with SERA, please reply with your *email address* (e.g. name@example.com), or link your account at https://app.seraos.xyz.`
         ).catch((err) => console.error('[WhatsApp Webhook] Failed to send unlinked prompt:', err.message));
       }
     } else {
@@ -163,7 +264,7 @@ export class WhatsAppPairingService {
       if (this.options.whatsAppManager) {
         await this.options.whatsAppManager.sendDirectMessage(
           from,
-          `⚠️ Hello! Your WhatsApp number (+${from}) is not linked to any SERA OS identity.\n\nThis is your final reminder. Further messages will be silenced for 24 hours until you link your account at https://app.seraos.xyz.`
+          `⚠️ Hello! Your WhatsApp number (+${from}) is not linked to any SERA OS identity.\n\nThis is your final reminder. Further messages will be silenced for 24 hours until you link your account at https://app.seraos.xyz or reply with your email.`
         ).catch((err) => console.error('[WhatsApp Webhook] Failed to send unlinked prompt:', err.message));
       }
     }

@@ -11,7 +11,7 @@ import { AutomationsPage } from "./components/automations/AutomationsPage";
 import { ProfilePage } from "./components/profile/ProfilePage";
 import type { SidebarView } from "./components/sidebar/Sidebar";
 
-import { ConnectGateway } from "./components/auth/ConnectGateway";
+import { EmailLoginGateway } from "./components/auth/EmailLoginGateway";
 import { LaunchCodeGateway } from './components/auth/LaunchCodeGateway';
 
 import { BillingModal } from "./components/sidebar/BillingModal";
@@ -110,12 +110,30 @@ function InnerApp() {
     localStorage.setItem("sera_view", currentView);
   }, [currentView]);
 
+  const [sessionToken, setSessionToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sera_session_token');
+    }
+    return null;
+  });
+
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sera_user_email');
+    }
+    return null;
+  });
+
   const { walletState, setWalletState } = useWallet();
   const { isConnected, address, isReconnecting, isConnecting } = useAccount();
+
+  const isUserAuthenticated = Boolean(sessionToken || isConnected);
+
+  const activeDeviceScope = userEmail ? `email:${userEmail}` : (address?.toLowerCase() ?? 'anonymous');
   const { socket, messages, setMessages, sendMessage, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, whatsapp, whatsappLinkData, generateWhatsAppLink, disconnectWhatsApp, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
-    address?.toLowerCase() ?? 'anonymous',
+    activeDeviceScope,
   );
 
   const theme = THEME[mode];
@@ -184,7 +202,7 @@ function InnerApp() {
   }, [isBypassed, socket]);
 
   useEffect(() => {
-    const currentAccountKey = isBypassed ? 'dev-bypassed' : (address?.toLowerCase() || 'disconnected');
+    const currentAccountKey = isBypassed ? 'dev-bypassed' : (userEmail ? `email:${userEmail}` : (address?.toLowerCase() || 'disconnected'));
     // Only clear messages when switching to a DIFFERENT account, never on reconnect/re-render
     if (lastAccountKeyRef.current !== null && lastAccountKeyRef.current !== currentAccountKey) {
       setMessages([]);
@@ -194,13 +212,25 @@ function InnerApp() {
 
     setWalletState(prev => ({
       ...INITIAL_WALLET,
-      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address,
-      fullAddress: address || INITIAL_WALLET.fullAddress,
+      address: userEmail ? userEmail : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address),
+      fullAddress: userEmail || address || INITIAL_WALLET.fullAddress,
       syncing: isConnected && !prev.address.includes('...'),
     }));
 
     if (socket) {
       const requestChallenge = async (data: { message: string }) => {
+        // 1. Passwordless Email Session Token (Primary)
+        const savedSessionToken = sessionToken || (typeof window !== 'undefined' ? localStorage.getItem('sera_session_token') : null);
+        if (savedSessionToken) {
+          socket.emit("auth:login", {
+            token: savedSessionToken,
+            email: userEmail || undefined,
+            userId: userEmail ? `email:${userEmail}` : undefined
+          });
+          return;
+        }
+
+        // 2. Web3 Wallet Signature
         if (!isConnected || !address) return;
         setWalletState(prev => ({ ...prev, error: "" })); // Clear previous error
 
@@ -225,14 +255,30 @@ function InnerApp() {
         }
       };
 
-      const handleAuthSuccess = (data: { token: string }) => {
-        if (address) {
-          localStorage.setItem(`sera_auth_token_${address.toLowerCase()}`, data.token);
-          socket.emit("billing:fetch", { address: address.toLowerCase() });
+      const handleAuthSuccess = (data: { token?: string; email?: string; userId?: string }) => {
+        if (data?.token) {
+          if (userEmail || data?.email) {
+            const finalEmail = data?.email || userEmail!;
+            localStorage.setItem('sera_session_token', data.token);
+            localStorage.setItem('sera_user_email', finalEmail);
+            setSessionToken(data.token);
+            setUserEmail(finalEmail);
+          } else if (address) {
+            localStorage.setItem(`sera_auth_token_${address.toLowerCase()}`, data.token);
+          }
+        }
+        const billingScope = userEmail ? `email:${userEmail}` : (address ? address.toLowerCase() : undefined);
+        if (billingScope) {
+          socket.emit("billing:fetch", { address: billingScope });
         }
       };
 
       const handleAuthError = (err: any) => {
+        if (sessionToken) {
+          console.warn('[App] Session token invalid or expired:', err?.message);
+          localStorage.removeItem('sera_session_token');
+          setSessionToken(null);
+        }
         if ((err.code === 'INVALID_TOKEN' || err.code === 'UNAUTHENTICATED') && address) {
           if (err.code === 'INVALID_TOKEN') {
             localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
@@ -248,7 +294,8 @@ function InnerApp() {
       };
 
       const handleSubscriptionRequired = () => {
-        if (address) socket.emit("billing:fetch", { address: address.toLowerCase() });
+        const billingScope = userEmail ? `email:${userEmail}` : (address ? address.toLowerCase() : undefined);
+        if (billingScope) socket.emit("billing:fetch", { address: billingScope });
       };
 
       socket.on("auth:challenge", requestChallenge);
@@ -260,7 +307,7 @@ function InnerApp() {
       socket.on('connector:status_changed', setActiveConnectors);
       socket.emit('connector:list');
 
-      if (isConnected && address) {
+      if ((isConnected && address) || sessionToken) {
         socket.emit("auth:challenge");
       }
 
@@ -273,12 +320,12 @@ function InnerApp() {
         socket.off('connector:status_changed', setActiveConnectors);
       };
     }
-  }, [socket, isConnected, address, isBypassed, setMessages, setWalletState]);
+  }, [socket, isConnected, address, isBypassed, sessionToken, userEmail, setMessages, setWalletState]);
 
   if (!isMounted) return null;
 
   // Show a loading screen while the wallet is reconnecting on initial load to prevent UI flash
-  if (isReconnecting || isConnecting) {
+  if ((isReconnecting || isConnecting) && !sessionToken) {
     return (
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -303,8 +350,8 @@ function InnerApp() {
     );
   }
 
-  // 1. If not connected, check launch code then show ConnectGateway
-  if (!isConnected && !isBypassed) {
+  // 1. If not authenticated, check launch code then show EmailLoginGateway
+  if (!isUserAuthenticated && !isBypassed) {
     if (!isLaunchCodeVerified) {
       return (
         <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
@@ -338,10 +385,22 @@ function InnerApp() {
 
     return (
       <div style={{ backgroundColor: mode === "light" ? "#f3f4f6" : "#000", minHeight: "100vh", position: "relative" }}>
-        <ConnectGateway theme={THEME[mode]} onConnect={() => {
-          setThemeMode(mode);
-          window.requestAnimationFrame(() => open());
-        }} />
+        <EmailLoginGateway
+          theme={THEME[mode]}
+          onAuthenticated={({ token, userId, email: loggedInEmail }) => {
+            localStorage.setItem('sera_session_token', token);
+            localStorage.setItem('sera_user_email', loggedInEmail);
+            setSessionToken(token);
+            setUserEmail(loggedInEmail);
+            if (socket) {
+              socket.emit("auth:login", { token, userId, email: loggedInEmail });
+            }
+          }}
+          onOpenWeb3Modal={() => {
+            setThemeMode(mode);
+            window.requestAnimationFrame(() => open());
+          }}
+        />
 
         {/* Tombol Bypass khusus Localhost */}
         {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
@@ -465,12 +524,17 @@ function InnerApp() {
         {currentView === "profile" ? <ProfilePage
           theme={theme}
           walletState={walletState}
+          userEmail={userEmail || undefined}
           isMobileView={isMobileView}
           mode={mode}
           onModeChange={setMode}
           onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
           onManageWallet={() => open()}
           onDisconnect={() => {
+            localStorage.removeItem('sera_session_token');
+            localStorage.removeItem('sera_user_email');
+            setSessionToken(null);
+            setUserEmail(null);
             if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
             socket?.emit('auth:logout');
             disconnect();
