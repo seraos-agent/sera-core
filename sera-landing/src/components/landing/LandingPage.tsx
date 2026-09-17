@@ -55,7 +55,8 @@ export function LandingPage() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('sera-landing-theme');
       if (saved) return saved === 'dark';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      // Default to Light Mode for new visitors
+      return false;
     }
     return false;
   });
@@ -574,53 +575,55 @@ export function LandingPage() {
             </div>
           </section>
 
-          {/* SECTION 5.5: DEMO SHOWCASE */}
-          <section className="landing-section demo-section" id="demo" ref={reveal5}>
-            <div className="landing-container">
-              <div className="section-badge reveal-child reveal-delay-1">{t('demo.badge')}</div>
-              <h2 className="section-title reveal-child reveal-delay-2">{t('demo.title')}</h2>
-              <p className="section-subtitle reveal-child reveal-delay-3">
-                {t('demo.subtitle')}
-              </p>
-              <div className="demo-showcase reveal-child reveal-delay-4">
-                <div className="demo-frame">
-                  {/* Browser mockup top bar */}
-                  <div className="demo-browser-bar">
-                    <span className="demo-dot" /><span className="demo-dot" /><span className="demo-dot" />
-                    <div className="demo-url-bar">sera-os.app/demo</div>
-                  </div>
-                  {/* Placeholder content simulating product */}
-                  <div className="demo-content">
-                    <div className="demo-sidebar">
-                      <div className="demo-sidebar-item active" />
-                      <div className="demo-sidebar-item" />
-                      <div className="demo-sidebar-item" />
-                      <div className="demo-sidebar-item" />
+          {/* SECTION 5.5: DEMO SHOWCASE (Hidden until video is ready) */}
+          {false && (
+            <section className="landing-section demo-section" id="demo" ref={reveal5}>
+              <div className="landing-container">
+                <div className="section-badge reveal-child reveal-delay-1">{t('demo.badge')}</div>
+                <h2 className="section-title reveal-child reveal-delay-2">{t('demo.title')}</h2>
+                <p className="section-subtitle reveal-child reveal-delay-3">
+                  {t('demo.subtitle')}
+                </p>
+                <div className="demo-showcase reveal-child reveal-delay-4">
+                  <div className="demo-frame">
+                    {/* Browser mockup top bar */}
+                    <div className="demo-browser-bar">
+                      <span className="demo-dot" /><span className="demo-dot" /><span className="demo-dot" />
+                      <div className="demo-url-bar">sera-os.app/demo</div>
                     </div>
-                    <div className="demo-main">
-                      <div className="demo-line demo-line-short" />
-                      <div className="demo-line" />
-                      <div className="demo-line demo-line-medium" />
-                      <div className="demo-card-row">
-                        <div className="demo-mini-card" />
-                        <div className="demo-mini-card" />
-                        <div className="demo-mini-card" />
+                    {/* Placeholder content simulating product */}
+                    <div className="demo-content">
+                      <div className="demo-sidebar">
+                        <div className="demo-sidebar-item active" />
+                        <div className="demo-sidebar-item" />
+                        <div className="demo-sidebar-item" />
+                        <div className="demo-sidebar-item" />
                       </div>
-                      <div className="demo-line" />
-                      <div className="demo-line demo-line-short" />
+                      <div className="demo-main">
+                        <div className="demo-line demo-line-short" />
+                        <div className="demo-line" />
+                        <div className="demo-line demo-line-medium" />
+                        <div className="demo-card-row">
+                          <div className="demo-mini-card" />
+                          <div className="demo-mini-card" />
+                          <div className="demo-mini-card" />
+                        </div>
+                        <div className="demo-line" />
+                        <div className="demo-line demo-line-short" />
+                      </div>
                     </div>
-                  </div>
-                  {/* Play overlay */}
-                  <div className="demo-overlay">
-                    <div className="demo-play-ring">
-                      <svg viewBox="0 0 48 48" fill="none"><polygon points="18,12 38,24 18,36" fill="currentColor" /></svg>
+                    {/* Play overlay */}
+                    <div className="demo-overlay">
+                      <div className="demo-play-ring">
+                        <svg viewBox="0 0 48 48" fill="none"><polygon points="18,12 38,24 18,36" fill="currentColor" /></svg>
+                      </div>
+                      <span>{t('demo.play')}</span>
                     </div>
-                    <span>{t('demo.play')}</span>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
         </>
       )}
 
