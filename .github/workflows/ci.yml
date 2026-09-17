@@ -36,8 +36,6 @@ jobs:
         QWEN_API: "mock_key_for_tests"
         BRAVE_API_KEY: "mock_brave_key_for_tests"
         MASTER_ENCRYPTION_KEY: "000000000000000000000000000000000000000000000000000000000000000a"
-        TOKEN_KATALOG_META: "mock_token_katalog_meta_for_tests"
-        WHATSAPP_ACCESS_TOKEN: "mock_wa_access_token_for_tests"
 
     - name: Build frontend
       run: npm --prefix sera-frontend ci && npm --prefix sera-frontend run build
