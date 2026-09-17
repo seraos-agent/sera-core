@@ -1181,7 +1181,8 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
         secretManager: mockSecretManager,
         verifyToken: 'my_test_verify_token',
         phoneNumberId: 'phone_123',
-        accessToken: 'token_123'
+        accessToken: 'token_123',
+        catalogToken: 'token_123'
       }));
 
       const server = app.listen(0);
@@ -1229,8 +1230,8 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
         });
         expect(res.status).toBe(200);
 
-        // Wait a tiny moment for async execution
-        await new Promise(r => setTimeout(r, 100));
+        // Wait for async execution to complete
+        await new Promise(r => setTimeout(r, 300));
 
         // 1. Verify agent LLM queue was NOT called (DIALOGUE_USER_OBSERVED bypassed)
         const agentObservedCalls = mockEventBus.emit.mock.calls.filter((c: any) => c[0] === EventTypes.DIALOGUE_USER_OBSERVED);

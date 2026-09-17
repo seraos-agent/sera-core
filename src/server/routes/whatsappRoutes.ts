@@ -19,6 +19,7 @@ export interface WhatsAppRouterOptions {
   phoneNumberId?: string;
   accessToken?: string;
   apiVersion?: string;
+  catalogToken?: string;
 }
 
 /**
@@ -33,6 +34,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
   const phoneNumberId = options.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = options.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
   const apiVersion = options.apiVersion || process.env.WHATSAPP_API_VERSION || 'v21.0';
+  const catalogToken = options.catalogToken || serverConfig.whatsapp.catalogToken || process.env.TOKEN_KATALOG_META || accessToken;
 
   const pairingService = new WhatsAppPairingService({
     agentManager,
@@ -403,9 +405,9 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
           }
 
           const storeName = targetStore ? targetStore.storeName : (interactiveReplyTitle || rawStoreSlug);
-          const catalogToken = serverConfig.whatsapp.catalogToken || process.env.TOKEN_KATALOG_META;
+          const effectiveCatalogToken = catalogToken || serverConfig.whatsapp.catalogToken || process.env.TOKEN_KATALOG_META || accessToken;
           const catalogService = new WhatsAppCatalogService({
-            accessToken: catalogToken
+            accessToken: effectiveCatalogToken
           });
 
           if (catalogService.isConfigured) {
