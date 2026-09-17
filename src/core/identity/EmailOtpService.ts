@@ -100,7 +100,10 @@ export class EmailOtpService {
     console.log(`[EmailOtpService] Generated 6-digit OTP for ${email}: ${code} (Expires in 5m)`);
 
     // Attempt delivery via Resend API if key is present
-    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = process.env.RESEND_API_KEY || process.env.RESEND_API;
+    let emailDeliverySuccess = false;
+    let emailDeliveryError: string | null = null;
+
     if (resendApiKey) {
       try {
         const fromAddress = process.env.RESEND_FROM_EMAIL || 'SERA OS <onboarding@resend.dev>';
@@ -144,19 +147,24 @@ export class EmailOtpService {
 
         if (!res.ok) {
           const errTxt = await res.text();
+          emailDeliveryError = `Resend HTTP ${res.status}: ${errTxt}`;
           console.warn(`[EmailOtpService] Resend API responded with ${res.status}: ${errTxt}`);
         } else {
+          emailDeliverySuccess = true;
           console.log(`[EmailOtpService] Verification email successfully delivered to ${email} via Resend.`);
         }
       } catch (sendErr: any) {
+        emailDeliveryError = sendErr.message;
         console.error('[EmailOtpService] Failed to dispatch email via Resend:', sendErr.message);
       }
     }
 
-    const isDev = !resendApiKey || process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+    const isDev = !resendApiKey || (process.env.NODE_ENV === 'test' && !emailDeliverySuccess);
     return {
       success: true,
-      message: `A 6-digit verification code has been sent to ${email}.`,
+      message: emailDeliveryError 
+        ? `OTP code generated, but Resend notice: ${emailDeliveryError}`
+        : `A 6-digit verification code has been sent to ${email}.`,
       isDevelopment: isDev,
       otpCodeDev: isDev ? code : undefined
     };
