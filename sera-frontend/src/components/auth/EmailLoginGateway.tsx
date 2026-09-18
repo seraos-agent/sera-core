@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { ThemeType } from '../../theme';
-import { Mail, ArrowRight, KeyRound, Edit3, MessageSquare, ArrowUpRight } from 'lucide-react';
+import { Mail, ArrowRight, KeyRound, Edit3 } from 'lucide-react';
 
 interface EmailLoginGatewayProps {
   theme: ThemeType;
@@ -16,6 +16,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
   const [infoMessage, setInfoMessage] = useState('');
   const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
+  const [emailFocused, setEmailFocused] = useState(false);
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -207,110 +208,203 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
         <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px', color: theme.ink, letterSpacing: '-0.02em' }}>
           Welcome to SERA OS
         </h1>
-        <p style={{ fontSize: '14px', color: theme.inkSoft, marginBottom: '28px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '14px', color: theme.inkSoft, marginBottom: '24px', lineHeight: 1.5 }}>
           {step === 'EMAIL'
-            ? 'Passwordless sign-in. Enter your email to receive a 6-digit verification code:'
+            ? 'Passwordless sign-in. Continue with WhatsApp or enter your email:'
             : infoMessage || 'Enter the 6-digit verification code sent to:'}
         </p>
 
-        {/* STEP 1: EMAIL INPUT */}
+        {/* STEP 1: WHATSAPP / EMAIL GATEWAY */}
         {step === 'EMAIL' && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendOtp();
-            }}
-            style={{ width: '100%' }}
-          >
-            <div style={{ position: 'relative', width: '100%', marginBottom: '16px' }}>
-              <div style={{
-                position: 'absolute',
-                left: '16px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: theme.inkFaint,
-                display: 'flex',
-                alignItems: 'center',
-                pointerEvents: 'none'
-              }}>
-                <Mail size={18} />
-              </div>
-              <input
-                type="email"
-                required
-                autoFocus
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setError('');
-                }}
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '14px 16px 14px 44px',
-                  borderRadius: '10px',
-                  border: `1px solid ${error ? '#ef4444' : theme.border}`,
-                  backgroundColor: theme.bg,
-                  color: theme.ink,
-                  fontSize: '15px',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s',
-                  fontFamily: 'Inter, sans-serif'
-                }}
-              />
-            </div>
-
-            {error && (
-              <div style={{ color: '#ef4444', fontSize: '13px', marginBottom: '14px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>⚠️</span> {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || !email.trim()}
+          <div style={{ width: '100%' }}>
+            {/* WhatsApp Quick Action (Option 3) */}
+            <a
+              href="https://wa.me/6285126485464?text=Hi%20SERA"
+              target="_blank"
+              rel="noreferrer"
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
-                width: '100%',
-                padding: '14px 20px',
-                backgroundColor: theme.ink,
-                color: theme.surface,
-                border: 'none',
+                gap: '9px',
+                backgroundColor: theme.bg,
+                padding: '13px 18px',
                 borderRadius: '10px',
-                fontSize: '15px',
+                border: `1px solid ${theme.border}`,
+                color: theme.ink,
+                fontSize: '14px',
                 fontWeight: 600,
-                cursor: (loading || !email.trim()) ? 'not-allowed' : 'pointer',
-                opacity: (loading || !email.trim()) ? 0.6 : 1,
-                transition: 'opacity 0.2s, transform 0.1s'
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: 'border-color 0.2s, background-color 0.2s, transform 0.1s',
+                boxSizing: 'border-box',
+                width: '100%'
               }}
-              onMouseEnter={(e) => { if (!loading && email.trim()) e.currentTarget.style.opacity = '0.9'; }}
-              onMouseLeave={(e) => { if (!loading && email.trim()) e.currentTarget.style.opacity = '1'; }}
-              onMouseDown={(e) => { if (!loading && email.trim()) e.currentTarget.style.transform = 'scale(0.99)'; }}
-              onMouseUp={(e) => { if (!loading && email.trim()) e.currentTarget.style.transform = 'scale(1)'; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#25D366';
+                e.currentTarget.style.backgroundColor = `${theme.border}33`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = theme.border;
+                e.currentTarget.style.backgroundColor = theme.bg;
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.99)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
             >
-              {loading ? (
-                <>
-                  <div style={{
-                    width: 16, height: 16, borderRadius: '50%',
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTopColor: '#fff',
-                    animation: 'spin 0.8s linear infinite'
-                  }} />
-                  Sending code...
-                </>
-              ) : (
-                <>
-                  Continue with Email
-                  <ArrowRight size={18} />
-                </>
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                fill="currentColor"
+                style={{ color: '#25D366', flexShrink: 0 }}
+                aria-hidden="true"
+              >
+                <path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.476-.15-.676.15-.2.3-.776.978-.952 1.178-.176.2-.351.226-.652.076-.301-.15-1.27-.468-2.42-1.493-.894-.798-1.498-1.784-1.674-2.085-.176-.301-.019-.464.132-.614.135-.135.301-.351.451-.527.15-.176.2-.301.301-.502.101-.2.05-.376-.025-.527-.075-.15-.676-1.63-.926-2.233-.244-.587-.492-.507-.676-.516-.175-.008-.376-.01-.577-.01-.201 0-.527.076-.803.376s-1.053 1.028-1.053 2.509c0 1.48 1.078 2.91 1.229 3.111.15.201 2.122 3.24 5.141 4.545.718.311 1.278.497 1.715.636.721.23 1.378.197 1.898.119.58-.088 1.78-.727 2.031-1.43.251-.703.251-1.305.176-1.43-.075-.126-.276-.201-.577-.351zM12.04 2c-5.502 0-9.98 4.478-9.98 9.98 0 1.758.459 3.475 1.332 4.992l-1.417 5.176 5.306-1.391c1.464.798 3.117 1.218 4.759 1.218 5.502 0 9.98-4.478 9.98-9.98 0-5.502-4.478-9.995-9.98-9.995zm0 18.232c-1.487 0-2.94-.4-4.205-1.152l-.301-.179-3.129.821.835-3.048-.196-.312c-.827-1.317-1.264-2.846-1.264-4.417 0-4.542 3.696-8.238 8.243-8.238 4.547 0 8.243 3.696 8.243 8.238 0 4.547-3.696 8.248-8.226 8.248z" />
+              </svg>
+              <span>Continue on WhatsApp</span>
+            </a>
+
+            {/* "or" Divider */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              margin: '20px 0',
+              width: '100%',
+              gap: '12px'
+            }}>
+              <div style={{ flex: 1, height: '1px', backgroundColor: theme.border }} />
+              <span style={{
+                fontSize: '12px',
+                color: theme.inkFaint,
+                fontWeight: 500,
+                textTransform: 'lowercase',
+                letterSpacing: '0.04em'
+              }}>
+                or
+              </span>
+              <div style={{ flex: 1, height: '1px', backgroundColor: theme.border }} />
+            </div>
+
+            {/* Email Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendOtp();
+              }}
+              style={{ width: '100%' }}
+            >
+              <div style={{ position: 'relative', width: '100%', marginBottom: '16px' }}>
+                {!email && !emailFocused && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      color: theme.inkFaint,
+                      pointerEvents: 'none',
+                      fontSize: '15px',
+                      fontFamily: 'Inter, sans-serif'
+                    }}
+                  >
+                    <Mail size={17} />
+                    <span>name@example.com</span>
+                  </div>
+                )}
+                <input
+                  type="email"
+                  required
+                  placeholder={emailFocused ? 'name@example.com' : ''}
+                  value={email}
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError('');
+                  }}
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '14px 20px',
+                    borderRadius: '10px',
+                    border: `1px solid ${error ? '#ef4444' : theme.border}`,
+                    backgroundColor: theme.bg,
+                    color: theme.ink,
+                    fontSize: '15px',
+                    textAlign: 'center',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s',
+                    fontFamily: 'Inter, sans-serif'
+                  }}
+                />
+              </div>
+
+              {error && (
+                <div style={{
+                  color: '#ef4444',
+                  fontSize: '13px',
+                  marginBottom: '14px',
+                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}>
+                  <span>⚠️</span> {error}
+                </div>
               )}
-            </button>
-          </form>
+
+              <button
+                type="submit"
+                disabled={loading || !email.trim()}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '14px 20px',
+                  backgroundColor: theme.ink,
+                  color: theme.surface,
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: (loading || !email.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (loading || !email.trim()) ? 0.6 : 1,
+                  transition: 'opacity 0.2s, transform 0.1s'
+                }}
+                onMouseEnter={(e) => { if (!loading && email.trim()) e.currentTarget.style.opacity = '0.9'; }}
+                onMouseLeave={(e) => { if (!loading && email.trim()) e.currentTarget.style.opacity = '1'; }}
+                onMouseDown={(e) => { if (!loading && email.trim()) e.currentTarget.style.transform = 'scale(0.99)'; }}
+                onMouseUp={(e) => { if (!loading && email.trim()) e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                {loading ? (
+                  <>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: '#fff',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                    Sending code...
+                  </>
+                ) : (
+                  <>
+                    Continue with Email
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         )}
 
         {/* STEP 2: OTP VERIFICATION */}
@@ -484,50 +578,6 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
           </div>
         )}
 
-        {/* Interactive WhatsApp Click-to-Chat Link */}
-        <div style={{
-          marginTop: '24px',
-          paddingTop: '18px',
-          borderTop: `1px solid ${theme.border}`,
-          width: '100%',
-        }}>
-          <a
-            href="https://wa.me/6285126485464?text=Hi%20SERA"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: theme.bg,
-              padding: '12px 14px',
-              borderRadius: '10px',
-              border: `1px solid ${theme.border}`,
-              textDecoration: 'none',
-              cursor: 'pointer',
-              transition: 'border-color 0.2s, background-color 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#25D366';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = theme.border;
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <MessageSquare size={18} style={{ color: '#25D366', flexShrink: 0 }} />
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: theme.ink }}>
-                  Continue on WhatsApp
-                </div>
-                <div style={{ fontSize: '12px', color: theme.inkSoft }}>
-                  Chat directly with SERA
-                </div>
-              </div>
-            </div>
-            <ArrowUpRight size={15} style={{ color: theme.inkFaint, flexShrink: 0 }} />
-          </a>
-        </div>
       </div>
 
       <style>{`
