@@ -115,7 +115,7 @@ export class EmailOtpService {
               <p style="font-size: 14px; color: #6b7280; margin-top: 4px;">Intelligent Agent Operating System</p>
             </div>
             <p style="font-size: 16px; line-height: 26px; color: #374151; margin-bottom: 24px;">
-              Halo! Gunakan kode verifikasi di bawah ini untuk masuk ke akun SERA OS Anda:
+              Use the verification code below to sign in to your SERA OS account:
             </p>
             <div style="text-align: center; margin: 32px 0;">
               <div style="display: inline-block; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #111827; background: #f3f4f6; padding: 18px 36px; border-radius: 10px; border: 1px dashed #d1d5db; font-family: monospace;">
@@ -123,7 +123,7 @@ export class EmailOtpService {
               </div>
             </div>
             <p style="font-size: 14px; color: #6b7280; line-height: 22px; margin-bottom: 28px;">
-              Kode ini hanya berlaku selama <strong>5 menit</strong>. Jangan bagikan kode ini kepada siapapun demi keamanan akun Anda.
+              This code is valid for <strong>5 minutes</strong>. For your security, do not share this code with anyone.
             </p>
             <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 32px 0;" />
             <p style="font-size: 13px; color: #9ca3af; text-align: center; margin: 0; line-height: 20px;">

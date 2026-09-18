@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { ThemeType } from '../../theme';
-import { Mail, ArrowRight, KeyRound, Edit3, MessageSquare } from 'lucide-react';
+import { Mail, ArrowRight, KeyRound, Edit3, MessageSquare, ArrowUpRight } from 'lucide-react';
 
 interface EmailLoginGatewayProps {
   theme: ThemeType;
@@ -52,7 +52,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
   const handleSendOtp = async (targetEmail?: string) => {
     const emailToSend = (targetEmail || email).trim().toLowerCase();
     if (!emailToSend || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailToSend)) {
-      setError('Mohon masukkan alamat email yang valid.');
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -69,17 +69,17 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Gagal mengirim kode OTP.');
+        throw new Error(data.message || 'Failed to send verification code.');
       }
 
       setStep('OTP');
       setCountdown(60);
-      setInfoMessage(`Kode OTP 6-digit telah dikirim ke ${emailToSend}`);
+      setInfoMessage(`A 6-digit verification code was sent to ${emailToSend}`);
       if (data.otpCodeDev) {
         setDevOtpCode(data.otpCodeDev);
       }
     } catch (err: any) {
-      setError(err.message || 'Terjadi gangguan saat menghubungi server. Silakan coba lagi.');
+      setError(err.message || 'Network error connecting to server. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -88,7 +88,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
   const handleVerifyOtp = async (codeToVerify?: string) => {
     const code = codeToVerify || otpDigits.join('');
     if (code.length !== 6) {
-      setError('Masukkan 6 digit kode OTP secara lengkap.');
+      setError('Please enter all 6 digits of the verification code.');
       return;
     }
 
@@ -104,7 +104,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Kode OTP tidak valid atau kedaluwarsa.');
+        throw new Error(data.message || 'Invalid or expired verification code.');
       }
 
       if (data.token && data.userId) {
@@ -114,10 +114,10 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
           email: data.email || email.trim().toLowerCase()
         });
       } else {
-        throw new Error('Server tidak mengembalikan sesi login yang sah.');
+        throw new Error('Server failed to return a valid session.');
       }
     } catch (err: any) {
-      setError(err.message || 'Verifikasi gagal. Pastikan kode yang dimasukkan benar.');
+      setError(err.message || 'Verification failed. Please check the code and try again.');
     } finally {
       setLoading(false);
     }
@@ -209,8 +209,8 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
         </h1>
         <p style={{ fontSize: '14px', color: theme.inkSoft, marginBottom: '28px', lineHeight: 1.5 }}>
           {step === 'EMAIL'
-            ? 'Masuk praktis tanpa password. Masukkan email Anda untuk menerima 6-digit kode OTP:'
-            : infoMessage || `Masukkan 6-digit kode verifikasi yang telah kami kirimkan ke:`}
+            ? 'Passwordless sign-in. Enter your email to receive a 6-digit verification code:'
+            : infoMessage || 'Enter the 6-digit verification code sent to:'}
         </p>
 
         {/* STEP 1: EMAIL INPUT */}
@@ -239,7 +239,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                 type="email"
                 required
                 autoFocus
-                placeholder="nama@email.com"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -301,11 +301,11 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                     borderTopColor: '#fff',
                     animation: 'spin 0.8s linear infinite'
                   }} />
-                  Mengirim OTP...
+                  Sending code...
                 </>
               ) : (
                 <>
-                  Lanjut dengan Email
+                  Continue with Email
                   <ArrowRight size={18} />
                 </>
               )}
@@ -337,7 +337,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                   setError('');
                   setOtpDigits(['', '', '', '', '', '']);
                 }}
-                title="Ganti Email"
+                title="Change Email"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -408,7 +408,7 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                   gap: '6px'
                 }}
               >
-                <span>🧪 Dev Test: Klik untuk auto-fill ({devOtpCode})</span>
+                <span>🧪 Dev Test: Click to autofill ({devOtpCode})</span>
               </div>
             )}
 
@@ -448,21 +448,21 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                     borderTopColor: '#fff',
                     animation: 'spin 0.8s linear infinite'
                   }} />
-                  Memverifikasi...
+                  Verifying...
                 </>
               ) : (
                 <>
                   <KeyRound size={17} />
-                  Verifikasi & Masuk
+                  Verify & Sign In
                 </>
               )}
             </button>
 
             {/* Resend OTP button */}
             <div style={{ fontSize: '13px', color: theme.inkSoft }}>
-              Tidak menerima kode?{' '}
+              Didn't receive the code?{' '}
               {countdown > 0 ? (
-                <span style={{ color: theme.inkFaint }}>Kirim ulang ({countdown}s)</span>
+                <span style={{ color: theme.inkFaint }}>Resend in {countdown}s</span>
               ) : (
                 <button
                   onClick={() => handleSendOtp(email)}
@@ -477,38 +477,56 @@ export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayP
                     padding: 0
                   }}
                 >
-                  Kirim Ulang Kode
+                  Resend Code
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Informative Footer & WhatsApp Chat Notice */}
+        {/* Interactive WhatsApp Click-to-Chat Link */}
         <div style={{
-          marginTop: '28px',
-          paddingTop: '20px',
+          marginTop: '24px',
+          paddingTop: '18px',
           borderTop: `1px solid ${theme.border}`,
           width: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-            backgroundColor: theme.bg,
-            padding: '12px 14px',
-            borderRadius: '10px',
-            border: `1px solid ${theme.border}`,
-            textAlign: 'left'
-          }}>
-            <MessageSquare size={18} style={{ color: '#25D366', marginTop: '2px', flexShrink: 0 }} />
-            <div style={{ fontSize: '12px', lineHeight: 1.5, color: theme.inkSoft }}>
-              <strong style={{ color: theme.ink }}>Bisa juga via WhatsApp:</strong> Chat bot SERA langsung dengan mengirim email Anda untuk login & berbelanja tanpa perlu buka website.
+          <a
+            href="https://wa.me/6285126485464?text=Hi%20SERA"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: theme.bg,
+              padding: '12px 14px',
+              borderRadius: '10px',
+              border: `1px solid ${theme.border}`,
+              textDecoration: 'none',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s, background-color 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#25D366';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = theme.border;
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <MessageSquare size={18} style={{ color: '#25D366', flexShrink: 0 }} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: theme.ink }}>
+                  Continue on WhatsApp
+                </div>
+                <div style={{ fontSize: '12px', color: theme.inkSoft }}>
+                  Chat directly with SERA
+                </div>
+              </div>
             </div>
-          </div>
+            <ArrowUpRight size={15} style={{ color: theme.inkFaint, flexShrink: 0 }} />
+          </a>
         </div>
       </div>
 
