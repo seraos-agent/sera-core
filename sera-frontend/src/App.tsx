@@ -15,48 +15,21 @@ import { EmailLoginGateway } from "./components/auth/EmailLoginGateway";
 import { LaunchCodeGateway } from './components/auth/LaunchCodeGateway';
 
 import { BillingModal } from "./components/sidebar/BillingModal";
-import { createAppKit, useAppKit, useAppKitTheme } from '@reown/appkit/react';
-import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
-import { base, mainnet, polygon, arbitrum } from '@reown/appkit/networks';
-import { WagmiProvider, useAccount, useDisconnect, useSignMessage } from 'wagmi';
+import { createConfig, http, WagmiProvider, useAccount, useDisconnect, useSignMessage } from 'wagmi';
+import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
+import { injected } from 'wagmi/connectors';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
-const projectId = '58d806d66c104f547275d0afe4086b04';
 
-const metadata = {
-  name: 'SERA OS',
-  description: 'SERA OS Web3 Interface',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://sera-os.app',
-  icons: ['https://avatars.githubusercontent.com/u/37784886']
-};
-
-const networks = [base, mainnet, polygon, arbitrum] as [
-  typeof base,
-  typeof mainnet,
-  typeof polygon,
-  typeof arbitrum,
-];
-const wagmiAdapter = new WagmiAdapter({
-  networks,
-  projectId,
-});
-
-createAppKit({
-  adapters: [wagmiAdapter],
-  networks,
-  projectId,
-  metadata,
-  // Wallet connection is infrastructure only. Conversion and funding remain
-  // governed SERA capabilities, never provider-modal actions.
-  features: {
-    analytics: false,
-    swaps: false,
-    onramp: false,
-    email: true,
-    socials: ['google'],
-    emailShowWallets: true,
-    connectMethodsOrder: ['email', 'social', 'wallet']
+const wagmiConfig = createConfig({
+  chains: [base, mainnet, polygon, arbitrum],
+  connectors: [injected()],
+  transports: {
+    [base.id]: http(),
+    [mainnet.id]: http(),
+    [polygon.id]: http(),
+    [arbitrum.id]: http(),
   },
 });
 
@@ -78,8 +51,6 @@ function InnerApp() {
     return (saved === "light" || saved === "dark") ? saved : "light";
   });
 
-  const { setThemeMode } = useAppKitTheme();
-
   useEffect(() => {
     // If inside Telegram WebApp, try to adapt to its theme
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
@@ -89,10 +60,6 @@ function InnerApp() {
       }
     }
   }, []);
-
-  useEffect(() => {
-    setThemeMode(mode);
-  }, [mode, setThemeMode]);
 
   useEffect(() => {
     localStorage.setItem("sera_theme", mode);
@@ -163,7 +130,7 @@ function InnerApp() {
   const signMessageAsyncRef = useRef(signMessageAsync);
   signMessageAsyncRef.current = signMessageAsync;
   const lastAccountKeyRef = useRef<string | null>(null);
-  const { open } = useAppKit();
+
   const [isBypassed, setIsBypassed] = useState(() => {
     if (typeof window !== 'undefined') {
       return new URLSearchParams(window.location.search).has('bypass');
@@ -396,10 +363,6 @@ function InnerApp() {
               socket.emit("auth:login", { token, userId, email: loggedInEmail });
             }
           }}
-          onOpenWeb3Modal={() => {
-            setThemeMode(mode);
-            window.requestAnimationFrame(() => open());
-          }}
         />
 
         {/* Tombol Bypass khusus Localhost */}
@@ -608,7 +571,7 @@ function InnerApp() {
 
 export default function App() {
   return (
-    <WagmiProvider config={wagmiAdapter.wagmiConfig}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <InnerApp />
       </QueryClientProvider>

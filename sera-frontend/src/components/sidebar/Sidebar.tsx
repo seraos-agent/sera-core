@@ -1,6 +1,5 @@
 import { X, Plus, PanelLeftClose, PanelLeftOpen, UserCircle, Battery, Wallet, Clock, Zap, Send } from "lucide-react";
 import type { ThemeType } from "../../theme";
-import { useAccount } from 'wagmi';
 import type { WalletState } from "../../hooks/useWallet";
 
 export type SidebarView = "chat" | "wallet" | "connections" | "automations" | "profile" | "threads_settings";
@@ -29,11 +28,12 @@ interface SidebarProps {
 export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, onOpenBilling, activeConnectors }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
-  const { address } = useAccount();
-  const devAddress = walletState?.fullAddress;
-  const shortAddress = address
-    ? `${address.slice(0, 6)}...${address.slice(-4)}`
-    : (devAddress ? `${devAddress.slice(0, 6)}...${devAddress.slice(-4)}` : "Sera Admin");
+  const rawAddress = walletState?.address || walletState?.fullAddress;
+  const shortAddress = rawAddress
+    ? (rawAddress.includes('@')
+        ? rawAddress
+        : (rawAddress.length > 12 ? `${rawAddress.slice(0, 6)}...${rawAddress.slice(-4)}` : rawAddress))
+    : "SERA User";
 
   const navigate = (view: SidebarView) => {
     onNavigate(view);

@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { ThemeType } from '../../theme';
-import { Mail, ArrowRight, KeyRound, Edit3, MessageSquare, Wallet } from 'lucide-react';
+import { Mail, ArrowRight, KeyRound, Edit3, MessageSquare } from 'lucide-react';
 
 interface EmailLoginGatewayProps {
   theme: ThemeType;
   onAuthenticated: (authData: { token: string; userId: string; email: string }) => void;
-  onOpenWeb3Modal?: () => void;
 }
 
-export function EmailLoginGateway({ theme, onAuthenticated, onOpenWeb3Modal }: EmailLoginGatewayProps) {
+export function EmailLoginGateway({ theme, onAuthenticated }: EmailLoginGatewayProps) {
   const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
   const [email, setEmail] = useState('');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -510,30 +509,6 @@ export function EmailLoginGateway({ theme, onAuthenticated, onOpenWeb3Modal }: E
               <strong style={{ color: theme.ink }}>Bisa juga via WhatsApp:</strong> Chat bot SERA langsung dengan mengirim email Anda untuk login & berbelanja tanpa perlu buka website.
             </div>
           </div>
-
-          {onOpenWeb3Modal && (
-            <button
-              onClick={onOpenWeb3Modal}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: theme.inkFaint,
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                marginTop: '4px',
-                transition: 'color 0.15s'
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = theme.ink; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = theme.inkFaint; }}
-            >
-              <Wallet size={13} />
-              Hubungkan Wallet Eksternal (Web3)
-            </button>
-          )}
         </div>
       </div>
 

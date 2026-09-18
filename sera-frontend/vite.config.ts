@@ -17,11 +17,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) return 'react';
-          // AppRoot lazy-loads the private app. Keep each wallet subsystem in
-          // its own cacheable chunk so the public reception never downloads
-          // connection infrastructure and wallet updates stay isolated.
-          if (id.includes('node_modules/@reown/')) return 'reown';
-          if (id.includes('node_modules/@walletconnect/')) return 'walletconnect';
           if (id.includes('node_modules/wagmi/')) return 'wagmi';
           if (id.includes('node_modules/viem/')) return 'viem';
         },
