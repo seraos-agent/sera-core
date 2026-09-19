@@ -23,6 +23,8 @@ export interface ReActExecutionParams {
   emitEvent: (type: string, payload: Record<string, any>) => void;
   spawnGoalAndAwaitResult: (intent: string, parameters: Record<string, any>) => Promise<GoalResultPayload>;
   buildWorkingMemory: (uiCommandExecuted?: boolean, userMessage?: string) => Promise<QwenMessage[]>;
+  steeringQueue?: Array<{ message: string; timestamp: number }>;
+  onExecutionStateChange?: (state: { isExecutingTools: boolean }) => void;
 }
 
 export interface ReActExecutionResult {
@@ -34,6 +36,7 @@ export interface ReActExecutionResult {
   hadTools: boolean;
   proposalEncountered: boolean;
   richContent?: Record<string, any>;
+  aborted?: boolean;
 }
 
 /**
@@ -103,7 +106,9 @@ export class ReActExecutor {
       activeAbortSignal,
       emitEvent,
       spawnGoalAndAwaitResult,
-      buildWorkingMemory
+      buildWorkingMemory,
+      steeringQueue,
+      onExecutionStateChange
     } = params;
 
     let messages = params.messages;
@@ -118,9 +123,49 @@ export class ReActExecutor {
 
     const maxSafetySteps = params.stepBudget || 20;
 
+    const drainSteeringQueue = () => {
+      if (steeringQueue && steeringQueue.length > 0) {
+        while (steeringQueue.length > 0) {
+          const item = steeringQueue.shift();
+          if (item && item.message && item.message.trim()) {
+            console.log(`[ReActExecutor] Ingesting mid-flight user steering: "${item.message}"`);
+            messages.push({
+              role: 'user',
+              content: `[MID-FLIGHT USER INSTRUCTION / UPDATE]: "${item.message}". Adapt your remaining plan and actions accordingly.`
+            });
+            cognitiveSteps.push({
+              title: 'Plan Adjusted',
+              detail: item.message.length > 60 ? item.message.slice(0, 57) + '...' : item.message,
+              status: 'completed'
+            });
+            emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+              content: 'Thinking',
+              phase: 'THINKING',
+              subText: 'Adjusting plan with latest user instruction...',
+              cognitiveSteps: [...cognitiveSteps],
+              startTime: turnStartTime
+            });
+          }
+        }
+      }
+    };
+
     while (stepCount < maxSafetySteps) {
       stepCount++;
-      if (activeAbortSignal?.aborted) break;
+      if (activeAbortSignal?.aborted) {
+        return {
+          finalAnswer: '',
+          actionLinks: [],
+          cognitiveSteps,
+          successfulToolResults,
+          durationSeconds: Math.max(1, Math.round((Date.now() - turnStartTime) / 1000)),
+          hadTools: successfulToolResults.length > 0,
+          proposalEncountered: false,
+          aborted: true
+        };
+      }
+
+      drainSteeringQueue();
 
       emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
         content: 'Thinking',
@@ -187,6 +232,20 @@ export class ReActExecutor {
       }
 
       if (!response) {
+        if (activeAbortSignal?.aborted) {
+          console.log('[ReActExecutor] Execution aborted cleanly during LLM reasoning cycle.');
+          return {
+            finalAnswer: '',
+            actionLinks: [],
+            cognitiveSteps,
+            successfulToolResults,
+            durationSeconds: Math.max(1, Math.round((Date.now() - turnStartTime) / 1000)),
+            hadTools: successfulToolResults.length > 0,
+            proposalEncountered: false,
+            aborted: true
+          };
+        }
+
         console.warn('[ReActExecutor] Self-healing attempts exhausted. Responding constructively without crashing.');
         const durationSeconds = Math.max(1, Math.round((Date.now() - turnStartTime) / 1000));
         return {
@@ -200,7 +259,18 @@ export class ReActExecutor {
         };
       }
 
-      if (activeAbortSignal?.aborted) break;
+      if (activeAbortSignal?.aborted) {
+        return {
+          finalAnswer: '',
+          actionLinks: [],
+          cognitiveSteps,
+          successfulToolResults,
+          durationSeconds: Math.max(1, Math.round((Date.now() - turnStartTime) / 1000)),
+          hadTools: successfulToolResults.length > 0,
+          proposalEncountered: false,
+          aborted: true
+        };
+      }
 
       // Capture genuine reasoning content (Chain-of-Thought)
       const rawReasoning = response.reasoningText || (response as any).rawMessage?.reasoning_content;
@@ -265,6 +335,10 @@ export class ReActExecutor {
         const isExternalChat = responseContext?.platform === 'whatsapp' || responseContext?.platform === 'telegram';
         const EXCLUDED_INSTANT_TOOLS = ['SEND_MESSAGE', 'PROPOSAL_APPROVE', 'PROPOSAL_REJECT'];
         const operationalToolCalls = response.toolCalls.filter((tc: any) => !EXCLUDED_INSTANT_TOOLS.includes(tc.name));
+
+        if (operationalToolCalls.length > 0) {
+          onExecutionStateChange?.({ isExecutingTools: true });
+        }
 
         if (stepCount === 1 && isExternalChat && operationalToolCalls.length > 0) {
           try {
@@ -457,6 +531,7 @@ export class ReActExecutor {
         }
 
         if (proposalEncountered) break;
+        drainSteeringQueue();
         continue;
       }
 
@@ -465,8 +540,22 @@ export class ReActExecutor {
       break;
     }
 
+    if (activeAbortSignal?.aborted) {
+      return {
+        finalAnswer: '',
+        actionLinks: [],
+        cognitiveSteps,
+        successfulToolResults,
+        durationSeconds: Math.max(1, Math.round((Date.now() - turnStartTime) / 1000)),
+        hadTools: successfulToolResults.length > 0,
+        proposalEncountered: false,
+        aborted: true
+      };
+    }
+
     // Guaranteed Final Synthesis Turn if multi-step tools executed without final response text
     if (!finalAnswer.trim() && !activeAbortSignal?.aborted && !proposalEncountered) {
+      drainSteeringQueue();
       console.log(`[ReActExecutor] Multi-step tools finished (${stepCount}/${stepBudget} steps). Triggering final report synthesis...`);
       emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
         content: 'Thinking',
@@ -495,6 +584,19 @@ export class ReActExecutor {
       } catch (e: any) {
         console.error('[ReActExecutor] Error generating final synthesis response:', e);
       }
+    }
+
+    if (activeAbortSignal?.aborted) {
+      return {
+        finalAnswer: '',
+        actionLinks: [],
+        cognitiveSteps,
+        successfulToolResults,
+        durationSeconds: Math.max(1, Math.round((Date.now() - turnStartTime) / 1000)),
+        hadTools: successfulToolResults.length > 0,
+        proposalEncountered: false,
+        aborted: true
+      };
     }
 
     // Strip legacy UI command syntax if any was hallucinated

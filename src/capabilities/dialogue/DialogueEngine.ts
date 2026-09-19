@@ -50,7 +50,14 @@ export class DialogueEngine {
   private memoryQueryService: MemoryQueryService;
   private readonly subAgentCoordinator = new SubAgentCoordinator();
   private pendingProposalId: string | undefined;
-  private activeAbortController: AbortController | null = null;
+  private activeTaskSession: {
+    abortController: AbortController;
+    responseContext?: Record<string, any>;
+    userMessage: string;
+    steeringQueue: Array<{ message: string; timestamp: number }>;
+    isExecutingTools: boolean;
+    startTime: number;
+  } | null = null;
 
   private _activeResponseContext: Record<string, any> | undefined = undefined;
   private _activeUserMessage: string | undefined = undefined;
@@ -317,7 +324,7 @@ export class DialogueEngine {
         userMessage,
         result,
         this.buildWorkingMemory.bind(this),
-        this.activeAbortController?.signal,
+        this.activeTaskSession?.abortController.signal,
         contextualEmit
       );
       this.goalContexts.delete(result.requestId);
@@ -326,9 +333,9 @@ export class DialogueEngine {
 
   private onUserCancelled(event: StandardEvent): void {
     console.log('[DialogueEngine] Received DIALOGUE_USER_CANCELLED. Aborting active generation if any.');
-    if (this.activeAbortController) {
-      this.activeAbortController.abort();
-      this.activeAbortController = null;
+    if (this.activeTaskSession) {
+      this.activeTaskSession.abortController.abort();
+      this.activeTaskSession = null;
     }
   }
 
@@ -381,11 +388,6 @@ export class DialogueEngine {
         return;
       }
     }
-
-    if (this.activeAbortController) {
-      this.activeAbortController.abort();
-    }
-    this.activeAbortController = new AbortController();
 
     const attachedImages: string[] = rawPayload.images || [];
     const attachedDocs: any[] = rawPayload.documents || [];
@@ -444,7 +446,7 @@ export class DialogueEngine {
     // Context-Aware Passive Acknowledgment Suppression (e.g. "ok", "cool", "siap", "noted")
     const isPassiveAck = /^(?:ok|okay|k|got it|noted|roger|cool|great|all good|thx|thanks|thank you|sip|siap|mantap|yoi|oke|okee|👍|👌|🙏)$/i.test(effectiveUserMessage.trim());
     if (isPassiveAck && !this.pendingProposalId) {
-      const isTaskInProgress = Boolean(this.activeAbortController);
+      const isTaskInProgress = Boolean(this.activeTaskSession);
       const ctxKey = this._activeResponseContext ? `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}` : '';
       const recentHistory = ctxKey ? this.platformConversationHistory.get(ctxKey) : null;
       const lastSpeakerWasAssistant = recentHistory && recentHistory.length > 0 && recentHistory[recentHistory.length - 1].role === 'assistant';
@@ -458,6 +460,68 @@ export class DialogueEngine {
         return;
       }
     }
+
+    // Explicit Task Cancellation Intent Detection
+    const isCancelRequest = /^(?:stop|batal|batalkan|cancel|hentikan|udah|sudah|gajadi|ga jadi)$/i.test(effectiveUserMessage.trim());
+    if (isCancelRequest && this.activeTaskSession) {
+      console.log(`[DialogueEngine] Explicit task cancellation received ("${effectiveUserMessage}"). Aborting active task session.`);
+      this.activeTaskSession.abortController.abort();
+      this.activeTaskSession = null;
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: 'Baik, pengerjaan tugas telah dihentikan sesuai permintaanmu. 👌',
+        responseContext: this._activeResponseContext
+      });
+      if (this._activeResponseContext) {
+        this.persistPlatformTurn(
+          this._activeResponseContext.platform,
+          this._activeResponseContext.channelId,
+          effectiveUserMessage,
+          'Baik, pengerjaan tugas telah dihentikan sesuai permintaanmu. 👌'
+        );
+      }
+      return;
+    }
+
+    // Mid-Flight Task Steering (if task is actively executing tools)
+    if (this.activeTaskSession && this.activeTaskSession.isExecutingTools) {
+      console.log(`[DialogueEngine] Mid-flight steering received during tool execution: "${effectiveUserMessage}"`);
+      this.activeTaskSession.steeringQueue.push({
+        message: effectiveUserMessage,
+        timestamp: Date.now()
+      });
+      // Instant interim acknowledgment (zero latency)
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: 'Siap, aku catat dan langsung sesuaikan dengan langkah pengerjaan sekarang ya... ✍️',
+        isInterim: true,
+        responseContext: this._activeResponseContext
+      });
+      if (this._activeResponseContext) {
+        this.persistPlatformTurn(
+          this._activeResponseContext.platform,
+          this._activeResponseContext.channelId,
+          effectiveUserMessage,
+          ''
+        );
+      }
+      return;
+    }
+
+    // Clean Supersede (if previous task is running but NOT yet executing operational tools)
+    if (this.activeTaskSession && !this.activeTaskSession.isExecutingTools) {
+      console.log(`[DialogueEngine] Superseding pre-tool task with newer incoming message: "${effectiveUserMessage}"`);
+      this.activeTaskSession.abortController.abort();
+      this.activeTaskSession = null;
+    }
+
+    const currentAbortController = new AbortController();
+    this.activeTaskSession = {
+      abortController: currentAbortController,
+      responseContext: this._activeResponseContext,
+      userMessage: effectiveUserMessage,
+      steeringQueue: [],
+      isExecutingTools: false,
+      startTime: Date.now()
+    };
 
     const turnStartTime = Date.now();
 
@@ -570,14 +634,20 @@ export class DialogueEngine {
         sessionId: this.sessionId,
         capabilityCatalog: this.capabilityCatalog,
         autonomyAgreementStore: this.autonomyAgreementStore,
-        activeAbortSignal: this.activeAbortController?.signal,
+        activeAbortSignal: currentAbortController.signal,
         emitEvent: this.emitEvent.bind(this),
         spawnGoalAndAwaitResult: this.spawnGoalAndAwaitResult.bind(this),
-        buildWorkingMemory: this.buildWorkingMemory.bind(this)
+        buildWorkingMemory: this.buildWorkingMemory.bind(this),
+        steeringQueue: this.activeTaskSession?.steeringQueue,
+        onExecutionStateChange: (state) => {
+          if (this.activeTaskSession && this.activeTaskSession.abortController === currentAbortController) {
+            this.activeTaskSession.isExecutingTools = state.isExecutingTools;
+          }
+        }
       });
 
-      // Emit final conversational response to user (skipped if proposal was generated to prevent duplicate speech)
-      if (!execResult.proposalEncountered && execResult.finalAnswer) {
+      // Emit final conversational response to user (skipped if proposal was generated to prevent duplicate speech or if turn was aborted)
+      if (!execResult.proposalEncountered && !execResult.aborted && execResult.finalAnswer) {
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
           id: Date.now(),
           text: execResult.finalAnswer,
@@ -591,12 +661,9 @@ export class DialogueEngine {
       }
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('[DialogueEngine] Generation aborted by user.');
-        this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
-          text: '[Generation stopped by user]',
-          responseContext: this._activeResponseContext
-        });
+      if (error.name === 'AbortError' || currentAbortController.signal.aborted) {
+        console.log('[DialogueEngine] Generation aborted by user/superseded.');
+        // Silently discard aborted turns without emitting error notice to user
       } else {
         console.error('[DialogueEngine] Error:', error.message);
         console.error('[DialogueEngine] Stack:', error.stack);
@@ -627,6 +694,9 @@ export class DialogueEngine {
         });
       }
     } finally {
+      if (this.activeTaskSession && this.activeTaskSession.abortController === currentAbortController) {
+        this.activeTaskSession = null;
+      }
       this._activeResponseContext = undefined;
       this._activeUserMessage = undefined;
     }

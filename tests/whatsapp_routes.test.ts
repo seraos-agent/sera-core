@@ -196,7 +196,7 @@ describe('WhatsApp Webhook Routes', () => {
       expect(mockWhatsAppManager.sendDirectMessage).toHaveBeenCalledTimes(3);
       expect(mockWhatsAppManager.sendDirectMessage).toHaveBeenLastCalledWith(
         '628000111222',
-        expect.stringContaining('final reminder')
+        expect.stringMatching(/pengingat terakhir|final reminder/i)
       );
 
       // Attempt 4 (Silenced by 24h cooldown!)

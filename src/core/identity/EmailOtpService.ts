@@ -34,11 +34,25 @@ export class EmailOtpService {
   private readonly pendingOtps = new Map<string, PendingOtpRecord>();
   // Key: clean email -> timestamps of requests in last 10 minutes
   private readonly rateLimits = new Map<string, number[]>();
+  // Key: clean phone -> timestamps of requests in last 60 minutes
+  private readonly phoneRateLimits = new Map<string, number[]>();
 
   private readonly OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
   private readonly RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
   private readonly MAX_REQUESTS_PER_WINDOW = 5;
   private readonly MAX_VERIFY_ATTEMPTS = 5;
+
+  private readonly PHONE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 60 minutes (1 hour)
+  private readonly MAX_PHONE_REQUESTS_PER_WINDOW = 3;
+
+  private static readonly DISPOSABLE_DOMAINS: Set<string> = new Set([
+    'temp-mail.org', 'tempmail.com', 'temp-mail.io', 'guerrillamail.com', 'guerrillamail.net',
+    'guerrillamail.org', 'mailinator.com', '10minutemail.com', '10minutemail.net',
+    'throwawaymail.com', 'yopmail.com', 'yopmail.fr', 'trashmail.com', 'trashmail.net',
+    'sharklasers.com', 'grr.la', 'guerrillamailblock.com', 'pokemail.net', 'spam4.me',
+    'dispostable.com', 'getairmail.com', 'fakemailgenerator.com', 'mohmal.com', 'crazymailing.com',
+    'generator.email', 'tempail.com', 'emailondeck.com', 'dropmail.me', 'inboxkitten.com'
+  ]);
 
   private constructor() {}
 
@@ -58,10 +72,18 @@ export class EmailOtpService {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
   }
 
+  public static isDisposableEmail(email: string): boolean {
+    const clean = EmailOtpService.normalizeEmail(email);
+    const parts = clean.split('@');
+    if (parts.length < 2) return false;
+    const domain = parts[1];
+    return EmailOtpService.DISPOSABLE_DOMAINS.has(domain);
+  }
+
   /**
    * Generates and dispatches a 6-digit OTP code to the given email address.
    */
-  public async sendOtp(emailInput: string): Promise<SendOtpResult> {
+  public async sendOtp(emailInput: string, options?: { requesterPhone?: string }): Promise<SendOtpResult> {
     const email = EmailOtpService.normalizeEmail(emailInput);
     if (!EmailOtpService.isValidEmail(email)) {
       return {
@@ -70,8 +92,36 @@ export class EmailOtpService {
       };
     }
 
-    // Rate Limiting Check
+    if (EmailOtpService.isDisposableEmail(email)) {
+      return {
+        success: false,
+        message: 'Disposable or temporary email addresses are not permitted. Please use a permanent email address.'
+      };
+    }
+
     const now = Date.now();
+
+    // Phone-level Rate Limiting Check (if request originated from a phone number)
+    if (options?.requesterPhone) {
+      const cleanPhone = options.requesterPhone.replace(/\D/g, '');
+      if (cleanPhone) {
+        const phoneRequests = (this.phoneRateLimits.get(cleanPhone) || []).filter(
+          (t) => now - t < this.PHONE_RATE_LIMIT_WINDOW_MS
+        );
+
+        if (phoneRequests.length >= this.MAX_PHONE_REQUESTS_PER_WINDOW) {
+          return {
+            success: false,
+            message: 'Too many verification requests from this phone number. Please try again in an hour.'
+          };
+        }
+
+        phoneRequests.push(now);
+        this.phoneRateLimits.set(cleanPhone, phoneRequests);
+      }
+    }
+
+    // Rate Limiting Check
     const requestTimes = (this.rateLimits.get(email) || []).filter(
       (t) => now - t < this.RATE_LIMIT_WINDOW_MS
     );

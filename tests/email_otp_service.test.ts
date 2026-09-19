@@ -89,13 +89,13 @@ describe('EmailOtpService & In-Chat WhatsApp Onboarding', () => {
       // 1. Unlinked user sends greeting
       await pairingService.handleUnlinkedGate(userPhone, 'Hello SERA');
       expect(directMessagesSent.length).toBe(1);
-      expect(directMessagesSent[0]).toContain('email address');
+      expect(directMessagesSent[0]).toMatch(/alamat email|email address/i);
 
       // 2. User replies with their email
       const userEmail = 'user.test@example.com';
       await pairingService.handleUnlinkedGate(userPhone, userEmail);
       expect(directMessagesSent.length).toBe(2);
-      expect(directMessagesSent[1]).toContain('6-digit verification code');
+      expect(directMessagesSent[1]).toMatch(/kode verifikasi|verification code/i);
 
       // Retrieve the generated OTP from otpService
       const generatedOtp = otpService.getPendingOtpForTest(userEmail);
@@ -105,12 +105,12 @@ describe('EmailOtpService & In-Chat WhatsApp Onboarding', () => {
       // 3. User replies with incorrect OTP first
       await pairingService.handleUnlinkedGate(userPhone, '111111');
       expect(directMessagesSent.length).toBe(3);
-      expect(directMessagesSent[2]).toContain('Invalid or expired verification code');
+      expect(directMessagesSent[2]).toMatch(/salah atau sudah kedaluwarsa|invalid or expired/i);
 
       // 4. User replies with correct 6-digit OTP
       await pairingService.handleUnlinkedGate(userPhone, generatedOtp!);
       expect(directMessagesSent.length).toBe(4);
-      expect(directMessagesSent[3]).toContain('Welcome to SERA OS');
+      expect(directMessagesSent[3]).toMatch(/selamat datang|welcome/i);
       expect(directMessagesSent[3]).toContain(userEmail);
 
       // Verify phone number is now linked in secret manager
