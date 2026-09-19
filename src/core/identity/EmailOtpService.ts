@@ -161,12 +161,30 @@ export class EmailOtpService {
       }
     }
 
-    const isDev = !resendApiKey || (process.env.NODE_ENV === 'test' && !emailDeliverySuccess);
+    const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+    const isDev = !resendApiKey || (isTest && !emailDeliverySuccess);
+
+    if (resendApiKey && !emailDeliverySuccess) {
+      return {
+        success: false,
+        message: emailDeliveryError || 'Failed to dispatch verification email via Resend.',
+        isDevelopment: false
+      };
+    }
+
+    if (!resendApiKey && !isTest) {
+      console.warn(`[EmailOtpService] RESEND_API_KEY is not configured! Verification email not sent to ${email}`);
+      return {
+        success: false,
+        message: 'Email delivery service is currently unavailable. Please contact support.',
+        isDevelopment: true,
+        otpCodeDev: code
+      };
+    }
+
     return {
       success: true,
-      message: emailDeliveryError 
-        ? `OTP code generated, but Resend notice: ${emailDeliveryError}`
-        : `A 6-digit verification code has been sent to ${email}.`,
+      message: `A 6-digit verification code has been sent to ${email}.`,
       isDevelopment: isDev,
       otpCodeDev: isDev ? code : undefined
     };
