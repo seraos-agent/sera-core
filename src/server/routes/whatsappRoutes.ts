@@ -62,7 +62,7 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
   }
 
   const pendingBatches = new Map<string, PendingBatch>();
-  const DEBOUNCE_MS = process.env.NODE_ENV === 'test' ? 10 : 2000;
+  const DEBOUNCE_MS = process.env.NODE_ENV === 'test' ? 10 : 600;
 
   const dispatchBatch = (from: string) => {
     const batch = pendingBatches.get(from);

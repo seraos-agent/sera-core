@@ -11,6 +11,22 @@ export interface StoreOperatingHours {
   days: number[]; // 1=Monday, 2=Tuesday, ..., 7=Sunday. Default [1,2,3,4,5,6,7]
 }
 
+export interface StoreSettlementBankDetails {
+  bankCode: string; // e.g. "014" for BCA, "008" for Mandiri, "002" for BRI
+  bankName?: string; // e.g. "BCA", "Mandiri", "BRI"
+  accountNumber: string; // e.g. "2460888509"
+  accountHolderName?: string;
+}
+
+export interface StoreSettlementInfo {
+  payoutMethod: 'DANA' | 'BANK';
+  danaNumber?: string; // e.g. "62811742234" (DANA user phone number)
+  bankDetails?: StoreSettlementBankDetails;
+  platformFeePercent?: number; // e.g. 2.0 (2%) - defaults to 2.0
+  payoutAutoSettle?: boolean; // defaults to true (immediate disburse upon payment)
+  updatedAt?: number;
+}
+
 export interface StoreProfile {
   storeId: string; // URL-safe slug e.g. "dapur-geprek-mas-joko"
   storeName: string; // Display name & Meta Catalog brand e.g. "Dapur Geprek Mas Joko"
@@ -30,6 +46,7 @@ export interface StoreProfile {
   userId?: string; // Optional linked user account or wallet address
   latitude?: number; // Store location coordinates
   longitude?: number;
+  settlementInfo?: StoreSettlementInfo; // Automated DANA or Bank payout destination
   createdAt: number;
   updatedAt: number;
 }
@@ -184,6 +201,7 @@ export class StoreProfileService {
                   userId: r.user_id,
                   latitude: r.latitude !== undefined && r.latitude !== null ? Number(r.latitude) : undefined,
                   longitude: r.longitude !== undefined && r.longitude !== null ? Number(r.longitude) : undefined,
+                  settlementInfo: r.settlement_info || undefined,
                   createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
                   updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
                 };
@@ -350,6 +368,7 @@ export class StoreProfileService {
       userId: input.userId !== undefined ? input.userId : existing?.userId,
       latitude: input.latitude !== undefined ? input.latitude : existing?.latitude,
       longitude: input.longitude !== undefined ? input.longitude : existing?.longitude,
+      settlementInfo: input.settlementInfo || existing?.settlementInfo,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now
     };
@@ -377,6 +396,7 @@ export class StoreProfileService {
           user_id: merged.userId,
           latitude: merged.latitude,
           longitude: merged.longitude,
+          settlement_info: merged.settlementInfo,
           updated_at: new Date(now).toISOString()
         }, 'store_id');
       } catch (err: any) {
@@ -385,6 +405,48 @@ export class StoreProfileService {
     }
 
     return merged;
+  }
+
+  /**
+   * Configures payout settlement information (DANA phone number or Bank Account)
+   * for a store merchant to receive automated order proceeds.
+   */
+  public async setStoreSettlement(
+    storeNameOrId: string,
+    settlement: StoreSettlementInfo
+  ): Promise<StoreProfile> {
+    const store = this.getStore(storeNameOrId);
+    if (!store) {
+      throw new Error(`Store "${storeNameOrId}" not found.`);
+    }
+
+    const cleanDana = settlement.danaNumber ? settlement.danaNumber.replace(/[^0-9]/g, '') : undefined;
+    const cleanSettlement: StoreSettlementInfo = {
+      ...settlement,
+      danaNumber: cleanDana,
+      platformFeePercent: typeof settlement.platformFeePercent === 'number' ? settlement.platformFeePercent : 2.0,
+      payoutAutoSettle: settlement.payoutAutoSettle !== undefined ? settlement.payoutAutoSettle : true,
+      updatedAt: Date.now()
+    };
+
+    store.settlementInfo = cleanSettlement;
+    store.updatedAt = Date.now();
+    this.stores.set(store.storeId, store);
+    this.saveStores();
+
+    if (this.supabaseClient) {
+      try {
+        await this.supabaseClient.upsert('merchant_stores', {
+          store_id: store.storeId,
+          settlement_info: store.settlementInfo,
+          updated_at: new Date(store.updatedAt).toISOString()
+        }, 'store_id');
+      } catch (err: any) {
+        console.warn('[StoreProfileService] Supabase settlement sync skipped:', err.message);
+      }
+    }
+
+    return store;
   }
 
   /**

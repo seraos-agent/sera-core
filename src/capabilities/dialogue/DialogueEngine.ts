@@ -59,6 +59,12 @@ export class DialogueEngine {
     startTime: number;
   } | null = null;
 
+  /** Accumulator for rapid-fire messages during pre-tool supersede */
+  private _accumulatedMessages: string[] = [];
+  private _accumulateTimer: NodeJS.Timeout | null = null;
+  private _accumulateResolve: (() => void) | null = null;
+  private readonly ACCUMULATE_MICRO_DELAY_MS = 200;
+
   private _activeResponseContext: Record<string, any> | undefined = undefined;
   private _activeUserMessage: string | undefined = undefined;
   private platformConversationHistory: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>> = new Map();
@@ -398,7 +404,7 @@ export class DialogueEngine {
       return;
     }
 
-    const effectiveUserMessage = userMessage.trim() || (attachedImages.length > 0
+    let effectiveUserMessage = userMessage.trim() || (attachedImages.length > 0
       ? 'Analyze and explain the details, numbers, text, and visual content of this attached image.'
       : 'Analyze this attached document.');
     this._activeUserMessage = effectiveUserMessage;
@@ -463,10 +469,22 @@ export class DialogueEngine {
 
     // Explicit Task Cancellation Intent Detection
     const isCancelRequest = /^(?:stop|batal|batalkan|cancel|hentikan|udah|sudah|gajadi|ga jadi)$/i.test(effectiveUserMessage.trim());
-    if (isCancelRequest && this.activeTaskSession) {
+    if (isCancelRequest && (this.activeTaskSession || this._accumulateResolve)) {
       console.log(`[DialogueEngine] Explicit task cancellation received ("${effectiveUserMessage}"). Aborting active task session.`);
-      this.activeTaskSession.abortController.abort();
-      this.activeTaskSession = null;
+      if (this._accumulateTimer) {
+        clearTimeout(this._accumulateTimer);
+        this._accumulateTimer = null;
+      }
+      this._accumulatedMessages = [];
+      if (this._accumulateResolve) {
+        const resolve = this._accumulateResolve;
+        this._accumulateResolve = null;
+        resolve();
+      }
+      if (this.activeTaskSession) {
+        this.activeTaskSession.abortController.abort();
+        this.activeTaskSession = null;
+      }
       this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
         text: 'Baik, pengerjaan tugas telah dihentikan sesuai permintaanmu. 👌',
         responseContext: this._activeResponseContext
@@ -479,6 +497,22 @@ export class DialogueEngine {
           'Baik, pengerjaan tugas telah dihentikan sesuai permintaanmu. 👌'
         );
       }
+      return;
+    }
+
+    // Absorb rapid-fire message if an accumulation debounce timer is already ticking
+    if (this._accumulateResolve) {
+      console.log(`[DialogueEngine] Absorbing rapid-fire message into pending accumulator: "${effectiveUserMessage}"`);
+      this._accumulatedMessages.push(effectiveUserMessage);
+      if (this._accumulateTimer) {
+        clearTimeout(this._accumulateTimer);
+      }
+      this._accumulateTimer = setTimeout(() => {
+        const resolve = this._accumulateResolve;
+        this._accumulateResolve = null;
+        this._accumulateTimer = null;
+        if (resolve) resolve();
+      }, this.ACCUMULATE_MICRO_DELAY_MS);
       return;
     }
 
@@ -506,11 +540,42 @@ export class DialogueEngine {
       return;
     }
 
-    // Clean Supersede (if previous task is running but NOT yet executing operational tools)
+    // Accumulate & Restart (if previous task is running but NOT yet executing operational tools)
     if (this.activeTaskSession && !this.activeTaskSession.isExecutingTools) {
-      console.log(`[DialogueEngine] Superseding pre-tool task with newer incoming message: "${effectiveUserMessage}"`);
+      const priorMessage = this.activeTaskSession.userMessage;
+      console.log(`[DialogueEngine] Accumulating superseded message: "${priorMessage}" + "${effectiveUserMessage}"`);
       this.activeTaskSession.abortController.abort();
       this.activeTaskSession = null;
+
+      // Seed accumulator with prior message and current message
+      if (this._accumulatedMessages.length === 0 && priorMessage) {
+        this._accumulatedMessages.push(priorMessage);
+      }
+      this._accumulatedMessages.push(effectiveUserMessage);
+
+      if (this._accumulateTimer) {
+        clearTimeout(this._accumulateTimer);
+      }
+
+      // Wait 200ms for additional rapid-fire bursts before dispatching
+      await new Promise<void>((resolve) => {
+        this._accumulateResolve = resolve;
+        this._accumulateTimer = setTimeout(() => {
+          this._accumulateResolve = null;
+          this._accumulateTimer = null;
+          resolve();
+        }, this.ACCUMULATE_MICRO_DELAY_MS);
+      });
+
+      // If cancelled during debounce window, abort early
+      if (this._accumulatedMessages.length === 0) {
+        return;
+      }
+
+      // Merge all accumulated messages into a single combined message
+      effectiveUserMessage = this._accumulatedMessages.join('\n');
+      this._activeUserMessage = effectiveUserMessage;
+      this._accumulatedMessages = [];
     }
 
     const currentAbortController = new AbortController();
@@ -696,9 +761,9 @@ export class DialogueEngine {
     } finally {
       if (this.activeTaskSession && this.activeTaskSession.abortController === currentAbortController) {
         this.activeTaskSession = null;
+        this._activeResponseContext = undefined;
+        this._activeUserMessage = undefined;
       }
-      this._activeResponseContext = undefined;
-      this._activeUserMessage = undefined;
     }
   }
 }

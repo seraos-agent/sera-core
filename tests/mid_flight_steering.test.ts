@@ -303,6 +303,62 @@ describe('Mid-Flight Task Steering & Execution Concurrency', () => {
 
       // Initial task was aborted cleanly
       expect(initialAbortController.signal.aborted).toBe(true);
+
+      // Verify that the prompt given to the model contains both messages accumulated!
+      const calls = mockOrchestrator.generate.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const passedMessages = calls[calls.length - 1][1];
+      const lastUserMsg = passedMessages.find((m: any) => m.role === 'user');
+      expect(lastUserMsg.content).toContain('Halo');
+      expect(lastUserMsg.content).toContain('Tolong buatkan analisa Threads');
+    });
+
+    it('accumulates multiple rapid-fire messages during pre-tool phase and merges into single turn', async () => {
+      const initialAbortController = new AbortController();
+      (engine as any).activeTaskSession = {
+        abortController: initialAbortController,
+        responseContext: { platform: 'whatsapp', channelId: '628123456789' },
+        userMessage: 'Halo Sera',
+        steeringQueue: [],
+        isExecutingTools: false,
+        startTime: Date.now()
+      };
+
+      // Message 2 arrives (triggers accumulation debounce)
+      const p2 = engine.onUserObservation({
+        id: 'evt-2',
+        type: EventTypes.DIALOGUE_USER_OBSERVED,
+        source: 'WhatsAppAdapter',
+        payload: {
+          message: 'mau tanya',
+          responseContext: { platform: 'whatsapp', channelId: '628123456789' }
+        },
+        timestamp: Date.now()
+      });
+
+      // Message 3 arrives 50ms later (absorbed into accumulator)
+      await new Promise(r => setTimeout(r, 50));
+      const p3 = engine.onUserObservation({
+        id: 'evt-3',
+        type: EventTypes.DIALOGUE_USER_OBSERVED,
+        source: 'WhatsAppAdapter',
+        payload: {
+          message: 'stok batik masih ada?',
+          responseContext: { platform: 'whatsapp', channelId: '628123456789' }
+        },
+        timestamp: Date.now()
+      });
+
+      await Promise.all([p2, p3]);
+
+      // Verify all 3 messages are preserved and merged
+      const calls = mockOrchestrator.generate.mock.calls;
+      expect(calls.length).toBe(1);
+      const passedMessages = calls[0][1];
+      const lastUserMsg = passedMessages.find((m: any) => m.role === 'user');
+      expect(lastUserMsg.content).toContain('Halo Sera');
+      expect(lastUserMsg.content).toContain('mau tanya');
+      expect(lastUserMsg.content).toContain('stok batik masih ada?');
     });
 
     it('suppresses passive acknowledgment when task is in progress without disrupting task session', async () => {

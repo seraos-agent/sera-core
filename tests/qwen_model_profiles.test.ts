@@ -24,4 +24,65 @@ describe('Qwen model profiles', () => {
       else process.env.QWEN_API = previous;
     }
   });
+
+  it('explicitly sends enable_thinking: false in HTTP request body to eliminate CoT reasoning latency', async () => {
+    const originalFetch = global.fetch;
+    const previous = process.env.QWEN_API;
+    process.env.QWEN_API = 'test-key';
+
+    let capturedBody: any = null;
+    global.fetch = async (_url: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { role: 'assistant', content: 'Halo!' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
+        })
+      } as any;
+    };
+
+    try {
+      const adapter = new QwenAdapter('qwen3.8-flash');
+      await adapter.generate([{ role: 'user', content: 'Test' }]);
+
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody.enable_thinking).toBe(false);
+    } finally {
+      global.fetch = originalFetch;
+      if (previous === undefined) delete process.env.QWEN_API;
+      else process.env.QWEN_API = previous;
+    }
+  });
+
+  it('sends enable_thinking: true when enableThinking is explicitly enabled on adapter', async () => {
+    const originalFetch = global.fetch;
+    const previous = process.env.QWEN_API;
+    process.env.QWEN_API = 'test-key';
+
+    let capturedBody: any = null;
+    global.fetch = async (_url: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { role: 'assistant', content: 'Deep thought answer' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
+        })
+      } as any;
+    };
+
+    try {
+      const adapter = new QwenAdapter('qwen3.8-flash');
+      (adapter as any).enableThinking = true;
+      await adapter.generate([{ role: 'user', content: 'Deep math question' }]);
+
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody.enable_thinking).toBe(true);
+    } finally {
+      global.fetch = originalFetch;
+      if (previous === undefined) delete process.env.QWEN_API;
+      else process.env.QWEN_API = previous;
+    }
+  });
 });

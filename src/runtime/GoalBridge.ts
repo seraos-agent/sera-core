@@ -515,6 +515,13 @@ export class GoalBridge {
           await this.catalogHandler.handleConfigureStore(requestId, actionPayload);
           break;
 
+        case 'STORE_SET_SETTLEMENT':
+        case 'SET_STORE_PAYOUT':
+        case 'CONFIG_PAYOUT':
+        case 'SET_PAYOUT_DESTINATION':
+          await this.catalogHandler.handleSetStoreSettlement(requestId, actionPayload);
+          break;
+
         case 'STORE_CHECK_STATUS':
         case 'CHECK_STORE_STATUS':
           await this.catalogHandler.handleCheckStoreStatus(requestId, actionPayload);

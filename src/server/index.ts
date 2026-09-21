@@ -32,6 +32,7 @@ import { createMcpRouter } from './routes/mcpRoutes';
 import { createAdminRouter } from './routes/adminRoutes';
 import { createWhatsAppRouter } from './routes/whatsappRoutes';
 import { createAuthRouter } from './routes/authRoutes';
+import { createDanaRouter } from './routes/danaRoutes';
 import { registerSocketGateway } from './socket/SocketGateway';
 
 
@@ -165,6 +166,14 @@ app.use('/api/admin', createAdminRouter({ agentManager, supabaseClient, secretMa
 // 9. Meta WhatsApp Cloud API Webhook
 app.use('/api/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretManager: globalSecretManager, whatsAppManager, io }));
 app.use('/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretManager: globalSecretManager, whatsAppManager, io }));
+
+// 10. DANA Fintech Payment, Disbursement & Redirect Endpoints
+app.use('/api/dana', createDanaRouter({
+  agentManager,
+  secretManager: globalSecretManager,
+  io,
+  subscriptionService: agentManager.getSubscriptionService()
+}));
 
 // ── Socket.IO Gateway ───────────────────────────────────────────────────────
 registerSocketGateway(io, {

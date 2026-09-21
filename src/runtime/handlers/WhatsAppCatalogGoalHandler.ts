@@ -1,5 +1,5 @@
 import { WhatsAppCatalogService, CatalogProduct, CreateProductInput, UpdateProductInput } from '../../capabilities/communication/services/WhatsAppCatalogService';
-import { StoreProfileService, StoreProfile, BusinessType } from '../../capabilities/communication/services/StoreProfileService';
+import { StoreProfileService, StoreProfile, BusinessType, StoreSettlementInfo } from '../../capabilities/communication/services/StoreProfileService';
 import { EmitResultFn } from './types';
 
 /**
@@ -626,6 +626,35 @@ export class WhatsAppCatalogGoalHandler {
 
       const logoUrl = payload?.logoUrl || payload?.logo || payload?.storeLogoUrl;
 
+      let settlementInfo: StoreSettlementInfo | undefined = payload?.settlementInfo;
+      if (!settlementInfo) {
+        if (payload?.danaNumber || payload?.dana || payload?.nomorDana) {
+          const rawDana = String(payload?.danaNumber || payload?.dana || payload?.nomorDana).replace(/[^0-9]/g, '');
+          const cleanDana = rawDana.startsWith('08') ? '628' + rawDana.slice(2) : (rawDana.startsWith('8') ? '628' + rawDana.slice(1) : rawDana);
+          settlementInfo = {
+            payoutMethod: 'DANA',
+            danaNumber: cleanDana,
+            platformFeePercent: payload?.platformFeePercent ? Number(payload.platformFeePercent) : 2.0,
+            payoutAutoSettle: true
+          };
+        } else if (payload?.bankCode || payload?.bank || payload?.bankAccountNumber || payload?.rekening) {
+          const rawBank = String(payload?.bankCode || payload?.bank || '014');
+          const rawAcc = String(payload?.bankAccountNumber || payload?.rekening || payload?.noRekening || '');
+          const bankNameMap: Record<string, string> = { '014': 'BCA', '008': 'Bank Mandiri', '002': 'BRI', '009': 'BNI' };
+          settlementInfo = {
+            payoutMethod: 'BANK',
+            bankDetails: {
+              bankCode: rawBank,
+              bankName: bankNameMap[rawBank] || rawBank.toUpperCase(),
+              accountNumber: rawAcc.replace(/[^0-9]/g, ''),
+              accountHolderName: payload?.bankAccountName || payload?.namaRekening
+            },
+            platformFeePercent: payload?.platformFeePercent ? Number(payload.platformFeePercent) : 2.0,
+            payoutAutoSettle: true
+          };
+        }
+      }
+
       const store = await this.storeService.upsertStore({
         storeName,
         businessType,
@@ -639,19 +668,128 @@ export class WhatsAppCatalogGoalHandler {
         operatingHours: open && close ? { open, close, days: days || [1, 2, 3, 4, 5, 6, 7] } : undefined,
         isOpenManualOverride: payload?.isOpenManual !== undefined ? payload.isOpenManual : undefined,
         allowPreOrder: payload?.allowPreOrder !== undefined ? payload.allowPreOrder : undefined,
-        notice: payload?.notice
+        notice: payload?.notice,
+        settlementInfo
       });
 
       const status = this.storeService.isStoreOpenNow(store.storeId);
+      const settleMsg = store.settlementInfo
+        ? `\n💳 Rekening Pencairan: ${store.settlementInfo.payoutMethod === 'DANA' ? `DANA (+${store.settlementInfo.danaNumber})` : `Bank ${store.settlementInfo.bankDetails?.bankName} (${store.settlementInfo.bankDetails?.accountNumber})`}.`
+        : '';
 
       this.emitResult(requestId, true, {
         store,
         status,
-        message: `Profil toko "${store.storeName}" berhasil diperbarui. Tipe: ${store.businessType}. Jam Operasional: ${store.operatingHours.open} - ${store.operatingHours.close} WIB. Status Saat Ini: ${status.statusText}.${store.logoUrl ? ' Logo/Foto Profil terpasang.' : ''}`
+        message: `Profil toko "${store.storeName}" berhasil diperbarui. Tipe: ${store.businessType}. Jam Operasional: ${store.operatingHours.open} - ${store.operatingHours.close} WIB. Status Saat Ini: ${status.statusText}.${store.logoUrl ? ' Logo/Foto Profil terpasang.' : ''}${settleMsg}`
       });
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to configure store:', err.message);
       this.emitResult(requestId, false, {}, err.message || 'Failed to configure store profile');
+    }
+  }
+
+  /**
+   * Configures payout settlement info (DANA or Bank account) for a merchant store.
+   */
+  public async handleSetStoreSettlement(requestId: string, payload: any): Promise<void> {
+    try {
+      const callerPhone = this.resolveCallerPhone(payload);
+      let storeName = String(payload?.storeName || payload?.store || payload?.brand || '').trim();
+
+      if (!storeName && callerPhone) {
+        const ownedStore = this.storeService.getStoreByOwner(callerPhone);
+        if (ownedStore) storeName = ownedStore.storeName;
+      }
+
+      if (!storeName) {
+        const allStores = this.storeService.listStores();
+        if (allStores.length === 1) storeName = allStores[0].storeName;
+      }
+
+      const store = storeName ? this.storeService.getStore(storeName) : undefined;
+      if (!store) {
+        throw new Error('Tidak dapat menemukan toko untuk konfigurasi pencairan dana. Sebutkan nama toko Anda.');
+      }
+
+      let settlementInfo: StoreSettlementInfo;
+
+      const rawDana = payload?.danaNumber || payload?.dana || payload?.nomorDana;
+      const rawBank = payload?.bank || payload?.bankCode;
+      const rawAccount = payload?.accountNumber || payload?.rekening || payload?.noRekening;
+
+      if (rawDana) {
+        const cleanDigits = String(rawDana).replace(/[^0-9]/g, '');
+        const cleanDana = cleanDigits.startsWith('08')
+          ? '628' + cleanDigits.slice(2)
+          : (cleanDigits.startsWith('8') ? '628' + cleanDigits.slice(1) : cleanDigits);
+
+        settlementInfo = {
+          payoutMethod: 'DANA',
+          danaNumber: cleanDana,
+          platformFeePercent: payload?.platformFeePercent ? Number(payload.platformFeePercent) : (store.settlementInfo?.platformFeePercent ?? 2.0),
+          payoutAutoSettle: payload?.payoutAutoSettle !== undefined ? Boolean(payload.payoutAutoSettle) : true
+        };
+      } else if (rawBank && rawAccount) {
+        const bankNameMap: Record<string, { code: string; name: string }> = {
+          bca: { code: '014', name: 'BCA' },
+          mandiri: { code: '008', name: 'Bank Mandiri' },
+          bri: { code: '002', name: 'BRI' },
+          bni: { code: '009', name: 'BNI' },
+          cimb: { code: '022', name: 'CIMB Niaga' },
+          permata: { code: '013', name: 'Permata Bank' },
+          bsi: { code: '451', name: 'BSI' }
+        };
+
+        const cleanBankKey = String(rawBank).toLowerCase().replace(/[^a-z0-9]/g, '');
+        let bankCode = String(rawBank).trim();
+        let bankName = String(rawBank).trim().toUpperCase();
+
+        for (const [key, val] of Object.entries(bankNameMap)) {
+          if (cleanBankKey === key || cleanBankKey.includes(key) || val.code === cleanBankKey) {
+            bankCode = val.code;
+            bankName = val.name;
+            break;
+          }
+        }
+
+        settlementInfo = {
+          payoutMethod: 'BANK',
+          bankDetails: {
+            bankCode,
+            bankName,
+            accountNumber: String(rawAccount).replace(/[^0-9]/g, ''),
+            accountHolderName: payload?.accountHolderName || payload?.namaRekening
+          },
+          platformFeePercent: payload?.platformFeePercent ? Number(payload.platformFeePercent) : (store.settlementInfo?.platformFeePercent ?? 2.0),
+          payoutAutoSettle: payload?.payoutAutoSettle !== undefined ? Boolean(payload.payoutAutoSettle) : true
+        };
+      } else {
+        throw new Error('Mohon sertakan nomor DANA (misal: 08123456789) atau nomor rekening Bank (misal: BCA 1234567890 an Budi).');
+      }
+
+      const updatedStore = await this.storeService.setStoreSettlement(store.storeId, settlementInfo);
+
+      const destSummary = settlementInfo.payoutMethod === 'DANA'
+        ? `Akun DANA: +${settlementInfo.danaNumber}`
+        : `Rekening: ${settlementInfo.bankDetails?.bankName} (${settlementInfo.bankDetails?.accountNumber}${settlementInfo.bankDetails?.accountHolderName ? ` a.n ${settlementInfo.bankDetails.accountHolderName}` : ''})`;
+
+      const confirmationMsg = `✅ *Pencairan Otomatis DANA Dikonfigurasi!*\n\n` +
+        `Toko: *${updatedStore.storeName}*\n` +
+        `Metode: *${settlementInfo.payoutMethod}*\n` +
+        `Tujuan: ${destSummary}\n` +
+        `Potongan Layanan SERA: ${settlementInfo.platformFeePercent}%\n` +
+        `Pencairan Otomatis: ${settlementInfo.payoutAutoSettle ? 'Aktif (Langsung cair setiap pesanan selesai dibayar)' : 'Manual'}\n\n` +
+        `Setiap pembeli menyelesaikan pesanan, hasil penjualan bersih akan otomatis kami transfer ke tujuan ini tanpa biaya admin tambahan.`;
+
+      this.emitResult(requestId, true, {
+        storeId: updatedStore.storeId,
+        storeName: updatedStore.storeName,
+        settlementInfo: updatedStore.settlementInfo,
+        message: confirmationMsg
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed to configure settlement:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to configure store settlement payout');
     }
   }
 

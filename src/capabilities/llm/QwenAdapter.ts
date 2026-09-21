@@ -61,9 +61,10 @@ export class QwenAdapter implements ILLMAdapter {
       model: this.model,
       messages: messages,
       max_tokens: parseInt(process.env.QWEN_MAX_TOKENS || '4096', 10),
+      enable_thinking: false,
     };
 
-    // Only inject enable_thinking when explicitly requested for deep reasoning
+    // Override: enable CoT thinking only when explicitly requested for deep reasoning
     if (this.enableThinking === true) {
       body.enable_thinking = true;
     }
