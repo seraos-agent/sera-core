@@ -59,28 +59,39 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     // 1. Convert Markdown headers (# Header) to bold text (*Header*)
     formatted = formatted.replace(/^#{1,6}\s+(.+)$/gm, '*$1*');
 
-    // 2. Convert standard Markdown bold (**bold**) to WhatsApp bold (*bold*)
-    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+    // 2. Convert Markdown bullet lists using asterisks (* Item) to bullet dots (• Item)
+    // This is CRITICAL: prevents WhatsApp from treating bullet asterisks as unclosed bold formatting!
+    formatted = formatted.replace(/^\s*[*]\s+/gm, '• ');
 
-    // 3. Convert Markdown links [Text](URL) to "Text: URL"
+    // 3. Convert Markdown bold-italic (***bold-italic***) to WhatsApp (_*bold-italic*_)
+    formatted = formatted.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '_*$1*_');
+
+    // 4. Convert standard Markdown bold (**bold**) to WhatsApp bold (*bold*)
+    // Must NOT span across newlines, as WhatsApp bold is strictly single-line!
+    formatted = formatted.replace(/\*\*([^*\n]+?)\*\*/g, '*$1*');
+
+    // 5. Ensure proper spacing inside bold asterisks: WhatsApp ignores "* word *" (space immediately after/before *)
+    formatted = formatted.replace(/(?<=^|[\s(])\*\s+([^*\n]+?)\s+\*(?=$|[\s),.?!:;])/g, '*$1*');
+
+    // 6. Convert Markdown links [Text](URL) to "Text: URL"
     formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '$1: $2');
 
-    // 4. Convert Markdown horizontal rules (--- or ***) into clean separator
+    // 7. Convert Markdown horizontal rules (--- or ***) into clean separator
     formatted = formatted.replace(/^(\s*[-*_]\s*){3,}$/gm, '──────────');
 
-    // 5. Sanitize long em dashes (—) to clean en dashes (–) with spacing to avoid artificial AI tone
+    // 8. Sanitize long em dashes (—) to clean en dashes (–) with spacing to avoid artificial AI tone
     formatted = formatted.replace(/\s*—\s*/g, ' – ');
     formatted = formatted.replace(/—/g, ' – ');
 
-    // 6. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
+    // 9. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
     formatted = formatted.replace(/^>\s*/gm, '');
 
-    // 7. Sanitize HTML line breaks (<br>, <br/>) and rogue HTML tags (<p>, <span>, etc.)
+    // 10. Sanitize HTML line breaks (<br>, <br/>) and rogue HTML tags (<p>, <span>, etc.)
     formatted = formatted.replace(/<\/?br\s*\/?>/gi, '\n');
     formatted = formatted.replace(/&nbsp;/gi, ' ');
     formatted = formatted.replace(/<\/?[a-z][a-z0-9]*[^<>]*>/gi, '');
 
-    // 8. Sanitize leaked CJK tokens from model generation when conversing in non-Chinese languages
+    // 11. Sanitize leaked CJK tokens from model generation when conversing in non-Chinese languages
     const cjkMatches = formatted.match(/[\u4e00-\u9fa5]/g);
     const totalChars = formatted.trim().length;
     if (cjkMatches && totalChars > 0 && (cjkMatches.length / totalChars) < 0.25) {
@@ -91,10 +102,105 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
         .replace(/[\u4e00-\u9fa5]+/g, '');
     }
 
-    // 9. Normalize excessive blank lines
+    // 12. Normalize excessive blank lines
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
     return formatted.trim();
+  }
+
+  /**
+   * Ensures markdown tags (* for bold, ` for code, ``` for codeblocks) are properly balanced within a single bubble.
+   * WhatsApp parses rich formatting per message bubble; unclosed tags break rendering for that entire bubble.
+   */
+  public static balanceMarkdownTags(bubble: string): string {
+    if (!bubble) return '';
+    let result = bubble;
+
+    // 1. Check code blocks ```
+    const codeBlockCount = (result.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+      result += '\n```';
+    }
+
+    // 2. Check inline backticks `
+    const codeBlockStripped = result.replace(/```.*?```/gs, '');
+    const inlineCodeCount = (codeBlockStripped.match(/`/g) || []).length;
+    if (inlineCodeCount % 2 !== 0) {
+      result += '`';
+    }
+
+    // 3. Check bold asterisks *
+    const totalAsterisks = (result.match(/\*/g) || []).length;
+    if (totalAsterisks % 2 !== 0) {
+      const lastAsteriskIdx = result.lastIndexOf('*');
+      if (lastAsteriskIdx !== -1) {
+        const charAfter = result[lastAsteriskIdx + 1];
+        if (charAfter && /\S/.test(charAfter)) {
+          // It was an opening bold tag (e.g. "*important text"); close it at the end
+          result += '*';
+        } else {
+          // Standalone or trailing asterisk without opening intent, strip it
+          result = result.substring(0, lastAsteriskIdx) + result.substring(lastAsteriskIdx + 1);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Safely chunks an oversized text block (exceeding 3,800 chars) strictly at paragraph,
+   * line break, or sentence boundaries without chopping mid-word.
+   */
+  private static chunkOversizedBlock(text: string, maxLen: number = 3800): string[] {
+    const result: string[] = [];
+    let remaining = text.trim();
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLen) {
+        result.push(remaining);
+        break;
+      }
+
+      // 1. Try paragraph break
+      let splitIdx = remaining.lastIndexOf('\n\n', maxLen);
+      let stepForward = 2;
+
+      // 2. Try single line break
+      if (splitIdx === -1 || splitIdx < maxLen * 0.4) {
+        splitIdx = remaining.lastIndexOf('\n', maxLen);
+        stepForward = 1;
+      }
+
+      // 3. Try sentence boundary (period, question, exclamation + space)
+      if (splitIdx === -1 || splitIdx < maxLen * 0.4) {
+        const sentenceMatch = remaining.substring(0, maxLen).match(/.*[.?!](\s+)/s);
+        if (sentenceMatch && sentenceMatch[0].length >= maxLen * 0.4) {
+          splitIdx = sentenceMatch[0].length - sentenceMatch[1].length;
+          stepForward = sentenceMatch[1].length;
+        }
+      }
+
+      // 4. Fallback: space boundary
+      if (splitIdx === -1 || splitIdx < maxLen * 0.4) {
+        splitIdx = remaining.lastIndexOf(' ', maxLen);
+        stepForward = 1;
+      }
+
+      // 5. Absolute emergency fallback
+      if (splitIdx === -1 || splitIdx < maxLen * 0.4) {
+        splitIdx = maxLen;
+        stepForward = 0;
+      }
+
+      const chunk = remaining.substring(0, splitIdx).trim();
+      if (chunk) {
+        result.push(chunk);
+      }
+      remaining = remaining.substring(splitIdx + stepForward).trim();
+    }
+
+    return result;
   }
 
   /**
@@ -103,17 +209,21 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
    * - Option 2 (2 bubbles) for structured summaries, reports, or digests:
    *   Bubble 1 = The Substance (Opening Lead-in + All Points/Content).
    *   Bubble 2 = The Takeaway & Discussion starter.
+   * - Multi-point long-form explanations partition strictly on paragraph/item boundaries (never mid-sentence).
    * - Merges orphan/dangling intro paragraphs (e.g. short intro ending with :) so they never become isolated bubbles.
+   * - Balances formatting tags (*bold*, `code`, ```block```) across all emitted bubbles.
    * - Strictly respects Meta API's 4,096-character limit per message (clamps at 3,800 chars).
    */
   public static splitIntoBubbles(text: string): string[] {
     if (!text || !text.trim()) return [];
 
     const trimmed = text.trim();
+    const MAX_BUBBLE_LENGTH = 3800;
+    const COMFORTABLE_BODY_BUBBLE_LENGTH = 2600;
 
     // 1. Single paragraph answers under safe length limit remain 1 single bubble
-    if (!trimmed.includes('\n\n') && trimmed.length <= 3800) {
-      return [trimmed];
+    if (!trimmed.includes('\n\n') && trimmed.length <= MAX_BUBBLE_LENGTH) {
+      return [WhatsAppAdapter.balanceMarkdownTags(trimmed)];
     }
 
     // 2. Split by distinct paragraphs (separated by 2 or more newlines)
@@ -122,89 +232,89 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
       .map(p => p.trim())
       .filter(p => p.length > 0);
 
-    let bubbles: string[] = [];
-
     if (rawParagraphs.length <= 1) {
-      bubbles = [trimmed];
-    } else {
-      // 3. Merge orphan/dangling intro paragraphs so they never become a lonely, awkward 1-line bubble
-      // An intro is considered dangling if:
-      // a) It does NOT contain a URL (URLs are deliverables / external resources), AND
-      // b) Either:
-      //    - It ends with a colon (:) or ellipsis (...), indicating it points to the following text, OR
-      //    - It is short (< 160 chars) and the next paragraph starts with a list marker (*1, 1., -, •)
-      const normalizedParagraphs: string[] = [];
-      for (let i = 0; i < rawParagraphs.length; i++) {
-        const p = rawParagraphs[i];
-        if (
-          i === 0 &&
-          rawParagraphs.length > 1 &&
-          !/https?:\/\//i.test(p) &&
-          (
-            /[:：…]\s*$/.test(p) ||
-            (p.length < 160 && /^(\*?\d+[\.\)]|\*?[-•])/.test(rawParagraphs[1]))
-          )
-        ) {
-          rawParagraphs[1] = p + '\n\n' + rawParagraphs[1];
-          continue;
-        }
-        normalizedParagraphs.push(p);
-      }
-
-      if (normalizedParagraphs.length <= 1) {
-        bubbles = [normalizedParagraphs[0]];
-      } else if (normalizedParagraphs.length === 2) {
-        // 2 clean blocks: Bubble 1 (Deliverable/Result/Substance) + Bubble 2 (Follow-up/Takeaway)
-        bubbles = [normalizedParagraphs[0], normalizedParagraphs[1]];
-      } else if (normalizedParagraphs.length === 3) {
-        // Check if this is an operational deliverable with link (Bubble 1: Link preview, Bubble 2: Insight, Bubble 3: Action)
-        const hasUrl = /https?:\/\/[^\s\)]+/.test(normalizedParagraphs[0]);
-        if (hasUrl) {
-          bubbles = [normalizedParagraphs[0], normalizedParagraphs[1], normalizedParagraphs[2]];
-        } else {
-          // Standard multi-point summary: Option 2 (Bubble 1: Points combined, Bubble 2: Takeaway/Closing)
-          bubbles = [
-            normalizedParagraphs.slice(0, 2).join('\n\n'),
-            normalizedParagraphs[2]
-          ];
-        }
-      } else {
-        // 4 or more paragraphs: Option 2 (2 bubbles)
-        // Bubble 1: All substantive body points combined with comfortable spacing
-        // Bubble 2: Closing takeaway / follow-up question
-        bubbles = [
-          normalizedParagraphs.slice(0, normalizedParagraphs.length - 1).join('\n\n'),
-          normalizedParagraphs[normalizedParagraphs.length - 1]
-        ];
-      }
+      return WhatsAppAdapter.chunkOversizedBlock(trimmed, MAX_BUBBLE_LENGTH)
+        .map(b => WhatsAppAdapter.balanceMarkdownTags(b));
     }
 
-    // 3. Safety Clamp: Meta API allows up to 4,096 characters per text message.
-    // If any bubble exceeds 3,800 chars, chunk it safely at paragraph or sentence boundaries.
-    const finalBubbles: string[] = [];
-    const MAX_BUBBLE_LENGTH = 3800;
+    // 3. Merge orphan/dangling intro paragraphs so they never become a lonely, awkward 1-line bubble
+    const normalizedParagraphs: string[] = [];
+    for (let i = 0; i < rawParagraphs.length; i++) {
+      const p = rawParagraphs[i];
+      if (
+        i === 0 &&
+        rawParagraphs.length > 1 &&
+        !/https?:\/\//i.test(p) &&
+        (
+          /[:：…]\s*$/.test(p) ||
+          (p.length < 160 && /^(\*?\d+[\.\)]|\*?[-•])/.test(rawParagraphs[1]))
+        )
+      ) {
+        rawParagraphs[1] = p + '\n\n' + rawParagraphs[1];
+        continue;
+      }
+      normalizedParagraphs.push(p);
+    }
 
-    for (const b of bubbles) {
-      if (b.length <= MAX_BUBBLE_LENGTH) {
-        finalBubbles.push(b);
+    if (normalizedParagraphs.length <= 1) {
+      return WhatsAppAdapter.chunkOversizedBlock(normalizedParagraphs[0], MAX_BUBBLE_LENGTH)
+        .map(b => WhatsAppAdapter.balanceMarkdownTags(b));
+    }
+
+    let intermediateBubbles: string[] = [];
+
+    if (normalizedParagraphs.length === 2) {
+      // 2 clean blocks: Bubble 1 (Deliverable/Result/Substance) + Bubble 2 (Follow-up/Takeaway)
+      intermediateBubbles = [normalizedParagraphs[0], normalizedParagraphs[1]];
+    } else if (normalizedParagraphs.length === 3) {
+      // Check if this is an operational deliverable with link (Bubble 1: Link preview, Bubble 2: Insight, Bubble 3: Action)
+      const hasUrl = /https?:\/\/[^\s\)]+/.test(normalizedParagraphs[0]);
+      if (hasUrl) {
+        intermediateBubbles = [normalizedParagraphs[0], normalizedParagraphs[1], normalizedParagraphs[2]];
       } else {
-        let remaining = b;
-        while (remaining.length > 0) {
-          if (remaining.length <= MAX_BUBBLE_LENGTH) {
-            finalBubbles.push(remaining);
-            break;
-          }
-          let splitIdx = remaining.lastIndexOf('\n', MAX_BUBBLE_LENGTH);
-          if (splitIdx === -1 || splitIdx < MAX_BUBBLE_LENGTH / 2) {
-            splitIdx = remaining.lastIndexOf('. ', MAX_BUBBLE_LENGTH);
-          }
-          if (splitIdx === -1 || splitIdx < MAX_BUBBLE_LENGTH / 2) {
-            splitIdx = MAX_BUBBLE_LENGTH;
-          } else {
-            splitIdx += (remaining[splitIdx] === '.' ? 2 : 1);
-          }
-          finalBubbles.push(remaining.substring(0, splitIdx).trim());
-          remaining = remaining.substring(splitIdx).trim();
+        intermediateBubbles = [
+          normalizedParagraphs.slice(0, 2).join('\n\n'),
+          normalizedParagraphs[2]
+        ];
+      }
+    } else {
+      // 4 or more paragraphs:
+      // Group substantive body paragraphs cleanly by paragraph boundaries without overflowing 2,600 chars!
+      const bodyParagraphs = normalizedParagraphs.slice(0, normalizedParagraphs.length - 1);
+      const closingParagraph = normalizedParagraphs[normalizedParagraphs.length - 1];
+
+      const bodyBubbles: string[] = [];
+      let currentGroup: string[] = [];
+      let currentLen = 0;
+
+      for (const p of bodyParagraphs) {
+        const addedLen = currentGroup.length > 0 ? (p.length + 2) : p.length;
+        if (currentGroup.length > 0 && (currentLen + addedLen) > COMFORTABLE_BODY_BUBBLE_LENGTH) {
+          bodyBubbles.push(currentGroup.join('\n\n'));
+          currentGroup = [p];
+          currentLen = p.length;
+        } else {
+          currentGroup.push(p);
+          currentLen += addedLen;
+        }
+      }
+      if (currentGroup.length > 0) {
+        bodyBubbles.push(currentGroup.join('\n\n'));
+      }
+
+      intermediateBubbles = [...bodyBubbles, closingParagraph];
+    }
+
+    // 4. Safety Guard: If any single bubble still exceeds MAX_BUBBLE_LENGTH,
+    // chunk safely without cutting words, and balance markdown tags on all final bubbles.
+    const finalBubbles: string[] = [];
+    for (const b of intermediateBubbles) {
+      if (b.length <= MAX_BUBBLE_LENGTH) {
+        finalBubbles.push(WhatsAppAdapter.balanceMarkdownTags(b));
+      } else {
+        const chunks = WhatsAppAdapter.chunkOversizedBlock(b, MAX_BUBBLE_LENGTH);
+        for (const ch of chunks) {
+          finalBubbles.push(WhatsAppAdapter.balanceMarkdownTags(ch));
         }
       }
     }
