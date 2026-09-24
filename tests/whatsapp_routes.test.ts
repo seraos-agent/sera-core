@@ -486,6 +486,23 @@ Intinya arahnya makin jelas ke produksi dan security. Menurutmu bagian mana yang
     // Bubble 2 contains closing question
     expect(summaryBubbles[1]).toContain('Intinya arahnya makin jelas');
     expect(summaryBubbles[1]).toContain('Menurutmu bagian mana');
+
+    // Case 7: Multi-point digest without standalone closing takeaway -> keeps all items together in 1 bubble (never isolates last bullet)
+    const fivePointsList = `Ini lima berita teknologi yang paling hangat sekarang, Kak 👇
+
+1. Meta Llama 4 Resmi Meluncur – Model AI terbaru Meta dirilis.
+
+2. Chip 3nm Apple & Qualcomm Memanas – Persaingan silikon makin ketat.
+
+3. Regulasi AI Eropa Mulai Berlaku Penuh – Uni Eropa menerapkan aturan wajib transparansi.
+
+4. Komputasi Kuantum Tembus Rekor Stabilitas – Sebuah laboratorium berhasil mempertahankan qubit stabil.
+
+5. Wearable Health AI Makin Personal – Perangkat smartwatch generasi baru mampu mendeteksi anomali jantung.`;
+    const listBubbles = WhatsAppAdapter.splitIntoBubbles(fivePointsList);
+    expect(listBubbles).toHaveLength(1);
+    expect(listBubbles[0]).toContain('1. Meta Llama 4');
+    expect(listBubbles[0]).toContain('5. Wearable Health AI');
   });
 
   it('dispatches multi-bubble messages sequentially via sendMessage', async () => {

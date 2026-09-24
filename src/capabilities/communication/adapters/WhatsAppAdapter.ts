@@ -265,23 +265,47 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
 
     if (normalizedParagraphs.length === 2) {
       // 2 clean blocks: Bubble 1 (Deliverable/Result/Substance) + Bubble 2 (Follow-up/Takeaway)
-      intermediateBubbles = [normalizedParagraphs[0], normalizedParagraphs[1]];
+      const p1IsListItem = /^(\*?\d+[\.\)]|\*?[-•])\s+/.test(normalizedParagraphs[1]);
+      if (p1IsListItem && (normalizedParagraphs[0].length + normalizedParagraphs[1].length + 2) <= COMFORTABLE_BODY_BUBBLE_LENGTH) {
+        intermediateBubbles = [normalizedParagraphs.join('\n\n')];
+      } else {
+        intermediateBubbles = [normalizedParagraphs[0], normalizedParagraphs[1]];
+      }
     } else if (normalizedParagraphs.length === 3) {
       // Check if this is an operational deliverable with link (Bubble 1: Link preview, Bubble 2: Insight, Bubble 3: Action)
       const hasUrl = /https?:\/\/[^\s\)]+/.test(normalizedParagraphs[0]);
       if (hasUrl) {
         intermediateBubbles = [normalizedParagraphs[0], normalizedParagraphs[1], normalizedParagraphs[2]];
       } else {
-        intermediateBubbles = [
-          normalizedParagraphs.slice(0, 2).join('\n\n'),
-          normalizedParagraphs[2]
-        ];
+        const lastIsListItem = /^(\*?\d+[\.\)]|\*?[-•])\s+/.test(normalizedParagraphs[2]);
+        if (lastIsListItem && (normalizedParagraphs[0].length + normalizedParagraphs[1].length + normalizedParagraphs[2].length + 4) <= COMFORTABLE_BODY_BUBBLE_LENGTH) {
+          intermediateBubbles = [normalizedParagraphs.join('\n\n')];
+        } else {
+          intermediateBubbles = [
+            normalizedParagraphs.slice(0, 2).join('\n\n'),
+            normalizedParagraphs[2]
+          ];
+        }
       }
     } else {
       // 4 or more paragraphs:
       // Group substantive body paragraphs cleanly by paragraph boundaries without overflowing 2,600 chars!
-      const bodyParagraphs = normalizedParagraphs.slice(0, normalizedParagraphs.length - 1);
-      const closingParagraph = normalizedParagraphs[normalizedParagraphs.length - 1];
+      // A paragraph is only separated as a closing Bubble 2 if it is a genuine non-list closing inquiry/takeaway!
+      const lastIndex = normalizedParagraphs.length - 1;
+      const lastPara = normalizedParagraphs[lastIndex];
+      const lastIsListItem = /^(\*?\d+[\.\)]|\*?[-•])\s+/.test(lastPara);
+
+      let bodyParagraphs: string[];
+      let closingParagraph: string | null = null;
+
+      if (!lastIsListItem) {
+        // Last paragraph is a true standalone takeaway or discussion inquiry
+        bodyParagraphs = normalizedParagraphs.slice(0, lastIndex);
+        closingParagraph = lastPara;
+      } else {
+        // All paragraphs are substantive list items or sections without separate closing
+        bodyParagraphs = normalizedParagraphs;
+      }
 
       const bodyBubbles: string[] = [];
       let currentGroup: string[] = [];
@@ -302,7 +326,11 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
         bodyBubbles.push(currentGroup.join('\n\n'));
       }
 
-      intermediateBubbles = [...bodyBubbles, closingParagraph];
+      if (closingParagraph) {
+        intermediateBubbles = [...bodyBubbles, closingParagraph];
+      } else {
+        intermediateBubbles = bodyBubbles;
+      }
     }
 
     // 4. Safety Guard: If any single bubble still exceeds MAX_BUBBLE_LENGTH,

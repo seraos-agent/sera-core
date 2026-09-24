@@ -449,17 +449,38 @@ export class DialogueEngine {
       return;
     }
 
-    // Context-Aware Passive Acknowledgment Suppression (e.g. "ok", "cool", "siap", "noted")
+    // Context-Aware Passive Acknowledgment Suppression
     const isPassiveAck = /^(?:ok|okay|k|got it|noted|roger|cool|great|all good|thx|thanks|thank you|sip|siap|mantap|yoi|oke|okee|👍|👌|🙏)$/i.test(effectiveUserMessage.trim());
     if (isPassiveAck && !this.pendingProposalId) {
       const isTaskInProgress = Boolean(this.activeTaskSession);
       const ctxKey = this._activeResponseContext ? `${this._activeResponseContext.platform}:${this._activeResponseContext.channelId}` : '';
       const recentHistory = ctxKey ? this.platformConversationHistory.get(ctxKey) : null;
       const lastSpeakerWasAssistant = recentHistory && recentHistory.length > 0 && recentHistory[recentHistory.length - 1].role === 'assistant';
+      const lastAssistantText = lastSpeakerWasAssistant ? recentHistory![recentHistory!.length - 1].content : '';
 
-      // Suppress outbound reply only when acknowledging an active background task or a recent assistant message
-      if (isTaskInProgress || lastSpeakerWasAssistant) {
-        console.log(`[DialogueEngine] Passive acknowledgment ("${effectiveUserMessage}") absorbed in context. Suppressing redundant bot reply.`);
+      // Case 1: Active background task in progress — absorb passive ack so task runs undisturbed
+      if (isTaskInProgress) {
+        console.log(`[DialogueEngine] Passive acknowledgment ("${effectiveUserMessage}") absorbed during active task. Suppressing redundant bot reply.`);
+        if (this._activeResponseContext) {
+          this.persistPlatformTurn(this._activeResponseContext.platform, this._activeResponseContext.channelId, effectiveUserMessage, '');
+        }
+        return;
+      }
+
+      // Case 2: No task in progress.
+      // Differentiate appreciation/praise ("mantap", "thanks", "keren") from pure closure ("ok", "k", "👍").
+      // NEVER suppress appreciation/praise after substantive assistant content — users expect a warm acknowledgment.
+      const isAppreciation = /^(?:mantap|keren|cool|great|thx|thanks|thank you|terima kasih|makasih|alhamdulillah|top)$/i.test(effectiveUserMessage.trim());
+      const isPureTrailingClosure = /^(?:ok|okay|k|got it|noted|roger|sip|siap|yoi|oke|okee|👍|👌|🙏)$/i.test(effectiveUserMessage.trim());
+
+      // Only suppress pure trailing closures if the assistant's previous message was ALREADY a short closure/pleasantry (<160 chars)
+      const lastAssistantWasShortClosure = lastSpeakerWasAssistant && lastAssistantText.length < 160 && (
+        /^(?:sama-sama|siap|baik|terima kasih|senang bisa bantu|you're welcome|anytime|kapan pun|ready|standby)/i.test(lastAssistantText.trim()) ||
+        /ada yang bisa dibantu lagi|ada yang mau dibahas lagi/i.test(lastAssistantText.trim())
+      );
+
+      if (!isAppreciation && isPureTrailingClosure && lastAssistantWasShortClosure) {
+        console.log(`[DialogueEngine] Trailing closure ack ("${effectiveUserMessage}") absorbed after prior closure message. Suppressing redundant loop.`);
         if (this._activeResponseContext) {
           this.persistPlatformTurn(this._activeResponseContext.platform, this._activeResponseContext.channelId, effectiveUserMessage, '');
         }
