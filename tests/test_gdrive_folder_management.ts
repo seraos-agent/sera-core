@@ -260,9 +260,9 @@ async function runTests() {
   const movedDoc = filesMap.get(scatteredFiles[2].id)!;
 
   // Retrieve destination folder names
-  const mediaFolder = Array.from(filesMap.values()).find(f => f.name === '🎨 Media & Creative')!;
-  const sheetFolder = Array.from(filesMap.values()).find(f => f.name === '📊 Spreadsheets & Analysis')!;
-  const docFolder = Array.from(filesMap.values()).find(f => f.name === '📑 Reports & Research')!;
+  const mediaFolder = Array.from(filesMap.values()).find(f => f.name.includes('Media'))!;
+  const sheetFolder = Array.from(filesMap.values()).find(f => f.name.includes('Spreadsheet'))!;
+  const docFolder = Array.from(filesMap.values()).find(f => f.name.includes('Reports'))!;
 
   assert.deepStrictEqual(movedVideo.parents, [mediaFolder.id]);
   assert.deepStrictEqual(movedSheet.parents, [sheetFolder.id]);

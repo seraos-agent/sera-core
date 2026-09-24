@@ -43,8 +43,8 @@ export class MemoryConsolidationWorker {
     const year = now.getUTCFullYear();
     const week = Math.ceil((now.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
     
-    // Ensure 🧠 System Core folder exists inside SERA Vault
-    const systemCoreFolderId = await capability.ensureFolder(userId, '🧠 System Core');
+    // Ensure System Core folder exists inside SERA Vault
+    const systemCoreFolderId = await capability.ensureFolder(userId, 'System Core');
 
     // 1. Export Enriched Profile (Option A: 🧠 System Core/)
     const profile = {
@@ -91,8 +91,8 @@ export class MemoryConsolidationWorker {
 **Generated**: ${now.toISOString()}
 **Period**: Week ${week}, ${year}
 **User**: ${userId}
-**System Subfolder**: 🧠 System Core
-
+**System Subfolder**: System Core
+ 
 ---
 
 ## 🧭 Executive Overview
@@ -115,7 +115,7 @@ ${formattedBeliefs}
     await capability.writeFile(userId, 'SERA_Journal.md', journalContent, 'text/markdown', systemCoreFolderId);
     await capability.writeFile(userId, `SERA_Journal_${year}_W${week}.md`, journalContent, 'text/markdown', systemCoreFolderId);
 
-    console.log(`[MemoryConsolidationWorker] Completed for user ${userId} in 🧠 System Core`);
+    console.log(`[MemoryConsolidationWorker] Completed for user ${userId} in System Core`);
   }
 
   public async consolidatePrePurge(userId: string, staleRecords: number): Promise<void> {
@@ -127,9 +127,9 @@ ${formattedBeliefs}
     
     const content = `# SERA Pre-Purge Archive\n\nGenerated on: ${now.toISOString()}\n\nArchiving ${staleRecords} stale records before hygiene cycle deletion.\n\n(End of Archive)`;
     try {
-      const archiveFolderId = await capability.ensureFolder(userId, '🗄️ Archive');
+      const archiveFolderId = await capability.ensureFolder(userId, 'Archive');
       await capability.writeFile(userId, archiveName, content, 'text/markdown', archiveFolderId);
-      console.log(`[MemoryConsolidationWorker] Pre-purge archive created for user ${userId} in 🗄️ Archive`);
+      console.log(`[MemoryConsolidationWorker] Pre-purge archive created for user ${userId} in Archive`);
     } catch (e: any) {
       console.warn(`[MemoryConsolidationWorker] Pre-purge archive failed for user ${userId}: ${e.message}`);
     }

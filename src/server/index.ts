@@ -11,6 +11,7 @@ import { ReownWalletIdentityService } from '../core/identity/ReownWalletIdentity
 import { GoogleDriveOAuthService } from '../core/integrations/google-drive/GoogleDriveOAuthService';
 import { GoogleDriveConnectionRepository } from '../core/integrations/google-drive/GoogleDriveConnectionRepository';
 import { MemoryConsolidationWorker } from '../core/integrations/google-drive/MemoryConsolidationWorker';
+import { GoogleDriveVaultInitializer } from '../core/integrations/google-drive/GoogleDriveVaultInitializer';
 import { TreasuryDepositWatcher } from './billing/TreasuryDepositWatcher';
 import { McpApiKeyStore } from '../mcp/McpApiKeyStore';
 import { SeraMcpServer } from '../mcp/SeraMcpServer';
@@ -125,6 +126,22 @@ app.use(createGoogleDriveRouter(googleDriveOAuthService, io, async (userId) => {
   if (inst?.runtime?.capabilityCatalog) {
     io.to(`user:${userId}`).emit('connector:status_changed', inst.runtime.capabilityCatalog.allConnectorSummaries());
   }
+
+  // 1. Initialize default SERA Vault folder structure & starter business spreadsheets
+  if (googleDriveConnectionRepository) {
+    try {
+      const vaultInitializer = new GoogleDriveVaultInitializer(googleDriveConnectionRepository);
+      const initResult = await vaultInitializer.initializeVault(userId);
+      console.log(`[Server] Vault initialized for user ${userId}:`, {
+        alreadyInitialized: initResult.alreadyInitialized,
+        spreadsheetsCreated: initResult.spreadsheetsCreated
+      });
+    } catch (err: any) {
+      console.warn('[Server] Vault initialization on connect warning:', err.message);
+    }
+  }
+
+  // 2. Rehydrate cognitive memory beliefs from vault or consolidate initial profile
   if (googleDriveConnectionRepository && supabaseClient) {
     try {
       const memoryWorker = new MemoryConsolidationWorker(
@@ -132,7 +149,10 @@ app.use(createGoogleDriveRouter(googleDriveOAuthService, io, async (userId) => {
         googleDriveConnectionRepository,
         (uid) => agentManager.getOrCreateInstance(uid)
       );
-      await memoryWorker.rehydrateFromVault(userId);
+      const rehydration = await memoryWorker.rehydrateFromVault(userId);
+      if (!rehydration.profileLoaded) {
+        await memoryWorker.consolidate(userId);
+      }
     } catch (err: any) {
       console.warn('[Server] Vault rehydration on connect warning:', err.message);
     }
@@ -168,12 +188,15 @@ app.use('/api/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretMana
 app.use('/webhook/whatsapp', createWhatsAppRouter({ agentManager, secretManager: globalSecretManager, whatsAppManager, io }));
 
 // 10. DANA Fintech Payment, Disbursement & Redirect Endpoints
-app.use('/api/dana', createDanaRouter({
+const danaRouter = createDanaRouter({
   agentManager,
   secretManager: globalSecretManager,
   io,
-  subscriptionService: agentManager.getSubscriptionService()
-}));
+  subscriptionService: agentManager.getSubscriptionService(),
+  defaultSimulateError: true // Active for DANA Scenario 35 simulation (5005601 Internal Server Error & PENDING status)
+});
+app.use('/api/dana', danaRouter);
+app.use('/v1.0/debit', danaRouter);
 
 // ── Socket.IO Gateway ───────────────────────────────────────────────────────
 registerSocketGateway(io, {

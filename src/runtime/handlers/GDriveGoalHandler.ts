@@ -180,7 +180,7 @@ export class GDriveGoalHandler {
     try {
       const filename = payload?.filename || payload?.name || payload?.title;
       const mediaUrl = payload?.mediaUrl || payload?.url || payload?.dataUrl;
-      const folder = payload?.folder || '🎨 Media & Creative';
+      const folder = payload?.folder || 'Media & Kreatif';
       const mimeType = payload?.mimeType;
 
       if (!filename) throw new Error('Saving media to Google Drive requires a filename.');

@@ -172,7 +172,7 @@ export class GoogleDriveCapability {
     filename: string,
     mediaData: string | Buffer,
     mimeType?: string,
-    folderName: string = '🎨 Media & Creative'
+    folderName: string = 'Media & Kreatif'
   ) {
     return this.mediaService.saveMedia(userId, filename, mediaData, mimeType, folderName);
   }

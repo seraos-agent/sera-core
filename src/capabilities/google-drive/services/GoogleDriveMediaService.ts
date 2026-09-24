@@ -29,14 +29,14 @@ export class GoogleDriveMediaService {
 
   /**
    * Saves an attached image or video (from chat attachment, dataUrl, or buffer)
-   * into the user's Google Drive SERA Vault (defaults to "🎨 Media & Creative").
+   * into the user's Google Drive SERA Vault (defaults to "Media & Kreatif").
    */
   public async saveMedia(
     userId: string,
     filename: string,
     mediaData: string | Buffer,
     mimeType?: string,
-    folderName: string = '🎨 Media & Creative'
+    folderName: string = 'Media & Kreatif'
   ): Promise<{ fileId: string; filename: string; webViewLink: string; folder: string; isVideo: boolean }> {
     let buffer: Buffer;
     let detectedMime = mimeType || '';

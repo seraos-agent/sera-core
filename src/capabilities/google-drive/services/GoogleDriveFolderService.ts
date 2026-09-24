@@ -7,6 +7,15 @@ export interface FolderServiceDependencies {
   listFiles: (userId: string, query?: { name?: string; mimeType?: string; searchTerm?: string; folderId?: string; exact?: boolean }) => Promise<any[]>;
 }
 
+export const FOLDER_ALIASES: Record<string, string[]> = {
+  'Toko & Katalog': ['Toko & Katalog', '🛍️ Toko & Katalog', 'Store & Catalog'],
+  'Keuangan & Pembukuan': ['Keuangan & Pembukuan', '💳 Keuangan & Pembukuan', 'Finance & Bookkeeping'],
+  'Spreadsheet & Analisis': ['Spreadsheet & Analisis', 'Spreadsheets & Analysis', 'Spreadsheets', '📊 Spreadsheets & Analysis'],
+  'Media & Kreatif': ['Media & Kreatif', 'Media & Creative', '🎨 Media & Creative'],
+  'System Core': ['System Core', '🧠 System Core'],
+  'Archive': ['Archive', '🗄️ Archive']
+};
+
 /**
  * Manages Google Drive folder structures, hierarchy creation, folder moving/renaming,
  * and canonical SERA Vault organization (tidyVault).
@@ -63,13 +72,31 @@ export class GoogleDriveFolderService {
       userCache = new Map();
       this.folderIdCache.set(cacheKey, userCache);
     }
-    if (userCache.has(folderName)) {
-      return userCache.get(folderName)!;
+
+    // Determine canonical aliases to avoid duplicate folders
+    const matchedEntry = Object.entries(FOLDER_ALIASES).find(([canonical, aliases]) =>
+      canonical.toLowerCase() === folderName.toLowerCase() || aliases.some(a => a.toLowerCase() === folderName.toLowerCase())
+    );
+    const searchNames = matchedEntry
+      ? [folderName, ...matchedEntry[1].filter(n => n.toLowerCase() !== folderName.toLowerCase())]
+      : [folderName];
+
+    for (const name of searchNames) {
+      if (userCache.has(name)) {
+        return userCache.get(name)!;
+      }
     }
 
     const cleanName = folderName.trim().replace(/'/g, "\\'");
+    const nameConditions = searchNames
+      .map(n => {
+        const clean = n.trim().replace(/'/g, "\\'");
+        return `name = '${clean}' or name contains '${clean}'`;
+      })
+      .join(' or ');
+
     const url = new URL('https://www.googleapis.com/drive/v3/files');
-    url.searchParams.set('q', `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false and (name = '${cleanName}' or name contains '${cleanName}')`);
+    url.searchParams.set('q', `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false and (${nameConditions})`);
     url.searchParams.set('fields', 'files(id, name)');
 
     const res = await this.deps.fetchImpl(url.toString(), {
@@ -80,7 +107,9 @@ export class GoogleDriveFolderService {
       const data = (await res.json()) as any;
       if (data.files && data.files.length > 0) {
         const id = data.files[0].id;
-        userCache.set(folderName, id);
+        for (const name of searchNames) {
+          userCache.set(name, id);
+        }
         return id;
       }
     }
@@ -103,7 +132,9 @@ export class GoogleDriveFolderService {
     }
 
     const created = (await createRes.json()) as any;
-    userCache.set(folderName, created.id);
+    for (const name of searchNames) {
+      userCache.set(name, created.id);
+    }
     return created.id;
   }
 
@@ -417,7 +448,25 @@ export class GoogleDriveFolderService {
         lowerName.endsWith('.mov') ||
         lowerName.endsWith('.webm')
       ) {
-        targetFolder = 'Media & Creative';
+        targetFolder = 'Media & Kreatif';
+      } else if (
+        lowerName.includes('produk') ||
+        lowerName.includes('katalog') ||
+        lowerName.includes('pesanan') ||
+        lowerName.includes('order') ||
+        lowerName.includes('toko')
+      ) {
+        targetFolder = 'Toko & Katalog';
+      } else if (
+        lowerName.includes('kas') ||
+        lowerName.includes('keuangan') ||
+        lowerName.includes('settlement') ||
+        lowerName.includes('qris') ||
+        lowerName.includes('dana') ||
+        lowerName.includes('pembukuan') ||
+        lowerName.includes('finance')
+      ) {
+        targetFolder = 'Keuangan & Pembukuan';
       } else if (
         file.mimeType === 'application/vnd.google-apps.spreadsheet' ||
         file.mimeType.includes('spreadsheet') ||
@@ -425,7 +474,7 @@ export class GoogleDriveFolderService {
         lowerName.endsWith('.xls') ||
         lowerName.endsWith('.csv')
       ) {
-        targetFolder = 'Spreadsheets & Analysis';
+        targetFolder = 'Spreadsheet & Analisis';
       } else if (lowerName.includes('system') || lowerName.includes('memory') || lowerName.includes('log')) {
         targetFolder = 'System Core';
       }
