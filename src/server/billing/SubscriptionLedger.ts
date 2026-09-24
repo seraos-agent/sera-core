@@ -33,11 +33,16 @@ export class SubscriptionLedger {
     this.filePath = customPath || path.join(process.cwd(), '.data', 'subscriptions.json');
     this.supabaseClient = options.supabaseClient !== undefined
       ? options.supabaseClient
-      : SupabaseRestClient.fromEnvironment();
+      : (process.env.VITEST ? null : SupabaseRestClient.fromEnvironment());
 
-    if (!process.env.VITEST || this.isCustomPath) {
+    if (!process.env.VITEST) {
       this.loadFromFile();
       this.loadPromise = this.loadFromCloud();
+    } else if (this.isCustomPath) {
+      this.loadFromFile();
+      if (this.supabaseClient) {
+        this.loadPromise = this.loadFromCloud();
+      }
     }
   }
 
@@ -120,8 +125,15 @@ export class SubscriptionLedger {
     this.scheduleCloudSave();
   }
 
+  public destroy(): void {
+    if (this.cloudSaveTimer) {
+      clearTimeout(this.cloudSaveTimer);
+      this.cloudSaveTimer = null;
+    }
+  }
+
   private scheduleCloudSave(): void {
-    if (!this.supabaseClient || (process.env.VITEST && !this.isCustomPath)) return;
+    if (!this.supabaseClient) return;
     if (this.cloudSaveTimer) clearTimeout(this.cloudSaveTimer);
 
     this.cloudSaveTimer = setTimeout(() => {
