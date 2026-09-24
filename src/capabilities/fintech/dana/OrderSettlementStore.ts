@@ -10,13 +10,29 @@ export interface OrderSettlementRecord {
   netPayout: number;
   payoutMethod: 'DANA' | 'BANK' | 'UNCONFIGURED';
   destination: string;
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'REFUNDED' | 'CANCELLED';
   partnerReferenceNo?: string;
   referenceNo?: string;
   error?: string;
   settledAt: number;
   attempts?: number;
   lastAttemptAt?: number;
+  refundDetails?: {
+    refundNo?: string;
+    partnerRefundNo?: string;
+    refundAmount?: number;
+    refundedAt?: number;
+    reason?: string;
+    status?: 'SUCCESS' | 'PENDING' | 'FAILED';
+    error?: string;
+  };
+  cancelDetails?: {
+    cancelTime?: string;
+    reason?: string;
+    cancelledAt?: number;
+    status?: 'SUCCESS' | 'PENDING' | 'FAILED';
+    error?: string;
+  };
 }
 
 export interface OrderSettlementStoreOptions {
@@ -114,9 +130,30 @@ export class OrderSettlementStore {
 
   /**
    * Lists all settlements for a specific merchant store.
+   * By default, returns all transactions recorded for the store.
    */
-  public listStoreSettlements(storeId: string): OrderSettlementRecord[] {
-    return Array.from(this.records.values()).filter((r) => r.storeId === storeId);
+  public listStoreSettlements(storeId: string, options?: { includeFailed?: boolean }): OrderSettlementRecord[] {
+    return Array.from(this.records.values()).filter((r) => {
+      if (r.storeId !== storeId) return false;
+      if (options?.includeFailed === false && r.status === 'FAILED') return false;
+      return true;
+    });
+  }
+
+  /**
+   * Retrieves visible transaction history for end-users.
+   * In compliance with DANA Partner Action requirements:
+   * "Transaction marked as FAILED, user can't see any transaction in history page"
+   * Only SUCCESS, CANCELLED, or REFUNDED transactions are shown to users;
+   * Orders that FAILED at checkout or authorization are excluded from the history page.
+   */
+  public getUserTransactionHistory(storeId?: string, destination?: string): OrderSettlementRecord[] {
+    return Array.from(this.records.values()).filter((r) => {
+      if (r.status === 'FAILED') return false;
+      if (storeId && r.storeId !== storeId) return false;
+      if (destination && r.destination !== destination) return false;
+      return true;
+    });
   }
 
   /**
@@ -147,7 +184,7 @@ export class OrderSettlementStore {
    */
   public updateSettlementStatus(
     reference: string,
-    status: 'SUCCESS' | 'FAILED' | 'PENDING',
+    status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'REFUNDED',
     details?: { referenceNo?: string; error?: string }
   ): OrderSettlementRecord | undefined {
     const rec = this.findSettlementByReference(reference);
@@ -156,6 +193,97 @@ export class OrderSettlementStore {
     rec.status = status;
     if (details?.referenceNo) rec.referenceNo = details.referenceNo;
     if (details?.error !== undefined) rec.error = details.error;
+    rec.lastAttemptAt = Date.now();
+    this.records.set(rec.orderId, rec);
+    this.saveRecords();
+    return rec;
+  }
+
+  /**
+   * Records or marks an order as refunded in the ledger.
+   * Enables users to view refunded transactions in transaction history.
+   */
+  public recordRefund(
+    reference: string,
+    refundDetails: {
+      refundNo?: string;
+      partnerRefundNo?: string;
+      refundAmount?: number;
+      reason?: string;
+      status?: 'SUCCESS' | 'PENDING' | 'FAILED';
+      error?: string;
+    },
+    refundStatus: 'SUCCESS' | 'PENDING' | 'FAILED' | boolean = 'SUCCESS'
+  ): OrderSettlementRecord | undefined {
+    const rec = this.findSettlementByReference(reference);
+    if (!rec) return undefined;
+
+    const normalizedStatus: 'SUCCESS' | 'PENDING' | 'FAILED' =
+      typeof refundStatus === 'boolean'
+        ? (refundStatus ? 'PENDING' : 'SUCCESS')
+        : refundStatus;
+
+    if (normalizedStatus === 'SUCCESS') {
+      rec.status = 'REFUNDED';
+    } else if (normalizedStatus === 'PENDING') {
+      rec.status = 'PENDING';
+    }
+    // If FAILED: retain original payment status (e.g. SUCCESS), but record refundDetails with status 'FAILED' and error
+    rec.refundDetails = {
+      ...refundDetails,
+      status: normalizedStatus,
+      refundedAt: Date.now()
+    };
+    rec.lastAttemptAt = Date.now();
+    this.records.set(rec.orderId, rec);
+    this.saveRecords();
+    return rec;
+  }
+
+  /**
+   * Records or marks an order as cancelled in the ledger.
+   * Enables users to view cancelled transactions in transaction history.
+   */
+  public recordCancel(
+    reference: string,
+    cancelDetails: {
+      cancelTime?: string;
+      reason?: string;
+      status?: 'SUCCESS' | 'PENDING' | 'FAILED';
+      error?: string;
+    },
+    cancelStatus: 'SUCCESS' | 'PENDING' | 'FAILED' = 'SUCCESS'
+  ): OrderSettlementRecord | undefined {
+    let rec = this.findSettlementByReference(reference);
+    if (!rec) {
+      // Record new settlement placeholder if not yet tracked
+      this.recordSettlement({
+        orderId: reference,
+        storeId: 'DEFAULT',
+        storeName: 'Platform Store',
+        grossAmount: 0,
+        platformFee: 0,
+        netPayout: 0,
+        payoutMethod: 'DANA',
+        destination: 'N/A',
+        status: cancelStatus === 'SUCCESS' ? 'CANCELLED' : (cancelStatus === 'PENDING' ? 'PENDING' : 'FAILED'),
+        partnerReferenceNo: reference,
+        settledAt: Date.now()
+      });
+      rec = this.findSettlementByReference(reference);
+    }
+    if (!rec) return undefined;
+
+    if (cancelStatus === 'SUCCESS') {
+      rec.status = 'CANCELLED';
+    } else if (cancelStatus === 'PENDING') {
+      rec.status = 'PENDING';
+    }
+    rec.cancelDetails = {
+      ...cancelDetails,
+      cancelledAt: Date.now(),
+      status: cancelStatus
+    };
     rec.lastAttemptAt = Date.now();
     this.records.set(rec.orderId, rec);
     this.saveRecords();

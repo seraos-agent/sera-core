@@ -24,10 +24,13 @@ describe('DANA Fintech Router Integration Tests', () => {
 
     app = express();
     app.use(express.json());
-    app.use('/api/dana', createDanaRouter({
+    const danaRouter = createDanaRouter({
       subscriptionService: mockSubscriptionService,
-      io: mockIo
-    }));
+      io: mockIo,
+      defaultSimulateError: false
+    });
+    app.use('/api/dana', danaRouter);
+    app.use('/v1.0/debit', danaRouter);
 
     await new Promise<void>((resolve) => {
       server = app.listen(0, () => {
@@ -57,8 +60,8 @@ describe('DANA Fintech Router Integration Tests', () => {
     expect(body.endpoints).toContain('/api/dana/topup-status');
   });
 
-  describe('Finish Payment URL (POST /api/dana/notify)', () => {
-    it('handles DANA payment notification and returns dual-compatible 200 response', async () => {
+  describe('Finish Payment URL (POST /api/dana/notify & POST /v1.0/debit/notify)', () => {
+    it('handles DANA payment notification and returns dual-compatible 200 response with 2005600', async () => {
       const payload = {
         merchantTransId: 'topup_user123_1789957000',
         acquirementId: 'ACQ-DANA-991283',
@@ -81,9 +84,8 @@ describe('DANA Fintech Router Integration Tests', () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.responseCode).toBe('2005400');
+      expect(body.responseCode).toBe('2005600');
       expect(body.responseMessage).toBe('Successful');
-      expect(body.response?.body?.resultInfo?.resultStatus).toBe('S');
 
       // Verifies credits are granted (50,000 * 13.33 ≈ 666,500 tokens)
       expect(mockSubscriptionService.addCreditsDirectly).toHaveBeenCalledWith(
@@ -92,11 +94,75 @@ describe('DANA Fintech Router Integration Tests', () => {
       );
     });
 
+    it('handles official SNAP BI Finish Notify (POST /v1.0/debit/notify) with latestTransactionStatus=00', async () => {
+      const payload = {
+        originalPartnerReferenceNo: '2020102900000000000001',
+        originalReferenceNo: '2020102977770000000009',
+        latestTransactionStatus: '00',
+        transactionStatusDesc: 'Success',
+        amount: {
+          value: '15000.00',
+          currency: 'IDR'
+        }
+      };
+
+      const res = await fetch(`${baseUrl}/v1.0/debit/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.responseCode).toBe('2005600');
+      expect(body.responseMessage).toBe('Successful');
+    });
+
     it('responds with 200 on GET probe verification from DANA sandbox tester', async () => {
       const res = await fetch(`${baseUrl}/api/dana/notify`);
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.responseCode).toBe('2005400');
+      expect(body.responseCode).toBe('2005600');
+    });
+
+    it('simulates 5005601 Internal Server Error (Scenario 35) when simulate mode is enabled', async () => {
+      // 1. Enable simulation mode
+      const toggleRes = await fetch(`${baseUrl}/api/dana/simulate-mode?enable=true`);
+      const toggleBody = await toggleRes.json();
+      expect(toggleBody.simulateErrorMode).toBe(true);
+      expect(toggleBody.activeResponseCode).toBe('5005601');
+
+      // 2. Send webhook notification
+      const payload = {
+        originalPartnerReferenceNo: '2020102900000000000002',
+        originalReferenceNo: '2020102977770000000010',
+        latestTransactionStatus: '00',
+        transactionStatusDesc: 'Success',
+        amount: {
+          value: '15000.00',
+          currency: 'IDR'
+        }
+      };
+
+      const res = await fetch(`${baseUrl}/v1.0/debit/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.responseCode).toBe('5005601');
+      expect(body.responseMessage).toBe('Internal Server Error');
+
+      // 3. Verify logs recorded the call
+      const logsRes = await fetch(`${baseUrl}/api/dana/webhook-logs`);
+      const logsBody = await logsRes.json();
+      expect(logsBody.count).toBeGreaterThan(0);
+      expect(logsBody.logs[0].responseSent.status).toBe(500);
+
+      // 4. Reset simulation mode to false
+      await fetch(`${baseUrl}/api/dana/simulate-mode?enable=false`);
     });
   });
 

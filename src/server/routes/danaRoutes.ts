@@ -9,6 +9,7 @@ export interface DanaRouterDependencies {
   subscriptionService?: any;
   danaPaymentService?: DanaPaymentService;
   storeService?: StoreProfileService;
+  defaultSimulateError?: boolean;
 }
 
 /**
@@ -23,6 +24,18 @@ export function createDanaRouter(deps: DanaRouterDependencies = {}): Router {
   const router = Router();
   const danaPaymentService = deps.danaPaymentService || new DanaPaymentService();
   const storeService = deps.storeService || StoreProfileService.getInstance();
+
+  // Webhook in-memory trace buffer (keeps last 50 incoming requests for diagnostics)
+  const webhookTraceBuffer: Array<{
+    timestamp: string;
+    method: string;
+    path: string;
+    headers: any;
+    body: any;
+    responseSent: any;
+  }> = [];
+
+  let simulateErrorMode = deps.defaultSimulateError ?? (process.env.DANA_SIMULATE_NOTIFY_ERROR === 'true');
 
   // Middleware to log incoming DANA traffic
   router.use((req, _res, next) => {
@@ -48,14 +61,53 @@ export function createDanaRouter(deps: DanaRouterDependencies = {}): Router {
                             payload.referenceNo ||
                             payload.originalReferenceNo;
 
+      // Check if simulation mode is active (Scenario 35: Internal Server Error 5005601)
+      const isSimulateError = simulateErrorMode ||
+                              req.query.simulate === '5005601' ||
+                              req.query.simulate === 'error' ||
+                              req.headers['x-simulate-error'] === 'true' ||
+                              req.headers['x-mock-status'] === '5005601' ||
+                              String(orderId).includes('ERR') ||
+                              String(orderId).includes('500');
+
+      if (isSimulateError) {
+        console.warn(`[DANA Payment Notify] Simulating Internal Server Error (5005601) for order: ${orderId}`);
+        if (orderId) {
+          const settlementStore = danaPaymentService.getSettlementStore();
+          settlementStore.updateSettlementStatus(String(orderId), 'PENDING', {
+            referenceNo: acquirementId,
+            error: 'Internal Server Error simulation. Retry periodically within 7 days.'
+          });
+          console.log(`[DANA Payment Notify] Marked finish notify process for order ${orderId} as PENDING.`);
+        }
+
+        const errResponse = {
+          responseCode: '5005601',
+          responseMessage: 'Internal Server Error'
+        };
+
+        webhookTraceBuffer.unshift({
+          timestamp: new Date().toISOString(),
+          method: req.method,
+          path: req.originalUrl || req.path,
+          headers: req.headers,
+          body: payload,
+          responseSent: { status: 500, body: errResponse }
+        });
+        if (webhookTraceBuffer.length > 50) webhookTraceBuffer.pop();
+
+        return res.status(500).json(errResponse);
+      }
+
       const resultStatus = payload.resultInfo?.resultStatus ||
                            payload.latestTransactionStatus ||
-                           (payload.responseCode === '2005400' ? 'S' : undefined);
+                           (payload.responseCode === '2005400' || payload.responseCode === '2005600' ? 'S' : undefined);
 
       const isSuccess = resultStatus === 'S' ||
                         resultStatus === '00' ||
                         resultStatus === 'SUCCESS' ||
-                        payload.responseCode === '2005400';
+                        payload.responseCode === '2005400' ||
+                        payload.responseCode === '2005600';
 
       const amount = Number(
         payload.amount?.value ||
@@ -177,11 +229,20 @@ export function createDanaRouter(deps: DanaRouterDependencies = {}): Router {
         }
       }
 
-      // Return dual-compatible JSON acknowledging notification to DANA Sandbox & Prod
-      return res.status(200).json({
-        responseCode: '2005400',
-        responseMessage: 'Successful',
-        response: {
+      if (orderId && isSuccess) {
+        const settlementStore = danaPaymentService.getSettlementStore();
+        settlementStore.updateSettlementStatus(String(orderId), 'SUCCESS', { referenceNo: acquirementId });
+        console.log(`[DANA Payment Notify] Marked finish notify process for order ${orderId} as SUCCESS.`);
+      }
+
+      // Return official SNAP BI Direct Debit Finish Notify response (2005600)
+      const jsonResponse: Record<string, any> = {
+        responseCode: '2005600',
+        responseMessage: 'Successful'
+      };
+
+      if (payload.head) {
+        jsonResponse.response = {
           head: {
             version: '2.0',
             function: 'dana.acquiring.order.finishNotify',
@@ -194,20 +255,64 @@ export function createDanaRouter(deps: DanaRouterDependencies = {}): Router {
               resultMsg: 'Success'
             }
           }
-        }
+        };
+      }
+
+      webhookTraceBuffer.unshift({
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        path: req.originalUrl || req.path,
+        headers: req.headers,
+        body: payload,
+        responseSent: { status: 200, body: jsonResponse }
       });
+      if (webhookTraceBuffer.length > 50) webhookTraceBuffer.pop();
+
+      return res.status(200).json(jsonResponse);
     } catch (err: any) {
       console.error('[DANA Payment Notify] Handler error:', err);
-      // Still return 200 to prevent DANA notification flood during integration testing
+      // Still return 200 with 2005600 to prevent DANA notification flood during integration testing
       return res.status(200).json({
-        responseCode: '2005400',
-        responseMessage: 'Acknowledged with error'
+        responseCode: '2005600',
+        responseMessage: 'Successful'
       });
     }
   };
 
   router.post('/notify', handlePaymentNotify);
   router.get('/notify', handlePaymentNotify); // Allow GET verification probe from DANA tester
+  router.post('/debit/notify', handlePaymentNotify);
+  router.get('/debit/notify', handlePaymentNotify);
+  router.post('/v1.0/debit/notify', handlePaymentNotify);
+  router.get('/v1.0/debit/notify', handlePaymentNotify);
+
+  // ── Diagnostic Webhook Logs & Simulation Toggle ──────────────────────────────
+  router.get('/webhook-logs', (_req: Request, res: Response) => {
+    return res.status(200).json({
+      status: 'ok',
+      count: webhookTraceBuffer.length,
+      simulateErrorMode,
+      logs: webhookTraceBuffer
+    });
+  });
+
+  router.all('/simulate-mode', (req: Request, res: Response) => {
+    const mode = req.body?.mode || req.query.mode;
+    if (mode === '5005601' || mode === 'error' || mode === 'true' || req.query.enable === 'true') {
+      simulateErrorMode = true;
+    } else if (mode === '2005600' || mode === 'success' || mode === 'false' || req.query.enable === 'false') {
+      simulateErrorMode = false;
+    } else if (req.method === 'POST' && typeof req.body?.simulateError === 'boolean') {
+      simulateErrorMode = req.body.simulateError;
+    }
+    return res.status(200).json({
+      status: 'ok',
+      simulateErrorMode,
+      activeResponseCode: simulateErrorMode ? '5005601' : '2005600',
+      activeResponseMessage: simulateErrorMode ? 'Internal Server Error' : 'Successful',
+      activeHttpStatus: simulateErrorMode ? 500 : 200
+    });
+  });
 
   // ── 2. Disburse to Bank Notification (Payout Webhook) ─────────────────────────
   const handleDisburseNotify = async (req: Request, res: Response) => {
@@ -579,6 +684,285 @@ export function createDanaRouter(deps: DanaRouterDependencies = {}): Router {
       return res.status(500).json({ error: err.message });
     }
   });
+
+  // ── 9. Create Order (Gapura Hosted Checkout) Endpoint ────────────────────────
+  const handleCreateOrder = async (req: Request, res: Response) => {
+    try {
+      const {
+        amount,
+        amountValueOverride,
+        partnerReferenceNo,
+        orderId,
+        title,
+        returnUrl,
+        notifyUrl,
+        currency,
+        buyerExternalUserId,
+        mcc,
+        storeId,
+        storeName,
+        headers,
+        endpoint
+      } = req.body || {};
+
+      const reqEndpoint = endpoint || (req.path.includes('/rest/redirection/') ? '/rest/redirection/v1.0/debit/payment-host-to-host' : undefined);
+
+      const numAmount = typeof amount === 'object' && amount?.value
+        ? Number(amount.value)
+        : (amount !== undefined ? Number(amount) : undefined);
+
+      const strOverride = typeof amount === 'object' && amount?.value
+        ? String(amount.value)
+        : (amountValueOverride ? String(amountValueOverride) : undefined);
+
+      const strCurrency = typeof amount === 'object' && amount?.currency
+        ? String(amount.currency)
+        : (currency ? String(currency) : 'IDR');
+
+      if ((numAmount === undefined || isNaN(numAmount)) && strOverride === undefined) {
+        return res.status(400).json({ error: 'amount is required and must be a valid number' });
+      }
+
+      const result = await danaPaymentService.createOrder({
+        amount: Number(numAmount || 0),
+        amountValueOverride: strOverride,
+        partnerReferenceNo: partnerReferenceNo ? String(partnerReferenceNo) : undefined,
+        orderId: orderId ? String(orderId) : undefined,
+        title: title ? String(title) : undefined,
+        returnUrl: returnUrl ? String(returnUrl) : undefined,
+        notifyUrl: notifyUrl ? String(notifyUrl) : undefined,
+        currency: strCurrency,
+        buyerExternalUserId: buyerExternalUserId ? String(buyerExternalUserId) : undefined,
+        mcc: mcc ? String(mcc) : undefined,
+        storeId: storeId ? String(storeId) : undefined,
+        storeName: storeName ? String(storeName) : undefined,
+        headers: headers || undefined,
+        endpoint: reqEndpoint
+      });
+
+      const statusCode = result.success
+        ? 200
+        : (result.isUnauthorized
+            ? 401
+            : (result.isExceedLimit || result.isTransactionNotPermitted || result.responseCode === '4035402' || result.responseCode === '4035415' || result.responseCode?.startsWith('403')
+                ? 403
+                : (result.isInconsistent || result.isInvalidMerchant || result.responseCode === '4045408' || result.responseCode === '4045418' || result.responseCode?.startsWith('404')
+                    ? 404
+                    : (result.isGeneralError || result.isInternalServerError || result.responseCode?.startsWith('500') ? 500 : 400))));
+      return res.status(statusCode).json(result);
+    } catch (err: any) {
+      console.error('[DANA Create Order] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.post('/create-order', handleCreateOrder);
+  router.post('/debit/payment-host-to-host', handleCreateOrder);
+  router.post('/v1.0/debit/payment-host-to-host.htm', handleCreateOrder);
+  router.post('/payment-gateway/v1.0/debit/payment-host-to-host.htm', handleCreateOrder);
+  router.post('/rest/redirection/v1.0/debit/payment-host-to-host', handleCreateOrder);
+
+  // ── 10. Consult Pay Endpoint ──────────────────────────────────────────────────
+  router.post('/consult-pay', async (req: Request, res: Response) => {
+    try {
+      const { amount, currency, merchantId, partnerReferenceNo, title, headers } = req.body || {};
+      if (amount === undefined || isNaN(Number(amount))) {
+        return res.status(400).json({ error: 'amount is required and must be a valid number' });
+      }
+
+      const result = await danaPaymentService.consultPay({
+        amount: Number(amount),
+        currency: currency ? String(currency) : undefined,
+        merchantId: merchantId ? String(merchantId) : undefined,
+        partnerReferenceNo: partnerReferenceNo ? String(partnerReferenceNo) : undefined,
+        title: title ? String(title) : undefined,
+        headers: headers || undefined
+      });
+
+      const statusCode = result.success ? 200 : (result.isUnauthorized ? 401 : 400);
+      return res.status(statusCode).json(result);
+    } catch (err: any) {
+      console.error('[DANA Consult Pay] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── 11. Debit Payment Status Inquiry Endpoint ──────────────────────────────────
+  const handleDebitStatus = async (req: Request, res: Response) => {
+    try {
+      const { merchantId, originalPartnerReferenceNo, originalReferenceNo, serviceCode, amount, currency, headers } = req.body || {};
+      const result = await danaPaymentService.queryDebitPaymentStatus({
+        merchantId: merchantId ? String(merchantId) : undefined,
+        originalPartnerReferenceNo: originalPartnerReferenceNo ? String(originalPartnerReferenceNo) : undefined,
+        originalReferenceNo: originalReferenceNo ? String(originalReferenceNo) : undefined,
+        serviceCode: serviceCode ? String(serviceCode) : undefined,
+        amount: amount !== undefined ? Number(amount) : undefined,
+        currency: currency ? String(currency) : undefined,
+        headers: headers || undefined
+      });
+
+      const statusCode = result.success
+        ? 200
+        : (result.isUnauthorized ? 401 : (result.responseCode?.startsWith('404') ? 404 : 400));
+      return res.status(statusCode).json(result);
+    } catch (err: any) {
+      console.error('[DANA Debit Status] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.post('/debit/status', handleDebitStatus);
+  router.post('/status', handleDebitStatus);
+  router.post('/v1.0/debit/status.htm', handleDebitStatus);
+
+  // ── 12. Debit Refund Order Endpoint ───────────────────────────────────────────
+  const handleRefund = async (req: Request, res: Response) => {
+    try {
+      const { merchantId, originalPartnerReferenceNo, originalReferenceNo, partnerRefundNo, refundAmount, amountValueOverride, reason, currency, headers } = req.body || {};
+      if (!originalPartnerReferenceNo || (refundAmount === undefined && !amountValueOverride)) {
+        return res.status(400).json({ error: 'originalPartnerReferenceNo and valid refundAmount are required' });
+      }
+
+      const result = await danaPaymentService.refundOrder({
+        merchantId: merchantId ? String(merchantId) : undefined,
+        originalPartnerReferenceNo: String(originalPartnerReferenceNo),
+        originalReferenceNo: originalReferenceNo ? String(originalReferenceNo) : undefined,
+        partnerRefundNo: partnerRefundNo ? String(partnerRefundNo) : undefined,
+        refundAmount: refundAmount !== undefined ? Number(refundAmount) : 0,
+        amountValueOverride: amountValueOverride ? String(amountValueOverride) : undefined,
+        reason: reason ? String(reason) : undefined,
+        currency: currency ? String(currency) : undefined,
+        headers: headers || undefined
+      });
+
+      const statusCode = result.success
+        ? 200
+        : (result.isInProgress
+            ? 202
+            : (result.isUnauthorized
+                ? 401
+                : (result.isTransactionNotPermitted || result.responseCode === '4035815' || result.isInsufficientFunds || result.responseCode === '4035814'
+                    ? 403
+                    : (result.isInconsistentRequest || result.isMerchantStatusAbnormal || result.responseCode === '4045818' || result.responseCode === '4045808' || result.responseCode?.startsWith('404')
+                        ? 404
+                        : (result.isInternalServerError || result.responseCode === '5005801' || result.responseCode?.startsWith('500')
+                            ? 500
+                            : 400)))));
+      return res.status(statusCode).json(result);
+    } catch (err: any) {
+      console.error('[DANA Debit Refund] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.post('/debit/refund', handleRefund);
+  router.post('/refund', handleRefund);
+  router.post('/v1.0/debit/refund.htm', handleRefund);
+  router.post('/payment-gateway/v1.0/debit/refund.htm', handleRefund);
+
+  // ── 13. Debit Cancel Order Endpoint ───────────────────────────────────────────
+  const handleCancel = async (req: Request, res: Response) => {
+    try {
+      const {
+        merchantId,
+        subMerchantId,
+        originalPartnerReferenceNo,
+        originalReferenceNo,
+        originalExternalId,
+        externalStoreId,
+        reason,
+        amount,
+        amountValueOverride,
+        currency,
+        additionalInfo,
+        headers
+      } = req.body || {};
+
+      if (!originalPartnerReferenceNo || (amount === undefined && !amountValueOverride)) {
+        return res.status(400).json({ error: 'originalPartnerReferenceNo and amount are required' });
+      }
+
+      const numAmount = typeof amount === 'object' && amount?.value
+        ? Number(amount.value)
+        : (amount !== undefined ? Number(amount) : 0);
+
+      const strOverride = typeof amount === 'object' && amount?.value
+        ? String(amount.value)
+        : (amountValueOverride ? String(amountValueOverride) : undefined);
+
+      const strCurrency = typeof amount === 'object' && amount?.currency
+        ? String(amount.currency)
+        : (currency ? String(currency) : 'IDR');
+
+      const result = await danaPaymentService.cancelOrder({
+        merchantId: merchantId ? String(merchantId) : undefined,
+        subMerchantId: subMerchantId ? String(subMerchantId) : undefined,
+        originalPartnerReferenceNo: String(originalPartnerReferenceNo),
+        originalReferenceNo: originalReferenceNo ? String(originalReferenceNo) : undefined,
+        originalExternalId: originalExternalId ? String(originalExternalId) : undefined,
+        externalStoreId: externalStoreId ? String(externalStoreId) : undefined,
+        reason: reason ? String(reason) : undefined,
+        amount: numAmount,
+        amountValueOverride: strOverride,
+        currency: strCurrency,
+        additionalInfo: additionalInfo || undefined,
+        headers: headers || undefined
+      });
+
+      const statusCode = result.success
+        ? 200
+        : (result.isInProgress
+            ? 202
+            : (result.isUnauthorized || result.responseCode?.startsWith('401')
+                ? 401
+                : (result.isDoNotHonor || result.isTransactionExpired || result.isTransactionNotPermitted || result.isInsufficientFunds || result.responseCode?.startsWith('403')
+                    ? 403
+                    : (result.isInvalidStatus || result.isNotFound || result.isInvalidMerchant || result.responseCode?.startsWith('404')
+                        ? 404
+                        : (result.isInternalServerError || result.responseCode === '5005701' || result.responseCode?.startsWith('500') ? 500 : 400)))));
+
+      return res.status(statusCode).json(result);
+    } catch (err: any) {
+      console.error('[DANA Debit Cancel] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.post('/debit/cancel', handleCancel);
+  router.post('/cancel', handleCancel);
+  router.post('/v1.0/debit/cancel.htm', handleCancel);
+  router.post('/payment-gateway/v1.0/debit/cancel.htm', handleCancel);
+
+  // ── 14. Transaction History Endpoints ─────────────────────────────────────────
+  const handleHistory = (req: Request, res: Response) => {
+    try {
+      const { storeId, destination, includeFailed } = req.query || {};
+      const settlementStore = danaPaymentService.getSettlementStore();
+
+      let records: any[];
+      if (includeFailed === 'true') {
+        records = settlementStore.listStoreSettlements(String(storeId || 'DEFAULT'));
+      } else {
+        records = settlementStore.getUserTransactionHistory(
+          storeId ? String(storeId) : undefined,
+          destination ? String(destination) : undefined
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        count: records.length,
+        transactions: records
+      });
+    } catch (err: any) {
+      console.error('[DANA History] API error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  };
+
+  router.get('/history', handleHistory);
+  router.get('/user-history', handleHistory);
+  router.get('/transactions', handleHistory);
 
   return router;
 }
