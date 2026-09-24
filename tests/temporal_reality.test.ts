@@ -4,7 +4,8 @@ import { WorldStateService } from '../src/core/world-state/WorldStateService';
 import {
   resolveTimezoneFromPhone,
   formatTemporalReality,
-  isValidTimezone
+  isValidTimezone,
+  getPeriodOfDay
 } from '../src/core/world-state/temporalUtils';
 import { CognitiveContextBuilder } from '../src/capabilities/dialogue/CognitiveContextBuilder';
 import { EventTypes } from '../src/core/events/types';
@@ -45,6 +46,14 @@ describe('Temporal Reality & World Clock System', () => {
       expect(resolveTimezoneFromPhone('invalid')).toBeNull();
     });
 
+    it('should accurately calculate period of day (Dini Hari, Pagi, Siang, Sore, Malam)', () => {
+      expect(getPeriodOfDay(2).periodId).toBe('Dini Hari');
+      expect(getPeriodOfDay(7).periodId).toBe('Pagi');
+      expect(getPeriodOfDay(12).periodId).toBe('Siang');
+      expect(getPeriodOfDay(16).periodId).toBe('Sore');
+      expect(getPeriodOfDay(20).periodId).toBe('Malam');
+    });
+
     it('should format canonical UTC and local reality strings deterministically', () => {
       const fixedDate = new Date('2026-09-12T16:00:00.000Z');
       
@@ -53,15 +62,20 @@ describe('Temporal Reality & World Clock System', () => {
       expect(realityWib.utcFormatted).toContain('16:00:00 UTC');
       expect(realityWib.localFormatted).toContain('23:00:00 WIB');
       expect(realityWib.localFormatted).toContain('Asia/Jakarta, UTC+7');
+      expect(realityWib.periodOfDay).toBe('Malam');
+      expect(realityWib.humanSummary).toContain('Malam hari');
 
       const realityMakkah = formatTemporalReality(fixedDate, 'Asia/Riyadh', 'Makkah, Saudi Arabia');
       expect(realityMakkah.localFormatted).toContain('19:00:00 AST');
       expect(realityMakkah.localFormatted).toContain('Asia/Riyadh, UTC+3');
+      expect(realityMakkah.periodOfDay).toBe('Malam');
 
       const realitySydney = formatTemporalReality(fixedDate, 'Australia/Sydney', 'Australia');
       expect(realitySydney.localFormatted).toContain('02:00:00 AEST');
       expect(realitySydney.localFormatted).toContain('Australia/Sydney, UTC+10');
+      expect(realitySydney.periodOfDay).toBe('Dini Hari');
     });
+
 
     it('should validate IANA timezones correctly', () => {
       expect(isValidTimezone('Asia/Jakarta')).toBe(true);

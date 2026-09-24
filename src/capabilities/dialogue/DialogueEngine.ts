@@ -625,13 +625,30 @@ export class DialogueEngine {
 
       // ── Phase 2: Dynamic Capability & Prompt Assembly ───────────────────────
       const userTimezone = (this.worldStateService.getTemporalState() as any)?.timezone;
+      const classification = await this.intentClassifier.classify(effectiveUserMessage, {
+        hasDocs: attachedDocs.length > 0,
+        hasImages: attachedImages.length > 0
+      });
+
+      // Update thinking activity with distilled cognitive anchor
+      this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, {
+        content: 'Thinking',
+        phase: 'THINKING',
+        subText: classification.distilledIntent.cognitiveAnchor,
+        cognitiveSteps: [],
+        startTime: turnStartTime
+      });
+
       const { systemPrompt, tools } = DynamicPromptAssembler.assemble({
+        domains: classification.distilledIntent.activeDomains,
+        executionStrategy: classification.distilledIntent.executionStrategy,
         subAgentCoordinator: this.subAgentCoordinator,
         capabilityCatalog: this.capabilityCatalog,
         hasImages: attachedImages.length > 0,
         hasDocs: attachedDocs.length > 0,
         userTimezone
       });
+
 
       // Ensure chat history and platform turns are loaded and synchronized from Supabase
       await this.chatHistoryStore.ensureLoaded();

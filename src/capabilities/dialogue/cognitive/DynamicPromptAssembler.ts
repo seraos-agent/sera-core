@@ -1,7 +1,7 @@
 import { SubAgentCoordinator } from '../../agents/SubAgentCoordinator';
 import { SubAgentDomain } from '../../agents/types';
 import { SeraTool } from '../../../core/cognitive/Tool';
-import { SYSTEM_PROMPT } from '../SystemPrompts';
+import { SYSTEM_PROMPT, CORE_SYSTEM_PROMPT } from '../SystemPrompts';
 
 export interface PromptAssemblyOptions {
   domains?: SubAgentDomain[];
@@ -28,6 +28,7 @@ export interface AssembledCognitiveContext {
  */
 export class DynamicPromptAssembler {
   private static readonly CORE_PERSONA = SYSTEM_PROMPT;
+  private static readonly LEAN_PERSONA = CORE_SYSTEM_PROMPT;
 
   private static readonly AUTONOMOUS_PRINCIPLES = `
 CRITICAL - EFFECTIVE & DECISIVE OPERATIONAL PRINCIPLES:
@@ -101,44 +102,100 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
       userTimezone
     } = options;
 
-    // 1. Build Dynamic System Prompt rooted in full SYSTEM_PROMPT (rich personality, markdown tables, 18 exemplars)
-    const promptParts: string[] = [this.CORE_PERSONA, this.AUTONOMOUS_PRINCIPLES];
+    const isDirectAnswer = executionStrategy === 'DIRECT_ANSWER';
+    const isExplicitlyScoped = Array.isArray(domains);
+
+    // Determine active specialized domains (defi, productivity, social, system)
+    let specializedDomains: SubAgentDomain[] = [];
+    if (isExplicitlyScoped) {
+      specializedDomains = domains.filter(d => d !== 'general');
+    } else {
+      // Backwards compatibility when options.domains is undefined
+      specializedDomains = ['defi', 'productivity', 'social', 'system'];
+    }
+
+    // 1. Build Dynamic System Prompt rooted in Persona
+    // For direct conversational answers, use LEAN_PERSONA without 18 tool calling exemplars
+    const promptParts: string[] = [isDirectAnswer ? this.LEAN_PERSONA : this.CORE_PERSONA];
+
+    if (!isDirectAnswer) {
+      promptParts.push(this.AUTONOMOUS_PRINCIPLES);
+    }
+
 
     if (userTimezone) {
       promptParts.push(`\nUSER TIMEZONE: ${userTimezone}. Relative times (tomorrow, next week) should align with this timezone.`);
     }
 
-    // Inject domain instructions across all active capabilities
-    for (const domain of Object.keys(this.DOMAIN_PROMPTS)) {
-      if (this.DOMAIN_PROMPTS[domain]) {
-        promptParts.push(this.DOMAIN_PROMPTS[domain]);
+    // Inject domain instructions ONLY for active specialized domains
+    if (!isDirectAnswer && specializedDomains.length > 0) {
+      for (const domain of specializedDomains) {
+        if (this.DOMAIN_PROMPTS[domain]) {
+          promptParts.push(this.DOMAIN_PROMPTS[domain]);
+        }
       }
-    }
 
-    const domainOverlay = subAgentCoordinator.getCompositeSystemPrompt();
-    if (domainOverlay) {
-      promptParts.push(`\n${domainOverlay}`);
+      if (domains === undefined) {
+        const domainOverlay = subAgentCoordinator.getCompositeSystemPrompt();
+        if (domainOverlay) {
+          promptParts.push(`\n${domainOverlay}`);
+        }
+      } else {
+        const domainOverlay = subAgentCoordinator.getSystemPromptForDomains(specializedDomains);
+        if (domainOverlay) {
+          promptParts.push(`\n${domainOverlay}`);
+        }
+      }
+    } else if (domains === undefined) {
+      // Legacy fallback when options.domains was completely omitted
+      for (const domain of Object.keys(this.DOMAIN_PROMPTS)) {
+        if (this.DOMAIN_PROMPTS[domain]) {
+          promptParts.push(this.DOMAIN_PROMPTS[domain]);
+        }
+      }
+      const domainOverlay = subAgentCoordinator.getCompositeSystemPrompt();
+      if (domainOverlay) {
+        promptParts.push(`\n${domainOverlay}`);
+      }
     }
 
     const systemPrompt = promptParts.join('\n');
 
-    // 2. Unchained Ecosystem Tool Spectrum: Always provide authorized tools so Qwen can invoke native functions freely
-    const allDomainTools = subAgentCoordinator.getAllTools();
+    // 2. Selectively bind tools based on active domains and execution strategy
     const toolMap = new Map<string, SeraTool>();
 
-    for (const tool of allDomainTools) {
-      if (!toolMap.has(tool.name)) {
-        toolMap.set(tool.name, tool);
+    if (!isDirectAnswer) {
+      const activeTools = (domains === undefined)
+        ? subAgentCoordinator.getAllTools()
+        : subAgentCoordinator.getToolsForDomains(specializedDomains);
+
+      for (const tool of activeTools) {
+        if (!toolMap.has(tool.name)) {
+          toolMap.set(tool.name, tool);
+        }
       }
-    }
 
-    const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
-      ? capabilityCatalog.availableTools()
-      : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
+      // Catalog tools gating
+      const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
+        ? capabilityCatalog.availableTools()
+        : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
 
-    for (const tool of catalogTools) {
-      if (!toolMap.has(tool.name)) {
-        toolMap.set(tool.name, tool);
+      for (const tool of catalogTools) {
+        // When specialized domains are active, prevent cross-domain tool leakage from catalog
+        if (isExplicitlyScoped && specializedDomains.length > 0) {
+          if (!specializedDomains.includes('defi') && /^(HL_|TRANSFER_|CHECK_WALLET)/i.test(tool.name)) {
+            continue;
+          }
+          if (!specializedDomains.includes('productivity') && /^GDRIVE_/i.test(tool.name)) {
+            continue;
+          }
+          if (!specializedDomains.includes('social') && /^THREADS_/i.test(tool.name)) {
+            continue;
+          }
+        }
+        if (!toolMap.has(tool.name)) {
+          toolMap.set(tool.name, tool);
+        }
       }
     }
 
@@ -150,3 +207,4 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
     };
   }
 }
+

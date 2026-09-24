@@ -73,10 +73,15 @@ ${userLocationInfo}
       cognitiveStateMarkdown += `\n- SERA Agent Vault (Dedicated Custodial Contract on Base): ${walletState.vaultAddress} (Agent Vault Balance: ${walletState.vaultBalance ?? 0} USDC)`;
     }
 
+    const currentPeriod = (temporalReality as any).periodLabel || (temporalReality as any).periodOfDay || '';
+    const humanSummary = (temporalReality as any).humanSummary || temporalReality.localFormatted;
+
     cognitiveStateMarkdown += `\n\n[TEMPORAL REALITY (CANONICAL WORLD CLOCK)]
 - Universal Anchor (UTC): ${temporalReality.utcFormatted}
 - User Primary Local Time: ${temporalReality.localFormatted}
-- Temporal Awareness & World Time: You possess complete real-time temporal intelligence for every timezone worldwide, calculated from the Universal UTC Anchor. If the user mentions travel (e.g. Umrah in Saudi Arabia, trips to Australia, Japan, Europe) or asks about time across different cities/countries, provide accurate local time and naturally contrast time differences when helpful.`;
+- Active Date & Period: ${humanSummary}
+- Temporal Awareness & World Time: You possess complete real-time temporal intelligence for every timezone worldwide, calculated from the Universal UTC Anchor. If the user mentions travel (e.g. Umrah in Saudi Arabia, trips to Australia, Japan, Europe) or asks about time across different cities/countries, provide accurate local time and naturally contrast time differences when helpful.
+- DIRECT TIME CONFIDENCE RULE: When asked what day, date, or time it is, state it immediately, firmly, and authoritatively from this canonical data. NEVER perform mental recalculations, second-guess, or display self-doubt.`;
 
     if (memoryContext?.items && memoryContext.items.length > 0) {
       cognitiveStateMarkdown += `\n\n[ARCHIVED HISTORICAL MEMORY (PREVIOUS SESSIONS - BACKGROUND ONLY)]\n(Notice: The following are past historical memories. Do NOT assert or hallucinate that past bugs, errors, or previous testing claims apply to the current test or active session unless explicitly requested by the user):\n${memoryContext.items.map(it => `- ${it.content}`).join('\n')}`;
@@ -119,9 +124,15 @@ ${userLocationInfo}
       if (platformName === 'whatsapp') {
         channelGuidance = `[PLATFORM: WHATSAPP - MOBILE CONVERSATION]
 You are conversing directly with the user via personal WhatsApp chat.
+- ABSOLUTE CONFIDENCE & ZERO HESITATION BLEED (CRITICAL PROFESSIONALISM):
+  * Always speak with calm, assured, and professional confidence.
+  * All verification, data checks, and self-corrections MUST happen silently behind the scenes in internal thinking.
+  * NEVER leak internal hesitation, second-guessing, or clumsy self-correction monologue into the chat (STRICTLY FORBIDDEN to say phrases like "eh tunggu, biar kucek dulu", "aku bingung sendiri", "takut salah sebut", "eh ternyata bener ya", or "biar gak salah jam").
+  * When asked about day, date, or time, answer directly, cleanly, and decisively.
 - DEFAULT 1-BUBBLE CADENCE (CRITICAL HUMAN FEEL FOR CASUAL CHAT):
   * For casual chat, greetings, banters, jokes, personal remarks, or casual check-ins ("aku ngantuk", "hayo lagi ngapain", "capek", "mantap", etc.): ALWAYS reply with exactly ONE single, warm, punchy message bubble.
   * ZERO UNSOLICITED OFFERS: NEVER tack on unsolicited capability offers (e.g. DO NOT offer to check crypto prices, portfolio, or schedules when the user is just casually chatting). Real human friends do not turn every casual remark into an assistant sales pitch.
+
 - LONG CONTENT, SUMMARIES & EDUCATIONAL DIGESTS (OPTION 2 CADENCE):
   * Whenever delivering multi-point summaries, research breakdowns, or industry news, structure your response cleanly into 2 distinct sections separated by double newlines (\n\n) which will deliver as 2 balanced bubbles:
     - BUBBLE 1 (THE SUBSTANCE):

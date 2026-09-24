@@ -1,3 +1,5 @@
+import { SubAgentDomain } from '../agents/types';
+
 export interface WorkRoute {
   workClass: string;
   lane: string;
@@ -9,6 +11,7 @@ export interface DistilledIntent {
   executionStrategy: 'REQUIRE_TOOL_EXECUTION' | 'MULTI_STEP_ANALYSIS' | 'DIRECT_ANSWER';
   requiredTools?: string[];
   cognitiveAnchor: string;
+  activeDomains?: SubAgentDomain[];
 }
 
 export interface ClassificationResult {
@@ -19,10 +22,11 @@ export interface ClassificationResult {
 }
 
 /**
- * IntentClassifier — Legacy adapter wrapping CognitiveIntake.
+ * IntentClassifier — Semantic Perception & Domain Router for SERA.
  * 
- * Historical note: Previously used hundreds of lines of brittle regex patterns.
- * Now delegated to CognitiveIntake (fast LLM semantic perception) with clean fallbacks.
+ * Classifies incoming user messages into domain capabilities (defi, productivity,
+ * social, system, general) and selects an execution strategy (DIRECT_ANSWER,
+ * REQUIRE_TOOL_EXECUTION, MULTI_STEP_ANALYSIS) to allow just-in-time tool pruning.
  * 
  * Architecture Principle: Single Responsibility, English Code Standard (Rule 7).
  */
@@ -39,7 +43,7 @@ export class IntentClassifier {
     if (!raw) return 'Processing environmental context';
 
     const lower = raw.toLowerCase();
-    const isGreeting = /^(halo|hai|hi|hey|hello|pagi|siang|sore|malam)/i.test(lower) && lower.split(' ').length <= 3;
+    const isGreeting = /^(halo|hai|hi|hey|helo|hei|hello|yo|pagi|siang|sore|malam)/i.test(lower) && lower.split(' ').length <= 3;
     if (isGreeting) {
       return 'Acknowledging user greeting and awaiting intent';
     }
@@ -52,6 +56,22 @@ export class IntentClassifier {
       return 'Interpreting attached visual context';
     }
 
+    if (domain === 'FINANCE') {
+      return `Analyzing financial & market request: ${raw.slice(0, 45)}`;
+    }
+
+    if (domain === 'SPREADSHEET') {
+      return `Structuring workspace data / spreadsheet: ${raw.slice(0, 45)}`;
+    }
+
+    if (domain === 'SOCIAL') {
+      return `Processing creative / social request: ${raw.slice(0, 45)}`;
+    }
+
+    if (domain === 'KNOWLEDGE') {
+      return `Investigating information / web query: ${raw.slice(0, 45)}`;
+    }
+
     return `Processing user request: ${raw.slice(0, 45)}`;
   }
 
@@ -62,27 +82,79 @@ export class IntentClassifier {
     const raw = (userMessage || '').trim();
     const hasDocs = !!options.hasDocs;
     const hasImages = !!options.hasImages;
+    const lower = raw.toLowerCase();
 
+    const activeDomains = new Set<SubAgentDomain>();
     let targetDomain: DistilledIntent['targetDomain'] = 'CONVERSATION';
-    if (hasDocs || /sheet|spreadsheet|excel|csv|tabel/i.test(raw)) {
+
+    // 1. Attached media context
+    if (hasDocs) {
+      activeDomains.add('productivity');
       targetDomain = 'SPREADSHEET';
-    } else if (hasImages) {
+    }
+    if (hasImages) {
+      activeDomains.add('social');
+      activeDomains.add('productivity');
       targetDomain = 'VISION';
-    } else if (/crypto|solana|wallet|transfer|usdc/i.test(raw)) {
-      targetDomain = 'FINANCE';
-    } else if (/threads|twitter|post|tweet/i.test(raw)) {
-      targetDomain = 'SOCIAL';
+    }
+
+    // 2. Keyword & semantic regex detection per domain
+    // Finance / DeFi / Crypto / Hyperliquid
+    const isFinance = /\b(crypto|kripto|bitcoin|btc|eth|ethereum|sol|solana|hype|purr|token|wallet|dompet|transfer|saldo|balance|usdc|orderbook|market\s*data|beli\s*koin|jual\s*koin|spot|hyperliquid|portfolio|portofolio|cuan|rugi|pnl|kirim\s*(saldo|uang|usdc|dana))\b/i.test(lower);
+    if (isFinance) {
+      activeDomains.add('defi');
+      if (targetDomain === 'CONVERSATION') targetDomain = 'FINANCE';
+    }
+
+    // Productivity / Google Drive / Spreadsheets / Documents / Vault
+    const isProductivity = /\b(sheet|spreadsheet|excel|csv|tabel|table|kolom|baris|google\s*drive|gdrive|folder|dokumen|catatan|simpan\s*file|buatkan\s*laporan|export|rekap|pembukuan|data\s*penjualan|arsip|vault)\b/i.test(lower);
+    if (isProductivity) {
+      activeDomains.add('productivity');
+      if (targetDomain === 'CONVERSATION') targetDomain = 'SPREADSHEET';
+    }
+
+    // Social Media / Threads / Image Generation
+    const isSocial = /\b(threads|post|posting|tweet|utas|publish|unggah|buatkan\s*gambar|generate\s*image|gambar|draw|lukis|caption|konten)\b/i.test(lower);
+    if (isSocial) {
+      activeDomains.add('social');
+      if (targetDomain === 'CONVERSATION') targetDomain = 'SOCIAL';
+    }
+
+    // System commands / Theme / Clear Chat
+    const isSystem = /\b(clear\s*chat|hapus\s*chat|bersihkan\s*layar|dark\s*mode|light\s*mode|tema|theme|ingat\s*ini|remember|ganti\s*nama)\b/i.test(lower);
+    if (isSystem) {
+      activeDomains.add('system');
+    }
+
+    // Realtime Search / Information queries (WEB_SEARCH is in SocialMediaAgent)
+    const isSearch = /\b(cari|search|googling|siapa\s+(itu|presiden|menteri|tokoh)|apa\s+(itu|artinya|definisi)|berita|cuaca|lokasi|terdekat|alamat|jadwal|skor|update\s*terbaru|info\s*terbaru)\b/i.test(lower);
+    if (isSearch) {
+      activeDomains.add('social'); // SocialMediaAgent provides WEB_SEARCH
+      if (targetDomain === 'CONVERSATION') targetDomain = 'KNOWLEDGE';
+    }
+
+    // 3. Execution strategy determination
+    let executionStrategy: DistilledIntent['executionStrategy'] = 'DIRECT_ANSWER';
+
+    if (activeDomains.size > 0) {
+      executionStrategy = activeDomains.size > 1 ? 'MULTI_STEP_ANALYSIS' : 'REQUIRE_TOOL_EXECUTION';
+    } else {
+      // Casual greeting, banter, small talk, or conversational questions
+      activeDomains.add('general');
+      executionStrategy = 'DIRECT_ANSWER';
+      targetDomain = 'CONVERSATION';
     }
 
     const cognitiveAnchor = IntentClassifier.synthesizeCognitiveThought(raw, targetDomain, hasDocs, hasImages);
 
     return {
-      intent: 'NONE', // Delegated to native cognitive loop
+      intent: 'NONE', // Preserves backward compatibility: delegates to native ReAct loop
       distilledIntent: {
         primaryGoal: cognitiveAnchor,
         targetDomain,
-        executionStrategy: targetDomain === 'CONVERSATION' ? 'DIRECT_ANSWER' : 'REQUIRE_TOOL_EXECUTION',
-        cognitiveAnchor
+        executionStrategy,
+        cognitiveAnchor,
+        activeDomains: Array.from(activeDomains)
       },
       parameters: {},
       workRoute: {
@@ -92,3 +164,4 @@ export class IntentClassifier {
     };
   }
 }
+

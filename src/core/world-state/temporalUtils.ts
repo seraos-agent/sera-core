@@ -135,11 +135,43 @@ export function getTimezoneOffsetString(date: Date, timeZone: string): string {
   return 'UTC';
 }
 
+export interface PeriodOfDayInfo {
+  periodId: string;    // 'Dini Hari' | 'Pagi' | 'Siang' | 'Sore' | 'Malam'
+  periodEn: string;    // 'Early Morning' | 'Morning' | 'Afternoon' | 'Late Afternoon' | 'Night'
+  range: string;       // '00:00 - 04:59' etc.
+  description: string; // e.g. 'Sore hari (15:00 - 17:59)'
+}
+
+/**
+ * Calculates standardized day period (Dini Hari, Pagi, Siang, Sore, Malam) from local 24-hour integer.
+ */
+export function getPeriodOfDay(hour: number): PeriodOfDayInfo {
+  if (hour >= 0 && hour < 5) {
+    return { periodId: 'Dini Hari', periodEn: 'Early Morning / Dawn', range: '00:00 - 04:59', description: 'Dini hari (00:00 - 04:59)' };
+  }
+  if (hour >= 5 && hour < 11) {
+    return { periodId: 'Pagi', periodEn: 'Morning', range: '05:00 - 10:59', description: 'Pagi hari (05:00 - 10:59)' };
+  }
+  if (hour >= 11 && hour < 15) {
+    return { periodId: 'Siang', periodEn: 'Afternoon / Midday', range: '11:00 - 14:59', description: 'Siang hari (11:00 - 14:59)' };
+  }
+  if (hour >= 15 && hour < 18) {
+    return { periodId: 'Sore', periodEn: 'Late Afternoon', range: '15:00 - 17:59', description: 'Sore hari (15:00 - 17:59)' };
+  }
+  return { periodId: 'Malam', periodEn: 'Evening / Night', range: '18:00 - 23:59', description: 'Malam hari (18:00 - 23:59)' };
+}
+
 export interface FormattedTemporalReality {
   currentTime: number;
   utcIso: string;
   utcFormatted: string;
   localFormatted: string;
+  localDate: string;
+  localTime: string;
+  localHour: number;
+  periodOfDay: string;
+  periodLabel: string;
+  humanSummary: string;
   timezone: string;
   offsetString: string;
   tzAbbreviation: string;
@@ -190,16 +222,32 @@ export function formatTemporalReality(date: Date, timeZone: string, country?: st
     hour12: false
   }).format(date);
 
+  const localHourStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: safeTz,
+    hour: 'numeric',
+    hour12: false
+  }).format(date);
+  const localHour = parseInt(localHourStr, 10);
+  const period = getPeriodOfDay(localHour);
+
   const localFormatted = `${localDate}, ${localTime} ${tzAbbreviation} (${safeTz}, ${offsetString})`;
+  const humanSummary = `${localDate}, pukul ${localTime} ${tzAbbreviation} (${period.description})`;
 
   return {
     currentTime: date.getTime(),
     utcIso: date.toISOString(),
     utcFormatted,
     localFormatted,
+    localDate,
+    localTime,
+    localHour,
+    periodOfDay: period.periodId,
+    periodLabel: period.description,
+    humanSummary,
     timezone: safeTz,
     offsetString,
     tzAbbreviation,
     detectedCountry: country
   };
 }
+
