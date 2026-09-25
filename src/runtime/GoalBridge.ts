@@ -527,6 +527,13 @@ export class GoalBridge {
           await this.catalogHandler.handleCheckStoreStatus(requestId, actionPayload);
           break;
 
+        case 'MARKETPLACE_FINALIZE_ORDER':
+        case 'FINALIZE_ORDER':
+        case 'DISPATCH_ORDER_TO_MERCHANT':
+        case 'CONFIRM_ORDER_DISPATCH':
+          await this.catalogHandler.handleFinalizeOrder(requestId, actionPayload);
+          break;
+
         case 'CONVERSATION':
         case 'NONE':
         case 'NO_ACTION':

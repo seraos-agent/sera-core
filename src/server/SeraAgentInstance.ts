@@ -659,6 +659,22 @@ export class SeraAgentInstance {
         }
       },
       {
+        name: 'MARKETPLACE_FINALIZE_ORDER',
+        description: 'Finalizes a pending marketplace order with delivery address, delivery method (DELIVERY or SELF_PICKUP), and payment method (QRIS, COD, TRANSFER), then dispatches the complete order ticket with interactive buttons [Terima Pesanan] and [Tolak Pesanan] to the merchant\'s WhatsApp. NEVER call this tool if delivery address is missing when delivery is requested.',
+        parameters: {
+          type: 'object',
+          properties: {
+            orderId: { type: 'string', description: 'The unique order ID (e.g. "ORD-M1K9X"). Optional if completing the buyer\'s active order.' },
+            deliveryAddress: { type: 'string', description: 'Full physical delivery address or landmarks (required if deliveryMethod is DELIVERY)' },
+            deliveryMethod: { type: 'string', enum: ['DELIVERY', 'SELF_PICKUP'], description: 'Whether the order will be delivered by courier or picked up at the store (default: DELIVERY)' },
+            paymentMethod: { type: 'string', enum: ['QRIS', 'COD', 'TRANSFER'], description: 'Payment method chosen by the customer (default: QRIS)' },
+            deliveryFee: { type: 'number', description: 'Optional calculated delivery fee in IDR' },
+            recipientName: { type: 'string', description: 'Optional recipient name' },
+            customerNote: { type: 'string', description: 'Optional customer instructions or notes for the merchant' }
+          }
+        }
+      },
+      {
         name: 'CATALOG_UPDATE_PRODUCT',
         description: 'Updates an existing product or service in the catalog (e.g. change price, mark as out of stock / ready stock, update description, or adjust stock quantity).',
         parameters: {

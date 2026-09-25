@@ -8,6 +8,7 @@ import { WhatsAppPairingService } from '../../capabilities/communication/service
 import { WhatsAppMediaProcessor } from '../../capabilities/communication/services/WhatsAppMediaProcessor';
 import { WhatsAppCatalogService } from '../../capabilities/communication/services/WhatsAppCatalogService';
 import { StoreProfileService } from '../../capabilities/communication/services/StoreProfileService';
+import { MarketplaceOrderService } from '../../capabilities/communication/services/MarketplaceOrderService';
 import { serverConfig } from '../config';
 
 export interface WhatsAppRouterOptions {
@@ -280,35 +281,15 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
             orderSummary += `\n[TIPE: JASA / BOOKING LAYANAN. Tanyakan jadwal tanggal/jam panggilan dan lokasi/alamat kepada pemesan.]`;
           }
 
-          // Asynchronously dispatch order alert to merchant's personal WhatsApp if configured
-          if (targetStore.ownerWhatsApp && targetStore.ownerWhatsApp !== from && phoneNumberId && accessToken) {
-            const cleanOwnerPhone = targetStore.ownerWhatsApp.replace(/[^0-9]/g, '');
-            const merchantAlertText = `🔔 *PESANAN BARU MASUK!* (#${Date.now().toString(36).toUpperCase()})\n\n` +
-              `Toko: *${targetStore.storeName}*\n` +
-              `Pembeli: +${from}\n` +
-              `Total: Rp ${parsedOrder.totalEstimated.toLocaleString('id-ID')}\n` +
-              (parsedOrder.customerNote ? `Catatan Pembeli: "${parsedOrder.customerNote}"\n\n` : '\n') +
-              `Item:\n` +
-              parsedOrder.items.map((it, i) => `${i + 1}. ${it.product_retailer_id} (${it.quantity}x @ Rp ${it.item_price.toLocaleString('id-ID')})`).join('\n') +
-              `\n\nStatus Operasional: ${storeStatus.statusText}`;
+          // Register order in MarketplaceOrderService in AWAITING_DETAILS state
+          const marketplaceOrderService = MarketplaceOrderService.getInstance();
+          const pendingOrder = marketplaceOrderService.createOrderFromCart(from, targetStore, parsedOrder);
 
-            fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to: cleanOwnerPhone,
-                type: 'text',
-                text: { body: merchantAlertText }
-              })
-            }).then(r => r.json()).then(res => {
-              console.log(`[WhatsApp Webhook] Order alert dispatched to merchant (+${cleanOwnerPhone}):`, res?.messages?.[0]?.id || 'OK');
-            }).catch(e => console.warn('[WhatsApp Webhook] Failed to notify merchant:', e.message));
-          }
+          orderSummary += `\n\n[ID PESANAN RESMI: #${pendingOrder.orderId}]`;
+          orderSummary += `\n[ATURAN PENTING PENGIRIMAN PESANAN KE PENJUAL]:\n` +
+            `• DILARANG mengirimkan pesanan ke penjual sebelum data pengiriman lengkap!\n` +
+            `• Tanyakan kepada pembeli: Alamat Pengiriman lengkap (atau konfirmasi Ambil Sendiri), dan Metode Pembayaran (QRIS / Tunai / Transfer).\n` +
+            `• Setelah pembeli melengkapi alamat dan metode bayar, panggil tool MARKETPLACE_FINALIZE_ORDER untuk mengirimkan tiket pesanan ber-tombol [Terima Pesanan] dan [Tolak Pesanan] ke WhatsApp penjual.`;
         }
 
         textContent = orderSummary;
@@ -338,6 +319,81 @@ export function createWhatsAppRouter(options: WhatsAppRouterOptions): Router {
       // Pairing Flow: Intercept /connect <CODE> or /start <CODE>
       const wasPairingCommand = await pairingService.handlePairingCommand(from, textContent);
       if (wasPairingCommand) return;
+
+      // Direct Interceptor for Merchant Order Decisions (Zero-friction: does not require SERA console session pairing)
+      if (incomingMsg.type === 'interactive' && incomingMsg.interactive?.type === 'button_reply') {
+        const buttonId = incomingMsg.interactive?.button_reply?.id || '';
+        if (buttonId.startsWith('order_accept_') || buttonId.startsWith('order_reject_')) {
+          const isAccept = buttonId.startsWith('order_accept_');
+          const orderId = isAccept
+            ? buttonId.replace('order_accept_', '')
+            : buttonId.replace('order_reject_', '');
+
+          console.log(`[WhatsApp Webhook] Merchant button decision: ${isAccept ? 'ACCEPT' : 'REJECT'} for order ${orderId} from +${from}`);
+          const marketplaceOrderService = MarketplaceOrderService.getInstance();
+          const decisionResult = await marketplaceOrderService.handleMerchantDecision(
+            orderId,
+            isAccept ? 'ACCEPT' : 'REJECT',
+            from,
+            { accessToken: accessToken || '', phoneNumberId: phoneNumberId || '', apiVersion }
+          );
+
+          if (phoneNumberId && accessToken) {
+            const cleanFrom = from.replace(/[^0-9]/g, '');
+            fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: cleanFrom,
+                type: 'text',
+                text: { body: decisionResult.merchantConfirmation }
+              })
+            }).catch((err) => console.warn('[WhatsApp Webhook] Failed to confirm to merchant:', err.message));
+          }
+          return;
+        }
+      }
+
+      if (incomingMsg.type === 'text') {
+        const textBody = (incomingMsg.text?.body || '').trim();
+        const textOrderMatch = /^(?:terima|tolak)\s+(?:pesanan\s+)?(ORD-[A-Z0-9]+)/i.exec(textBody);
+        if (textOrderMatch) {
+          const decision = /^terima/i.test(textBody) ? 'ACCEPT' : 'REJECT';
+          const orderId = textOrderMatch[1].toUpperCase();
+          console.log(`[WhatsApp Webhook] Merchant text decision: ${decision} for order ${orderId} from +${from}`);
+          const marketplaceOrderService = MarketplaceOrderService.getInstance();
+          const decisionResult = await marketplaceOrderService.handleMerchantDecision(
+            orderId,
+            decision,
+            from,
+            { accessToken: accessToken || '', phoneNumberId: phoneNumberId || '', apiVersion }
+          );
+
+          if (phoneNumberId && accessToken) {
+            const cleanFrom = from.replace(/[^0-9]/g, '');
+            fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: cleanFrom,
+                type: 'text',
+                text: { body: decisionResult.merchantConfirmation }
+              })
+            }).catch((err) => console.warn('[WhatsApp Webhook] Failed to confirm to merchant:', err.message));
+          }
+          return;
+        }
+      }
 
       // Identity resolution: Find user session linked to this WhatsApp phone number
       const sessionId = await pairingService.resolveSessionId(from);

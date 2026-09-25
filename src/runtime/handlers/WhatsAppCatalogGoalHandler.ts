@@ -1,5 +1,7 @@
 import { WhatsAppCatalogService, CatalogProduct, CreateProductInput, UpdateProductInput } from '../../capabilities/communication/services/WhatsAppCatalogService';
 import { StoreProfileService, StoreProfile, BusinessType, StoreSettlementInfo } from '../../capabilities/communication/services/StoreProfileService';
+import { MarketplaceOrderService } from '../../capabilities/communication/services/MarketplaceOrderService';
+import { serverConfig } from '../../server/config';
 import { EmitResultFn } from './types';
 
 /**
@@ -815,6 +817,76 @@ export class WhatsAppCatalogGoalHandler {
     } catch (err: any) {
       console.error('[WhatsAppCatalogGoalHandler] Failed to check store status:', err.message);
       this.emitResult(requestId, false, {}, err.message || 'Failed to check store status');
+    }
+  }
+
+  /**
+   * Finalizes a pending marketplace order with delivery and payment details,
+   * then dispatches the complete ticket to the merchant's WhatsApp with interactive buttons.
+   */
+  public async handleFinalizeOrder(requestId: string, payload: any): Promise<void> {
+    try {
+      const orderService = MarketplaceOrderService.getInstance();
+      const rawOrderId = String(payload?.orderId || '').trim();
+      const activeOrder = rawOrderId ? orderService.getOrder(rawOrderId) : orderService.getActiveOrderByBuyer(this.sessionId);
+
+      if (!activeOrder) {
+        throw new Error('Tidak ada pesanan aktif yang ditemukan untuk diselesaikan.');
+      }
+
+      const deliveryMethod = payload?.deliveryMethod === 'SELF_PICKUP' ? 'SELF_PICKUP' : 'DELIVERY';
+      const deliveryAddress = String(payload?.deliveryAddress || payload?.address || activeOrder.deliveryAddress || '').trim();
+      const paymentMethod = String(payload?.paymentMethod || activeOrder.paymentMethod || 'QRIS').toUpperCase();
+      const customerNote = payload?.customerNote !== undefined ? String(payload.customerNote).trim() : activeOrder.customerNote;
+      const recipientName = payload?.recipientName ? String(payload.recipientName).trim() : activeOrder.buyerName;
+      const deliveryFee = typeof payload?.deliveryFee === 'number' ? payload.deliveryFee : activeOrder.deliveryFee;
+
+      // Update the order details
+      const updatedOrder = orderService.updateOrder(activeOrder.orderId, {
+        deliveryMethod: deliveryMethod as any,
+        deliveryAddress: deliveryAddress || undefined,
+        paymentMethod: paymentMethod as any,
+        customerNote: customerNote || undefined,
+        buyerName: recipientName || undefined,
+        deliveryFee
+      });
+
+      if (!updatedOrder) {
+        throw new Error(`Gagal memperbarui pesanan #${activeOrder.orderId}.`);
+      }
+
+      if (!orderService.isOrderComplete(updatedOrder)) {
+        this.emitResult(requestId, false, {
+          orderId: updatedOrder.orderId,
+          isComplete: false,
+          missing: updatedOrder.deliveryMethod === 'DELIVERY' && !updatedOrder.deliveryAddress ? 'Alamat Pengiriman' : 'Metode Pembayaran'
+        }, 'Data pesanan belum lengkap. Harap pastikan alamat pengiriman dan metode pembayaran telah terisi sebelum mengirim ke penjual.');
+        return;
+      }
+
+      // Dispatch to merchant
+      const config = {
+        accessToken: serverConfig.whatsapp.accessToken || '',
+        phoneNumberId: serverConfig.whatsapp.phoneNumberId || '',
+        apiVersion: serverConfig.whatsapp.apiVersion || 'v21.0'
+      };
+
+      const dispatchResult = await orderService.dispatchToMerchant(updatedOrder.orderId, config);
+
+      if (!dispatchResult.success) {
+        throw new Error(`Gagal mengirimkan notifikasi ke penjual: ${dispatchResult.reason}`);
+      }
+
+      this.emitResult(requestId, true, {
+        orderId: updatedOrder.orderId,
+        storeName: updatedOrder.storeName,
+        totalAmount: updatedOrder.totalAmount,
+        status: updatedOrder.status,
+        summary: `Pesanan #${updatedOrder.orderId} telah dikirimkan ke WhatsApp penjual (${updatedOrder.storeName}) dengan tombol Terima dan Tolak. Sampaikan ke pembeli bahwa pesanan telah diteruskan ke toko dan mohon menunggu konfirmasi sebentar.`
+      });
+    } catch (err: any) {
+      console.error('[WhatsAppCatalogGoalHandler] Failed to finalize order:', err.message);
+      this.emitResult(requestId, false, {}, err.message || 'Failed to finalize marketplace order');
     }
   }
 }

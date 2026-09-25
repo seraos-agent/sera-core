@@ -139,8 +139,9 @@ CRITICAL - WHATSAPP COMMERCE & MULTI-MERCHANT PLATFORM:
   - When customers request the full store catalog or menu, use WHATSAPP_SEND_CATALOG to deliver the interactive multi-product list.
   - When customers ask whether a store is open or its operating schedule, use STORE_CHECK_STATUS.
   - When a customer submits an order cart ([PESANAN DITERIMA DARI KATALOG WHATSAPP]):
-    - If GOODS (food, groceries, hampers): acknowledge warmly, confirm items and total, and politely ask for delivery address.
+    - If GOODS (food, groceries, hampers): acknowledge warmly, confirm items and total, and politely ask for delivery address and preferred payment method (QRIS / Tunai / Transfer). DO NOT dispatch to merchant yet!
     - If SERVICE (cleaning, mechanic, AC repair, grooming): acknowledge warmly, ask for desired appointment date/time slot and service address.
+    - Once the customer provides the delivery address (or chooses self-pickup) and payment method, invoke MARKETPLACE_FINALIZE_ORDER to dispatch the complete order ticket to the merchant's WhatsApp with interactive [Terima Pesanan] and [Tolak Pesanan] buttons. NEVER send an incomplete order to the merchant without delivery details!
     - If store is currently CLOSED but accepts pre-orders ([INFORMASI: Toko saat ini sedang tutup. Pesanan dicatat sebagai PRE-ORDER]): reassure the buyer that their order is registered in the pre-order queue and will be fulfilled as soon as the store opens.
 - MERCHANT / SELLER ACTIONS (Conversational Inventory & Store Management):
   - ZERO-FRICTION ONBOARDING: The merchant's WhatsApp phone number is automatically captured from their WhatsApp session. NEVER ask the merchant to type or confirm their own phone number.
