@@ -59,31 +59,41 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
     // 1. Convert Markdown headers (# Header) to bold text (*Header*)
     formatted = formatted.replace(/^#{1,6}\s+(.+)$/gm, '*$1*');
 
-    // 2. Convert Markdown bullet lists using asterisks (* Item) to bullet dots (• Item)
+    // 2. Transform dash-separated list items into Style B (Title on its own line, bold, explanation below)
+    // Converts "* Title – Description" or "• Title – Description" into "• *Title*\nDescription"
+    formatted = formatted.replace(/^(\s*(?:•|\*|-|\d+\.)\s*)\*?([^*–—:\n]{2,70}?)\*?\s+(?:[–—]|--|-)\s+(.+)$/gm, (_, bullet, title, desc) => {
+      const cleanBullet = /^\s*\d+\.\s*/.test(bullet) ? bullet.trim() + ' ' : '• ';
+      return `${cleanBullet}*${title.trim()}*\n${desc.trim()}`;
+    });
+
+    // 3. Convert Markdown bullet lists using asterisks (* Item) to bullet dots (• Item)
     // This is CRITICAL: prevents WhatsApp from treating bullet asterisks as unclosed bold formatting!
     formatted = formatted.replace(/^\s*[*]\s+/gm, '• ');
 
-    // 3. Convert Markdown bold-italic (***bold-italic***) to WhatsApp (_*bold-italic*_)
+    // 4. Ensure generous spacing (\n\n) between list items/bullets to prevent dense newspaper-like blocks
+    formatted = formatted.replace(/([^\n])\n([•]\s+|\d+\.\s+)/g, '$1\n\n$2');
+
+    // 5. Convert Markdown bold-italic (***bold-italic***) to WhatsApp (_*bold-italic*_)
     formatted = formatted.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '_*$1*_');
 
-    // 4. Convert standard Markdown bold (**bold**) to WhatsApp bold (*bold*)
+    // 6. Convert standard Markdown bold (**bold**) to WhatsApp bold (*bold*)
     // Must NOT span across newlines, as WhatsApp bold is strictly single-line!
     formatted = formatted.replace(/\*\*([^*\n]+?)\*\*/g, '*$1*');
 
-    // 5. Ensure proper spacing inside bold asterisks: WhatsApp ignores "* word *" (space immediately after/before *)
+    // 7. Ensure proper spacing inside bold asterisks: WhatsApp ignores "* word *" (space immediately after/before *)
     formatted = formatted.replace(/(?<=^|[\s(])\*\s+([^*\n]+?)\s+\*(?=$|[\s),.?!:;])/g, '*$1*');
 
-    // 6. Convert Markdown links [Text](URL) to "Text: URL"
+    // 8. Convert Markdown links [Text](URL) to "Text: URL"
     formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '$1: $2');
 
-    // 7. Convert Markdown horizontal rules (--- or ***) into clean separator
+    // 9. Convert Markdown horizontal rules (--- or ***) into clean separator
     formatted = formatted.replace(/^(\s*[-*_]\s*){3,}$/gm, '──────────');
 
-    // 8. Sanitize long em dashes (—) to clean en dashes (–) with spacing to avoid artificial AI tone
+    // 10. Sanitize standalone em dashes (—) to clean en dashes (–) without creating artificial AI lists
     formatted = formatted.replace(/\s*—\s*/g, ' – ');
     formatted = formatted.replace(/—/g, ' – ');
 
-    // 9. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
+    // 11. Strip Markdown blockquotes (> text) so WhatsApp does not render artificial quote bars
     formatted = formatted.replace(/^>\s*/gm, '');
 
     // 10. Sanitize HTML line breaks (<br>, <br/>) and rogue HTML tags (<p>, <span>, etc.)

@@ -159,6 +159,17 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
       }
     }
 
+    // Critical Recency Anchor: Mobile Ergonomics & Style B Layout Rule
+    promptParts.push(`
+CRITICAL - MOBILE ERGONOMICS & STYLE B LAYOUT (STRICT FORMATTING):
+- NEVER write dense, single-spaced blocks or newspaper-like columns of text.
+- NEVER use hyphens, em dashes, or en dashes as title separators (STRICTLY FORBIDDEN: "• Title – Description").
+- For multi-point insights, analysis, arguments, or options, ALWAYS use Style B:
+  • Bold the title on its own line after the bullet dot: "• *Judul Poin*"
+  Place the explanation on the line below it.
+  ALWAYS leave an empty line (\\n\\n) between points so the text breathes effortlessly on mobile screens.
+- Keep general paragraphs short (max 2-3 sentences). Always separate paragraphs with double line breaks (\\n\\n).`);
+
     const systemPrompt = promptParts.join('\n');
 
     // 2. Selectively bind tools based on active domains and execution strategy

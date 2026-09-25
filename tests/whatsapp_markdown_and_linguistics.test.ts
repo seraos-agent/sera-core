@@ -27,6 +27,26 @@ describe('WhatsApp Markdown Formatter & Tag Balancer', () => {
     expect(formatted).not.toMatch(/^\s*[*]\s+/m);
   });
 
+  it('transforms dash-separated list items into Style B with bold titles and breathable spacing', () => {
+    const raw = `* Konvenien secara politik – Menunjuk Korea Utara nyaris tidak menimbulkan biaya diplomatik bagi siapa pun, berbeda dengan menyebut aktor negara besar atau sindikat terorganisir yang punya pengaruh.
+* Atribusi itu sulit, bukan mustahil – Penyerang lintas negara biasa menyamar lewat IP pinjaman, menaruh komentar kode berbahasa Rusia atau Mandarin, dan meniru taktik grup lain supaya jejaknya kabur.
+* Bursa punya insentif sendiri – Narratives "kita korban negara asing" jauh lebih menyelamatkan reputasi ket`;
+
+    const formatted = WhatsAppAdapter.formatToWhatsApp(raw);
+
+    // Style B format assertions:
+    expect(formatted).toContain('• *Konvenien secara politik*\nMenunjuk Korea Utara nyaris tidak menimbulkan biaya diplomatik bagi siapa pun');
+    expect(formatted).toContain('• *Atribusi itu sulit, bukan mustahil*\nPenyerang lintas negara biasa menyamar lewat IP pinjaman');
+    expect(formatted).toContain('• *Bursa punya insentif sendiri*\nNarratives "kita korban negara asing"');
+
+    // Must have double newlines between items
+    expect(formatted).toContain('\n\n• *Atribusi itu sulit, bukan mustahil*');
+    expect(formatted).toContain('\n\n• *Bursa punya insentif sendiri*');
+
+    // No raw dash separators left between title and description
+    expect(formatted).not.toContain('• *Konvenien secara politik* –');
+  });
+
   it('normalizes spaces inside bold markers so WhatsApp parses them cleanly', () => {
     const raw = 'Ini adalah * teks penting * yang harus dibaca.';
     const formatted = WhatsAppAdapter.formatToWhatsApp(raw);
