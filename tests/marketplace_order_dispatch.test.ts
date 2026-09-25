@@ -17,11 +17,15 @@ describe('MarketplaceOrderService & Merchant Dispatch Flow', () => {
     businessType: 'GOODS',
     operatingHours: { open: '09:00', close: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
     allowPreOrder: false,
-    address: 'Jl. Melati No. 5, Malang'
+    address: 'Jl. Melati No. 5, Malang',
+    timezone: 'Asia/Jakarta',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
   };
 
   const mockCart: ParsedIncomingOrder = {
-    catalog_id: 'cat_123',
+    catalogId: 'cat_123',
+    currency: 'IDR',
     items: [
       { product_retailer_id: 'Geprek Keju', quantity: 2, item_price: 25000, currency: 'IDR' },
       { product_retailer_id: 'Es Teh Manis', quantity: 2, item_price: 5000, currency: 'IDR' }
