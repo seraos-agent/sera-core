@@ -103,9 +103,16 @@ export class IntentClassifier {
     }
 
     // 2. Keyword & semantic regex detection per domain
+    // Realtime Search / Information queries (WEB_SEARCH is in SocialMediaAgent)
+    const isSearch = /\b(cari|search|googling|siapa\s+(itu|presiden|menteri|tokoh)|apa\s+(itu|artinya|definisi)|berita|cuaca|lokasi|terdekat|alamat|jadwal|skor|update\s*terbaru|info\s*terbaru)\b/i.test(lower);
+    if (isSearch) {
+      activeDomains.add('social'); // SocialMediaAgent provides WEB_SEARCH
+      if (targetDomain === 'CONVERSATION') targetDomain = 'KNOWLEDGE';
+    }
+
     // Commerce / WhatsApp Catalog / Marketplace / Store / Menu / Kuliner
     const isCommerce = /\b(toko|warung|katalog|catalog|menu|makanan|minuman|food|kuliner|pesan|beli|order|belanja|etalase|produk|cart|keranjang|sembako|outlet|lapak|jajanan|bakso|mie\s*ayam|services|layanan|cak\s*jiban)\b/i.test(lower);
-    if (isCommerce) {
+    if (!isSearch && isCommerce) {
       activeDomains.add('productivity');
       if (targetDomain === 'CONVERSATION') targetDomain = 'COMMERCE';
     }
@@ -135,13 +142,6 @@ export class IntentClassifier {
     const isSystem = /\b(clear\s*chat|hapus\s*chat|bersihkan\s*layar|dark\s*mode|light\s*mode|tema|theme|ingat\s*ini|remember|ganti\s*nama)\b/i.test(lower);
     if (isSystem) {
       activeDomains.add('system');
-    }
-
-    // Realtime Search / Information queries (WEB_SEARCH is in SocialMediaAgent)
-    const isSearch = /\b(cari|search|googling|siapa\s+(itu|presiden|menteri|tokoh)|apa\s+(itu|artinya|definisi)|berita|cuaca|lokasi|terdekat|alamat|jadwal|skor|update\s*terbaru|info\s*terbaru)\b/i.test(lower);
-    if (isSearch) {
-      activeDomains.add('social'); // SocialMediaAgent provides WEB_SEARCH
-      if (targetDomain === 'CONVERSATION') targetDomain = 'KNOWLEDGE';
     }
 
     // 3. Execution strategy determination

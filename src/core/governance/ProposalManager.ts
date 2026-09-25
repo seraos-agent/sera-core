@@ -5,7 +5,7 @@ export class ProposalManager {
   private eventBus: EventEmitter;
   private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage?: string }>();
   private proposalTimers = new Map<string, NodeJS.Timeout>();
-  public static readonly PROPOSAL_TTL_MS = parseInt(process.env.PROPOSAL_TTL_MS || '180000', 10); // 180 seconds (3 minutes)
+  public static readonly PROPOSAL_TTL_MS = 60 * 1000; // 60 seconds
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -201,12 +201,12 @@ export class ProposalManager {
       source: 'ProposalManager',
       timestamp: Date.now(),
       payload: {
-        text: '⏱️ Waktu konfirmasi telah habis. Tindakan dibatalkan secara aman.',
+        text: '⏱️ Waktu konfirmasi (60 detik) telah habis. Tindakan dibatalkan secara aman.',
         ...(responseContext ? { responseContext: { ...responseContext, isVoiceMessage: false } } : {})
       }
     });
 
-    console.log(`[ProposalManager] Proposal ${proposalId} expired after ${ProposalManager.PROPOSAL_TTL_MS / 1000}s TTL`);
+    console.log(`[ProposalManager] Proposal ${proposalId} expired after 60s TTL`);
     return true;
   }
 

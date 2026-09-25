@@ -60,12 +60,8 @@ export class QwenAdapter implements ILLMAdapter {
       model: this.model,
       messages: messages,
       max_tokens: parseInt(process.env.QWEN_MAX_TOKENS || '4096', 10),
+      enable_thinking: this.enableThinking === true
     };
-
-    // Override: enable CoT thinking only when explicitly requested for deep reasoning
-    if (this.enableThinking === true) {
-      body.enable_thinking = true;
-    }
 
     const timeoutMs = parseInt(process.env.QWEN_TIMEOUT_MS || '120000', 10);
     const effectiveSignal = abortSignal
