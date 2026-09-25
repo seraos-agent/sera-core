@@ -357,20 +357,34 @@ export class ToolExecutionHandler {
       let richContent: Record<string, any> | undefined;
 
       if (isWhatsApp) {
-        if (toolIntent === 'THREADS_DELETE') {
+        if (toolIntent === 'SCHEDULE_GOAL') {
+          const rawIntent = toolParams.humanIntent || 'Jadwal Otomasi';
+          const interval = toolParams.intervalHours
+            ? `Setiap ${toolParams.intervalHours} jam sekali`
+            : toolParams.intervalMinutes
+            ? `Setiap ${toolParams.intervalMinutes} menit`
+            : toolParams.cronExpression
+            ? `Jadwal (${toolParams.cronExpression})`
+            : 'Sesuai jadwal berkala';
+
           summaryText = isId
-            ? 'Postingan barusan mau langsung aku hapus dari Threads ya? Mau dilanjut?'
-            : 'Want me to go ahead and delete that recent Threads post now?';
+            ? `• Tindakan: Jadwal Posting Otomatis\n• Interval: ${interval}\n• Rincian: ${rawIntent}`
+            : `• Action: Scheduled Automation\n• Interval: ${interval}\n• Details: ${rawIntent}`;
+        } else if (toolIntent === 'THREADS_DELETE') {
+          summaryText = isId
+            ? '• Tindakan: Hapus Postingan\n• Platform: Meta Threads\n• Target: Postingan terbaru'
+            : '• Action: Delete Post\n• Platform: Meta Threads\n• Target: Recent post';
         } else if (toolIntent === 'TRANSFER_FUNDS') {
           const amount = toolParams.amount || '';
           const asset = (toolParams.asset || 'USDC').toUpperCase();
+          const recipient = toolParams.to ? `${String(toolParams.to).slice(0, 6)}...${String(toolParams.to).slice(-4)}` : '';
           summaryText = isId
-            ? `Transfer dana sebesar *${amount} ${asset}* mau langsung diproses sekarang?`
-            : `Shall I go ahead and process the transfer of *${amount} ${asset}* now?`;
+            ? `• Tindakan: Pengiriman Aset\n• Nominal: ${amount} ${asset} (Base Network)${recipient ? `\n• Tujuan: ${recipient}` : ''}`
+            : `• Action: Transfer Asset\n• Amount: ${amount} ${asset} (Base Network)${recipient ? `\n• Recipient: ${recipient}` : ''}`;
         } else {
           summaryText = isId
-            ? 'Tindakan ini mau langsung aku jalankan?'
-            : 'Shall I go ahead and proceed with this action?';
+            ? `• Tindakan: ${toolIntent.replace(/_/g, ' ')}\n• Status: Menunggu persetujuan`
+            : `• Action: ${toolIntent.replace(/_/g, ' ')}\n• Status: Awaiting approval`;
         }
 
         richContent = {

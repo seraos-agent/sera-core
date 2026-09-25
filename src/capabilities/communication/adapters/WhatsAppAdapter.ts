@@ -414,9 +414,11 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
         ? (isId ? 'Hapus' : 'Delete')
         : intent === 'TRANSFER_FUNDS'
         ? (isId ? 'Kirim' : 'Send')
+        : intent === 'SCHEDULE_GOAL'
+        ? (isId ? 'Jalankan' : 'Run')
         : (isId ? 'Lanjut' : 'Proceed');
 
-      const rawBody = action.text || (isId ? 'Mau dilanjut sekarang?' : 'Should we proceed?');
+      const rawBody = action.text || (isId ? '• Status: Menunggu persetujuan' : '• Status: Awaiting approval');
       const bodyText = WhatsAppAdapter.formatToWhatsApp(rawBody);
 
       try {
@@ -435,6 +437,9 @@ export class WhatsAppAdapter implements ICommunicationAdapter {
               type: 'button',
               body: {
                 text: bodyText.slice(0, 1024)
+              },
+              footer: {
+                text: isId ? 'Berlaku 60 detik' : 'Valid for 60 seconds'
               },
               action: {
                 buttons: [
