@@ -5,7 +5,7 @@ export class ProposalManager {
   private eventBus: EventEmitter;
   private pendingProposals = new Map<string, { intent: string, parameters: Record<string, any>, userMessage?: string }>();
   private proposalTimers = new Map<string, NodeJS.Timeout>();
-  public static readonly PROPOSAL_TTL_MS = 60 * 1000; // 60 seconds
+  public static readonly PROPOSAL_TTL_MS = parseInt(process.env.PROPOSAL_TTL_MS || '180000', 10); // 180 seconds (3 minutes)
 
   constructor(eventBus: EventEmitter) {
     this.eventBus = eventBus;
@@ -33,7 +33,7 @@ export class ProposalManager {
   }
 
   public createProposal(payload: ProposeGoalPayload): string {
-    const proposalId = `prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const proposalId = payload.proposalId || `prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     
     // Store in memory
     this.pendingProposals.set(proposalId, {
@@ -42,7 +42,7 @@ export class ProposalManager {
       userMessage: payload.userMessage
     });
 
-    // Setup 60-second auto-expiration TTL
+    // Setup auto-expiration TTL
     const timer = setTimeout(() => {
       this.expireProposal(proposalId);
     }, ProposalManager.PROPOSAL_TTL_MS);
@@ -61,7 +61,7 @@ export class ProposalManager {
       }
     });
     
-    console.log(`[ProposalManager] Generated proposal ${proposalId} for ${payload.intent} (TTL: 60s)`);
+    console.log(`[ProposalManager] Generated proposal ${proposalId} for ${payload.intent} (TTL: ${ProposalManager.PROPOSAL_TTL_MS / 1000}s)`);
     return proposalId;
   }
 
@@ -82,17 +82,27 @@ export class ProposalManager {
   }
 
   public approveProposal(proposalId: string): boolean {
-    const proposal = this.pendingProposals.get(proposalId);
+    let targetId = proposalId;
+    let proposal = this.pendingProposals.get(targetId);
+
+    // Fallback: If exact ID is mismatched but there is only ONE active pending proposal in this session, resolve it cleanly
+    if (!proposal && this.pendingProposals.size === 1) {
+      const singleKey = Array.from(this.pendingProposals.keys())[0];
+      console.warn(`[ProposalManager] Proposal ID fallback ("${proposalId}" -> "${singleKey}"). Resolving active proposal.`);
+      targetId = singleKey;
+      proposal = this.pendingProposals.get(targetId);
+    }
+
     if (!proposal) {
       console.warn(`[ProposalManager] Unknown or already processed proposal approved: ${proposalId}`);
       return false;
     }
 
     // Clear TTL timer
-    const timer = this.proposalTimers.get(proposalId);
+    const timer = this.proposalTimers.get(targetId);
     if (timer) {
       clearTimeout(timer);
-      this.proposalTimers.delete(proposalId);
+      this.proposalTimers.delete(targetId);
     }
 
     // Spawn the goal for execution
@@ -110,25 +120,35 @@ export class ProposalManager {
     });
 
     // Clean up
-    this.pendingProposals.delete(proposalId);
-    console.log(`[ProposalManager] Proposal ${proposalId} approved and spawned as ${requestId}`);
+    this.pendingProposals.delete(targetId);
+    console.log(`[ProposalManager] Proposal ${targetId} approved and spawned as ${requestId}`);
     return true;
   }
 
   public rejectProposal(proposalId: string): boolean {
-    const proposal = this.pendingProposals.get(proposalId);
+    let targetId = proposalId;
+    let proposal = this.pendingProposals.get(targetId);
+
+    // Fallback: If exact ID is mismatched but there is only ONE active pending proposal, resolve it cleanly
+    if (!proposal && this.pendingProposals.size === 1) {
+      const singleKey = Array.from(this.pendingProposals.keys())[0];
+      console.warn(`[ProposalManager] Proposal rejection fallback ("${proposalId}" -> "${singleKey}"). Resolving active proposal.`);
+      targetId = singleKey;
+      proposal = this.pendingProposals.get(targetId);
+    }
+
     if (!proposal) {
       return false;
     }
 
     // Clear TTL timer
-    const timer = this.proposalTimers.get(proposalId);
+    const timer = this.proposalTimers.get(targetId);
     if (timer) {
       clearTimeout(timer);
-      this.proposalTimers.delete(proposalId);
+      this.proposalTimers.delete(targetId);
     }
 
-    this.pendingProposals.delete(proposalId);
+    this.pendingProposals.delete(targetId);
 
     const responseContext = proposal.parameters?._responseContext;
     
@@ -143,7 +163,7 @@ export class ProposalManager {
       }
     });
     
-    console.log(`[ProposalManager] Proposal ${proposalId} rejected`);
+    console.log(`[ProposalManager] Proposal ${targetId} rejected`);
     return true;
   }
 
@@ -181,12 +201,12 @@ export class ProposalManager {
       source: 'ProposalManager',
       timestamp: Date.now(),
       payload: {
-        text: '⏱️ Waktu konfirmasi (60 detik) telah habis. Tindakan dibatalkan secara aman.',
+        text: '⏱️ Waktu konfirmasi telah habis. Tindakan dibatalkan secara aman.',
         ...(responseContext ? { responseContext: { ...responseContext, isVoiceMessage: false } } : {})
       }
     });
 
-    console.log(`[ProposalManager] Proposal ${proposalId} expired after 60s TTL`);
+    console.log(`[ProposalManager] Proposal ${proposalId} expired after ${ProposalManager.PROPOSAL_TTL_MS / 1000}s TTL`);
     return true;
   }
 

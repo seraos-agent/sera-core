@@ -445,13 +445,22 @@ export class DialogueEngine {
 
     // Check conversational proposal approval/rejection
     if (this.pendingProposalId && this.proposalResponseHandler.isApproval(effectiveUserMessage)) {
-      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId: this.pendingProposalId });
+      const proposalId = this.pendingProposalId;
+      this.pendingProposalId = undefined;
+      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_APPROVED, { proposalId });
       this.emitEvent(EventTypes.DIALOGUE_ACTIVITY, { content: 'Applying your confirmation...' });
+      this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
+        text: 'Siap, konfirmasi diterima! Sedang aku jalankan ya...',
+        isInterim: true,
+        responseContext: this._activeResponseContext
+      });
       return;
     }
 
     if (this.pendingProposalId && this.proposalResponseHandler.isRejection(effectiveUserMessage)) {
-      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_REJECTED, { proposalId: this.pendingProposalId });
+      const proposalId = this.pendingProposalId;
+      this.pendingProposalId = undefined;
+      this.emitEvent(EventTypes.DIALOGUE_PROPOSAL_REJECTED, { proposalId });
       return;
     }
 

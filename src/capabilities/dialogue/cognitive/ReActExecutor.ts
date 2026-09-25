@@ -350,6 +350,7 @@ export class ReActExecutor {
             const isCandidateUsable = candidateText.length >= 10 &&
               candidateText.length <= 160 &&
               !candidateText.includes('```') &&
+              !/tindakan ini mau langsung|apakah anda yakin|mau dilanjut|jalankan\?/i.test(candidateText) &&
               (targetLanguage === 'English' || !isEnglishCandidate);
 
             if (isCandidateUsable) {
