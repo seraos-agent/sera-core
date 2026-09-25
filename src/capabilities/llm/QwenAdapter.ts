@@ -38,8 +38,7 @@ export class QwenAdapter implements ILLMAdapter {
     this.apiKey = key;
     this.model = model;
     this.endpoint = process.env.QWEN_BASE_URL || DEFAULT_DASHSCOPE_URL;
-    // Fast Latency Optimization: Pure sub-second response speed with qwen3.8-flash universal model
-    this.enableThinking = false;
+    this.enableThinking = undefined;
     this.capability = this.capabilityFor(model);
   }
 
@@ -61,7 +60,6 @@ export class QwenAdapter implements ILLMAdapter {
       model: this.model,
       messages: messages,
       max_tokens: parseInt(process.env.QWEN_MAX_TOKENS || '4096', 10),
-      enable_thinking: false,
     };
 
     // Override: enable CoT thinking only when explicitly requested for deep reasoning
@@ -179,7 +177,9 @@ export class QwenAdapter implements ILLMAdapter {
     }
 
     const data = await response.json();
-    const choice = data.choices[0].message;
+    const firstChoice = data.choices?.[0];
+    const choice = firstChoice?.message;
+    console.log(`[QwenAdapter] finish_reason: "${firstChoice?.finish_reason}", usage: in=${data.usage?.prompt_tokens}/out=${data.usage?.completion_tokens}`);
     console.log('[QwenAdapter] raw response message:', JSON.stringify(choice, null, 2));
 
     let toolCalls: SeraToolCall[] | undefined;

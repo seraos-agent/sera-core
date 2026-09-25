@@ -231,6 +231,12 @@ export class DialogueEngine {
             .replace(/语音/g, 'suara')
             .replace(/[\u4e00-\u9fa5]+/g, '');
         }
+        // Sanitize any accidentally leaked internal context markers or system tags
+        enrichedPayload.text = enrichedPayload.text
+          .replace(/^\[Earlier context, condensed\]\s*/i, '')
+          .replace(/\[Earlier context, condensed\]\s*/gi, '')
+          .replace(/^\[SYSTEM NOTIFICATION[^\]]*\]\s*/i, '')
+          .trim();
       }
       const ctx = enrichedPayload.responseContext;
       if (ctx) {

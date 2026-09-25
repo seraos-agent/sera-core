@@ -64,7 +64,7 @@ export class ConversationContextCompressor {
         break;
       }
 
-      const prefix = condensed ? '[Earlier context, condensed] ' : '';
+      const prefix = '';
       const prefixTokens = this.estimateTokens(prefix);
       if (remaining <= prefixTokens) {
         truncated = true;

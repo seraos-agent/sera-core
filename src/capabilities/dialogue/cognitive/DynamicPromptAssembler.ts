@@ -164,38 +164,38 @@ CRITICAL - SYSTEM CONTROL & PREFERENCES:
     // 2. Selectively bind tools based on active domains and execution strategy
     const toolMap = new Map<string, SeraTool>();
 
-    if (!isDirectAnswer) {
-      const activeTools = (domains === undefined)
-        ? subAgentCoordinator.getAllTools()
-        : subAgentCoordinator.getToolsForDomains(specializedDomains);
+    const activeTools = (domains === undefined || isDirectAnswer)
+      ? subAgentCoordinator.getAllTools()
+      : subAgentCoordinator.getToolsForDomains(specializedDomains);
 
-      for (const tool of activeTools) {
-        if (!toolMap.has(tool.name)) {
-          toolMap.set(tool.name, tool);
+    for (const tool of activeTools) {
+      if (!toolMap.has(tool.name)) {
+        toolMap.set(tool.name, tool);
+      }
+    }
+
+    // Catalog & ecosystem tools gating
+    const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
+      ? capabilityCatalog.availableTools()
+      : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
+
+    for (const tool of catalogTools) {
+      // Essential interactive commerce, messaging, and search tools are ALWAYS preserved to prevent tool starvation
+      const isEssentialActionTool = /^(WHATSAPP_|CATALOG_|STORE_|WEB_SEARCH)/i.test(tool.name);
+
+      if (!isEssentialActionTool && isExplicitlyScoped && specializedDomains.length > 0 && !isDirectAnswer) {
+        if (!specializedDomains.includes('defi') && /^(HL_|TRANSFER_|CHECK_WALLET)/i.test(tool.name)) {
+          continue;
+        }
+        if (!specializedDomains.includes('productivity') && /^GDRIVE_/i.test(tool.name)) {
+          continue;
+        }
+        if (!specializedDomains.includes('social') && /^THREADS_/i.test(tool.name)) {
+          continue;
         }
       }
-
-      // Catalog tools gating
-      const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
-        ? capabilityCatalog.availableTools()
-        : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
-
-      for (const tool of catalogTools) {
-        // When specialized domains are active, prevent cross-domain tool leakage from catalog
-        if (isExplicitlyScoped && specializedDomains.length > 0) {
-          if (!specializedDomains.includes('defi') && /^(HL_|TRANSFER_|CHECK_WALLET)/i.test(tool.name)) {
-            continue;
-          }
-          if (!specializedDomains.includes('productivity') && /^GDRIVE_/i.test(tool.name)) {
-            continue;
-          }
-          if (!specializedDomains.includes('social') && /^THREADS_/i.test(tool.name)) {
-            continue;
-          }
-        }
-        if (!toolMap.has(tool.name)) {
-          toolMap.set(tool.name, tool);
-        }
+      if (!toolMap.has(tool.name)) {
+        toolMap.set(tool.name, tool);
       }
     }
 

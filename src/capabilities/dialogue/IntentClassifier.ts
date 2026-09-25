@@ -7,7 +7,7 @@ export interface WorkRoute {
 
 export interface DistilledIntent {
   primaryGoal: string;
-  targetDomain: 'SPREADSHEET' | 'VISION' | 'FINANCE' | 'SOCIAL' | 'KNOWLEDGE' | 'CONVERSATION';
+  targetDomain: 'SPREADSHEET' | 'VISION' | 'FINANCE' | 'SOCIAL' | 'KNOWLEDGE' | 'COMMERCE' | 'CONVERSATION';
   executionStrategy: 'REQUIRE_TOOL_EXECUTION' | 'MULTI_STEP_ANALYSIS' | 'DIRECT_ANSWER';
   requiredTools?: string[];
   cognitiveAnchor: string;
@@ -68,6 +68,10 @@ export class IntentClassifier {
       return `Processing creative / social request: ${raw.slice(0, 45)}`;
     }
 
+    if (domain === 'COMMERCE') {
+      return `Processing store & catalog commerce request: ${raw.slice(0, 45)}`;
+    }
+
     if (domain === 'KNOWLEDGE') {
       return `Investigating information / web query: ${raw.slice(0, 45)}`;
     }
@@ -99,6 +103,13 @@ export class IntentClassifier {
     }
 
     // 2. Keyword & semantic regex detection per domain
+    // Commerce / WhatsApp Catalog / Marketplace / Store / Menu / Kuliner
+    const isCommerce = /\b(toko|warung|katalog|catalog|menu|makanan|minuman|food|kuliner|pesan|beli|order|belanja|etalase|produk|cart|keranjang|sembako|outlet|lapak|jajanan|bakso|mie\s*ayam|services|layanan|cak\s*jiban)\b/i.test(lower);
+    if (isCommerce) {
+      activeDomains.add('productivity');
+      if (targetDomain === 'CONVERSATION') targetDomain = 'COMMERCE';
+    }
+
     // Finance / DeFi / Crypto / Hyperliquid
     const isFinance = /\b(crypto|kripto|bitcoin|btc|eth|ethereum|sol|solana|hype|purr|token|wallet|dompet|transfer|saldo|balance|usdc|orderbook|market\s*data|beli\s*koin|jual\s*koin|spot|hyperliquid|portfolio|portofolio|cuan|rugi|pnl|kirim\s*(saldo|uang|usdc|dana))\b/i.test(lower);
     if (isFinance) {
