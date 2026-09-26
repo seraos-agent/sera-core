@@ -15,16 +15,14 @@ import { EmailLoginGateway } from "./components/auth/EmailLoginGateway";
 import { LaunchCodeGateway } from './components/auth/LaunchCodeGateway';
 
 import { BillingModal } from "./components/sidebar/BillingModal";
-import { createConfig, http, WagmiProvider, useAccount, useDisconnect, useSignMessage } from 'wagmi';
+import { createConfig, http, WagmiProvider } from 'wagmi';
 import { base, mainnet, polygon, arbitrum } from 'wagmi/chains';
-import { injected } from 'wagmi/connectors';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
 
 const wagmiConfig = createConfig({
   chains: [base, mainnet, polygon, arbitrum],
-  connectors: [injected()],
   transports: {
     [base.id]: http(),
     [mainnet.id]: http(),
@@ -92,11 +90,9 @@ function InnerApp() {
   });
 
   const { walletState, setWalletState } = useWallet();
-  const { isConnected, address, isReconnecting, isConnecting } = useAccount();
+  const isUserAuthenticated = Boolean(sessionToken && userEmail);
 
-  const isUserAuthenticated = Boolean(sessionToken || isConnected);
-
-  const activeDeviceScope = userEmail ? `email:${userEmail}` : (address?.toLowerCase() ?? 'anonymous');
+  const activeDeviceScope = userEmail ? `email:${userEmail}` : 'anonymous';
   const { socket, messages, setMessages, sendMessage, currentActivity, cancelChat, googleDrive, connectGoogleDrive, disconnectGoogleDrive, threads, connectThreads, disconnectThreads, telegram, telegramLinkCode, generateTelegramLink, whatsapp, whatsappLinkData, generateWhatsAppLink, disconnectWhatsApp, governanceRecommendations, respondToGovernanceRecommendation } = useSocket(
     setWalletState,
     setMode,
@@ -125,10 +121,6 @@ function InnerApp() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const { disconnect } = useDisconnect();
-  const { signMessageAsync } = useSignMessage();
-  const signMessageAsyncRef = useRef(signMessageAsync);
-  signMessageAsyncRef.current = signMessageAsync;
   const lastAccountKeyRef = useRef<string | null>(null);
 
   const [isBypassed, setIsBypassed] = useState(() => {
@@ -169,72 +161,40 @@ function InnerApp() {
   }, [isBypassed, socket]);
 
   useEffect(() => {
-    const currentAccountKey = isBypassed ? 'dev-bypassed' : (userEmail ? `email:${userEmail}` : (address?.toLowerCase() || 'disconnected'));
-    // Only clear messages when switching to a DIFFERENT account, never on reconnect/re-render
+    const currentAccountKey = isBypassed ? 'dev-bypassed' : (userEmail ? `email:${userEmail}` : 'disconnected');
+    // Only clear messages and reset wallet when switching to a DIFFERENT account
     if (lastAccountKeyRef.current !== null && lastAccountKeyRef.current !== currentAccountKey) {
       setMessages([]);
+      setWalletState(INITIAL_WALLET);
       setCurrentView("chat");
     }
     lastAccountKeyRef.current = currentAccountKey;
 
-    setWalletState(prev => ({
-      ...INITIAL_WALLET,
-      address: userEmail ? userEmail : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : INITIAL_WALLET.address),
-      fullAddress: userEmail || address || INITIAL_WALLET.fullAddress,
-      syncing: isConnected && !prev.address.includes('...'),
-    }));
-
     if (socket) {
-      const requestChallenge = async (data: { message: string }) => {
-        // 1. Passwordless Email Session Token (Primary)
+      const requestChallenge = async () => {
+        // Passwordless Email Session Token (Primary & Only Auth Protocol)
         const savedSessionToken = sessionToken || (typeof window !== 'undefined' ? localStorage.getItem('sera_session_token') : null);
-        if (savedSessionToken) {
+        const savedEmail = userEmail || (typeof window !== 'undefined' ? localStorage.getItem('sera_user_email') : null);
+        if (savedSessionToken && savedEmail) {
           socket.emit("auth:login", {
             token: savedSessionToken,
-            email: userEmail || undefined,
-            userId: userEmail ? `email:${userEmail}` : undefined
+            email: savedEmail,
+            userId: `email:${savedEmail}`
           });
-          return;
-        }
-
-        // 2. Web3 Wallet Signature
-        if (!isConnected || !address) return;
-        setWalletState(prev => ({ ...prev, error: "" })); // Clear previous error
-
-        const tokenKey = `sera_auth_token_${address.toLowerCase()}`;
-        const savedToken = localStorage.getItem(tokenKey);
-
-        if (savedToken) {
-          socket.emit("auth:login", { address, token: savedToken });
-          return;
-        }
-
-        try {
-          const signature = await signMessageAsyncRef.current({ account: address, message: data.message });
-          socket.emit("auth:login", { address, message: data.message, signature });
-        } catch {
-          // The server keeps this socket unauthenticated until the user signs.
-          setWalletState(prev => ({
-            ...prev,
-            syncing: false,
-            error: "Authentication signature rejected. Please sign the message to authenticate your session."
-          }));
         }
       };
 
       const handleAuthSuccess = (data: { token?: string; email?: string; userId?: string }) => {
         if (data?.token) {
-          if (userEmail || data?.email) {
-            const finalEmail = data?.email || userEmail!;
-            localStorage.setItem('sera_session_token', data.token);
+          const finalEmail = data?.email || userEmail || '';
+          localStorage.setItem('sera_session_token', data.token);
+          if (finalEmail) {
             localStorage.setItem('sera_user_email', finalEmail);
-            setSessionToken(data.token);
             setUserEmail(finalEmail);
-          } else if (address) {
-            localStorage.setItem(`sera_auth_token_${address.toLowerCase()}`, data.token);
           }
+          setSessionToken(data.token);
         }
-        const billingScope = userEmail ? `email:${userEmail}` : (address ? address.toLowerCase() : undefined);
+        const billingScope = userEmail ? `email:${userEmail}` : (data?.email ? `email:${data.email}` : undefined);
         if (billingScope) {
           socket.emit("billing:fetch", { address: billingScope });
         }
@@ -244,24 +204,19 @@ function InnerApp() {
         if (sessionToken) {
           console.warn('[App] Session token invalid or expired:', err?.message);
           localStorage.removeItem('sera_session_token');
+          localStorage.removeItem('sera_user_email');
           setSessionToken(null);
+          setUserEmail(null);
         }
-        if ((err.code === 'INVALID_TOKEN' || err.code === 'UNAUTHENTICATED') && address) {
-          if (err.code === 'INVALID_TOKEN') {
-            localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
-          }
-          socket.emit('auth:challenge'); // Retry with fresh challenge
-        } else {
-          setWalletState(prev => ({
-            ...prev,
-            syncing: false,
-            error: err.message || "Authentication failed."
-          }));
-        }
+        setWalletState(prev => ({
+          ...prev,
+          syncing: false,
+          error: err?.message || "Authentication failed."
+        }));
       };
 
       const handleSubscriptionRequired = () => {
-        const billingScope = userEmail ? `email:${userEmail}` : (address ? address.toLowerCase() : undefined);
+        const billingScope = userEmail ? `email:${userEmail}` : undefined;
         if (billingScope) socket.emit("billing:fetch", { address: billingScope });
       };
 
@@ -274,7 +229,7 @@ function InnerApp() {
       socket.on('connector:status_changed', setActiveConnectors);
       socket.emit('connector:list');
 
-      if ((isConnected && address) || sessionToken) {
+      if (sessionToken && userEmail) {
         socket.emit("auth:challenge");
       }
 
@@ -287,35 +242,9 @@ function InnerApp() {
         socket.off('connector:status_changed', setActiveConnectors);
       };
     }
-  }, [socket, isConnected, address, isBypassed, sessionToken, userEmail, setMessages, setWalletState]);
+  }, [socket, isBypassed, sessionToken, userEmail, setMessages, setWalletState]);
 
   if (!isMounted) return null;
-
-  // Show a loading screen while the wallet is reconnecting on initial load to prevent UI flash
-  if ((isReconnecting || isConnecting) && !sessionToken) {
-    return (
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        minHeight: "100vh", backgroundColor: mode === "light" ? "#f3f4f6" : "#000",
-        fontFamily: "Inter, sans-serif"
-      }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: "50%",
-            border: `3px solid ${theme.border}`,
-            borderTopColor: theme.ink,
-            animation: "spin 1s linear infinite"
-          }} />
-          <div style={{ color: theme.inkSoft, fontSize: 14, fontWeight: 500, letterSpacing: "0.02em" }}>
-            Restoring session...
-          </div>
-        </div>
-        <style>{`
-          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        `}</style>
-      </div>
-    );
-  }
 
   // 1. If not authenticated, check launch code then show EmailLoginGateway
   if (!isUserAuthenticated && !isBypassed) {
@@ -424,57 +353,10 @@ function InnerApp() {
           currentView={currentView}
           onNavigate={setCurrentView}
           walletState={walletState}
+          userEmail={userEmail}
           onOpenBilling={() => setBillingOpen(true)}
           activeConnectors={activeConnectors}
         />
-
-        {walletState.error && (walletState.error.includes("Authentication") || walletState.error.includes("expired")) && (
-          <div style={{
-            position: "absolute",
-            top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.7)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backdropFilter: "blur(6px)"
-          }}>
-            <div style={{
-              background: theme.bg,
-              padding: 32,
-              borderRadius: 24,
-              border: `1px solid ${theme.border}`,
-              maxWidth: 360,
-              width: "90%",
-              textAlign: "center",
-              boxShadow: "0 12px 48px rgba(0,0,0,0.5)"
-            }}>
-              <h2 style={{ margin: "0 0 16px 0", color: theme.ink, fontSize: 20 }}>Signature Required</h2>
-              <p style={{ color: theme.inkFaint, fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
-                Your wallet must sign a message to securely authenticate your session and load your data.
-              </p>
-              <button
-                onClick={() => {
-                  setWalletState(prev => ({ ...prev, error: "", syncing: true }));
-                  socket?.emit("auth:challenge");
-                }}
-                style={{
-                  background: theme.accent,
-                  color: "#fff",
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  width: "100%",
-                  fontSize: 15
-                }}
-              >
-                Sign Message Now
-              </button>
-            </div>
-          </div>
-        )}
 
         {billingOpen && (
           <BillingModal
@@ -492,15 +374,13 @@ function InnerApp() {
           mode={mode}
           onModeChange={setMode}
           onBack={() => { setCurrentView("chat"); setSidebarOpen(true); }}
-          onManageWallet={() => open()}
+          onManageWallet={() => {}}
           onDisconnect={() => {
             localStorage.removeItem('sera_session_token');
             localStorage.removeItem('sera_user_email');
             setSessionToken(null);
             setUserEmail(null);
-            if (address) localStorage.removeItem(`sera_auth_token_${address.toLowerCase()}`);
             socket?.emit('auth:logout');
-            disconnect();
             setIsBypassed(false);
           }}
         /> : currentView === "wallet" ? (

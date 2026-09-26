@@ -102,6 +102,6 @@ CRITICAL RULES:
 - When the user asks about performance, analytics, or post engagement (e.g. "how did my posts perform?", "show my views and likes"):
   * Call THREADS_GET_INSIGHTS (optionally passing 'postId' if inquiring about a specific post).
 - NO EM DASH IN THREADS POSTS: NEVER use long em dashes ("—") when drafting or publishing Threads posts. Standard hyphens ("-") or en dashes ("–" for ranges) are allowed, but never the long em dash.
-- Use WEB_SEARCH for general news and articles, but NOT for crypto spot prices (which belong to DeFi Specialist).`;
+- Use WEB_SEARCH for live web research, current events, biographical briefings, YouTube video lookups, and factual grounding. When summarizing search results, synthesize key facts with clarity, highlight any YouTube video references found, and cite reputable sources (do not use for crypto spot prices, which belong to DeFi Specialist).`;
   }
 }

@@ -64,7 +64,22 @@ export class EmailOtpService {
   }
 
   public static normalizeEmail(email: string): string {
-    return (email || '').trim().toLowerCase();
+    const raw = (email || '').trim().toLowerCase();
+    const atIndex = raw.indexOf('@');
+    if (atIndex === -1) return raw;
+    let user = raw.slice(0, atIndex);
+    const domain = raw.slice(atIndex + 1);
+
+    // Canonicalize Gmail / Googlemail (ignore dots and plus-address tags)
+    if (domain === 'gmail.com' || domain === 'googlemail.com') {
+      const plusIndex = user.indexOf('+');
+      if (plusIndex !== -1) {
+        user = user.slice(0, plusIndex);
+      }
+      user = user.replace(/\./g, '');
+    }
+
+    return `${user}@${domain}`;
   }
 
   public static isValidEmail(email: string): boolean {

@@ -41,8 +41,9 @@ export class GoogleGroundingService {
   private readonly getAccessTokenCustom?: () => Promise<string | null>;
 
   constructor(config: GoogleGroundingConfig = {}) {
-    this.projectId = config.projectId || process.env.VERTEX_SEARCH_PROJECT_ID || process.env.GCP_PROJECT_ID || 'sera-core';
-    this.location = config.location || process.env.VERTEX_LOCATION || process.env.VERTEX_SEARCH_LOCATION || 'asia-southeast1';
+    this.projectId = config.projectId || process.env.VERTEX_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'sera-core';
+    const rawLoc = config.location || process.env.VERTEX_LOCATION || process.env.VERTEX_SEARCH_LOCATION || 'asia-southeast1';
+    this.location = (rawLoc === 'global') ? 'asia-southeast1' : rawLoc;
     this.model = config.model || process.env.VERTEX_GROUNDING_MODEL || 'gemini-2.5-flash';
     this.fetchImpl = config.fetchImpl || fetch;
     this.getAccessTokenCustom = config.getAccessToken;
@@ -137,7 +138,7 @@ export class GoogleGroundingService {
           role: 'user',
           parts: [
             {
-              text: `Search the web and provide accurate, factual, and up-to-date information for this query:\n"${cleanQuery}"\nInclude specific figures, dates, and names where applicable.`
+              text: `Search the web, news, and video resources to provide an accurate, factual, and up-to-date briefing for this query:\n"${cleanQuery}"\nInclude key background, timeline/dates, notable figures, and authoritative video/article references where applicable.`
             }
           ]
         }

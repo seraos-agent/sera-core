@@ -102,21 +102,6 @@ export class IntentClassifier {
       targetDomain = 'VISION';
     }
 
-    // 2. Keyword & semantic regex detection per domain
-    // Realtime Search / Information queries (WEB_SEARCH is in SocialMediaAgent)
-    const isSearch = /\b(cari|search|googling|siapa\s+(itu|presiden|menteri|tokoh)|apa\s+(itu|artinya|definisi)|berita|cuaca|lokasi|terdekat|alamat|jadwal|skor|update\s*terbaru|info\s*terbaru)\b/i.test(lower);
-    if (isSearch) {
-      activeDomains.add('social'); // SocialMediaAgent provides WEB_SEARCH
-      if (targetDomain === 'CONVERSATION') targetDomain = 'KNOWLEDGE';
-    }
-
-    // Commerce / WhatsApp Catalog / Marketplace / Store / Menu / Kuliner
-    const isCommerce = /\b(toko|warung|katalog|catalog|menu|makanan|minuman|food|kuliner|pesan|beli|order|belanja|etalase|produk|cart|keranjang|sembako|outlet|lapak|jajanan|bakso|mie\s*ayam|services|layanan|cak\s*jiban)\b/i.test(lower);
-    if (!isSearch && isCommerce) {
-      activeDomains.add('productivity');
-      if (targetDomain === 'CONVERSATION') targetDomain = 'COMMERCE';
-    }
-
     // Finance / DeFi / Crypto / Hyperliquid
     const isFinance = /\b(crypto|kripto|bitcoin|btc|eth|ethereum|sol|solana|hype|purr|token|wallet|dompet|transfer|saldo|balance|usdc|orderbook|market\s*data|beli\s*koin|jual\s*koin|spot|hyperliquid|portfolio|portofolio|cuan|rugi|pnl|kirim\s*(saldo|uang|usdc|dana))\b/i.test(lower);
     if (isFinance) {
@@ -129,6 +114,20 @@ export class IntentClassifier {
     if (isProductivity) {
       activeDomains.add('productivity');
       if (targetDomain === 'CONVERSATION') targetDomain = 'SPREADSHEET';
+    }
+
+    // Realtime Search / Information queries (WEB_SEARCH is in SocialMediaAgent)
+    const isSearch = !isFinance && !isProductivity && /\b(cari|search|googling|grok|lookup|find|browse|siapa(kah)?\b|who\s+is\b|who\s+are\b|profil\b|biografi\b|latar\s*belakang\b|apa\s+(itu|artinya|definisi|yang\s+terjadi|maksud|kabar|perkembangan|penyebab|alasan)|what\s+is\b|what\s+happened\b|jelaskan\s+(tentang\b)?|ceritakan\s+(tentang\b)?|youtube|ytb|video|tonton|podcast|channel|berita|news|kronologi|sejarah|isu|situasi|cuaca|lokasi|terdekat|alamat|jadwal|skor|update(\s*terbaru)?|info\s*terbaru|terkini|latest|recent)\b/i.test(lower);
+    if (isSearch) {
+      activeDomains.add('social'); // SocialMediaAgent provides WEB_SEARCH
+      if (targetDomain === 'CONVERSATION') targetDomain = 'KNOWLEDGE';
+    }
+
+    // Commerce / WhatsApp Catalog / Marketplace / Store / Menu / Kuliner
+    const isCommerce = /\b(toko|warung|katalog|catalog|menu|makanan|minuman|food|kuliner|pesan|beli|order|belanja|etalase|produk|cart|keranjang|sembako|outlet|lapak|jajanan|bakso|mie\s*ayam|services|layanan|cak\s*jiban)\b/i.test(lower);
+    if (!isSearch && !isFinance && isCommerce) {
+      activeDomains.add('productivity');
+      if (targetDomain === 'CONVERSATION') targetDomain = 'COMMERCE';
     }
 
     // Social Media / Threads / Image Generation

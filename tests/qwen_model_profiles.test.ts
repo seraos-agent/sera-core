@@ -85,4 +85,40 @@ describe('Qwen model profiles', () => {
       else process.env.QWEN_API = previous;
     }
   });
+
+  it('forwards calibrated temperature and top_p in HTTP request body when provided', async () => {
+    const originalFetch = global.fetch;
+    const previous = process.env.QWEN_API;
+    process.env.QWEN_API = 'test-key';
+
+    let capturedBody: any = null;
+    global.fetch = async (_url: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { role: 'assistant', content: 'Calibrated execution' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
+        })
+      } as any;
+    };
+
+    try {
+      const adapter = new QwenAdapter('qwen3.8-flash');
+      await adapter.generate(
+        [{ role: 'user', content: 'Transfer funds' }],
+        undefined,
+        undefined,
+        { temperature: 0.1, top_p: 0.1 }
+      );
+
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody.temperature).toBe(0.1);
+      expect(capturedBody.top_p).toBe(0.1);
+    } finally {
+      global.fetch = originalFetch;
+      if (previous === undefined) delete process.env.QWEN_API;
+      else process.env.QWEN_API = previous;
+    }
+  });
 });

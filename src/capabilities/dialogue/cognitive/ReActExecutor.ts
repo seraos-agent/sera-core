@@ -523,11 +523,24 @@ export class ReActExecutor {
             });
           }
 
+          let toolContent = typeof execResult.output === 'string' ? execResult.output : JSON.stringify(execResult.output);
+
+          if (execResult.output && execResult.output.success === false) {
+            toolContent += '\n\n[SYSTEM REALITY OBSERVATION: Tool execution failed. You MUST honestly inform the user that the operation failed with this error. You CANNOT claim the action was successful or completed.]';
+          } else if (ReActExecutor.isEmptySensoryPayload(toolCall.name, execResult.output)) {
+            toolContent += '\n\n[SYSTEM REALITY OBSERVATION: Tool executed successfully. Zero (0) records or results found in external reality. You MUST state clearly and honestly to the user that no matching records or posts were found. You are STRICTLY FORBIDDEN from inventing, fabricating, or simulating sample or placeholder records.]';
+          }
+
+          const bounded = ReActExecutor.boundToolPayload(toolContent);
+          if (bounded.truncated) {
+            console.warn(`[ReActExecutor] Tool output for ${toolCall.name} bounded from ${toolContent.length} to ${bounded.content.length} chars.`);
+          }
+
           messages.push({
             role: 'tool',
             tool_call_id: toolCallId,
             name: toolCall.name,
-            content: typeof execResult.output === 'string' ? execResult.output : JSON.stringify(execResult.output)
+            content: bounded.content
           });
         }
 
@@ -661,33 +674,31 @@ export class ReActExecutor {
   private pruneBloatedContext(messages: QwenMessage[]): QwenMessage[] {
     if (messages.length <= 3) return messages;
 
-    const pruned: QwenMessage[] = [];
-    if (messages[0]) pruned.push(messages[0]);
-    if (messages[1]) pruned.push(messages[1]);
+    // Preserve message structure and tool-pairing invariants while condensing bulky payloads
+    return messages.map((msg, index) => {
+      // Keep system prompt and latest message intact
+      if (index === 0 || index >= messages.length - 1) return msg;
 
-    const middle = messages.slice(2, -1);
-    const recentMiddle = middle.slice(-2);
-
-    for (const msg of recentMiddle) {
       if (typeof msg.content === 'string') {
         const text = msg.content;
+        // Condense older tool results to preserve context budget
+        if (msg.role === 'tool' && text.length > 600) {
+          return {
+            ...msg,
+            content: text.slice(0, 400) + '\n[...earlier tool payload condensed for context efficiency...]'
+          };
+        }
+        // Condense bulky tables in older intermediate messages
         if (text.length > 500 && (text.includes('|---') || text.includes('\n|'))) {
-          pruned.push({
+          return {
             ...msg,
             content: text.slice(0, 350) + '\n[...data table condensed for cognitive efficiency...]'
-          });
-        } else {
-          pruned.push(msg);
+          };
         }
-      } else {
-        pruned.push(msg);
       }
-    }
 
-    const last = messages[messages.length - 1];
-    if (last) pruned.push(last);
-
-    return pruned;
+      return msg;
+    });
   }
 
   private interceptPseudoToolCall(text: string): { toolCall: { id: string; name: string; arguments: any }; cleanedText: string } | null {
@@ -774,5 +785,49 @@ export class ReActExecutor {
   public static inferConversationalLanguage(userMessage: string, history?: QwenMessage[]): string {
     return LanguageInference.infer(userMessage, history);
   }
+
+  /**
+   * Evaluates if a tool's output constitutes an empty sensory payload (e.g. 0 posts, 0 products, 0 results).
+   */
+  public static isEmptySensoryPayload(toolName: string, output: any): boolean {
+    if (!output) return true;
+    if (Array.isArray(output) && output.length === 0) return true;
+
+    if (typeof output === 'object') {
+      if (Array.isArray(output.posts) && output.posts.length === 0) return true;
+      if (Array.isArray(output.products) && output.products.length === 0) return true;
+      if (Array.isArray(output.results) && output.results.length === 0) return true;
+      if (Array.isArray(output.items) && output.items.length === 0) return true;
+      if (Array.isArray(output.data) && output.data.length === 0) return true;
+      if (output.count === 0 || output.total === 0) return true;
+    }
+
+    return false;
+  }
+
+  public static readonly MAX_TOOL_PAYLOAD_CHARS = 10000;
+
+  /**
+   * Binds tool output before adding it to working memory to prevent sensory payload explosion.
+   * Preserves key facts while ensuring context length safety.
+   */
+  public static boundToolPayload(
+    content: string,
+    maxChars: number = ReActExecutor.MAX_TOOL_PAYLOAD_CHARS
+  ): { content: string; truncated: boolean } {
+    if (!content || content.length <= maxChars) {
+      return { content: content || '', truncated: false };
+    }
+
+    const sliceLength = Math.max(500, maxChars - 300);
+    const preview = content.slice(0, sliceLength);
+    const notice = `\n\n[SYSTEM REALITY OBSERVATION: Tool output was bounded (${content.length} chars reduced to ${sliceLength} chars to prevent context saturation). Use specific queries or pagination if additional details are required.]`;
+
+    return {
+      content: `${preview}...\n${notice}`,
+      truncated: true
+    };
+  }
 }
+
 

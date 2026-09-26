@@ -21,19 +21,20 @@ interface SidebarProps {
   currentView: SidebarView;
   onNavigate: (view: SidebarView) => void;
   walletState?: WalletState;
+  userEmail?: string | null;
   onOpenBilling?: () => void;
   activeConnectors?: ConnectorSummary[];
 }
 
-export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, onOpenBilling, activeConnectors }: SidebarProps) {
+export function Sidebar({ theme, open, onClose, onToggle, isMobileView, currentView, onNavigate, walletState, userEmail, onOpenBilling, activeConnectors }: SidebarProps) {
   const isOverlay = isMobileView;
   const sidebarWidth = open ? 252 : 68;
   const rawAddress = walletState?.address || walletState?.fullAddress;
-  const shortAddress = rawAddress
-    ? (rawAddress.includes('@')
-        ? rawAddress
-        : (rawAddress.length > 12 ? `${rawAddress.slice(0, 6)}...${rawAddress.slice(-4)}` : rawAddress))
-    : "SERA User";
+  const shortAddress = userEmail
+    ? userEmail
+    : (rawAddress && rawAddress.startsWith('0x')
+        ? `${rawAddress.slice(0, 6)}...${rawAddress.slice(-4)}`
+        : "SERA User");
 
   const navigate = (view: SidebarView) => {
     onNavigate(view);

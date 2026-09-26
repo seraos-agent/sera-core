@@ -67,7 +67,11 @@ export class BraveSearchCapability {
       }));
 
       const summaryText = formattedResults.length > 0
-        ? formattedResults.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.description}`).join('\n\n')
+        ? formattedResults.map((r, i) => {
+            const isVideo = /youtube\.com|youtu\.be/i.test(r.url);
+            const prefix = isVideo ? `[${i + 1}] [🎬 Video]` : `[${i + 1}]`;
+            return `${prefix} ${r.title}\nURL: ${r.url}\n${r.description}`;
+          }).join('\n\n')
         : `No relevant search results found for query "${query}".`;
 
       return {

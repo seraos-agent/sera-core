@@ -9,6 +9,8 @@ export interface ExecutionProfileConstraints {
   requiresStreaming?: boolean;
   requiresThinking?: boolean;
   requiresLongContext?: boolean;
+  temperature?: number;
+  top_p?: number;
 }
 
 export interface ExecutionProfile {
@@ -33,7 +35,12 @@ export interface ModelCapability {
 }
 
 export interface ILLMAdapter {
-  generate(messages: any[], tools?: any[], signal?: AbortSignal): Promise<{ 
+  generate(
+    messages: any[],
+    tools?: any[],
+    signal?: AbortSignal,
+    options?: { temperature?: number; top_p?: number }
+  ): Promise<{ 
     text: string; 
     toolCalls?: any[];
     usage?: { input_tokens: number; output_tokens: number; total_tokens: number };

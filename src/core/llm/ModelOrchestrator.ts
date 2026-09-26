@@ -44,7 +44,11 @@ export class ModelOrchestrator {
       const startedAt = Date.now();
       console.log(`[ModelOrchestrator] Attempt ${index + 1}/${candidates.length}: ${capability.provider} / ${capability.model}`);
       try {
-        const result = await adapter.generate(messages, tools, signal);
+        const samplingOptions = {
+          temperature: profile.constraints.temperature,
+          top_p: profile.constraints.top_p
+        };
+        const result = await adapter.generate(messages, tools, signal, samplingOptions);
         this.emitTelemetry({
           ...this.createTelemetry(profile, capability, index + 1, startedAt, index > 0, result.usage),
         }, EventTypes.LLM_MODEL_COMPLETED);

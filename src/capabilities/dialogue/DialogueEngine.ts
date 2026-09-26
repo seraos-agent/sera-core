@@ -20,6 +20,7 @@ import { AutonomyAgreementStore } from '../../core/autonomy/AutonomyAgreementSto
 import { SubAgentCoordinator } from '../agents/SubAgentCoordinator';
 import { DynamicPromptAssembler } from './cognitive/DynamicPromptAssembler';
 import { ReActExecutor } from './cognitive/ReActExecutor';
+import { OutputGroundingGuardrail } from './cognitive/OutputGroundingGuardrail';
 import { ExecutionProfileBuilder } from './ExecutionProfileBuilder';
 import { LanguageInference } from './LanguageInference';
 
@@ -766,9 +767,21 @@ export class DialogueEngine {
 
       // Emit final conversational response to user (skipped if proposal was generated to prevent duplicate speech or if turn was aborted)
       if (!execResult.proposalEncountered && !execResult.aborted && execResult.finalAnswer) {
+        // Output Grounding Guardrail: Verify claims against executed tool receipts before sending to user
+        const verification = OutputGroundingGuardrail.verify({
+          userMessage: effectiveUserMessage,
+          finalAnswer: execResult.finalAnswer,
+          successfulToolResults: execResult.successfulToolResults || [],
+          hadTools: execResult.hadTools
+        });
+
+        if (!verification.passed) {
+          console.warn(`[DialogueEngine][Guardrail] Output grounding violation detected: ${verification.violations.join(', ')}`);
+        }
+
         this.emitEvent(EventTypes.DIALOGUE_AGENT_SPEAK, {
           id: Date.now(),
-          text: execResult.finalAnswer,
+          text: verification.sanitizedAnswer,
           actionLinks: execResult.actionLinks.length > 0 ? execResult.actionLinks : undefined,
           cognitiveSteps: execResult.cognitiveSteps.length > 0 ? execResult.cognitiveSteps : undefined,
           durationSeconds: execResult.durationSeconds,

@@ -175,9 +175,24 @@ CRITICAL - MOBILE ERGONOMICS & STYLE B LAYOUT (STRICT FORMATTING):
     // 2. Selectively bind tools based on active domains and execution strategy
     const toolMap = new Map<string, SeraTool>();
 
+    // Sensory baseline tools that must ALWAYS be present in interactive user turns,
+    // ensuring the model is never blinded even if initial intent was tagged DIRECT_ANSWER.
+    const SENSORY_BASELINE_NAMES = new Set([
+      'WEB_SEARCH',
+      'CATALOG_SEARCH_PRODUCTS',
+      'CHECK_WALLET_BALANCE',
+      'THREADS_GET_POSTS',
+      'THREADS_GET_INSIGHTS'
+    ]);
+
+    const allSubAgentTools = subAgentCoordinator.getAllTools();
+    const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
+      ? capabilityCatalog.availableTools()
+      : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
+
     if (!isDirectAnswer) {
       const activeTools = (domains === undefined)
-        ? subAgentCoordinator.getAllTools()
+        ? allSubAgentTools
         : subAgentCoordinator.getToolsForDomains(specializedDomains);
 
       for (const tool of activeTools) {
@@ -187,10 +202,6 @@ CRITICAL - MOBILE ERGONOMICS & STYLE B LAYOUT (STRICT FORMATTING):
       }
 
       // Catalog & ecosystem tools gating
-      const catalogTools = typeof capabilityCatalog?.availableTools === 'function'
-        ? capabilityCatalog.availableTools()
-        : (Array.isArray(capabilityCatalog) ? [...capabilityCatalog] : []);
-
       for (const tool of catalogTools) {
         if (isExplicitlyScoped && specializedDomains.length > 0) {
           if (!specializedDomains.includes('defi') && /^(HL_|TRANSFER_|CHECK_WALLET)/i.test(tool.name)) {
@@ -206,6 +217,14 @@ CRITICAL - MOBILE ERGONOMICS & STYLE B LAYOUT (STRICT FORMATTING):
         if (!toolMap.has(tool.name)) {
           toolMap.set(tool.name, tool);
         }
+      }
+    }
+
+    // Always guarantee sensory baseline tools are accessible for environmental grounding
+    const allAvailableSensoryTools = [...allSubAgentTools, ...catalogTools];
+    for (const tool of allAvailableSensoryTools) {
+      if (SENSORY_BASELINE_NAMES.has(tool.name) && !toolMap.has(tool.name)) {
+        toolMap.set(tool.name, tool);
       }
     }
 

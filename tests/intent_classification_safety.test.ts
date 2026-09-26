@@ -25,6 +25,25 @@ describe('Intent Classification & Conversational Safety', () => {
     }
   });
 
+  it('correctly routes knowledge, identity, news, and video queries to search domain', async () => {
+    const classifier = new IntentClassifier();
+    const queries = [
+      'siapa itu putin',
+      'siapakah elon musk',
+      'who is sam altman',
+      'video youtube tentang quantum computing',
+      'apa yang terjadi di ukraina saat ini',
+      'berita terkini hari ini',
+      'jelaskan tentang black hole'
+    ];
+
+    for (const q of queries) {
+      const res = await classifier.classify(q);
+      expect(res.distilledIntent.activeDomains).toContain('social');
+      expect(res.distilledIntent.targetDomain).toBe('KNOWLEDGE');
+    }
+  });
+
   it('GoalBridge handles CONVERSATION, NONE, NO_ACTION without erroring', async () => {
     const eventBus = new EventEmitter();
     const goalBridge = new GoalBridge(eventBus, 'test-session');

@@ -145,6 +145,38 @@ describe('GoogleGroundingService & WebSearchCapability', () => {
       expect(mockBrave.executeTool).not.toHaveBeenCalled();
     });
 
+    it('categorizes video (YouTube) vs web news citations in grounded output', async () => {
+      const mockGroundingService = {
+        searchWithGrounding: vi.fn().mockResolvedValue({
+          success: true,
+          query: 'Quantum Computing Overview',
+          groundedText: 'Quantum computing harnesses quantum mechanics to perform calculations.',
+          citations: [
+            {
+              title: 'Quantum Computing Explained Simply',
+              url: 'https://www.youtube.com/watch?v=mock123'
+            },
+            {
+              title: 'Nature Physics Journal Article',
+              url: 'https://nature.com/articles/quant-comp'
+            }
+          ],
+          searchQueries: ['quantum computing overview'],
+          source: 'google_search_grounding'
+        })
+      } as any;
+
+      const webSearch = new WebSearchCapability({
+        groundingService: mockGroundingService
+      });
+
+      const res = await webSearch.executeTool('WEB_SEARCH', { query: 'Quantum Computing Overview' });
+      expect(res.output).toContain('🎬 Video References (YouTube):');
+      expect(res.output).toContain('https://www.youtube.com/watch?v=mock123');
+      expect(res.output).toContain('🌐 Web & News Sources:');
+      expect(res.output).toContain('https://nature.com/articles/quant-comp');
+    });
+
     it('falls back to Brave Search when Google Grounding fails', async () => {
       const mockGroundingService = {
         searchWithGrounding: vi.fn().mockResolvedValue({

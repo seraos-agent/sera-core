@@ -67,8 +67,16 @@ export class WebSearchCapability {
             description: c.snippet || c.title
           }));
 
+          const videoCitations = groundingRes.citations.filter(c => /youtube\.com|youtu\.be/i.test(c.url));
+          const webCitations = groundingRes.citations.filter(c => !/youtube\.com|youtu\.be/i.test(c.url));
+
           let output = `[Google Search Grounding]\n${groundingRes.groundedText}`;
-          if (groundingRes.citations.length > 0) {
+          if (videoCitations.length > 0) {
+            output += `\n\n🎬 Video References (YouTube):\n` + videoCitations.map((c, i) => `[V${i + 1}] ${c.title} (${c.url})`).join('\n');
+          }
+          if (webCitations.length > 0) {
+            output += `\n\n🌐 Web & News Sources:\n` + webCitations.map((c, i) => `[W${i + 1}] ${c.title} (${c.url})`).join('\n');
+          } else if (groundingRes.citations.length > 0 && videoCitations.length === 0) {
             output += `\n\nSources:\n` + groundingRes.citations.map((c, i) => `[${i + 1}] ${c.title} (${c.url})`).join('\n');
           }
 

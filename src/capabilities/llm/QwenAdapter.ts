@@ -46,7 +46,12 @@ export class QwenAdapter implements ILLMAdapter {
     return this.capability;
   }
 
-  async generate(messages: QwenMessage[], tools?: SeraTool[], abortSignal?: AbortSignal): Promise<QwenResponse> {
+  async generate(
+    messages: QwenMessage[],
+    tools?: SeraTool[],
+    abortSignal?: AbortSignal,
+    options?: { temperature?: number; top_p?: number }
+  ): Promise<QwenResponse> {
     const dashScopeTools = tools?.map(t => ({
       type: 'function',
       function: {
@@ -62,6 +67,13 @@ export class QwenAdapter implements ILLMAdapter {
       max_tokens: parseInt(process.env.QWEN_MAX_TOKENS || '4096', 10),
       enable_thinking: this.enableThinking === true
     };
+
+    if (options?.temperature !== undefined) {
+      body.temperature = options.temperature;
+    }
+    if (options?.top_p !== undefined) {
+      body.top_p = options.top_p;
+    }
 
     const timeoutMs = parseInt(process.env.QWEN_TIMEOUT_MS || '120000', 10);
     const effectiveSignal = abortSignal

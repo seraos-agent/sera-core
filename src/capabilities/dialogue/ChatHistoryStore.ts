@@ -43,6 +43,9 @@ export class ChatHistoryStore {
   private readonly sessionId: string;
   private loadPromise: Promise<void> | null = null;
 
+  public static readonly MAX_UI_MESSAGES = 30;
+  public static readonly MAX_DETAILED_TURNS = 6;
+
   constructor(sessionId: string, options: ChatHistoryStoreOptions = {}) {
     this.sessionId = sessionId;
     this.persistLocally = options.persistLocally ?? true;
@@ -65,6 +68,9 @@ export class ChatHistoryStore {
         // Filter out ephemeral activity messages from older history saves
         if (parsed.uiMessages) {
           parsed.uiMessages = parsed.uiMessages.filter(msg => msg.type !== 'activity');
+          if (parsed.uiMessages.length > ChatHistoryStore.MAX_UI_MESSAGES) {
+            parsed.uiMessages = parsed.uiMessages.slice(-ChatHistoryStore.MAX_UI_MESSAGES);
+          }
         }
         if (!parsed.platformMessages) {
           parsed.platformMessages = {};
@@ -97,7 +103,10 @@ export class ChatHistoryStore {
         let modified = false;
 
         if (snapshot.uiMessages) {
-          const cloudMessages = snapshot.uiMessages.filter((msg: any) => msg.type !== 'activity');
+          let cloudMessages = snapshot.uiMessages.filter((msg: any) => msg.type !== 'activity');
+          if (cloudMessages.length > ChatHistoryStore.MAX_UI_MESSAGES) {
+            cloudMessages = cloudMessages.slice(-ChatHistoryStore.MAX_UI_MESSAGES);
+          }
           if (cloudMessages.length > 0) {
             // If local was empty or cloud has more recent messages, sync from cloud
             if (this.state.uiMessages.length === 0 || cloudMessages.length >= this.state.uiMessages.length) {
@@ -220,6 +229,24 @@ export class ChatHistoryStore {
     } else {
       this.state.uiMessages.push(msg);
     }
+
+    // Retain maximum UI messages to prevent unbounded memory growth and payload bloat
+    while (this.state.uiMessages.length > ChatHistoryStore.MAX_UI_MESSAGES) {
+      this.state.uiMessages.shift();
+    }
+
+    // Prune bulky transient metadata (cognitiveSteps, observations) from older turns to prevent payload bloating
+    const detailedCutoff = Math.max(0, this.state.uiMessages.length - ChatHistoryStore.MAX_DETAILED_TURNS);
+    for (let i = 0; i < detailedCutoff; i++) {
+      const older = this.state.uiMessages[i];
+      if (older.cognitiveSteps && older.cognitiveSteps.length > 0) {
+        delete older.cognitiveSteps;
+      }
+      if (older.observations && older.observations.length > 0) {
+        delete older.observations;
+      }
+    }
+
     this.save();
   }
 

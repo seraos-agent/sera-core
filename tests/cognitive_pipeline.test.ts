@@ -88,16 +88,20 @@ describe('Modular Cognitive Pipeline (Liberated Agent Architecture)', () => {
     expect(multiRes.distilledIntent.activeDomains).toContain('productivity');
   });
 
-  it('DynamicPromptAssembler applies domain-scoped pruning and zero-tool gating', () => {
+  it('DynamicPromptAssembler applies domain-scoped pruning and sensory baseline retention', () => {
     const coordinator = new SubAgentCoordinator();
 
-    // 1. Casual turn (DIRECT_ANSWER): 0 tools and lean persona (no 18 tool exemplars)
+    // 1. Casual turn (DIRECT_ANSWER): retains sensory baseline tools (WEB_SEARCH, etc.)
+    // but prunes heavy mutation tools and keeps lean persona (no 18 tool exemplars)
     const casualContext = DynamicPromptAssembler.assemble({
       domains: ['general'],
       executionStrategy: 'DIRECT_ANSWER',
       subAgentCoordinator: coordinator
     });
-    expect(casualContext.tools.length).toBe(0);
+    const casualToolNames = casualContext.tools.map(t => t.name);
+    expect(casualToolNames).toContain('WEB_SEARCH');
+    expect(casualToolNames).not.toContain('TRANSFER_FUNDS');
+    expect(casualToolNames).not.toContain('GDRIVE_CREATE_SPREADSHEET');
     expect(casualContext.systemPrompt).toContain('SERA');
     expect(casualContext.systemPrompt).not.toContain('CRITICAL - FEW-SHOT TOOL CALL EXEMPLARS');
 
